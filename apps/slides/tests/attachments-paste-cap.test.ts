@@ -18,7 +18,10 @@ vi.mock('@genoffice/file-parse', () => ({
   ATTACHABLE_EXTS: new Set(['txt', 'md', 'png', 'jpg', 'jpeg', 'gif', 'webp']),
   ATTACHABLE_IMAGE_EXTS: new Set(['png', 'jpg', 'jpeg', 'gif', 'webp']),
   ATTACHABLE_MAX_BYTES: 50 * 1024 * 1024,
+  attachableMaxBytes: () => 50 * 1024 * 1024,
   ATTACHABLE_IMAGE_MAX_BYTES: 5 * 1024 * 1024,
+  diagramPictureExtOf: () => null,
+  diagramPictureExtOfName: () => null,
   isAttachableExt: (ext: string) =>
     ['txt', 'md', 'png', 'jpg', 'jpeg', 'gif', 'webp'].includes(
       ext.replace(/^\./, '').toLowerCase(),
@@ -26,7 +29,12 @@ vi.mock('@genoffice/file-parse', () => ({
 }))
 vi.mock('@genoffice/cli/agent-skills', () => ({}))
 vi.mock('@genoffice/cli/install', () => ({}))
-vi.mock('@genoffice/electron-utils', () => ({ showOpenDialogWithMemory: vi.fn() }))
+vi.mock('@genoffice/electron-utils', () => ({
+  showOpenDialogWithMemory: vi.fn(),
+  // the attachment handlers record and check granted paths (path grants)
+  sharedPathGrants: () => ({ grant: vi.fn(), has: () => false, release: vi.fn() }),
+  isBesideDocument: () => false,
+}))
 // session-state pulls the font/shaping chain (harfbuzz wasm) which cannot
 // load in the unit-test env; the paste handler under test never reaches it.
 vi.mock('../src/main/session-state', () => ({ dialogParent: vi.fn(() => null) }))
@@ -45,10 +53,13 @@ function pastedImageHandler() {
   ) => { accepted: unknown[]; rejected: string[] }
 }
 
+// a paste arrives from a tab; the saved temp image is granted to it
+const PASTE_EVENT = { sender: { id: 1 } }
+
 describe('pasted-image byte cap', () => {
   it('rejects oversized pastes before touching the temp disk', () => {
     const fn = pastedImageHandler()
-    const big = fn({}, new Uint8Array(20 * 1024 * 1024), 'png')
+    const big = fn(PASTE_EVENT, new Uint8Array(20 * 1024 * 1024), 'png')
     expect(big.accepted).toEqual([])
     expect(big.rejected).toHaveLength(1)
   })
@@ -59,10 +70,10 @@ describe('pasted-image byte cap', () => {
       'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
       'base64',
     )
-    const ok = fn({}, png, 'png')
+    const ok = fn(PASTE_EVENT, png, 'png')
     expect(ok.accepted).toHaveLength(1)
     expect(ok.rejected).toEqual([])
-    const bad = fn({}, new Uint8Array([1, 2, 3]), 'txt')
+    const bad = fn(PASTE_EVENT, new Uint8Array([1, 2, 3]), 'txt')
     expect(bad.accepted).toEqual([])
     expect(bad.rejected).toHaveLength(1)
   })

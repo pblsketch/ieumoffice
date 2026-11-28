@@ -1,9 +1,9 @@
-import { mkdtempSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { flagString, parseArgs } from '../src/args'
-import { resolveOutput } from '../src/fs'
+import { resolveOutput, writeOutput } from '../src/fs'
 import { EXIT } from '../src/result'
 
 describe('resolveOutput', () => {
@@ -28,5 +28,18 @@ describe('resolveOutput', () => {
     // an absent --out still edits in place, and a real one still redirects
     expect(resolveOutput(undefined, ctx, { fallback: input })).toBe(input)
     expect(resolveOutput('out.pptx', ctx, { fallback: input })).toBe(join(dir, 'out.pptx'))
+  })
+})
+
+describe('writeOutput', () => {
+  it('replaces a file whose name is near the 255-byte file-name limit', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'genoffice-out-'))
+    // 78 Hangul letters + ".docx" is 239 bytes; the temp name must not grow past 255
+    const file = join(dir, `${'가'.repeat(78)}.docx`)
+    writeFileSync(file, 'old')
+    writeOutput(file, 'new')
+    expect(readFileSync(file, 'utf-8')).toBe('new')
+    // the temp file is renamed away, nothing is left beside the file
+    expect(readdirSync(dir)).toEqual([`${'가'.repeat(78)}.docx`])
   })
 })

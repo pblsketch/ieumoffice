@@ -135,9 +135,45 @@ describe('docStyleCss grid strut face', () => {
     // the Office-private MS Mincho renders through a stand-in, so the
     // inheriting .doc-ea-strut paragraphs share the strut too
     expect(css).toContain(
-      ".doc-page :is(.doc-grid-strut,.doc-ea-strut) { font-family:'GenOffice Grid Strut',var(--doc-grid-strut-tail,serif) }",
+      ".doc-page :is(.doc-grid-strut,.doc-ea-strut) { font-family:'GenOffice Grid Strut',var(--doc-grid-strut-tail,serif) !important }",
+    )
+    expect(css).toContain(
+      ".doc-page :is(.doc-grid-strut,.doc-ea-strut) .doc-east-asian-font { font-family:'GenOffice Grid Strut',var(--doc-east-asian-font,var(--doc-grid-strut-tail,serif)) !important }",
     )
     expect(css).toContain('--doc-grid-strut-tail:')
+  })
+
+  it('applies the grid strut to inheriting .doc-ea-strut paragraphs and EA spans even when the EA face is installed locally', () => {
+    // Regression for Windows Korean Word default docGrid (Times New Roman / BatangChe):
+    // BatangChe is installed locally on Windows, so standIn is false, yet
+    // Chromium still unions the Latin strut and .doc-east-asian-font span boxes
+    // past the grid line height unless both lead with GenOffice Grid Strut.
+    const fake = {
+      font: '',
+      measureText: () => ({
+        width: fake.font.includes('\ubc14\ud0d5\uccb4') ? 420 : 300,
+        fontBoundingBoxAscent: 858,
+        fontBoundingBoxDescent: 142,
+      }),
+    }
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(
+      fake as unknown as CanvasRenderingContext2D,
+    )
+    mountBlankFace()
+    const css = docStyleCss(
+      parsedWith(GRID_SECT, undefined, undefined, {
+        font: '\ubc14\ud0d5\uccb4',
+        fontAscii: 'Times New Roman',
+        eastAsiaFont: '\ubc14\ud0d5\uccb4',
+      }),
+    )
+    expect(css).toContain("@font-face { font-family:'GenOffice Grid Strut'")
+    expect(css).toContain(
+      ".doc-page :is(.doc-grid-strut,.doc-ea-strut) { font-family:'GenOffice Grid Strut',var(--doc-grid-strut-tail,serif) !important }",
+    )
+    expect(css).toContain(
+      ".doc-page :is(.doc-grid-strut,.doc-ea-strut) .doc-east-asian-font { font-family:'GenOffice Grid Strut',var(--doc-east-asian-font,var(--doc-grid-strut-tail,serif)) !important }",
+    )
   })
 
   it('emits nothing without an EA face or with a Latin one', () => {

@@ -1,4 +1,4 @@
-import type { AgentSkill } from '@genoffice/agent-core'
+import { attachedImageNote, type AgentSkill } from '@genoffice/agent-core'
 import { brandText } from '@genoffice/i18n'
 import { createHtmlSkill, type HtmlDocAccess } from './tools'
 import { buildProjection, placeholderInstruction } from './redact'
@@ -13,7 +13,7 @@ const SYSTEM_PROMPT = [
   '- Batch related changes into one apply_ops call. The batch is atomic: if one op fails nothing is applied — fix the failing op and resend the whole batch.',
   '- str_replace `old` must match exactly once. Include enough surrounding markup to be unique; never guess text you have not read.',
   "- Never re-indent, reorder attributes, or touch markup the user did not ask about. Keep the document's existing style system (its classes, CSS variables, fonts); add new rules to the existing <style> block rather than inline styles unless the user asks.",
-  '- Do not add external scripts or CDNs unless the user asks. Images come from paths the user gives you, already-existing assets, or chat attachments referenced as attachment://<file name> in apply_ops (the app substitutes the real file). Never write base64 image data into the document and never ask the user to paste base64 — ask for the image file as a chat attachment instead.',
+  '- Do not add external scripts or CDNs unless the user asks. Images: search the web with image_search and place a result with apply_ops (an <img> whose src is the returned imageUrl), or generate one with generate_image (it inserts the image itself). Existing assets and user-given paths stay valid; chat attachments are referenced as attachment://<file name> in apply_ops (the app substitutes the real file). Never write base64 image data into the document and never ask the user to paste base64.',
   '- To change how an existing image is displayed (size, fit, cropping, position), use set_style / set_attr on that sid and leave its src alone. Never emit markup that re-types a src you have not read verbatim, and never re-type a data: src at all — if a rewrite is unavoidable, reference the file as attachment://<file name> again and the app substitutes it.',
   '- If a tool reports the document changed under you, re-read and re-plan instead of retrying blindly.',
   '',
@@ -37,8 +37,8 @@ const SYSTEM_PROMPT = [
   '- Never drop content or shrink body text below 9pt to make pages fit; when it cannot fit, say so and ask what to cut.',
   '- A page meant for paper that has no @page rule yet gets one first: @page { size: A4 portrait; margin: 15mm } unless the user named another paper.',
   '',
-  '## Creating a new page: questionnaire → brief → the system writes the page',
-  '1. If the request leaves real trade-offs open (audience, scenario, tone, focus, length), call ask_clarification with 2–4 topic-specific questions. Skip it when the user already said what matters.',
+  '## Creating a new page: brief → the system writes the page',
+  '1. If the direction is truly unclear (audience, length, tone, format), ask once with ask_questions. Skip it when the user already said what matters.',
   '2. Call plan_page with mode "new" (empty document) or "redesign" (the user asked to rebuild the whole page) and at most three sentences of notes (the choices to honor). The system drafts the brief from this conversation — core hook, style directions, sections and the reference material for the page writer — and shows it to the user as style tiles. Everything the page must know has to be in the conversation before you call it.',
   '3. After the user confirms, the system writes the page itself (streamed into the preview) and the tool result tells you what was written. You never write whole pages: there is no tool that takes HTML for a full page. Then reply with one or two sentences about the page.',
   '4. Use web_search before plan_page when the topic needs current information; the brief writer reads the findings and sources from the conversation so they end up attributed in the page.',
@@ -60,18 +60,30 @@ const SYSTEM_PROMPT = [
   '- Keep replies short; the edits are the deliverable. Summarize what you changed in one or two sentences.',
 ].join('\n')
 
-export function createDocumentSkill(access: HtmlDocAccess): AgentSkill {
+export function createDocumentSkill(
+  access: HtmlDocAccess,
+  /** live predicate (the main process's tool capabilities say image generation can run); false hides generate_image */
+  imageGenAvailable?: () => boolean,
+): AgentSkill {
   // live like the tool list: rebuilt per request from the page as it is now, so
   // a mark applied a moment ago is in the next prompt and a removed one is gone
   // from it. A page with nothing withheld pays nothing and is not told to look
   // for markers that are not there.
-  return createHtmlSkill(access, {
-    get systemPrompt(): string {
-      const proj = buildProjection(access.getText(), access.getMap())
-      // the prompt names the product: the upstream name is swapped for this product's
-      const system = brandText(SYSTEM_PROMPT, 'en')
-      if (proj.empty) return system
-      return `${system}\n\n${placeholderInstruction(proj.labels())}`
+  return createHtmlSkill(
+    access,
+    {
+      get systemPrompt(): string {
+        const proj = buildProjection(access.getText(), access.getMap())
+        // the prompt names the product: the upstream name is swapped for this product's
+        const attached = attachedImageNote(
+          access.listImageAttachmentNames?.() ?? [],
+          'use it as an <img src="attachment://<name>"> in apply_ops',
+        )
+        const system = brandText(SYSTEM_PROMPT, 'en') + attached
+        if (proj.empty) return system
+        return `${system}\n\n${placeholderInstruction(proj.labels())}`
+      },
     },
-  })
+    imageGenAvailable,
+  )
 }

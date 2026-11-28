@@ -20,18 +20,46 @@ import {
   onAiRailClick,
   presentationKeyOf,
   rememberAiPanelOpen,
+  shortcutLetterOf,
   skillTemplateText,
   templateDocumentOf,
   useAiSidebarEnabled,
   useSplitPaneFocusPing,
   useSplitPaneRole,
+  createZoomWheelClassifier,
+  wheelZoomStepPercent,
+  printLayoutText,
+  VersionTimelineDrawer,
+  tweaksText,
+  versionTimelineText,
+  type DrawerVersionEntry,
   type TemplateDocument,
 } from '@genoffice/ui'
+import '@genoffice/ui/tweaks-panel.css'
+import { createDefaultOptions } from '@genoffice/print-layout/plan'
+import {
+  VERSION_TIMELINE_BRIDGE_KEY,
+  type VersionTimelineBridge,
+} from '@genoffice/electron-utils/version-timeline-channels'
+import {
+  DEFAULT_HTML_TWEAKS,
+  buildHtmlTweaksPatch,
+  buildHtmlTweaksResetPatch,
+  type HtmlTweaksState,
+} from './tweaks/html-tweaks'
+import { HtmlTweaksPanel } from './tweaks/HtmlTweaksPanel'
+import { HtmlTimelineAdapter } from './timeline/html-timeline-adapter'
 import {
   pollUntilReady,
   runHeadlessRendererExport,
 } from '@genoffice/electron-utils/headless-export'
 import { useI18n } from './i18n/locale'
+import { htmlTemplatesText, practicalTemplateLabel } from './i18n/strings-templates'
+import {
+  PRACTICAL_HTML_TEMPLATES,
+  findPracticalHtmlTemplate,
+  type PracticalHtmlTemplateId,
+} from './templates/practical-templates'
 import { parseDocText, serializeDocText, type Envelope } from './document/envelope'
 import {
   SourceEditor,
@@ -64,7 +92,8 @@ import {
   type EditQueueItem,
 } from './ai/edit-queue'
 import { buildProjection } from './ai/redact'
-import { Breadcrumb, type NodeState } from './components/Breadcrumb'
+import { changedElements } from './ai/change-marks'
+import { ALT_KEY, Breadcrumb, type NodeState } from './components/Breadcrumb'
 import {
   Ribbon,
   type PresentKind,
@@ -75,6 +104,8 @@ import {
 import { AiMark, CropDialog, CutoutDialog, type ImageDialogLabels } from '@genoffice/ui'
 import { FloatToolbar } from './components/FloatToolbar'
 import { RedactDialog } from './components/RedactDialog'
+import { useAiVisible } from './ai-visibility'
+import { useMathExtension } from './extensions/math/useMathExtension'
 import { redactClearPlan, redactMarkPlan, type RedactPlan } from './document/redact-edit'
 import {
   insertOp,
@@ -103,6 +134,7 @@ import { withPendingEdits } from './document/pending-edits'
 import { adoptImageRewrites } from './document/image-rewrites'
 import { deriveAutoFileName, deriveNameFromPrompt, derivePageTitleName } from './document/auto-name'
 import { runGuardedPrint } from './print-guard'
+import { HtmlPrintDialog } from './PrintDialog'
 import { startRecoveryCopies } from './recovery-copy'
 import type { ExportFormat, SaveMode } from '../shared/ipc'
 
@@ -120,9 +152,13 @@ const MIN_ZOOM = 50
 const MAX_ZOOM = 200
 const ZOOM_STEP = 10
 const clampZoom = (z: number) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z))
+const wheelZoomed = (z: number, intent: 'zoom-in' | 'zoom-out') =>
+  wheelZoomStepPercent(z, intent === 'zoom-in' ? 1 : -1, MIN_ZOOM, MAX_ZOOM)
 const inTextField = (target: EventTarget | null) =>
   target instanceof HTMLElement &&
-  !!target.closest('.cm-editor, input, textarea, [contenteditable=""], [contenteditable="true"]')
+  !!target.closest(
+    '.cm-editor, input, textarea, math-field, [contenteditable=""], [contenteditable="true"]',
+  )
 const PREVIEW_DEBOUNCE_MS = 150
 const DEFAULT_ENVELOPE: Envelope = { bom: false, eol: '\n', trailingNewline: true }
 /** live style pokes are written to the source as one set_style op this long after the last change */
@@ -194,9 +230,20 @@ export default function App() {
   const aiPanelOpen = effectiveAiPanelOpen(aiOpen, paneRole)
   // the sidebar switch is a soft hide; it closes the panel when it turns off
   const aiSidebarEnabled = useAiSidebarEnabled(setAiOpen)
+  // Settings › Editors and AI: while AI is off no AI part of this editor is drawn
+  // (panel, ribbon entries, Ask AI, withholding); turning it back on brings them back
+  const aiOn = useAiVisible()
+  const aiOnRef = useRef(aiOn)
+  aiOnRef.current = aiOn
   const [aiPreset, setAiPreset] = useState<AiPreset | null>(null)
   const [editQueue, setEditQueue] = useState<EditQueueItem[]>([])
   const [askMode, setAskMode] = useState<AskMode | null>(null)
+  // AI turned off: the queued AI edits go with the panel, and so does an open Ask AI
+  useEffect(() => {
+    if (aiOn) return
+    setEditQueue((queue) => (queue.length ? [] : queue))
+    setAskMode(null)
+  }, [aiOn])
   const [selectedSid, setSelectedSid] = useState<number | null>(null)
   const [selectedState, setSelectedState] = useState<NodeState>('static')
   /** elements selected alongside selectedSid (shift / ctrl+click, rubber band): delete,
@@ -250,6 +297,9 @@ export default function App() {
   const [servedVersion, setServedVersion] = useState(-1)
   const zoomRef = useRef(zoom)
   zoomRef.current = zoom
+  /** Ctrl/⌘+wheel on the stage and inside the frame share one classifier, so a pinch
+   * that crosses the frame edge stays one stream. Five points per notch, onto the 5% grid. */
+  const zoomWheelRef = useRef<ReturnType<typeof createZoomWheelClassifier> | null>(null)
   const [panelOpen, setPanelOpen] = useState(
     () => localStorage.getItem('htmlapp.stylePanel') !== '0',
   )
@@ -341,6 +391,42 @@ export default function App() {
     mapSourceRef.current = textRef.current
     return next
   }, [])
+
+  /** the marks of the AI's last changes are on the page (the card offers to take them off) */
+  const [aiMarksShown, setAiMarksShown] = useState(false)
+  /** an AI change since the marks were last cleared took text out: no mark shows it */
+  const aiUnmarkedRef = useRef(false)
+  /**
+   * The source pane holds the marks (mapped through later edits); the preview
+   * shows them as boxes over the elements they touched. The boxes are the
+   * frame's own overlay nodes: never part of the source, a save, an export or a print.
+   */
+  const postAiMarks = useCallback(() => {
+    const ranges = editorRef.current?.aiRanges() ?? []
+    if (ranges.length === 0 || canvasModeRef.current === 'present') {
+      previewRef.current?.post({ type: 'gx:clearHighlight' })
+      return
+    }
+    const { sids } = changedElements(getMap(), textRef.current, ranges)
+    const tokens = getComputedStyle(document.documentElement)
+    previewRef.current?.post({
+      type: 'gx:highlight',
+      sids,
+      fill: tokens.getPropertyValue('--color-ai-changed-bg').trim() || undefined,
+      line: tokens.getPropertyValue('--color-ai-changed-line').trim() || undefined,
+    })
+  }, [getMap])
+  /** after anything that can add, move or drop marks: the card and the preview follow */
+  const syncAiMarks = useCallback(() => {
+    const shown = (editorRef.current?.aiRanges().length ?? 0) > 0
+    if (!shown) aiUnmarkedRef.current = false
+    setAiMarksShown(shown)
+    postAiMarks()
+  }, [postAiMarks])
+  const clearAiMarks = useCallback(() => {
+    editorRef.current?.clearHighlights()
+    syncAiMarks()
+  }, [syncAiMarks])
 
   useEffect(() => {
     let cancelled = false
@@ -541,10 +627,11 @@ export default function App() {
 
   const onEditorChange = useCallback(
     (next: string) => {
-      editorRef.current?.clearHighlights()
       commitText(next, true)
+      // typing in the source takes the marks off, as before
+      clearAiMarks()
     },
-    [commitText],
+    [commitText, clearAiMarks],
   )
 
   /** compile + apply one batch; manual batches are not highlighted and count as user edits for AI staleness */
@@ -561,9 +648,11 @@ export default function App() {
         ? editor.applyPatches(compiled.patches, !manual)
         : compiled.patches.map((p) => [p.from, p.from + p.text.length] as [number, number])
       commitText(applyPatches(base, compiled.patches), manual)
+      if (!manual && ranges.some(([a, b]) => b <= a)) aiUnmarkedRef.current = true
+      syncAiMarks()
       return { ok: true, ranges }
     },
-    [commitText, getMap],
+    [commitText, getMap, syncAiMarks],
   )
 
   const flushStylesRef = useRef<(() => void) | null>(null)
@@ -590,8 +679,10 @@ export default function App() {
       // a new page, not an edit of the one on screen: it opens at the top
       frameScrollRef.current = null
       commitText(pinned, false)
+      aiUnmarkedRef.current = false
+      syncAiMarks()
     },
-    [commitText, flushPending],
+    [commitText, flushPending, syncAiMarks],
   )
 
   /** apply a toolbar/inspector batch; the selection follows the edited element (or clears when it is gone) */
@@ -659,6 +750,19 @@ export default function App() {
     },
     [applyOps, getMap, flushPending, pushPreview],
   )
+
+  const mathExtension = useMathExtension({
+    flush: flushPending,
+    read: () => ({
+      source: textRef.current,
+      identity: pathRef.current,
+      map: getMap(),
+      sid: selectedSidRef.current,
+    }),
+    apply: (ops) => runManual(ops, 'inserted'),
+    unavailable: () => setNotice(t('insertNoBody')),
+  })
+  const openMathRef = mathExtension.openRef
 
   /**
    * Land a redaction plan. The marks the op vocabulary can express go through
@@ -786,12 +890,18 @@ export default function App() {
     previewRef.current?.post({ type: 'gx:mark', marks })
   }, [getMap])
   useEffect(postMarks, [editQueue, canvasMode, postMarks])
+  // presenting hides the marks of the AI's changes, as it hides the queue pins
+  useEffect(postAiMarks, [canvasMode, postAiMarks])
 
   const onInspectorMessage = useCallback(
     (msg: FromInspector) => {
       // a click that lands while the frame is reloading carries sids from the previous copy
       if (!frameVersionsRef.current.has(msg.version)) return
       switch (msg.type) {
+        case 'gx:editMath':
+          if (canvasModeRef.current === 'edit' && Number.isSafeInteger(msg.sid))
+            openMathRef.current(msg.sid, msg.version)
+          return
         case 'gx:ready': {
           previewRef.current?.post({ type: 'gx:theme', dark: isDarkTheme() })
           previewRef.current?.post({ type: 'gx:setMode', mode: frameMode(canvasModeRef.current) })
@@ -813,6 +923,8 @@ export default function App() {
             previewRef.current?.post({ type: 'gx:beginTextEdit', sid })
           editAfterLoadRef.current = null
           postMarks()
+          // the reloaded copy has no boxes yet: the marks of the AI's changes go back on
+          postAiMarks()
           return
         }
         case 'gx:markClick': {
@@ -930,9 +1042,18 @@ export default function App() {
           return
         case 'gx:textEditCancel':
           return
-        case 'gx:zoom':
-          if (canvasModeRef.current !== 'present') setZoom((z) => clampZoom(z - msg.delta * 0.6))
+        case 'gx:zoom': {
+          if (canvasModeRef.current === 'present') return
+          // the frame's own clock differs from this one: time the event on arrival
+          const deltaMode = typeof msg.deltaMode === 'number' ? msg.deltaMode : 0
+          zoomWheelRef.current ??= createZoomWheelClassifier()
+          const intent = zoomWheelRef.current.feed(
+            { deltaY: Number(msg.delta) || 0, deltaMode },
+            performance.now(),
+          )
+          if (intent) setZoom((z) => wheelZoomed(z, intent))
           return
+        }
         case 'gx:keyCommand': {
           if (canvasModeRef.current === 'present') {
             if (msg.command === 'escape') setCanvasModeState('edit')
@@ -964,8 +1085,9 @@ export default function App() {
               'clear',
             )
           else if (msg.command === 'escape') selectSid(null)
-          else if (msg.command === 'askAi') setAskMode({ kind: 'new' })
-          else if (msg.command === 'bold') wrapSelectionRef.current('strong')
+          else if (msg.command === 'askAi') {
+            if (aiOnRef.current) setAskMode({ kind: 'new' })
+          } else if (msg.command === 'bold') wrapSelectionRef.current('strong')
           else if (msg.command === 'italic') wrapSelectionRef.current('em')
           else if (msg.command === 'parent' && e.parentSid !== null) {
             const parent = map.bySid.get(e.parentSid)
@@ -1000,7 +1122,19 @@ export default function App() {
           return
       }
     },
-    [getMap, postMarks, postPaper, runManual, selectSid, selectionSids, setExtras, t, flushPending],
+    [
+      getMap,
+      postMarks,
+      postAiMarks,
+      postPaper,
+      runManual,
+      selectSid,
+      selectionSids,
+      setExtras,
+      t,
+      flushPending,
+      openMathRef,
+    ],
   )
 
   // the source cursor picks the covering element (no reveal: the user is already there)
@@ -1087,6 +1221,23 @@ export default function App() {
     if (!isDocEmpty(textRef.current)) return
     replaceAll(documentSkeleton(lang), false)
   }, [lang, replaceAll])
+
+  /** apply one of the 5 offline 1-page practical HTML templates (works in AI-OFF mode too) */
+  const applyPracticalTemplate = useCallback(
+    (id: PracticalHtmlTemplateId) => {
+      const tpl = findPracticalHtmlTemplate(id)
+      if (!tpl) return
+      if (
+        !isDocEmpty(textRef.current) &&
+        !window.confirm(htmlTemplatesText(lang, 'templatesReplaceConfirm'))
+      ) {
+        return
+      }
+      selectSidRef.current?.(null, {})
+      replaceAll(tpl.html, false)
+    },
+    [lang, replaceAll],
+  )
 
   /** ribbon Insert menu: a starter element after the selection (or at the end of the body), then straight into editing */
   const insertElement = async (kind: InsertKind, opts: InsertOptions = {}) => {
@@ -1453,6 +1604,12 @@ export default function App() {
           defaultName: provisionalNameRef.current ?? undefined,
           auto,
         })
+        if (result.ok && 'path' in result && result.exported) {
+          // Save As › PDF, Word or ODT wrote a copy: the page keeps its path,
+          // its unsaved edits and its assets (the main process opened the copy)
+          setSaveState('idle')
+          return true
+        }
         if (result.ok && 'path' in result) {
           const adopted = adoptImageRewrites(textAtSave, textRef.current, result.imageRewrites)
           if (adopted.liveText !== textRef.current) {
@@ -1469,6 +1626,7 @@ export default function App() {
           setSaveState(saved ? 'saved' : 'idle')
           if (!saved) window.htmlApi.setDirty(true)
           pushPreview(adopted.liveText)
+          void timelineAdapterRef.current?.record('save').then(() => refreshTimelineRef.current())
           return true
         }
         // external-modified: the main process already prompted (or the autosave
@@ -1565,6 +1723,118 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- t is not referentially stable
   }, [])
 
+  // Shell menu Print / ⌘P / the tab menu open the print dialog first (decision
+  // 0141). All pages with nothing changed there is runPrint as before.
+  const [printDialogState, setPrintDialogState] = useState<{ initialDestination?: string } | null>(
+    null,
+  )
+  const printDialogOpen = printDialogState !== null
+  const [tweaksOpen, setTweaksOpen] = useState(false)
+  const [tweaksState, setTweaksState] = useState<HtmlTweaksState>(DEFAULT_HTML_TWEAKS)
+  const tweaksBaselineRef = useRef<string | null>(null)
+  const [timelineOpen, setTimelineOpen] = useState(false)
+  const [timelineEntries, setTimelineEntries] = useState<DrawerVersionEntry[]>([])
+  const timelineAdapterRef = useRef<HtmlTimelineAdapter | null>(null)
+  const refreshTimelineRef = useRef<() => void>(() => {})
+
+  const htmlTimelineAdapter = useMemo(() => {
+    const bridge = (window as unknown as Record<string, VersionTimelineBridge | undefined>)[
+      VERSION_TIMELINE_BRIDGE_KEY
+    ]
+    return new HtmlTimelineAdapter(bridge, {
+      docKey: path || 'html_untitled',
+      getHtml: () => textRef.current,
+      applyRestorePatch: (patch) => {
+        flushPending()
+        const base = textRef.current
+        editorRef.current?.applyPatches([patch], false)
+        commitText(applyPatches(base, [patch]), true)
+      },
+    })
+  }, [path, commitText, flushPending])
+  timelineAdapterRef.current = htmlTimelineAdapter
+
+  const refreshTimeline = useCallback(() => {
+    void htmlTimelineAdapter.list().then((items) => setTimelineEntries(items))
+  }, [htmlTimelineAdapter])
+  refreshTimelineRef.current = refreshTimeline
+
+  useEffect(() => {
+    if (timelineOpen) refreshTimeline()
+  }, [timelineOpen, refreshTimeline])
+
+  const openTweaks = useCallback(() => {
+    tweaksBaselineRef.current = textRef.current
+    setTweaksOpen(true)
+  }, [])
+
+  const applyTweaksState = useCallback(
+    (next: HtmlTweaksState) => {
+      setTweaksState(next)
+      flushPending()
+      const base = textRef.current
+      const patch = buildHtmlTweaksPatch(base, next)
+      editorRef.current?.applyPatches([patch], false)
+      commitText(applyPatches(base, [patch]), true)
+    },
+    [commitText, flushPending],
+  )
+
+  const resetTweaks = useCallback(() => {
+    setTweaksState(DEFAULT_HTML_TWEAKS)
+    if (tweaksBaselineRef.current === null) return
+    flushPending()
+    const base = textRef.current
+    const patch = buildHtmlTweaksResetPatch(base, tweaksBaselineRef.current)
+    editorRef.current?.applyPatches([patch], false)
+    commitText(applyPatches(base, [patch]), true)
+  }, [commitText, flushPending])
+  const openPrintDialog = useCallback((initialDestination?: string) => {
+    // the system dialog of a print already under way is modal: no second print
+    if (statusRef.current !== 'ready' || printingRef.current) return
+    setPrintDialogState({ initialDestination })
+  }, [])
+  const closePrintDialog = useCallback(() => setPrintDialogState(null), [])
+  const printDocumentText = useCallback(() => {
+    flushPending()
+    return serializeDocText({ text: textRef.current, envelope: envelopeRef.current })
+  }, [flushPending])
+  const runQuickPrint = useCallback(
+    async (printerLabel: string) => {
+      if (statusRef.current !== 'ready' || printingRef.current) return
+      setNotice(printLayoutText(lang, 'quickPrintSending', { printer: printerLabel }))
+      const result = await window.htmlApi.printLayout.print({
+        options: createDefaultOptions(),
+        editor: {
+          html: printDocumentText(),
+          suggestedName:
+            pathRef.current?.replace(/^.*[/\\]/, '').replace(/\.html?$/i, '') ||
+            deriveAutoFileName(textRef.current) ||
+            t('untitled'),
+        },
+        job: { deviceName: '', copies: 1, collate: true, duplex: 'simplex' },
+      })
+      if (result.ok) {
+        setNotice(printLayoutText(lang, 'quickPrintSent', { printer: printerLabel }))
+      } else if (!('aborted' in result)) {
+        setNotice(t('printFailed', { error: result.error }))
+      }
+    },
+    [lang, printDocumentText, t],
+  )
+  const getPrintPageCount = useCallback(async () => {
+    if (statusRef.current !== 'ready') return null
+    const res = await window.htmlApi.printJobPages({ html: printDocumentText() })
+    return res.ok ? res.pages.length : null
+  }, [printDocumentText])
+  const printSuggestedName = useCallback(
+    () =>
+      pathRef.current?.replace(/^.*[/\\]/, '').replace(/\.html?$/i, '') ||
+      deriveAutoFileName(textRef.current) ||
+      '',
+    [],
+  )
+
   // Headless export mode (--headless-export): this renderer lives in a hidden
   // window whose only job is to run the File menu's PDF or Word export against
   // a path the CLI chose, then report back so the main process can quit.
@@ -1630,18 +1900,20 @@ export default function App() {
     const offExport = window.htmlApi.onExportRequest((format) => void runExport(format))
     // Shell menu Print / ⌘P. The menu owns the accelerator, so this subscription
     // is the only route the keystroke takes; without it ⌘P did nothing at all.
-    const offPrint = window.htmlApi.onPrintRequest(() => void runPrint())
+    const offPrint = window.htmlApi.onPrintRequest(openPrintDialog)
     const offTheme = window.htmlApi.onThemeChanged(() => {
       // let main.tsx flip data-theme first
       window.setTimeout(() => {
         previewRef.current?.post({ type: 'gx:theme', dark: isDarkTheme() })
         // the desk between the sheets is a chrome colour
         if (pageSetupRef.current) postPaper()
+        // so are the marks of the AI's changes
+        postAiMarks()
       }, 0)
     })
     const onKeyDown = (event: KeyboardEvent) => {
       if (!(event.metaKey || event.ctrlKey) || event.altKey) return
-      const key = event.key.toLowerCase()
+      const key = shortcutLetterOf(event) ?? event.key.toLowerCase()
       if (key === 's') {
         event.preventDefault()
         void doSave(event.shiftKey ? 'saveAs' : 'save')
@@ -1688,7 +1960,18 @@ export default function App() {
       offTheme()
       window.removeEventListener('keydown', onKeyDown, true)
     }
-  }, [doSave, runExport, runPrint, cycleView, zoomIn, zoomOut, flushPending, openFind, postPaper])
+  }, [
+    doSave,
+    runExport,
+    openPrintDialog,
+    cycleView,
+    zoomIn,
+    zoomOut,
+    flushPending,
+    openFind,
+    postPaper,
+    postAiMarks,
+  ])
 
   // pinch / ctrl+wheel over the stage chrome around the frame; wheel inside the frame arrives as gx:zoom
   useEffect(() => {
@@ -1697,7 +1980,9 @@ export default function App() {
       if (canvasModeRef.current === 'present') return
       if (!(event.target as HTMLElement | null)?.closest?.('.preview-stage')) return
       event.preventDefault()
-      setZoom((z) => clampZoom(z - event.deltaY * 0.6))
+      zoomWheelRef.current ??= createZoomWheelClassifier()
+      const intent = zoomWheelRef.current.feed(event, performance.now())
+      if (intent) setZoom((z) => wheelZoomed(z, intent))
     }
     window.addEventListener('wheel', onWheel, { passive: false })
     return () => window.removeEventListener('wheel', onWheel)
@@ -1796,7 +2081,13 @@ export default function App() {
         derivePageTitleName(text) || provisionalNameRef.current || deriveAutoFileName(text)
       if (name) void doSave('save', name)
     },
-    clearHighlights: () => editorRef.current?.clearHighlights(),
+    clearHighlights: clearAiMarks,
+    changedPlaces: () => {
+      const ranges = editorRef.current?.aiRanges() ?? []
+      if (ranges.length === 0 || aiUnmarkedRef.current) return undefined
+      const { sids, complete } = changedElements(getMap(), textRef.current, ranges)
+      return complete && sids.length > 0 ? sids.length : undefined
+    },
     onBriefConfirmed: (brief) => {
       briefRef.current = brief
     },
@@ -1919,8 +2210,10 @@ export default function App() {
         onToggleAi={() => setAiOpen((v) => !v)}
         canInsert={canvasMode === 'edit'}
         onInsert={(kind, opts) => void insertElement(kind, opts)}
+        onMath={() => openMathRef.current()}
         onInsertSkeleton={insertSkeleton}
         canInsertSkeleton={canvasMode === 'edit' && isDocEmpty(textRef.current)}
+        onApplyTemplate={applyPracticalTemplate}
         onAiPreset={(text) => {
           flushPending()
           setAiOpen(true)
@@ -1928,41 +2221,56 @@ export default function App() {
         }}
         canvasMode={canvasMode}
         onPresent={startPresent}
+        onOpenPrintDialog={openPrintDialog}
+        onQuickPrint={runQuickPrint}
+        listPrinters={window.htmlApi?.printLayout?.listPrinters}
+        quickPrintPrefStore={window.htmlApi?.printLayout}
+        getPrintPageCount={getPrintPageCount}
+        onQuickPrintNotice={setNotice}
       />
 
       <div className="app-main">
-        <div
-          className={`ai-dock${aiPanelOpen ? '' : ' collapsed'}${
-            !aiSidebarEnabled && !aiPanelOpen ? ' ai-dock-off' : ''
-          }`}
-        >
-          {!aiPanelOpen && aiSidebarEnabled && (
-            <button
-              className="ai-rail"
-              data-tip={t('aiOpenAssistant')}
-              aria-label={t('aiOpenAssistant')}
-              onClick={() => onAiRailClick(paneRole, aiOpen, setAiOpen, requestFocus)}
-            >
-              <AiMark size={18} />
-            </button>
-          )}
-          {/* stays mounted while collapsed: an in-flight run, its snapshots and the loop context survive */}
-          <AiPanel
-            deps={aiDeps}
-            filePath={path}
-            preset={aiPreset}
-            onGenerateHandoff={() => setAiOpen(true)}
-            templateDocument={templateDocument}
-            onSkillHandoff={() => setAiOpen(true)}
-            editQueue={editQueue}
-            onQueueEditInstruction={queueUpdate}
-            onQueueRemove={queueRemove}
-            onQueueClear={() => setEditQueue([])}
-            onQueueFocus={queueFocus}
-            onQueueConsume={queueConsume}
-            onCollapse={() => setAiOpen(false)}
-          />
-        </div>
+        {aiOn && (
+          <div
+            className={`ai-dock${aiPanelOpen ? '' : ' collapsed'}${
+              !aiSidebarEnabled && !aiPanelOpen ? ' ai-dock-off' : ''
+            }`}
+          >
+            {!aiPanelOpen && aiSidebarEnabled && (
+              <button
+                className="ai-rail"
+                data-tip={t('aiOpenAssistant')}
+                aria-label={t('aiOpenAssistant')}
+                onClick={() => onAiRailClick(paneRole, aiOpen, setAiOpen, requestFocus)}
+              >
+                <AiMark size={18} />
+              </button>
+            )}
+            {/* stays mounted while collapsed: an in-flight run, its snapshots and the loop context survive */}
+            <AiPanel
+              deps={aiDeps}
+              filePath={path}
+              preset={aiPreset}
+              onGenerateHandoff={() => setAiOpen(true)}
+              templateDocument={templateDocument}
+              onSkillHandoff={() => setAiOpen(true)}
+              editQueue={editQueue}
+              onQueueEditInstruction={queueUpdate}
+              onQueueRemove={queueRemove}
+              onQueueClear={() => setEditQueue([])}
+              onQueueFocus={queueFocus}
+              onQueueConsume={queueConsume}
+              onCollapse={() => setAiOpen(false)}
+              marksShown={aiMarksShown}
+              onOpenTweaks={openTweaks}
+              onAiDoneRecord={(summary) =>
+                void htmlTimelineAdapter
+                  .record('ai', { promptSummary: summary })
+                  .then(() => refreshTimeline())
+              }
+            />
+          </div>
+        )}
         <div className="app-content">
           {findTarget && (
             <FindPanel
@@ -2030,6 +2338,37 @@ export default function App() {
                   onLoad={onPreviewLoad}
                   draft={draftHtml}
                 />
+                {canvasMode === 'edit' && view !== 'source' && isDocEmpty(text) && !draftHtml && (
+                  <div className="html-blank-templates" data-testid="html-blank-templates">
+                    <div className="html-blank-templates-panel">
+                      <h2 className="html-blank-templates-title">
+                        {htmlTemplatesText(lang, 'templatesTitle')}
+                      </h2>
+                      <p className="html-blank-templates-subtitle">
+                        {htmlTemplatesText(lang, 'templatesSubtitle')}
+                      </p>
+                      <div className="html-blank-templates-grid">
+                        {PRACTICAL_HTML_TEMPLATES.map((tpl) => {
+                          const label = practicalTemplateLabel(lang, tpl.id)
+                          return (
+                            <button
+                              key={tpl.id}
+                              type="button"
+                              className="html-blank-template-card"
+                              data-template-id={tpl.id}
+                              onClick={() => applyPracticalTemplate(tpl.id)}
+                            >
+                              <span className="html-blank-template-card-title">{label.title}</span>
+                              <span className="html-blank-template-card-summary">
+                                {label.summary}
+                              </span>
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                )}
                 {canvasMode === 'present' && (
                   <button
                     type="button"
@@ -2062,7 +2401,7 @@ export default function App() {
                       onReplaceImage={replaceImage}
                       onCropImage={() => void openPictureDialog('crop')}
                       onCutoutImage={() => void openPictureDialog('cutout')}
-                      canAskAi={askTarget !== null}
+                      canAskAi={aiOn && askTarget !== null}
                       onAskAi={askAi}
                       tag={selectedEntry.tag}
                       onMove={moveSelected}
@@ -2117,7 +2456,7 @@ export default function App() {
                 onChange={onEditorChange}
                 onCursor={onCursor}
                 onBeforeReplace={flushPending}
-                onRedact={onRedactSelection}
+                onRedact={aiOn ? onRedactSelection : undefined}
               />
             </div>
           </div>
@@ -2126,8 +2465,16 @@ export default function App() {
             <div className="status-left">
               {notice ? (
                 <span className="status-item status-notice">{notice}</span>
+              ) : !path ? (
+                <span className="status-item status-hint">{t('previewNeedsSave')}</span>
               ) : (
-                !path && <span className="status-item status-hint">{t('previewNeedsSave')}</span>
+                // the crumbs row that carries this hint is not shown over the preview alone
+                view === 'preview' &&
+                canvasMode === 'edit' && (
+                  <span className="status-item status-hint">
+                    {t('inspectHint', { alt: ALT_KEY })}
+                  </span>
+                )
               )}
             </div>
             <div className="status-right">
@@ -2143,6 +2490,22 @@ export default function App() {
               {pageSetup && paperReport && (
                 <span className="status-item">{t('pageCount', { n: paperReport.pages })}</span>
               )}
+              <button
+                type="button"
+                className="status-item"
+                aria-pressed={tweaksOpen}
+                onClick={() => (tweaksOpen ? setTweaksOpen(false) : openTweaks())}
+              >
+                {tweaksText(lang, 'title')}
+              </button>
+              <button
+                type="button"
+                className="status-item"
+                aria-pressed={timelineOpen}
+                onClick={() => setTimelineOpen((v) => !v)}
+              >
+                {versionTimelineText(lang, 'title')}
+              </button>
               <Dropdown
                 className="device-dd"
                 value={device}
@@ -2183,8 +2546,35 @@ export default function App() {
             </div>
           </footer>
         </div>
+        {tweaksOpen && (
+          <HtmlTweaksPanel
+            lang={lang}
+            value={tweaksState}
+            onChange={applyTweaksState}
+            onReset={resetTweaks}
+            onClose={() => setTweaksOpen(false)}
+          />
+        )}
+        <VersionTimelineDrawer
+          open={timelineOpen}
+          lang={lang}
+          entries={timelineEntries}
+          onSaveCheckpoint={async (label) => {
+            await htmlTimelineAdapter.record('checkpoint', { label })
+            refreshTimeline()
+          }}
+          onRestore={async (entry) => {
+            await htmlTimelineAdapter.restore(entry.id)
+            refreshTimeline()
+          }}
+          onDelete={async (entry) => {
+            await htmlTimelineAdapter.deleteEntry(entry.id)
+            refreshTimeline()
+          }}
+          onClose={() => setTimelineOpen(false)}
+        />
       </div>
-      {askTarget && askMode && canvasMode !== 'present' && (
+      {aiOn && askTarget && askMode && canvasMode !== 'present' && (
         <AiAskPopover
           key={askMode.kind === 'edit' ? askMode.qid : 'new'}
           target={askTarget}
@@ -2211,6 +2601,7 @@ export default function App() {
           onCancel={cancelRedaction}
         />
       )}
+      {mathExtension.dialog}
       {pictureDialog?.kind === 'cutout' && (
         <CutoutDialog
           labels={imageDialogLabels}
@@ -2226,6 +2617,17 @@ export default function App() {
           image={pictureDialog.image}
           onApply={(png) => void applyPictureBytes(pictureDialog.sid, pictureDialog.src, png)}
           onCancel={() => setPictureDialog(null)}
+        />
+      )}
+      {printDialogOpen && (
+        <HtmlPrintDialog
+          api={window.htmlApi}
+          documentText={printDocumentText}
+          suggestedName={printSuggestedName}
+          initialDestination={printDialogState?.initialDestination}
+          onPlainPrint={() => void runPrint()}
+          onClose={closePrintDialog}
+          onNotice={setNotice}
         />
       )}
     </div>

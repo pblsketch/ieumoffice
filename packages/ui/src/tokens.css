@@ -5,6 +5,29 @@
  * app's styles.css. Document content colors (paper, cells, exports, chart
  * palettes) never live here and never reference these tokens. */
 
+/* Bundled UI font served once from resources/ui-fonts under genoffice-app://.
+ * Uses UI-only family names so it never collides with document fonts (e.g. the
+ * static Pretendard template faces in Word/Excel/Slides). */
+@font-face {
+  font-family: 'UI Pretendard';
+  font-weight: 45 920;
+  font-style: normal;
+  font-display: swap;
+  src: url('genoffice-app://ui-fonts/PretendardVariable.woff2') format('woff2');
+}
+
+/* Hangul-only slice of the same cached font file so Korean text inside the AI
+ * panel renders in Pretendard even when the UI language is non-Korean, without
+ * changing Latin or Chinese/Japanese glyphs in those locales. */
+@font-face {
+  font-family: 'UI Pretendard Hangul';
+  font-weight: 45 920;
+  font-style: normal;
+  font-display: swap;
+  src: url('genoffice-app://ui-fonts/PretendardVariable.woff2') format('woff2');
+  unicode-range: U+1100-11FF, U+3130-318F, U+A960-A97F, U+AC00-D7AF, U+D7B0-D7FF;
+}
+
 :root {
   /* Interface scale (issue #1913).
    *
@@ -19,25 +42,34 @@
    * `app-settings.json` (`uiScale`); 1 is "no scaling". */
   --ui-scale: 1;
 
-  /* chrome */
+  /* chrome: one cool-neutral grey family (warm and flat greys used to mix) */
   --surface: #ffffff;
   --surface-subtle: #f6f7f9;
   --chrome-bg: #ffffff;
   --canvas: #e6e6e6;
   --border: #e3e6ea;
-  --border-subtle: #efefef;
-  --border-strong: #d9d9d9;
+  --border-subtle: #eef0f2;
+  --border-strong: #d7dbe0;
   --border-hover: #d3d7dd;
   --text: #242424;
+  --text-strong: #111214;
   --text-primary: #232425;
-  --text-secondary: #606366;
-  --text-tertiary: #909499;
+  --text-secondary: #5c6066;
+  --text-tertiary: #6b7079;
+  --text-faint: #aeb3ba;
   --text-muted: #616870;
-  --text-dim: #605e5c;
-  --hover: #f5f5f5;
-  --pressed: #edebe9;
-  --active-bg: #eaeaea;
-  --bg-hover: #f5f5f5;
+  --text-dim: #5c6066;
+  --fill-subtle: rgb(0 0 0 / 3%);
+  --fill-muted: rgb(0 0 0 / 6%);
+  --fill-strong: rgb(0 0 0 / 11%);
+  --shadow-xs: 0 1px 2px rgb(0 0 0 / 5%);
+  --shadow-sm: 0 2px 6px rgb(0 0 0 / 8%);
+  --shadow-md: 0 6px 18px rgb(0 0 0 / 12%);
+  --shadow-lg: 0 16px 36px rgb(0 0 0 / 16%);
+  --hover: #f3f4f6;
+  --pressed: #eceef1;
+  --active-bg: #e8eaee;
+  --bg-hover: #f3f4f6;
   --bg-hover-subtle: #f0f2f5;
   --bg-hover-strong: #e8eaee;
   --bg-hover-accent: #e0e4ea;
@@ -61,25 +93,42 @@
 
   /* AI panel (canonical names from the former per-app copies) */
   --gs-font-sans:
-    'Arial', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue',
-    sans-serif;
+    'Segoe UI Variable', 'Segoe UI', -apple-system, BlinkMacSystemFont, 'UI Pretendard Hangul',
+    'Malgun Gothic', 'Apple SD Gothic Neo', 'Inter', Roboto, 'Helvetica Neue', sans-serif;
+  --font-ui: var(--gs-font-sans);
   --color-btn-primary: #232425;
   --color-btn-primary-hover: #393a3b;
   --color-btn-primary-text: #ffffff;
-  --color-ai-action: #e8663f;
-  --color-ai-action-hover: #d4552f;
+  --color-ai-action: #c94f28;
+  --color-ai-action-hover: #b84424;
   --color-ai-action-text: #ffffff;
-  --color-brand-secondary: #0f7fff;
+  /* what the last AI run changed, marked over the document (screen only, never saved) */
+  --color-ai-changed-bg: rgb(255 193 7 / 24%);
+  --color-ai-changed-line: rgb(214 140 0 / 85%);
+  --color-brand-secondary: #0a68d4;
   --color-text-primary: #232425;
   --color-text-secondary: #606366;
-  --color-text-tertiary: #909499;
+  --color-text-tertiary: #6b7079;
   --color-bg-page: #ffffff;
-  --color-bg-subtle: #f5f5f5;
-  --color-border-default: #eaeaea;
+  --color-bg-subtle: #f3f4f6;
+  --color-border-default: #e6e8ec;
   --color-border-strong: #d0d3d8;
   --color-border-brand: #0f7fff;
   --color-error: #ef4444;
   --color-error-hover: #dc2626;
+  /* Shared AI panel surface & chrome tokens */
+  --ai-user-bubble-bg: #f4f5f7;
+  --ai-user-bubble-border: #e6e8ec;
+  --ai-card-bg: #f8f9fb;
+  --ai-card-inset-bg: #ffffff;
+  --ai-composer-bg: #ffffff;
+  --ai-composer-shadow: 0 2px 10px rgb(0 0 0 / 6%), 0 1px 2px rgb(0 0 0 / 4%);
+  --ai-composer-focus-ring: rgb(24 90 189 / 14%);
+  --ai-scroll-btn-shadow: 0 4px 12px rgb(0 0 0 / 12%);
+  --ai-shimmer-base: #606366;
+  --ai-shimmer-hi: #c8ccd2;
+  --ai-btn-disabled-bg: #e5e7eb;
+  --ai-btn-disabled-ink: #9ca3af;
 
   /* non-color */
   --radius-6: 6px;
@@ -95,6 +144,16 @@
   color-scheme: light;
 }
 
+:root:lang(ko) {
+  --gs-font-sans:
+    'UI Pretendard', 'Segoe UI Variable', 'Segoe UI', -apple-system, BlinkMacSystemFont,
+    'Apple SD Gothic Neo', 'Malgun Gothic', 'Inter', Roboto, 'Helvetica Neue', sans-serif;
+}
+
+:root:lang(ko) body {
+  font-family: var(--gs-font-sans);
+}
+
 [data-theme='dark'] {
   --surface: #1e1e1e;
   --surface-subtle: #2a2a2a;
@@ -105,11 +164,20 @@
   --border-strong: #555;
   --border-hover: #555;
   --text: #e4e4e4;
+  --text-strong: #fafafa;
   --text-primary: #e4e4e4;
-  --text-secondary: #a0a0a0;
-  --text-tertiary: #a0a0a0;
-  --text-muted: #949494;
-  --text-dim: #a0a0a0;
+  --text-secondary: #b4b4b8;
+  --text-tertiary: #939399;
+  --text-faint: #5c5c62;
+  --text-muted: #adadad;
+  --text-dim: #b4b4b8;
+  --fill-subtle: rgb(255 255 255 / 4%);
+  --fill-muted: rgb(255 255 255 / 8%);
+  --fill-strong: rgb(255 255 255 / 14%);
+  --shadow-xs: 0 1px 2px rgb(0 0 0 / 28%);
+  --shadow-sm: 0 2px 8px rgb(0 0 0 / 36%);
+  --shadow-md: 0 8px 22px rgb(0 0 0 / 48%);
+  --shadow-lg: 0 18px 40px rgb(0 0 0 / 60%);
   --hover: #333;
   --pressed: #3c3c3c;
   --active-bg: #454545;
@@ -119,7 +187,7 @@
   --bg-hover-accent: #444;
   --bg-content: #1a1a1a;
   --icon-muted: #666;
-  --danger: #d13438;
+  --danger: #f28b82;
   --danger-bg: #3a2020;
   --docs-revision-bar: #ff6b6b;
   --search-hit-bg: #745a1e;
@@ -139,16 +207,30 @@
   --color-btn-primary-text: #1e1e1e;
   --color-ai-action: #e8663f;
   --color-ai-action-hover: #f07a55;
-  --color-ai-action-text: #ffffff;
+  --color-ai-action-text: #141414;
+  --color-ai-changed-bg: rgb(255 193 7 / 22%);
+  --color-ai-changed-line: rgb(240 176 48 / 85%);
   --color-brand-secondary: #4a9eff;
   --color-text-primary: #e4e4e4;
   --color-text-secondary: #a0a0a0;
-  --color-text-tertiary: #8a8a8a;
+  --color-text-tertiary: #939399;
   --color-bg-page: #1e1e1e;
   --color-bg-subtle: #2a2a2a;
   --color-border-default: #3a3a3a;
   --color-border-strong: #555;
   --color-border-brand: #4a9eff;
+  --ai-user-bubble-bg: #2a2a2d;
+  --ai-user-bubble-border: #3a3a3f;
+  --ai-card-bg: #252528;
+  --ai-card-inset-bg: #1e1e20;
+  --ai-composer-bg: #252528;
+  --ai-composer-shadow: 0 2px 12px rgb(0 0 0 / 32%);
+  --ai-composer-focus-ring: rgb(74 158 255 / 22%);
+  --ai-scroll-btn-shadow: 0 4px 14px rgb(0 0 0 / 45%);
+  --ai-shimmer-base: #9a9aa2;
+  --ai-shimmer-hi: #4a4a52;
+  --ai-btn-disabled-bg: #36363a;
+  --ai-btn-disabled-ink: #6e6e76;
 
   color-scheme: dark;
 }
@@ -164,11 +246,20 @@
     --border-strong: #555;
     --border-hover: #555;
     --text: #e4e4e4;
+    --text-strong: #fafafa;
     --text-primary: #e4e4e4;
-    --text-secondary: #a0a0a0;
-    --text-tertiary: #a0a0a0;
-    --text-muted: #949494;
-    --text-dim: #a0a0a0;
+    --text-secondary: #b4b4b8;
+    --text-tertiary: #939399;
+    --text-faint: #5c5c62;
+    --text-muted: #adadad;
+    --text-dim: #b4b4b8;
+    --fill-subtle: rgb(255 255 255 / 4%);
+    --fill-muted: rgb(255 255 255 / 8%);
+    --fill-strong: rgb(255 255 255 / 14%);
+    --shadow-xs: 0 1px 2px rgb(0 0 0 / 28%);
+    --shadow-sm: 0 2px 8px rgb(0 0 0 / 36%);
+    --shadow-md: 0 8px 22px rgb(0 0 0 / 48%);
+    --shadow-lg: 0 18px 40px rgb(0 0 0 / 60%);
     --hover: #333;
     --pressed: #3c3c3c;
     --active-bg: #454545;
@@ -178,7 +269,7 @@
     --bg-hover-accent: #444;
     --bg-content: #1a1a1a;
     --icon-muted: #666;
-    --danger: #d13438;
+    --danger: #f28b82;
     --danger-bg: #3a2020;
     --docs-revision-bar: #ff6b6b;
     --search-hit-bg: #745a1e;
@@ -198,16 +289,30 @@
     --color-btn-primary-text: #1e1e1e;
     --color-ai-action: #e8663f;
     --color-ai-action-hover: #f07a55;
-    --color-ai-action-text: #ffffff;
+    --color-ai-action-text: #141414;
+    --color-ai-changed-bg: rgb(255 193 7 / 22%);
+    --color-ai-changed-line: rgb(240 176 48 / 85%);
     --color-brand-secondary: #4a9eff;
     --color-text-primary: #e4e4e4;
     --color-text-secondary: #a0a0a0;
-    --color-text-tertiary: #8a8a8a;
+    --color-text-tertiary: #939399;
     --color-bg-page: #1e1e1e;
     --color-bg-subtle: #2a2a2a;
     --color-border-default: #3a3a3a;
     --color-border-strong: #555;
     --color-border-brand: #4a9eff;
+    --ai-user-bubble-bg: #2a2a2d;
+    --ai-user-bubble-border: #3a3a3f;
+    --ai-card-bg: #252528;
+    --ai-card-inset-bg: #1e1e20;
+    --ai-composer-bg: #252528;
+    --ai-composer-shadow: 0 2px 12px rgb(0 0 0 / 32%);
+    --ai-composer-focus-ring: rgb(74 158 255 / 22%);
+    --ai-scroll-btn-shadow: 0 4px 14px rgb(0 0 0 / 45%);
+    --ai-shimmer-base: #9a9aa2;
+    --ai-shimmer-hi: #4a4a52;
+    --ai-btn-disabled-bg: #36363a;
+    --ai-btn-disabled-ink: #6e6e76;
 
     color-scheme: dark;
   }

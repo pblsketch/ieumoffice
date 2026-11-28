@@ -91,3 +91,65 @@ test('sheets: compact ribbon fits every tab without clipping', async () => {
     await closeAndSaveVideo(launched, 'sheets-ribbon-compact-clip')
   }
 })
+
+/**
+ * The default band has the same fixed height, so a stacked group taller than
+ * it is clipped at both edges (View > Show held five check rows in one column
+ * and lost the first and last). `scrollHeight` misses the top edge, so this
+ * compares every visible control against the band's box instead.
+ */
+test('sheets: default ribbon fits every tab without clipping', async () => {
+  test.setTimeout(240_000)
+  const launched = await launchShell({
+    onboardingSeen: true,
+    settings: { lang: 'en' },
+    videoDir: 'sheets-ribbon-default-clip',
+  })
+  try {
+    const shellPage = launched.app.windows()[0]!
+    await shellPage.evaluate(() =>
+      (window as never as { aiOffice: { newSheet(): Promise<void> } }).aiOffice.newSheet(),
+    )
+    const page = await waitForPageWithUrl(launched.app, '://sheets/')
+    await page.waitForSelector('[data-ribbon-body]', { timeout: 30_000 })
+    await page.waitForTimeout(1_500)
+    expect(await page.evaluate(() => !!document.querySelector('.ribbon-compact'))).toBe(false)
+
+    const tabs = await page.evaluate(() =>
+      [...document.querySelectorAll('.ribbon-tabs > button:not(.qa-btn)')]
+        .map((t) => t.textContent?.trim() ?? '')
+        .filter(Boolean),
+    )
+    expect(tabs.length).toBeGreaterThan(3)
+
+    for (const tab of tabs) {
+      await page.evaluate((name) => {
+        const el = [...document.querySelectorAll('.ribbon-tabs > button:not(.qa-btn)')].find(
+          (x) => x.textContent?.trim() === name,
+        )
+        ;(el as HTMLElement | undefined)?.click()
+      }, tab)
+      await page.waitForTimeout(600)
+
+      const outside = await page.evaluate(() => {
+        const bands = [...document.querySelectorAll('[data-ribbon-body]')] as HTMLElement[]
+        const body = bands.find((b) => b.offsetParent !== null) ?? bands[0]
+        if (!body) return null
+        const box = body.getBoundingClientRect()
+        const bottom = box.top + body.clientHeight
+        return [...body.querySelectorAll('button, label, select, input')]
+          .map((el) => ({ el: el as HTMLElement, r: el.getBoundingClientRect() }))
+          .filter(({ el, r }) => el.offsetParent !== null && r.height > 0)
+          .filter(({ r }) => r.top < box.top - 1 || r.bottom > bottom + 1)
+          .map(
+            ({ el, r }) =>
+              `${(el.textContent ?? '').trim().slice(0, 30)} ${Math.round(r.top - box.top)}..${Math.round(r.bottom - box.top)}/${body.clientHeight}`,
+          )
+      })
+      expect(outside, `no ribbon on the "${tab}" tab`).not.toBeNull()
+      expect(outside, `"${tab}" has controls outside the band`).toEqual([])
+    }
+  } finally {
+    await closeAndSaveVideo(launched, 'sheets-ribbon-default-clip')
+  }
+})

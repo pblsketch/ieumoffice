@@ -1,23 +1,17 @@
 import { useState } from 'react'
-import type { DriveConnectFailure } from '../../shared/drive-api'
+import { FAILURE_KEYS } from './drive-failures'
 import { useDriveState } from './DrivePanel'
 import { driveUiText, type DriveStringKey } from './i18n/strings-drive'
 import { useI18n } from './locale'
 import './drive.css'
 
-const FAILURE_KEYS: Record<Exclude<DriveConnectFailure, 'cancelled'>, DriveStringKey> = {
-  denied: 'driveFailDenied',
-  scope: 'driveFailScope',
-  timeout: 'driveFailTimeout',
-  network: 'driveFailNetwork',
-}
-
 /**
- * Settings → Integrations: connect Google Drive, see the account, let the AI
- * search and read it, disconnect (decision 0033). Nothing shows in a build
- * without a Google client.
+ * Settings → Integrations: confirm that the AI used with Drive files does not
+ * train on them, connect Google Drive, see the account, let the AI search and
+ * read the picked files, disconnect (decisions 0033, 0085). Nothing shows in
+ * a build without a Google client.
  */
-export function DriveSettingsCard() {
+export function DriveSettingsCard({ aiOn = true }: { aiOn?: boolean } = {}) {
   const { lang } = useI18n()
   const t = (key: DriveStringKey, params?: Record<string, string>) => driveUiText(lang, key, params)
   const state = useDriveState()
@@ -39,6 +33,22 @@ export function DriveSettingsCard() {
     <section className="set-intg-part set-drive" data-testid="drive-settings">
       <h4 className="set-pane-subtitle">{t('driveNav')}</h4>
       <div className="set-field-desc set-intg-lead">{t('driveDesc')}</div>
+
+      <div className="set-drive-training">
+        <div className="set-drive-toggle-title">{t('driveTrainingTitle')}</div>
+        <div className="set-field-desc">{t('driveTrainingBody')}</div>
+        <label className="set-drive-toggle">
+          <input
+            type="checkbox"
+            checked={state.trainingAck}
+            onChange={(e) => {
+              setFailure(null)
+              void api.setTrainingAck(e.target.checked)
+            }}
+          />
+          <span className="set-drive-toggle-title">{t('driveTrainingAck')}</span>
+        </label>
+      </div>
 
       {state.state === 'connected' ? (
         <>
@@ -86,7 +96,11 @@ export function DriveSettingsCard() {
         <>
           {state.expired && <div className="set-field-desc set-intg-warn">{t('driveExpired')}</div>}
           <div className="set-drive-row">
-            <button className="set-btn set-btn-primary" onClick={() => void connect()}>
+            <button
+              className="set-btn set-btn-primary"
+              onClick={() => void connect()}
+              disabled={!state.trainingAck}
+            >
               {t('driveConnect')}
             </button>
           </div>
@@ -94,17 +108,19 @@ export function DriveSettingsCard() {
         </>
       )}
 
-      <label className="set-drive-toggle">
-        <input
-          type="checkbox"
-          checked={state.aiAccess}
-          onChange={(e) => void api.setAiAccess(e.target.checked)}
-        />
-        <span>
-          <span className="set-drive-toggle-title">{t('driveAiAccess')}</span>
-          <span className="set-field-desc">{t('driveAiAccessDesc')}</span>
-        </span>
-      </label>
+      {aiOn && (
+        <label className="set-drive-toggle">
+          <input
+            type="checkbox"
+            checked={state.aiAccess}
+            onChange={(e) => void api.setAiAccess(e.target.checked)}
+          />
+          <span>
+            <span className="set-drive-toggle-title">{t('driveAiAccess')}</span>
+            <span className="set-field-desc">{t('driveAiAccessDesc')}</span>
+          </span>
+        </label>
+      )}
       <div className="set-field-desc">{t('drivePrivacy')}</div>
     </section>
   )

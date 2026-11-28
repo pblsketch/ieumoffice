@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { EDITOR_ITEM_IDS } from '@genoffice/electron-utils/app-choice'
 import { PRODUCT_NAME } from '../packages/i18n/src/product'
 import { launchShell, closeAndSaveVideo, screenshotPath } from './helpers'
 
@@ -16,13 +17,22 @@ test.describe('first-run onboarding', () => {
       )
       await page.screenshot({ path: screenshotPath('onboarding-slide-1') })
 
+      // the pick step: every editor and AI start on; passing it untouched keeps the app as it was
       await page.locator('.onb-next').click()
-      await expect(page.locator('.onb-slide.active .onb-connect')).toBeVisible()
+      const pick = page.locator('.onb-slide.active[data-step="pick"]')
+      await expect(pick).toBeVisible()
+      // every editor, the PDF tools and AI itself: adding an editor must not need a new number here
+      await expect(pick.locator('.ec-row [role="switch"]')).toHaveCount(EDITOR_ITEM_IDS.length + 1)
+      await expect(pick.locator('.ec-row [role="switch"][aria-checked="false"]')).toHaveCount(0)
       await page.screenshot({ path: screenshotPath('onboarding-slide-2') })
 
       await page.locator('.onb-next').click()
-      await expect(page.locator('.onb-slide.active .onb-title')).toHaveText('You’re all set')
+      await expect(page.locator('.onb-slide.active .onb-connect')).toBeVisible()
       await page.screenshot({ path: screenshotPath('onboarding-slide-3') })
+
+      await page.locator('.onb-next').click()
+      await expect(page.locator('.onb-slide.active .onb-title')).toHaveText('You’re all set')
+      await page.screenshot({ path: screenshotPath('onboarding-slide-4') })
 
       // last slide's primary button finishes the onboarding
       await page.locator('.onb-next').click()
@@ -36,6 +46,15 @@ test.describe('first-run onboarding', () => {
           return (JSON.parse(raw) as { onboardingSeen?: boolean }).onboardingSeen
         })
         .toBe(true)
+      // passing the pick step marks it seen and stores nothing else: all on
+      const saved = JSON.parse(await readFile(join(userDataDir, 'app-settings.json'), 'utf8')) as {
+        editorPickSeen?: boolean
+        editors?: { off?: string[] }
+        aiFeatures?: unknown
+      }
+      expect(saved.editorPickSeen).toBe(true)
+      expect(saved.editors?.off ?? []).toEqual([])
+      expect(saved.aiFeatures).not.toBe(false)
     } finally {
       await closeAndSaveVideo(launched, 'onboarding-walkthrough')
     }
@@ -48,6 +67,7 @@ test.describe('first-run onboarding', () => {
     try {
       await expect(relaunch.page.locator('.home-hero')).toBeVisible()
       await expect(relaunch.page.locator('.onb-overlay')).toHaveCount(0)
+      await expect(relaunch.page.locator('.ec-pick-dialog')).toHaveCount(0)
       await relaunch.page.screenshot({ path: screenshotPath('onboarding-relaunch-no-overlay') })
     } finally {
       await closeAndSaveVideo(relaunch, 'onboarding-relaunch')

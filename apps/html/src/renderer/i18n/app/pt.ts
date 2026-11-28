@@ -1,6 +1,35 @@
 import type { zh } from './zh'
 
 export const pt = {
+  mathInsert: 'Inserir equação',
+  mathEdit: 'Editar equação',
+  mathHelp: 'Digite visualmente ou edite LaTeX. O HTML mantém o código para edições futuras.',
+  mathVisualInput: 'Entrada visual de equações',
+  mathSource: 'Código LaTeX',
+  mathDisplay: 'Mostrar em uma linha separada',
+  mathPreview: 'Prévia',
+  mathUnsupported:
+    'Esta expressão não pode ser renderizada. O código será salvo para correção posterior.',
+  mathTooLong: 'Use no máximo {n} caracteres.',
+  mathStale: 'O documento mudou. Copie seu rascunho, feche esta janela e reabra a equação.',
+  mathShortcut: '⌘+Enter para aplicar',
+  mathApply: 'Aplicar equação',
+  mathKeyboard: 'Teclado matemático',
+  mathFraction: 'Fração',
+  mathRoot: 'Raiz quadrada',
+  mathNthRoot: 'Raiz enésima',
+  mathPower: 'Potência',
+  mathSubscript: 'Subscrito',
+  mathSum: 'Soma',
+  mathProduct: 'Produto',
+  mathIntegral: 'Integral',
+  mathLimit: 'Limite',
+  mathMatrix: 'Matriz',
+  mathVector: 'Vetor',
+  mathCases: 'Sistema',
+  mathPiecewise: 'Função por partes',
+  mathBinomial: 'Coeficiente binomial',
+
   redactMenuLabel: 'Ocultar a seleção da IA',
   redactDialogDesc:
     'As palavras continuam no documento e no arquivo; o modelo vê apenas o marcador. Dê-lhe um nome para que saiba o que representa.',
@@ -17,6 +46,11 @@ export const pt = {
   saveFailedStatus: 'Falha ao salvar',
   exportFailed: 'Falha na exportação',
   printFailed: 'Falha ao imprimir: {error}',
+  printRangeEmpty:
+    'Este documento tem {count} páginas. Digite números de página dentro desse intervalo.',
+  printPagesFailed: 'Não foi possível contar as páginas a imprimir: {error}',
+  printLayoutSaved: 'O resultado organizado foi salvo como PDF.',
+  printLayoutSaveFailed: 'Não foi possível salvar o PDF: {error}',
   exportHtmlSkipped:
     'Exportado, mas {count} recurso(s) não puderam ser incorporados (ex.: {first})',
   viewPreview: 'Visualizar',
@@ -52,7 +86,7 @@ export const pt = {
   slideThumbGo: 'Ir para o slide {n}',
   previewNeedsSave: 'Imagens e estilos relativos aparecem na visualização após salvar o arquivo',
   inspectHint:
-    'Clique em um elemento na visualização para selecioná-lo; clique duas vezes para editar o texto',
+    'Clique em um elemento na visualização para selecioná-lo; clique duas vezes para editar o texto; Shift+clique ou {alt}+arrastar para selecionar vários',
   nodeDynamic:
     'Este elemento foi criado pelo script da página e não existe no código; edite pelo código ou pela IA',
   nodeDynamicShort: 'gerado por script',
@@ -102,6 +136,7 @@ export const pt = {
   alignLeft: 'Alinhar à esquerda',
   alignCenter: 'Centralizar',
   alignRight: 'Alinhar à direita',
+  alignJustify: 'Justificar',
   fontSizeDec: 'Diminuir tamanho da fonte',
   fontSizeInc: 'Aumentar tamanho da fonte',
   typography: 'Tipografia',

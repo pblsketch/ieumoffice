@@ -27,7 +27,6 @@ import {
   configuredDefaultSaveDir,
   confirmOverwriteIfConflicted,
   contextMenuLabels,
-  fetchRemoteImage,
   installContextMenu,
   installNavigationGuard,
   isHeadlessMode,
@@ -44,28 +43,44 @@ import {
   installRendererProtocol,
   registerRecoveryEditor,
   rendererUrl,
-  MAX_REMOTE_IMAGE_BYTES,
-  readBodyCapped,
   printHtmlDocument,
   type PrintDialogOutcome,
+  isBesideDocument,
+  sharedPathGrants,
   assertFileSaved,
 } from '@genoffice/electron-utils'
+import { askBeforeMakeAndOpen } from '@genoffice/electron-utils/editor-entrance'
+import { fetchImageBytes } from '@genoffice/electron-utils/fetch-image-bytes'
+import {
+  ensurePrintLayoutIpc,
+  imageSaveDialogSpec,
+  LABEL_SPEC_FILE_NAME,
+} from '@genoffice/electron-utils/print-arranged'
 import { createI18n, getUiLang } from '@genoffice/i18n'
 import {
   sharedSubscriptionStatuses,
   shutdownSubscriptionChildren,
 } from '@genoffice/ai-provider/subscription'
-import { generateImageTool, documentMediaRoots, withMediaCallSignal } from '@genoffice/ai-search'
+import {
+  abortMediaCalls,
+  generateImageTool,
+  documentMediaRoots,
+  withMediaCallSignal,
+} from '@genoffice/ai-search'
+import { registerAiJob } from '@genoffice/electron-utils/ai-activity'
+import { aiFeaturesOn } from '@genoffice/electron-utils/app-choice'
 import {
   parseFileToText,
   ATTACHABLE_EXTS,
   ATTACHABLE_IMAGE_EXTS,
   ATTACHABLE_MAX_BYTES,
+  attachableMaxBytes,
   ATTACHABLE_IMAGE_MAX_BYTES,
+  diagramPictureExtOf,
+  diagramPictureExtOfName,
 } from '@genoffice/file-parse'
-import { convertHtmlToDocx } from '../../../../packages/html2docx/src'
 import { atomicWriteFile } from './atomic-write'
-import { ElectronBrowserDriver } from '../../../../packages/html2docx/src/drivers/electron'
+import type { ElectronBrowserDriver } from '../../../../packages/html2docx/src/drivers/electron'
 import {
   copyImageIntoOwnedAssets,
   discardPendingOwnedAssets,
@@ -86,12 +101,14 @@ import {
   editableImageMime,
   extensionlessAssetMime,
 } from './asset-mime'
-import { buildPreviewDocument } from './preview-document'
+import { ASSET_SCHEME, buildPreviewDocument } from './preview-document'
 import { confirmOdtReport, exportOdt, odtFilterName } from './odt-export'
 import { inlineImagesForSingleFile, singleFileExportBaseName } from './single-file-html'
 import { registerHtmlHandoffIpc } from './generate-handoff-ipc'
 import { registerHtmlSeedIpc } from './seed-main'
 import { createTextRecovery } from './recovery'
+import { registerHtmlAiSearchIpc } from './ai-search-ipc'
+import { registerHtmlPrintLayout } from './print-layout'
 import {
   assetBaseHref,
   previewUrlFor,
@@ -122,6 +139,8 @@ const tDlg = createI18n({
   zh: {
     dlgSaveTitle: '保存 HTML 文档',
     filterHtml: 'HTML 文档',
+    filterPdf: 'PDF 文档',
+    filterWord: 'Word 文档',
     dlgPickImage: '选择图片',
     filterImages: '图片',
     untitledFile: '未命名文档',
@@ -146,6 +165,8 @@ const tDlg = createI18n({
   en: {
     dlgSaveTitle: 'Save HTML Document',
     filterHtml: 'HTML Documents',
+    filterPdf: 'PDF Document',
+    filterWord: 'Word Document',
     dlgPickImage: 'Choose an Image',
     filterImages: 'Images',
     untitledFile: 'Untitled',
@@ -170,6 +191,8 @@ const tDlg = createI18n({
   vi: {
     dlgSaveTitle: 'Lưu tài liệu HTML',
     filterHtml: 'Tài liệu HTML',
+    filterPdf: 'Tài liệu PDF',
+    filterWord: 'Tài liệu Word',
     dlgPickImage: 'Chọn một hình ảnh',
     filterImages: 'Hình ảnh',
     untitledFile: 'Không có tiêu đề',
@@ -192,9 +215,38 @@ const tDlg = createI18n({
       'Tệp đính kèm hình ảnh không có văn bản; hình ảnh được gửi cùng với tin nhắn của người dùng',
     errNotImage: 'loại hình ảnh không được hỗ trợ',
   },
+  tr: {
+    dlgSaveTitle: 'HTML Belgesini Kaydet',
+    filterHtml: 'HTML Belgeleri',
+    filterPdf: 'PDF Belgesi',
+    filterWord: 'Word Belgesi',
+    dlgPickImage: 'Bir Resim Seç',
+    filterImages: 'Resimler',
+    untitledFile: 'Adsız',
+    closeUnsavedMsg: 'Bu belgede kaydedilmemiş değişiklikler var.',
+    closeUnsavedDetail: 'Kapatmadan önce kaydedilsin mi?',
+    btnSave: 'Kaydet',
+    btnDontSave: 'Kaydetme',
+    btnCancel: 'İptal',
+    dlgAddAttachment: 'Ek Dosya Ekle',
+    filterSupported: 'Desteklenen Dosyalar',
+    filterAll: 'Tüm Dosyalar',
+    errUnsupportedExt: '.{ext} dosyaları desteklenmiyor',
+    errNotFile: 'dosya değil',
+    errTooLarge: '{mb}MB sınırını aşıyor',
+    errImageTooLarge: 'resim 5MB sınırını aşıyor',
+    errUnreadable: 'okunamıyor',
+    errFileTooLarge: 'Dosya boyut sınırını aşıyor',
+    errParseFailed: 'Dosya ayrıştırılamadı',
+    errImageNoText:
+      'Resim eklerinde metin yok; resim, kullanıcı iletisiyle birlikte gönderildiğinden doğrudan resme bakabilirsiniz',
+    errNotImage: 'desteklenen bir resim türü değil',
+  },
   ja: {
     dlgSaveTitle: 'HTML ドキュメントを保存',
     filterHtml: 'HTML ドキュメント',
+    filterPdf: 'PDF 文書',
+    filterWord: 'Word 文書',
     dlgPickImage: '画像を選択',
     filterImages: '画像',
     untitledFile: '無題',
@@ -220,6 +272,8 @@ const tDlg = createI18n({
   ko: {
     dlgSaveTitle: 'HTML 문서 저장',
     filterHtml: 'HTML 문서',
+    filterPdf: 'PDF 문서',
+    filterWord: 'Word 문서',
     dlgPickImage: '이미지 선택',
     filterImages: '이미지',
     untitledFile: '제목 없음',
@@ -245,6 +299,8 @@ const tDlg = createI18n({
   fr: {
     dlgSaveTitle: 'Enregistrer le document HTML',
     filterHtml: 'Documents HTML',
+    filterPdf: 'Document PDF',
+    filterWord: 'Document Word',
     dlgPickImage: 'Choisir une image',
     filterImages: 'Images',
     untitledFile: 'Sans titre',
@@ -270,6 +326,8 @@ const tDlg = createI18n({
   de: {
     dlgSaveTitle: 'HTML-Dokument speichern',
     filterHtml: 'HTML-Dokumente',
+    filterPdf: 'PDF-Dokument',
+    filterWord: 'Word-Dokument',
     dlgPickImage: 'Bild auswählen',
     filterImages: 'Bilder',
     untitledFile: 'Unbenannt',
@@ -295,6 +353,8 @@ const tDlg = createI18n({
   es: {
     dlgSaveTitle: 'Guardar documento HTML',
     filterHtml: 'Documentos HTML',
+    filterPdf: 'Documento PDF',
+    filterWord: 'Documento de Word',
     dlgPickImage: 'Elegir imagen',
     filterImages: 'Imágenes',
     untitledFile: 'Sin título',
@@ -320,6 +380,8 @@ const tDlg = createI18n({
   th: {
     dlgSaveTitle: 'บันทึกเอกสาร HTML',
     filterHtml: 'เอกสาร HTML',
+    filterPdf: 'เอกสาร PDF',
+    filterWord: 'เอกสาร Word',
     dlgPickImage: 'เลือกรูปภาพ',
     filterImages: 'รูปภาพ',
     untitledFile: 'ไม่มีชื่อ',
@@ -345,6 +407,8 @@ const tDlg = createI18n({
   id: {
     dlgSaveTitle: 'Simpan dokumen HTML',
     filterHtml: 'Dokumen HTML',
+    filterPdf: 'Dokumen PDF',
+    filterWord: 'Dokumen Word',
     dlgPickImage: 'Pilih gambar',
     filterImages: 'Gambar',
     untitledFile: 'Tanpa judul',
@@ -370,6 +434,8 @@ const tDlg = createI18n({
   ru: {
     dlgSaveTitle: 'Сохранить документ HTML',
     filterHtml: 'Документы HTML',
+    filterPdf: 'Документ PDF',
+    filterWord: 'Документ Word',
     dlgPickImage: 'Выберите изображение',
     filterImages: 'Изображения',
     untitledFile: 'Без названия',
@@ -395,6 +461,8 @@ const tDlg = createI18n({
   ar: {
     dlgSaveTitle: 'حفظ مستند HTML',
     filterHtml: 'مستندات HTML',
+    filterPdf: 'مستند PDF',
+    filterWord: 'مستند Word',
     dlgPickImage: 'اختر صورة',
     filterImages: 'صور',
     untitledFile: 'بدون عنوان',
@@ -420,6 +488,8 @@ const tDlg = createI18n({
   pt: {
     dlgSaveTitle: 'Salvar documento HTML',
     filterHtml: 'Documentos HTML',
+    filterPdf: 'Documento PDF',
+    filterWord: 'Documento do Word',
     dlgPickImage: 'Escolher imagem',
     filterImages: 'Imagens',
     untitledFile: 'Sem título',
@@ -445,6 +515,8 @@ const tDlg = createI18n({
   it: {
     dlgSaveTitle: 'Salva documento HTML',
     filterHtml: 'Documenti HTML',
+    filterPdf: 'Documento PDF',
+    filterWord: 'Documento Word',
     dlgPickImage: 'Scegli immagine',
     filterImages: 'Immagini',
     untitledFile: 'Senza titolo',
@@ -470,6 +542,8 @@ const tDlg = createI18n({
   pl: {
     dlgSaveTitle: 'Zapisz dokument HTML',
     filterHtml: 'Dokumenty HTML',
+    filterPdf: 'Dokument PDF',
+    filterWord: 'Dokument Word',
     dlgPickImage: 'Wybierz obraz',
     filterImages: 'Obrazy',
     untitledFile: 'Bez tytułu',
@@ -495,6 +569,8 @@ const tDlg = createI18n({
   cs: {
     dlgSaveTitle: 'Uložit dokument HTML',
     filterHtml: 'Dokumenty HTML',
+    filterPdf: 'Dokument PDF',
+    filterWord: 'Dokument Word',
     dlgPickImage: 'Vyberte obrázek',
     filterImages: 'Obrázky',
     untitledFile: 'Bez názvu',
@@ -520,6 +596,8 @@ const tDlg = createI18n({
   nl: {
     dlgSaveTitle: 'HTML-document opslaan',
     filterHtml: 'HTML-documenten',
+    filterPdf: 'PDF-document',
+    filterWord: 'Word-document',
     dlgPickImage: 'Kies een afbeelding',
     filterImages: 'Afbeeldingen',
     untitledFile: 'Naamloos',
@@ -545,6 +623,8 @@ const tDlg = createI18n({
   ms: {
     dlgSaveTitle: 'Simpan dokumen HTML',
     filterHtml: 'Dokumen HTML',
+    filterPdf: 'Dokumen PDF',
+    filterWord: 'Dokumen Word',
     dlgPickImage: 'Pilih imej',
     filterImages: 'Imej',
     untitledFile: 'Tanpa tajuk',
@@ -570,6 +650,8 @@ const tDlg = createI18n({
   he: {
     dlgSaveTitle: 'שמירת מסמך HTML',
     filterHtml: 'מסמכי HTML',
+    filterPdf: 'מסמך PDF',
+    filterWord: 'מסמך Word',
     dlgPickImage: 'בחרו תמונה',
     filterImages: 'תמונות',
     untitledFile: 'ללא שם',
@@ -595,6 +677,8 @@ const tDlg = createI18n({
   hi: {
     dlgSaveTitle: 'HTML दस्तावेज़ सहेजें',
     filterHtml: 'HTML दस्तावेज़',
+    filterPdf: 'PDF दस्तावेज़',
+    filterWord: 'Word दस्तावेज़',
     dlgPickImage: 'छवि चुनें',
     filterImages: 'छवियाँ',
     untitledFile: 'शीर्षकहीन',
@@ -620,6 +704,8 @@ const tDlg = createI18n({
   'zh-TW': {
     dlgSaveTitle: '儲存 HTML 文件',
     filterHtml: 'HTML 文件',
+    filterPdf: 'PDF 文件',
+    filterWord: 'Word 文件',
     dlgPickImage: '選擇圖片',
     filterImages: '圖片',
     untitledFile: '未命名文件',
@@ -645,6 +731,8 @@ const tDlg = createI18n({
 type DlgKey =
   | 'dlgSaveTitle'
   | 'filterHtml'
+  | 'filterPdf'
+  | 'filterWord'
   | 'dlgPickImage'
   | 'filterImages'
   | 'untitledFile'
@@ -682,12 +770,13 @@ const attachmentTextCache = new Map<string, { stamp: string; text: string }>()
 
 function statAttachment(filePath: string): { meta?: AttachmentMeta; error?: string } {
   const name = basename(filePath)
-  const ext = name.split('.').pop()?.toLowerCase() ?? ''
+  // a draw.io picture that holds its diagram is read as diagram text
+  const ext = diagramPictureExtOf(filePath) ?? name.split('.').pop()?.toLowerCase() ?? ''
   if (!ATTACHABLE_EXTS.has(ext)) return { error: `${name}: ${tm('errUnsupportedExt', { ext })}` }
   try {
     const stat = statSync(filePath)
     if (!stat.isFile()) return { error: `${name}: ${tm('errNotFile')}` }
-    if (stat.size > ATTACHABLE_MAX_BYTES) {
+    if (!ATTACHABLE_IMAGE_EXTS.has(ext) && stat.size > attachableMaxBytes(ext)) {
       return {
         error: `${name}: ${tm('errTooLarge', { mb: Math.round(ATTACHABLE_MAX_BYTES / 1024 / 1024) })}`,
       }
@@ -762,7 +851,8 @@ async function extractAttachmentText(filePath: string): Promise<string> {
   const stamp = `${stat.mtimeMs}:${stat.size}`
   const cached = attachmentTextCache.get(filePath)
   if (cached && cached.stamp === stamp) return cached.text
-  if (stat.size > ATTACHABLE_MAX_BYTES) throw new Error(tm('errFileTooLarge'))
+  const capExt = diagramPictureExtOfName(filePath) ?? extname(filePath)
+  if (stat.size > attachableMaxBytes(capExt)) throw new Error(tm('errFileTooLarge'))
   const parsed = await parseFileToText(filePath)
   if (!parsed.ok || parsed.kind !== 'text' || parsed.text == null) {
     throw new Error(parsed.error ?? tm('errParseFailed'))
@@ -781,6 +871,21 @@ interface RuntimePaths {
   rendererFile?: string
   /** Shell router used to open exported PDFs in a new GenOffice tab. */
   openGeneratedPath?: (path: string) => boolean
+  /**
+   * Project folders (spec 6): the folder an untitled document's save dialog
+   * opens in for this view, or null for the default save folder.
+   */
+  newDocumentDir?: (webContentsId: number) => Promise<string | null>
+  /**
+   * Project folders (spec 6): write a new document the AI made in this view
+   * into the project its panel chose (a free name, never over a file);
+   * resolves to the path written, or null when the panel has no project.
+   */
+  writeNewDocument?: (
+    webContentsId: number,
+    fileName: string,
+    bytes: Uint8Array,
+  ) => Promise<string | null>
 }
 
 let runtime: RuntimePaths = { preloadPath: '' }
@@ -814,6 +919,11 @@ const allowedByWc = new Map<number, Set<string>>()
 const savePathByWc = new Map<number, string>()
 /** Unsaved-changes flags mirrored from the renderer; drives the save prompt before closing a tab/window */
 const dirtyByWc = new Set<number>()
+
+function canReadAttachment(wcId: number, filePath: string): boolean {
+  const docPath = savePathByWc.get(wcId) ?? openPathByWc.get(wcId)
+  return sharedPathGrants().has(wcId, filePath) || isBesideDocument(docPath, filePath)
+}
 /** Latest buffer text pushed by each renderer; served by html-preview:// to the preview iframe */
 const previewTextByWc = new Map<number, string>()
 const closeSaveWaiters = new Map<number, (ok: boolean) => void>()
@@ -830,8 +940,8 @@ const readTextInFlight = new Map<number, Promise<string>>()
 // overwriting it; an automatic save defers silently to the next manual one.
 const docDiskStates = new Map<number, Map<string, SaveDiskState>>()
 
-async function rememberDiskState(wcId: number, path: string): Promise<void> {
-  const state = await recordDiskState(path)
+async function rememberDiskState(wcId: number, path: string, read?: Uint8Array): Promise<void> {
+  const state = await recordDiskState(path, read)
   if (!state) return
   const states = docDiskStates.get(wcId) ?? new Map<string, SaveDiskState>()
   states.set(path, state)
@@ -1048,7 +1158,18 @@ async function renderHtmlDocx(
     const base = docPath ? assetBaseHref(dirname(docPath)) : null
     const htmlPath = join(workDir, 'export.html')
     await writeFile(htmlPath, buildPreviewDocument(html, base), 'utf8')
-    driver = await ElectronBrowserDriver.create(HTML2DOCX_VIEWPORT)
+    // The page may be a file someone sent. It keeps what the preview gives it
+    // (its folder's assets through html-asset://, the web), but no file:// URL
+    // other than its own: from file://, its scripts could read other local files.
+    const [{ convertHtmlToDocx }, { ElectronBrowserDriver }, { isFileUrlOf }] = await Promise.all([
+      import('../../../../packages/html2docx/src'),
+      import('../../../../packages/html2docx/src/drivers/electron'),
+      import('../../../../packages/html2docx/src/drivers/file-url'),
+    ])
+    driver = await ElectronBrowserDriver.create(HTML2DOCX_VIEWPORT, {
+      allowRequest: (url) => isFileUrlOf(url, htmlPath) || /^(?:https?|html-asset):/i.test(url),
+      protocols: { [ASSET_SCHEME]: serveHtmlAsset },
+    })
     // AI-generated markup with a script that never yields keeps
     // executeJavaScript pending forever, which would strand the hidden
     // window and this handler; race a watchdog and destroy the window on
@@ -1070,6 +1191,107 @@ async function renderHtmlDocx(
   } finally {
     await driver?.close()
   }
+}
+
+/** The Word export to a path already chosen (its dialog, Save As or the command line). */
+async function writeHtmlDocx(
+  html: string,
+  docPath: string | undefined,
+  target: string,
+): Promise<ExportResult> {
+  if (docxExportPrepareHook && !(await docxExportPrepareHook(target))) {
+    return { ok: true, canceled: true }
+  }
+  const workDir = await mkdtemp(join(tmpdir(), 'genoffice-html-docx-'))
+  try {
+    const docx = await renderHtmlDocx(html, docPath, workDir)
+    await writeFile(target, docx)
+    openExportedDocx(target)
+    return { ok: true, path: target }
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) }
+  } finally {
+    await rm(workDir, { recursive: true, force: true }).catch(() => {})
+  }
+}
+
+/**
+ * A Word file's bytes from restricted HTML, the way the Word export makes
+ * them: for "create the file only" of a document that would otherwise open
+ * as a new Word tab while the Word editor is off (editor choice spec 7.3).
+ */
+export async function htmlToDocxBytes(html: string): Promise<Uint8Array> {
+  const workDir = await mkdtemp(join(tmpdir(), 'genoffice-html-docx-'))
+  try {
+    return await renderHtmlDocx(html, undefined, workDir)
+  } finally {
+    await rm(workDir, { recursive: true, force: true }).catch(() => {})
+  }
+}
+
+/** The ODT export: the Word export's bytes converted by docxToOdt, a change report confirmed. */
+async function writeHtmlOdt(
+  html: string,
+  docPath: () => string | undefined,
+  win: BrowserWindow | undefined,
+  pickPath: () => Promise<string | null>,
+  skipConfirm: boolean,
+): Promise<ExportResult> {
+  const outcome = await exportOdt({
+    pickPath,
+    docx: async () => {
+      const workDir = await mkdtemp(join(tmpdir(), 'genoffice-html-docx-'))
+      try {
+        return await renderHtmlDocx(html, docPath(), workDir)
+      } finally {
+        await rm(workDir, { recursive: true, force: true }).catch(() => {})
+      }
+    },
+    confirm: async (report) =>
+      skipConfirm ||
+      confirmOdtReport(report, (options) =>
+        win ? dialog.showMessageBox(win, options) : dialog.showMessageBox(options),
+      ),
+    // a docs tab showing the target is closed first, as for the Word export
+    prepare: async (path) => !docxExportPrepareHook || docxExportPrepareHook(path),
+    write: (path, bytes) => writeFile(path, bytes),
+  })
+  if ('path' in outcome) openExportedDocx(outcome.path)
+  return outcome
+}
+
+/** The PDF export to a path already chosen (its dialog, Save As or the command line). */
+async function writeHtmlPdf(
+  html: string,
+  docPath: string | undefined,
+  target: string,
+): Promise<ExportResult> {
+  const workDir = await mkdtemp(join(tmpdir(), 'genoffice-html-pdf-'))
+  try {
+    await writeFile(target, await renderPrintPdf(html, docPath, workDir))
+    openExportedPdf(target)
+    return { ok: true, path: target }
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) }
+  } finally {
+    await rm(workDir, { recursive: true, force: true }).catch(() => {})
+  }
+}
+
+/**
+ * The page markup the export menu sends, recovered from a save request's text:
+ * the renderer's `serializeDocText` undone (BOM, line endings, final newline).
+ */
+function exportHtmlOfSaveText(text: string): string {
+  const body = (text.charCodeAt(0) === 0xfeff ? text.slice(1) : text).replace(/\r\n/g, '\n')
+  return body.endsWith('\n') ? body.slice(0, -1) : body
+}
+
+/** Save As › the export a picked extension selects */
+const SAVE_AS_EXPORT_BY_EXT: Record<string, 'pdf' | 'docx' | 'odt'> = {
+  '.pdf': 'pdf',
+  '.docx': 'docx',
+  '.odt': 'odt',
 }
 
 /** Shell menu export entry: ask the renderer to serialize and run the export flow */
@@ -1315,11 +1537,27 @@ function fileNameBase(name: string | undefined): string {
     .trim()
 }
 
+/**
+ * The AI's silent first save while this view's panel has a project (spec 6):
+ * the page goes into that project folder through its write guard. Null (nothing
+ * written) without a project; the default save folder then takes it as before.
+ */
+async function saveIntoProject(
+  wcId: number,
+  suggestedName: string | undefined,
+  text: string,
+): Promise<string | null> {
+  const base = fileNameBase(suggestedName)
+  if (!base || !runtime.writeNewDocument) return null
+  return runtime.writeNewDocument(wcId, `${base}.html`, Buffer.from(text, 'utf8'))
+}
+
 async function resolveSaveTarget(
   e: Electron.IpcMainInvokeEvent,
   mode: SaveMode,
   suggestedName?: string,
   defaultName?: string,
+  offerExports = false,
 ): Promise<string | null | 'canceled'> {
   const current = savePathByWc.get(e.sender.id)
   if (mode === 'save' && current) return current
@@ -1339,16 +1577,31 @@ async function resolveSaveTarget(
     ? join(dirname(current), basename(current))
     : (recovery.saveAsDefaultPath(e.sender.id) ??
       join(
-        configuredDefaultSaveDir(app),
+        // an untitled page whose panel has a project starts in that folder (spec 6)
+        (await runtime.newDocumentDir?.(e.sender.id)) ?? configuredDefaultSaveDir(app),
         `${fileNameBase(defaultName) || tm('untitledFile')}.html`,
       ))
+  const filters: Array<{ name: string; extensions: string[] }> = [
+    { name: tm('filterHtml'), extensions: ['html', 'htm'] },
+  ]
+  if (offerExports) {
+    filters.push(
+      { name: tm('filterPdf'), extensions: ['pdf'] },
+      { name: tm('filterWord'), extensions: ['docx'] },
+      { name: odtFilterName(), extensions: ['odt'] },
+    )
+  }
   const picked = await showSaveDialogWithMemory(dialog, win, {
     title: tm('dlgSaveTitle'),
-    defaultPath,
-    filters: [{ name: tm('filterHtml'), extensions: ['html', 'htm'] }],
+    // With the exports offered, the suggestion carries no extension: the file
+    // type chosen in the dialog supplies it (a typed name keeps its own)
+    defaultPath: offerExports ? defaultPath.replace(/\.html?$/i, '') : defaultPath,
+    filters,
   })
   if (picked.canceled || !picked.filePath) return 'canceled'
-  return picked.filePath
+  // A dialog that does not add the chosen type's extension (some Linux desktops)
+  // leaves a bare name: the default type is HTML
+  return offerExports && !extname(picked.filePath) ? `${picked.filePath}.html` : picked.filePath
 }
 
 /**
@@ -1359,36 +1612,38 @@ async function resolveSaveTarget(
  * "Save page as, complete" assets by signature / requesting slot.
  */
 function registerImageProtocol(): void {
-  protocol.handle('html-asset', async (request) => {
-    let target: string
-    try {
-      target = decodeURIComponent(new URL(request.url).pathname)
-    } catch {
-      return new Response(null, { status: 400 })
+  protocol.handle(ASSET_SCHEME, serveHtmlAsset)
+}
+
+async function serveHtmlAsset(request: Request): Promise<Response> {
+  let target: string
+  try {
+    target = decodeURIComponent(new URL(request.url).pathname)
+  } catch {
+    return new Response(null, { status: 400 })
+  }
+  if (/^\/[a-zA-Z]:\//.test(target)) target = target.slice(1)
+  target = resolve(target)
+  const knownExt = PREVIEW_ASSET_EXTS.has(extname(target).toLowerCase())
+  if (!existsSync(target)) return new Response(null, { status: 404 })
+  let inDocDir = false
+  for (const doc of new Set([...openPathByWc.values(), ...savePathByWc.values()])) {
+    const dir = resolve(dirname(doc))
+    if (!isInDocDir(target, dir)) continue
+    if (await resolveSafeRelativeImagePath(doc, relative(dir, target))) {
+      inDocDir = true
+      break
     }
-    if (/^\/[a-zA-Z]:\//.test(target)) target = target.slice(1)
-    target = resolve(target)
-    const knownExt = PREVIEW_ASSET_EXTS.has(extname(target).toLowerCase())
-    if (!existsSync(target)) return new Response(null, { status: 404 })
-    let inDocDir = false
-    for (const doc of new Set([...openPathByWc.values(), ...savePathByWc.values()])) {
-      const dir = resolve(dirname(doc))
-      if (!isInDocDir(target, dir)) continue
-      if (await resolveSafeRelativeImagePath(doc, relative(dir, target))) {
-        inDocDir = true
-        break
-      }
-    }
-    if (!inDocDir) return new Response(null, { status: 403 })
-    let mime: string | null = null
-    if (!knownExt) {
-      mime = extensionlessAssetMime(target, await readHead(target), request.headers.get('accept'))
-      if (!mime) return new Response(null, { status: 404 })
-    }
-    const res = await net.fetch(pathToFileURL(target).toString())
-    if (!mime || !res.ok) return res
-    return new Response(res.body, { status: 200, headers: { 'Content-Type': mime } })
-  })
+  }
+  if (!inDocDir) return new Response(null, { status: 403 })
+  let mime: string | null = null
+  if (!knownExt) {
+    mime = extensionlessAssetMime(target, await readHead(target), request.headers.get('accept'))
+    if (!mime) return new Response(null, { status: 404 })
+  }
+  const res = await net.fetch(pathToFileURL(target).toString())
+  if (!mime || !res.ok) return res
+  return new Response(res.body, { status: 200, headers: { 'Content-Type': mime } })
 }
 
 async function readHead(target: string): Promise<Uint8Array> {
@@ -1403,6 +1658,27 @@ async function readHead(target: string): Promise<Uint8Array> {
 }
 
 let ipcRegistered = false
+
+/** what a picture call answers while AI is off; the model reads it, so it stays English */
+const AI_OFF_ERROR = 'AI features are turned off in Settings.'
+
+/**
+ * A tab's AI picture call: refused while AI is off (Settings › Editors and
+ * AI), else one running AI job that turning AI off stops the way the tab's
+ * Stop does (ending its media calls ends the program the call started).
+ */
+async function aiImageCall<T>(
+  senderId: number,
+  run: () => Promise<T>,
+): Promise<T | { error: string }> {
+  if (!aiFeaturesOn()) return { error: AI_OFF_ERROR }
+  const end = registerAiJob({ kind: 'chat', stop: () => abortMediaCalls(senderId) })
+  try {
+    return await run()
+  } finally {
+    end()
+  }
+}
 
 function registerHtmlIpc(): void {
   if (ipcRegistered) return
@@ -1508,10 +1784,10 @@ function registerHtmlIpc(): void {
     if (typeof path !== 'string' || !allowedByWc.get(e.sender.id)?.has(path)) {
       throw new Error('html: path not granted to this view')
     }
-    const text = await readFile(path, 'utf8')
+    const bytes = await readFile(path)
     // The reader's copy: this view's save guard compares against this state
-    await rememberDiskState(e.sender.id, path)
-    return text
+    await rememberDiskState(e.sender.id, path, bytes)
+    return bytes.toString('utf8')
   })
 
   ipcMain.handle(HTML_CHANNELS.recoveryOpen, (e) => recovery.resolveOpen(e.sender))
@@ -1561,9 +1837,41 @@ function registerHtmlIpc(): void {
           typeof request.suggestedName === 'string' ? request.suggestedName : undefined
         const defaultName =
           typeof request.defaultName === 'string' ? request.defaultName : undefined
-        const target = await resolveSaveTarget(e, mode, suggestedName, defaultName)
+        // the AI's silent first save lands in the panel's project when it has one
+        const placed =
+          mode === 'save' && !pathAtRequest && suggestedName
+            ? await saveIntoProject(e.sender.id, suggestedName, request.text)
+            : null
+        const offerExports = mode === 'saveAs'
+        const target =
+          placed ?? (await resolveSaveTarget(e, mode, suggestedName, defaultName, offerExports))
         if (target === 'canceled') return done({ ok: true, canceled: true })
         if (!target) return done({ ok: false, error: 'html: no save target' })
+        const exportAs = offerExports
+          ? SAVE_AS_EXPORT_BY_EXT[extname(target).toLowerCase()]
+          : undefined
+        if (exportAs) {
+          // Save As › PDF, Word or ODT: a copy written by the export menu's code
+          // (and opened as that export opens it). Nothing below is a save: the
+          // page keeps its path, unsaved edits, recovery copy and assets.
+          const html = exportHtmlOfSaveText(request.text)
+          const win =
+            BrowserWindow.fromWebContents(e.sender) ?? BrowserWindow.getFocusedWindow() ?? undefined
+          const exported =
+            exportAs === 'pdf'
+              ? await writeHtmlPdf(html, pathAtRequest, target)
+              : exportAs === 'docx'
+                ? await writeHtmlDocx(html, pathAtRequest, target)
+                : await writeHtmlOdt(
+                    html,
+                    () => pathAtRequest,
+                    win,
+                    async () => target,
+                    false,
+                  )
+          if (!exported.ok || 'canceled' in exported) return done(exported)
+          return done({ ok: true, path: exported.path, exported: exportAs })
+        }
         const currentPath = pathAtRequest
         const isNewPath = currentPath !== target
         const imageSources = [...(request.imageSources ?? [])]
@@ -1580,7 +1888,8 @@ function registerHtmlIpc(): void {
         const textToWrite = prepared?.text ?? request.text
         const savedImageSources = prepared?.imageSources ?? imageSources
         try {
-          await writeTextAtomic(target, textToWrite)
+          // a page placed in the project was written by the project's write guard
+          if (!placed) await writeTextAtomic(target, textToWrite)
         } catch (error) {
           if (prepared) await rollbackPreparedSaveAsAssets(prepared).catch(() => {})
           throw error
@@ -1640,17 +1949,24 @@ function registerHtmlIpc(): void {
       properties: ['openFile', 'multiSelections'],
     })
     if (picked.canceled || picked.filePaths.length === 0) return null
+    sharedPathGrants().grant(e.sender.id, picked.filePaths)
     return collectAttachments(picked.filePaths)
   })
 
-  ipcMain.handle(HTML_CHANNELS.filesAdd, (_e, paths: unknown) =>
-    collectAttachments(Array.isArray(paths) ? paths.filter((p) => typeof p === 'string') : []),
-  )
+  ipcMain.handle(HTML_CHANNELS.filesAdd, (_e, paths: unknown) => {
+    // panel drops and clipboard file pastes are recorded by the preload bridge
+    // before this runs; minting a grant for renderer-named paths here would
+    // let a compromised renderer read whatever it names
+    return collectAttachments(
+      Array.isArray(paths) ? paths.filter((p) => typeof p === 'string') : [],
+    )
+  })
 
   ipcMain.handle(
     HTML_CHANNELS.filesAddPastedImage,
-    (_e, data: unknown, ext: unknown): AttachmentAddResult => {
+    (e, data: unknown, ext: unknown): AttachmentAddResult => {
       const filePath = savePastedImage(data, ext)
+      if (filePath) sharedPathGrants().grant(e.sender.id, [filePath])
       return filePath
         ? collectAttachments([filePath])
         : { accepted: [], rejected: [tm('errNotImage')] }
@@ -1660,13 +1976,15 @@ function registerHtmlIpc(): void {
   ipcMain.handle(
     HTML_CHANNELS.filesRead,
     async (
-      _e,
+      e,
       filePath: string,
       offset: number,
       maxChars: number,
     ): Promise<AttachmentReadResult> => {
+      if (!canReadAttachment(e.sender.id, filePath))
+        return { ok: false, error: 'html: path not granted to this view' }
       const name = basename(filePath)
-      const ext = name.split('.').pop()?.toLowerCase() ?? ''
+      const ext = diagramPictureExtOf(filePath) ?? name.split('.').pop()?.toLowerCase() ?? ''
       if (!ATTACHABLE_EXTS.has(ext)) return { ok: false, error: tm('errUnsupportedExt', { ext }) }
       if (ATTACHABLE_IMAGE_EXTS.has(ext)) return { ok: false, error: tm('errImageNoText') }
       try {
@@ -1686,7 +2004,9 @@ function registerHtmlIpc(): void {
     },
   )
 
-  ipcMain.handle(HTML_CHANNELS.filesReadImage, (_e, filePath: string): AttachmentImageResult => {
+  ipcMain.handle(HTML_CHANNELS.filesReadImage, (e, filePath: string): AttachmentImageResult => {
+    if (!canReadAttachment(e.sender.id, filePath))
+      return { ok: false, error: 'html: path not granted to this view' }
     const name = basename(filePath)
     const ext = name.split('.').pop()?.toLowerCase() ?? ''
     const mime = ATTACHMENT_IMAGE_MIME[ext]
@@ -1734,26 +2054,33 @@ function registerHtmlIpc(): void {
   // shell-registered, but image generation is gated per app
   ipcMain.handle(
     HTML_CHANNELS.aiGenerateImage,
-    (e, op: { prompt?: unknown; aspectRatio?: unknown }) =>
-      // ends with its tab, or when the tab's AI run is stopped
-      withMediaCallSignal(e.sender, (signal) =>
-        generateImageTool(
-          join(app.getPath('userData'), 'ai-settings.json'),
-          {
-            prompt: String(op?.prompt ?? ''),
-            aspectRatio: op?.aspectRatio ? String(op.aspectRatio) : undefined,
-          },
-          {
-            mediaRoots: documentMediaRoots(
-              htmlFilePath(e.sender.id),
-              join(app.getPath('temp'), 'genoffice-pasted'),
-            ),
-            // screen path: the statuses of the process-wide subscription service decide the route
-            context: { path: 'screen', statuses: sharedSubscriptionStatuses() },
-            signal,
-          },
+    (e, op: { prompt?: unknown; aspectRatio?: unknown; model?: unknown }) => {
+      // the model the user named, as given: the shared tool decides whether the route offers it
+      const model = typeof op?.model === 'string' ? op.model.trim() : ''
+      // refused while AI is off, else one running AI job; ends with its tab,
+      // or when the tab's AI run is stopped
+      return aiImageCall(e.sender.id, () =>
+        withMediaCallSignal(e.sender, (signal) =>
+          generateImageTool(
+            join(app.getPath('userData'), 'ai-settings.json'),
+            {
+              prompt: String(op?.prompt ?? ''),
+              aspectRatio: op?.aspectRatio ? String(op.aspectRatio) : undefined,
+              ...(model ? { model } : {}),
+            },
+            {
+              mediaRoots: documentMediaRoots(
+                htmlFilePath(e.sender.id),
+                join(app.getPath('temp'), 'genoffice-pasted'),
+              ),
+              // screen path: the statuses of the process-wide subscription service decide the route
+              context: { path: 'screen', statuses: sharedSubscriptionStatuses() },
+              signal,
+            },
+          ),
         ),
-      ),
+      )
+    },
   )
 
   const MIME_BY_EXT: Record<string, ImageData['mime']> = {
@@ -1780,24 +2107,10 @@ function registerHtmlIpc(): void {
   })
 
   // remote pictures (AI-generated or hot-linked) are downloaded here: the frame's fetch is
-  // CORS-bound, and fetchRemoteImage refuses private/link-local targets
-  ipcMain.handle(HTML_CHANNELS.fetchImage, async (_e, url: unknown): Promise<ImageData | null> => {
-    if (typeof url !== 'string' || !/^https?:/i.test(url)) return null
-    try {
-      const resp = await fetchRemoteImage(url)
-      if (!resp?.ok) return null
-      const ct = resp.headers.get('content-type') ?? ''
-      const mime = ct.includes('png')
-        ? 'image/png'
-        : ct.includes('gif')
-          ? 'image/gif'
-          : 'image/jpeg'
-      const bytes = await readBodyCapped(resp, MAX_REMOTE_IMAGE_BYTES)
-      return { base64: Buffer.from(bytes).toString('base64'), mime }
-    } catch {
-      return null
-    }
-  })
+  // CORS-bound, and fetchImageBytes gates both the http(s) download and the generated store
+  ipcMain.handle(HTML_CHANNELS.fetchImage, (_e, url: unknown): Promise<ImageData | null> =>
+    fetchImageBytes(url),
+  )
 
   ipcMain.handle(
     HTML_CHANNELS.exportDocx,
@@ -1807,9 +2120,20 @@ function registerHtmlIpc(): void {
       }
       const win =
         BrowserWindow.fromWebContents(e.sender) ?? BrowserWindow.getFocusedWindow() ?? undefined
+      const headless = isHeadlessMode() && typeof request.outPath === 'string' && request.outPath
+      // the Word copy opens in a Word tab: while that editor is off the export asks
+      // first (editor choice spec 7.3); "create the file only" shows it in its folder
+      if (
+        !headless &&
+        (await askBeforeMakeAndOpen('docs', {
+          fileName: `${exportFileName(request.suggestedName)}.docx`,
+        })) === 'cancel'
+      ) {
+        return { ok: true, canceled: true }
+      }
       // Headless export has no dialog to authorize a path; the CLI already chose one.
       const picked =
-        isHeadlessMode() && typeof request.outPath === 'string' && request.outPath
+        headless && typeof request.outPath === 'string'
           ? { canceled: false, filePath: request.outPath }
           : await showSaveDialogWithMemory(
               dialog,
@@ -1821,20 +2145,7 @@ function registerHtmlIpc(): void {
               configuredDefaultSaveDir(app),
             )
       if (picked.canceled || !picked.filePath) return { ok: true, canceled: true }
-      if (docxExportPrepareHook && !(await docxExportPrepareHook(picked.filePath))) {
-        return { ok: true, canceled: true }
-      }
-      const workDir = await mkdtemp(join(tmpdir(), 'genoffice-html-docx-'))
-      try {
-        const docx = await renderHtmlDocx(request.html, savePathByWc.get(e.sender.id), workDir)
-        await writeFile(picked.filePath, docx)
-        openExportedDocx(picked.filePath)
-        return { ok: true, path: picked.filePath }
-      } catch (err) {
-        return { ok: false, error: err instanceof Error ? err.message : String(err) }
-      } finally {
-        await rm(workDir, { recursive: true, force: true }).catch(() => {})
-      }
+      return writeHtmlDocx(request.html, savePathByWc.get(e.sender.id), picked.filePath)
     },
   )
 
@@ -1853,8 +2164,11 @@ function registerHtmlIpc(): void {
         isHeadlessMode() && typeof request.outPath === 'string' && request.outPath
           ? request.outPath
           : null
-      const outcome = await exportOdt({
-        pickPath: async () => {
+      return writeHtmlOdt(
+        request.html,
+        () => savePathByWc.get(e.sender.id),
+        win,
+        async () => {
           if (headlessPath) return headlessPath
           const picked = await showSaveDialogWithMemory(
             dialog,
@@ -1867,25 +2181,8 @@ function registerHtmlIpc(): void {
           )
           return picked.canceled || !picked.filePath ? null : picked.filePath
         },
-        docx: async () => {
-          const workDir = await mkdtemp(join(tmpdir(), 'genoffice-html-docx-'))
-          try {
-            return await renderHtmlDocx(request.html, savePathByWc.get(e.sender.id), workDir)
-          } finally {
-            await rm(workDir, { recursive: true, force: true }).catch(() => {})
-          }
-        },
-        confirm: async (report) =>
-          headlessPath !== null ||
-          confirmOdtReport(report, (options) =>
-            win ? dialog.showMessageBox(win, options) : dialog.showMessageBox(options),
-          ),
-        // a docs tab showing the target is closed first, as for the Word export
-        prepare: async (path) => !docxExportPrepareHook || docxExportPrepareHook(path),
-        write: (path, bytes) => writeFile(path, bytes),
-      })
-      if ('path' in outcome) openExportedDocx(outcome.path)
-      return outcome
+        headlessPath !== null,
+      )
     },
   )
 
@@ -1911,17 +2208,7 @@ function registerHtmlIpc(): void {
               configuredDefaultSaveDir(app),
             )
       if (picked.canceled || !picked.filePath) return { ok: true, canceled: true }
-      const workDir = await mkdtemp(join(tmpdir(), 'genoffice-html-pdf-'))
-      try {
-        const docPath = savePathByWc.get(e.sender.id)
-        await writeFile(picked.filePath, await renderPrintPdf(request.html, docPath, workDir))
-        openExportedPdf(picked.filePath)
-        return { ok: true, path: picked.filePath }
-      } catch (err) {
-        return { ok: false, error: err instanceof Error ? err.message : String(err) }
-      } finally {
-        await rm(workDir, { recursive: true, force: true }).catch(() => {})
-      }
+      return writeHtmlPdf(request.html, savePathByWc.get(e.sender.id), picked.filePath)
     },
   )
 
@@ -1956,6 +2243,56 @@ function registerHtmlIpc(): void {
       return printHtml(request.html, savePathByWc.get(e.sender.id))
     },
   )
+
+  // Advanced print (decision 0141): an option on, or a typed page range, makes
+  // the job PDF from the page loaded as printHtml loads it (scripting on, the
+  // readiness probe), never from the export's script-free window.
+  ensurePrintLayoutIpc({
+    ipcMain,
+    labelSpecPath: () => join(app.getPath('userData'), LABEL_SPEC_FILE_NAME),
+  })
+  registerHtmlPrintLayout({
+    ipcMain,
+    documentOf: (event, html) => {
+      const docPath = savePathByWc.get(event.sender.id)
+      return buildPreviewDocument(html, docPath ? assetBaseHref(dirname(docPath)) : null)
+    },
+    createJobWindow: () => new BrowserWindow({ show: false, webPreferences: { sandbox: true } }),
+    createPrintWindow: () => new BrowserWindow({ show: false, webPreferences: { sandbox: true } }),
+    pickSavePath: async (event, suggestedName) => {
+      const win =
+        BrowserWindow.fromWebContents(event.sender as WebContents) ??
+        BrowserWindow.getFocusedWindow() ??
+        undefined
+      const picked = await showSaveDialogWithMemory(
+        dialog,
+        win,
+        {
+          defaultPath: `${exportFileName(suggestedName)}.pdf`,
+          filters: [{ name: 'PDF', extensions: ['pdf'] }],
+        },
+        configuredDefaultSaveDir(app),
+      )
+      return picked.canceled || !picked.filePath ? null : picked.filePath
+    },
+    pickImageSavePath: async (event, suggestedName, image) => {
+      const win =
+        BrowserWindow.fromWebContents(event.sender as WebContents) ??
+        BrowserWindow.getFocusedWindow() ??
+        undefined
+      const spec = imageSaveDialogSpec(exportFileName(suggestedName), image)
+      const picked = await showSaveDialogWithMemory(
+        dialog,
+        win,
+        {
+          defaultPath: spec.defaultFileName,
+          filters: spec.filters,
+        },
+        configuredDefaultSaveDir(app),
+      )
+      return picked.canceled || !picked.filePath ? null : picked.filePath
+    },
+  })
 
   ipcMain.handle(
     HTML_CHANNELS.exportHtml,
@@ -2184,6 +2521,8 @@ export function startHtmlStandalone(): void {
   void app.whenReady().then(() => {
     installRendererProtocol({ html: join(__dirname, '../renderer') })
     registerHtmlIpc()
+    // shell mode leaves the shared ai:* search channels to docs-main registerAiIpc
+    registerHtmlAiSearchIpc()
     const win = new BrowserWindow({
       width: 1200,
       height: 850,

@@ -8,7 +8,7 @@
  * stack. Renderers never inject one (their fetch already is Chromium's).
  */
 import { PRODUCT_NAME } from '@genoffice/i18n'
-import { freeLimitOf } from './free-ai'
+import { freeLimitOf, isFreeTierModelRefusal } from './free-ai'
 
 type FetchLike = (url: string, init?: RequestInit) => Promise<Response>
 
@@ -105,16 +105,34 @@ async function isTransientRefusal(response: Response): Promise<boolean> {
   if (response.status === 503 || response.status === 529) return true
   if (response.status !== 429) return false
   try {
-    return !freeLimitOf(`HTTP 429: ${await response.clone().text()}`)
+    const text = `HTTP 429: ${await response.clone().text()}`
+    return !freeLimitOf(text) && !isFreeTierModelRefusal(text)
   } catch {
     return true
   }
 }
 
-export async function aiFetch(url: string, rawInit: RequestInit): Promise<Response> {
+/**
+ * Why a request went out a second time. `failed`: the first try threw, and
+ * whether it reached the service is unknown. `busy`: the service answered
+ * 503, 529 or 429. `blocked`: an edge block page answered, so the service
+ * itself never saw the first try.
+ */
+export type AiFetchResend = 'failed' | 'busy' | 'blocked'
+
+/** For a caller whose request is good only once (a sign-in code): told before each resend */
+export interface AiFetchWatch {
+  onResend?: ((why: AiFetchResend) => void) | undefined
+}
+
+export async function aiFetch(
+  url: string,
+  rawInit: RequestInit,
+  watch?: AiFetchWatch,
+): Promise<Response> {
   const init = withUserAgent(rawInit)
   const signal = init.signal as AbortSignal | null | undefined
-  let response = await fetchOnce(url, init)
+  let response = await fetchOnce(url, init, watch)
   const resendable = init.body == null || typeof init.body === 'string'
   for (const delay of transientRetryDelays) {
     if (!resendable || signal?.aborted || !(await isTransientRefusal(response))) break
@@ -123,12 +141,13 @@ export async function aiFetch(url: string, rawInit: RequestInit): Promise<Respon
     if (!(await wait(after ?? delay, signal))) break
     // the refused answer is dropped unread; only the last one reaches the caller
     void response.body?.cancel().catch(() => {})
-    response = await fetchOnce(url, init)
+    watch?.onResend?.('busy')
+    response = await fetchOnce(url, init, watch)
   }
   return response
 }
 
-async function fetchOnce(url: string, init: RequestInit): Promise<Response> {
+async function fetchOnce(url: string, init: RequestInit, watch?: AiFetchWatch): Promise<Response> {
   const signal = init.signal as AbortSignal | null | undefined
   let response: Response
   try {
@@ -136,6 +155,7 @@ async function fetchOnce(url: string, init: RequestInit): Promise<Response> {
   } catch (primaryError) {
     if (!rescueFetch || signal?.aborted) throw primaryError
     console.warn('[ai-provider] fetch failed, retrying via rescue fetch:', String(primaryError))
+    watch?.onResend?.('failed')
     try {
       return await rescueFetch(url, init)
     } catch {
@@ -149,6 +169,7 @@ async function fetchOnce(url: string, init: RequestInit): Promise<Response> {
       new URL(url).host,
       '- retrying via rescue fetch',
     )
+    watch?.onResend?.('blocked')
     try {
       const rescued = await rescueFetch(url, init)
       if (!isBlockPage(rescued)) return rescued

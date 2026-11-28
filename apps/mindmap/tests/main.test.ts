@@ -86,7 +86,9 @@ vi.mock('electron', () => ({
 }))
 
 import { createXmindDocument, openXmind } from '@genoffice/xmind-engine'
+import { getUiLang, setUiLang } from '@genoffice/i18n'
 import {
+  configureMindmapRuntime,
   createMindmapView,
   mindmapFilePath,
   mindmapIsDirty,
@@ -103,6 +105,7 @@ import {
   resetGenerateHandoffsForTest,
   type GenerateHandoff,
 } from '@genoffice/electron-utils/generate-handoff'
+import { PRINT_LAYOUT_SHARED_CHANNELS } from '@genoffice/electron-utils/print-layout-channels'
 import { AI_CHANNELS, APP_CHANNELS, MINDMAP_CHANNELS } from '../src/shared/ipc'
 import type { MindmapHandoff, OpenFileResult, SaveMindmapResult } from '../src/shared/ipc'
 
@@ -145,8 +148,14 @@ describe('channel names', () => {
     for (const channel of handlers.keys()) {
       expect(Object.values(AI_CHANNELS)).not.toContain(channel)
       expect(channel).not.toMatch(/^ai:/)
-      // the language getter is the one shell channel every editor answers
-      if (!channel.startsWith('mindmap:')) expect(channel).toBe(APP_CHANNELS.getLanguage)
+      // the language getter is the one shell channel every editor answers, and the
+      // print layout's label grid store is registered once by whichever editor comes first
+      if (!channel.startsWith('mindmap:')) {
+        expect([
+          APP_CHANNELS.getLanguage,
+          ...Object.values(PRINT_LAYOUT_SHARED_CHANNELS),
+        ]).toContain(channel)
+      }
     }
   })
 
@@ -156,8 +165,10 @@ describe('channel names', () => {
       'consumePending',
       'openFile',
       'save',
+      'saveIntoProject',
       'openLink',
       'exportPng',
+      'exportSvg',
       'exportPdf',
       'exportMarkdown',
       'print',
@@ -213,6 +224,52 @@ describe('opening', () => {
     const result = await open(view(path), path)
     expect(result).toEqual({ status })
     expect(result).not.toHaveProperty('bytes')
+  })
+})
+
+describe('a FreeMind / Freeplane map (.mm) is imported, never written', () => {
+  const MM = '<map version="1.0.1"><node TEXT="Root"/></map>'
+
+  it('hands over its bytes as an import named after the file; the map is untitled', async () => {
+    const path = join(dir, 'Team plan.mm')
+    writeFileSync(path, MM)
+    const contents = view(path)
+    expect(call(MINDMAP_CHANNELS.consumePending, contents)).toBe(path)
+    const result = await open(contents, path)
+    expect(result).toMatchObject({ status: 'import', importer: 'freemind', title: 'Team plan' })
+    expect(result.status === 'import' && Buffer.from(result.bytes).toString()).toBe(MM)
+    expect(mindmapFilePath(contents.id)).toBeUndefined()
+  })
+
+  it('the first save asks where, offering an .xmind beside the .mm, and leaves the .mm as it was', async () => {
+    const path = join(dir, 'Team plan.mm')
+    writeFileSync(path, MM)
+    const contents = view(path)
+    await open(contents, path)
+    const target = join(dir, 'Team plan.xmind')
+    showSaveDialog.mockResolvedValue({ canceled: false, filePath: target })
+    const result = await save(contents, {
+      bytes: await mapBytes(),
+      mode: 'save',
+      defaultName: 'Root',
+    })
+    expect(result).toEqual({ ok: true, path: target })
+    const options = showSaveDialog.mock.calls[0]!.at(-1) as { defaultPath: string }
+    expect(options.defaultPath).toBe(target)
+    expect(readFileSync(path, 'utf8')).toBe(MM)
+    expect((await openXmind(new Uint8Array(readFileSync(target)))).status).toBe('ok')
+    expect(mindmapFilePath(contents.id)).toBe(target)
+  })
+
+  it('a .mm larger than an import reads opens nothing and nothing is written for it', async () => {
+    const path = join(dir, 'huge.mm')
+    writeFileSync(path, Buffer.alloc(32 * 1024 * 1024 + 1, 0x20))
+    const contents = view(path)
+    expect(await open(contents, path)).toEqual({ status: 'unreadable' })
+    expect(await save(contents, { bytes: await mapBytes(), mode: 'saveAs' })).toMatchObject({
+      ok: false,
+    })
+    expect(showSaveDialog).not.toHaveBeenCalled()
   })
 })
 
@@ -395,6 +452,198 @@ describe('saving', () => {
     await save(contents, { bytes: await mapBytes('Round trip'), mode: 'saveAs' })
     const reopened = await openXmind(readFileSync(target))
     expect(reopened.status).toBe('ok')
+  })
+})
+
+describe('Save As lists the export types after .xmind', () => {
+  type DialogOptions = { defaultPath: string; filters: { name: string; extensions: string[] }[] }
+  const dialogOptions = (): DialogOptions => showSaveDialog.mock.calls[0]!.at(-1) as DialogOptions
+
+  async function openMap(): Promise<{ contents: FakeContents; path: string; bytes: Uint8Array }> {
+    const path = join(dir, 'map.xmind')
+    const bytes = await mapBytes()
+    writeFileSync(path, bytes)
+    const contents = view(path)
+    await open(contents, path)
+    return { contents, path, bytes }
+  }
+
+  it('offers .xmind first, then PNG, SVG, PDF and the outline, with no extension in the suggestion', async () => {
+    const { contents } = await openMap()
+    showSaveDialog.mockResolvedValue({ canceled: true })
+    const lang = getUiLang()
+    setUiLang('en')
+    try {
+      await save(contents, { bytes: await mapBytes(), mode: 'saveAs' })
+    } finally {
+      setUiLang(lang)
+    }
+    const options = dialogOptions()
+    expect(options.filters.map((filter) => filter.extensions)).toEqual([
+      ['xmind'],
+      ['png'],
+      ['svg'],
+      ['pdf'],
+      ['md'],
+    ])
+    expect(options.filters.map((filter) => filter.name)).toEqual([
+      'Mind Maps',
+      'PNG Image',
+      'SVG Image',
+      'PDF Documents',
+      'Markdown Outline',
+    ])
+    expect(options.defaultPath).toBe(join(dir, 'map'))
+  })
+
+  it('the first save of a new map still offers only .xmind', async () => {
+    const contents = view(null)
+    showSaveDialog.mockResolvedValue({ canceled: true })
+    await save(contents, { bytes: await mapBytes(), mode: 'save', defaultName: 'Plan' })
+    const options = dialogOptions()
+    expect(options.filters.map((filter) => filter.extensions)).toEqual([['xmind']])
+    expect(options.defaultPath.endsWith('Plan.xmind')).toBe(true)
+  })
+
+  it('an export type writes nothing here: the map keeps its file, and that path is granted once to that export', async () => {
+    const { contents, path, bytes } = await openMap()
+    call(MINDMAP_CHANNELS.dirtyChanged, contents, true)
+    const target = join(dir, 'copy.md')
+    showSaveDialog.mockResolvedValue({ canceled: false, filePath: target })
+    const pending = requestMindmapSave(contents as never, 'saveAs')
+    const result = await save(contents, { bytes: await mapBytes('Edited'), mode: 'saveAs' })
+    expect(result).toEqual({ ok: true, export: { format: 'markdown', path: target } })
+    // no save happened: the menu hears false, the file and its state stay as they were
+    expect(await pending).toBe(false)
+    expect(readFileSync(path).equals(Buffer.from(bytes))).toBe(true)
+    expect(readdirSync(dir)).toEqual(['map.xmind'])
+    expect(mindmapFilePath(contents.id)).toBe(path)
+    expect(mindmapIsDirty(contents.id)).toBe(true)
+
+    // the export writes the picked path without asking again, once
+    const exportOutline = (request: unknown) =>
+      call<Promise<unknown>>(MINDMAP_CHANNELS.exportMarkdown, contents, request)
+    expect(await exportOutline({ text: '# x', suggestedName: 'x', path: target })).toEqual({
+      ok: true,
+      path: target,
+    })
+    expect(readFileSync(target, 'utf8')).toBe('# x')
+    expect(showSaveDialog).toHaveBeenCalledTimes(1)
+    expect(await exportOutline({ text: 'again', suggestedName: 'x', path: target })).toMatchObject({
+      ok: false,
+    })
+    expect(readFileSync(target, 'utf8')).toBe('# x')
+    expect(mindmapFilePath(contents.id)).toBe(path)
+  })
+
+  it('a path Save As did not pick, or picked for another type, is refused', async () => {
+    const { contents } = await openMap()
+    const target = join(dir, 'copy.pdf')
+    showSaveDialog.mockResolvedValue({ canceled: false, filePath: target })
+    await save(contents, { bytes: await mapBytes(), mode: 'saveAs' })
+    const outline = (path: string) =>
+      call<Promise<unknown>>(MINDMAP_CHANNELS.exportMarkdown, contents, {
+        text: 'x',
+        suggestedName: 'x',
+        path,
+      })
+    expect(await outline(join(dir, 'elsewhere.md'))).toMatchObject({ ok: false })
+    // the PDF grant is no outline grant
+    expect(await outline(target)).toMatchObject({ ok: false })
+    expect(readdirSync(dir)).toEqual(['map.xmind'])
+  })
+
+  it('a bare name or .xmind saves the map as before', async () => {
+    const { contents } = await openMap()
+    showSaveDialog.mockResolvedValue({ canceled: false, filePath: join(dir, 'bare') })
+    const result = await save(contents, { bytes: await mapBytes('Copy'), mode: 'saveAs' })
+    expect(result).toEqual({ ok: true, path: join(dir, 'bare.xmind') })
+    expect(mindmapFilePath(contents.id)).toBe(join(dir, 'bare.xmind'))
+  })
+})
+
+describe('saving a new map into the project (spec 6)', () => {
+  const saveIntoProject = (contents: FakeContents, request: unknown) =>
+    call<Promise<SaveMindmapResult | { ok: false; skipped: true }>>(
+      MINDMAP_CHANNELS.saveIntoProject,
+      contents,
+      request,
+    )
+  const writer =
+    vi.fn<(id: number, fileName: string, bytes: Uint8Array) => Promise<string | null>>()
+
+  beforeEach(() => {
+    writer.mockReset()
+    writer.mockImplementation(async (_id, fileName, bytes) => {
+      const path = join(dir, fileName)
+      writeFileSync(path, bytes)
+      return path
+    })
+    configureMindmapRuntime({ preloadPath: '', writeNewDocument: writer })
+  })
+  afterEach(() => configureMindmapRuntime({ preloadPath: '' }))
+
+  it('hands a bare name and the bytes to the project writer; the map becomes that file', async () => {
+    const contents = view(null)
+    const bytes = await mapBytes()
+    const result = await saveIntoProject(contents, { bytes, defaultName: 'Trip: plan?' })
+    expect(result).toEqual({ ok: true, path: join(dir, 'Trip_ plan_.xmind') })
+    expect(writer).toHaveBeenCalledTimes(1)
+    const [id, fileName, written] = writer.mock.calls[0]!
+    expect(id).toBe(contents.id)
+    expect(fileName).toBe('Trip_ plan_.xmind')
+    expect(Buffer.from(written).equals(Buffer.from(bytes))).toBe(true)
+    expect(showSaveDialog).not.toHaveBeenCalled()
+    // later saves go to that file without a dialog
+    expect(mindmapFilePath(contents.id)).toBe(join(dir, 'Trip_ plan_.xmind'))
+    await save(contents, { bytes, mode: 'save' })
+    expect(showSaveDialog).not.toHaveBeenCalled()
+  })
+
+  it('an unnamed map gets the untitled name with .xmind', async () => {
+    const contents = view(null)
+    await saveIntoProject(contents, { bytes: await mapBytes() })
+    expect(writer.mock.calls[0]![1]).toMatch(/^[^\\/]+\.xmind$/)
+  })
+
+  it('without a project nothing is written and the map stays untitled', async () => {
+    writer.mockResolvedValue(null)
+    const contents = view(null)
+    expect(await saveIntoProject(contents, { bytes: await mapBytes() })).toEqual({
+      ok: false,
+      skipped: true,
+    })
+    expect(mindmapFilePath(contents.id)).toBeUndefined()
+    configureMindmapRuntime({ preloadPath: '' })
+    expect(await saveIntoProject(contents, { bytes: await mapBytes() })).toEqual({
+      ok: false,
+      skipped: true,
+    })
+  })
+
+  it('a refused write keeps the map untitled and gives the reason', async () => {
+    writer.mockRejectedValue(new Error('project folder write refused (exists): x'))
+    const contents = view(null)
+    const result = await saveIntoProject(contents, { bytes: await mapBytes() })
+    expect(result).toMatchObject({ ok: false })
+    expect((result as { error: string }).error).toContain('exists')
+    expect(mindmapFilePath(contents.id)).toBeUndefined()
+  })
+
+  it('a map with a file, a file that did not open and bytes that are no map are left alone', async () => {
+    const path = join(dir, 'map.xmind')
+    writeFileSync(path, await mapBytes())
+    const opened = view(path)
+    await open(opened, path)
+    expect(await saveIntoProject(opened, { bytes: await mapBytes() })).toEqual({
+      ok: false,
+      skipped: true,
+    })
+    const fresh = view(null)
+    expect(await saveIntoProject(fresh, { bytes: new Uint8Array([1, 2, 3]) })).toMatchObject({
+      ok: false,
+    })
+    expect(writer).not.toHaveBeenCalled()
   })
 })
 

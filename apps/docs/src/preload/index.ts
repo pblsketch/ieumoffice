@@ -1,15 +1,31 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import { driveAiBridge } from '@genoffice/electron-utils/drive-ai-bridge'
+import { generateEditorBridge } from '@genoffice/electron-utils/generate-editor-bridge'
+import { mcpToolsBridge } from '@genoffice/electron-utils/mcp-tools-bridge'
 import { outboundBridge } from '@genoffice/electron-utils/outbound-bridge'
+import { ACP_TOOL_BRIDGE_KEY } from '@genoffice/electron-utils/acp-tool-channels'
+import { acpToolBridge } from '@genoffice/electron-utils/acp-tool-bridge'
 import { userSkillsBridge } from '@genoffice/electron-utils/user-skills-bridge'
+import {
+  PROJECT_FOLDER_BRIDGE_KEY,
+  projectFolderBridge,
+} from '@genoffice/electron-utils/project-folder-bridge'
 import { USER_SKILLS_BRIDGE_KEY } from '@genoffice/electron-utils/user-skills-channels'
 import { docAttachBridge } from '@genoffice/electron-utils/doc-attach-bridge'
 import { DOC_ATTACH_BRIDGE_KEY } from '@genoffice/electron-utils/doc-attach-channels'
+import { connectorAttachBridge } from '@genoffice/electron-utils/connector-attach-bridge'
+import { CONNECTOR_ATTACH_BRIDGE_KEY } from '@genoffice/electron-utils/connector-attach-channels'
 import { splitPaneBridge } from '@genoffice/electron-utils/split-pane-bridge'
+import { createPrintLayoutBridge } from '@genoffice/electron-utils/print-layout-bridge'
+import { APP_CHOICE_BRIDGE_KEY, appChoiceBridge } from '@genoffice/electron-utils/app-choice-bridge'
 import type { IpcRendererEvent } from 'electron'
 import { SUBSCRIPTION_IPC_CHANNELS } from '@genoffice/ai-provider/browser'
 import { VIEW_IMAGE_CHANNEL } from '../shared/ipc'
-import { subscriptionLaunchResultOf, subscriptionStatusMapOf } from '../shared/subscription-api'
+import {
+  SUBSCRIPTION_USAGE_CHANNEL,
+  subscriptionLaunchResultOf,
+  subscriptionStatusMapOf,
+} from '../shared/subscription-api'
 import type { SubscriptionApi } from '../shared/subscription-api'
 import type { AiPanelPrefs } from '@genoffice/ui'
 import type {
@@ -18,15 +34,18 @@ import type {
   AiStreamChunk,
   AiStreamRequest,
   DesktopApi,
+  DocsPrintJobRequest,
   PdfInternalLink,
   MarkdownImage,
   PrintJobOptions,
   MenuCommand,
   AutoSaveDefault,
+  PrintPaper,
   ContextMenuRequest,
   DocTheme,
   UiTheme,
   ZoteroRendererRequest,
+  MergeOutputRequest,
 } from '../shared/ipc'
 import type { DocFormat } from '../shared/open-file'
 import type { ProjectApi } from '@genoffice/project-store'
@@ -170,8 +189,12 @@ const api: DesktopApi = {
   spellReplace: (word: string) => ipcRenderer.invoke('docs:spell-replace', word),
   spellLanguages: () => ipcRenderer.invoke('docs:spell-languages'),
   spellSetLanguages: (langs: string[]) => ipcRenderer.invoke('docs:spell-set-languages', langs),
-  pickSaveAsPath: (defaultName: string, sourcePath: string | null, format: DocFormat) =>
-    ipcRenderer.invoke('docs:save-as-pick', defaultName, sourcePath, format),
+  pickSaveAsPath: (
+    defaultName: string,
+    sourcePath: string | null,
+    format: DocFormat,
+    offerExports?: boolean,
+  ) => ipcRenderer.invoke('docs:save-as-pick', defaultName, sourcePath, format, offerExports),
   saveDocxAs: (path: string, data: ArrayBuffer, sourcePath?: string | null) =>
     ipcRenderer.invoke('docs:save-as', path, data, sourcePath ?? null),
   materializeDocx: (data: ArrayBuffer) => ipcRenderer.invoke('docs:materialize-docx', data),
@@ -179,6 +202,8 @@ const api: DesktopApi = {
     ipcRenderer.invoke('docs:capture-rect', rect),
   saveDocxNew: (defaultName: string, data: ArrayBuffer) =>
     ipcRenderer.invoke('docs:save-new', defaultName, data),
+  saveDocxIntoProject: (defaultName: string, format: DocFormat, data: ArrayBuffer) =>
+    ipcRenderer.invoke('docs:save-into-project', defaultName, format, data),
   saveDocxTo: (path: string, data: ArrayBuffer, overwrite: boolean) =>
     ipcRenderer.invoke('docs:save-to', path, data, overwrite === true),
   onMcpCommand: (handler) => {
@@ -191,9 +216,13 @@ const api: DesktopApi = {
   signalMcpReady: () => ipcRenderer.send('docs:mcp-ready'),
   getRecentFiles: () => ipcRenderer.invoke('docs:recent'),
   pickImage: () => ipcRenderer.invoke('docs:pick-image'),
+  pickMergeDataSource: () => ipcRenderer.invoke('docs:merge-data-source'),
+  writeMergeOutput: (request: MergeOutputRequest) =>
+    ipcRenderer.invoke('docs:merge-output', request),
   fontMetrics: (family: string) => ipcRenderer.invoke('docs:font-metrics', family),
   fontFamilyInfo: (families) => ipcRenderer.invoke('app:font-family-info', families),
-  print: (scale?: number, job?: PrintJobOptions) => ipcRenderer.invoke('docs:print', scale, job),
+  print: (scale?: number, job?: PrintJobOptions, paper?: PrintPaper) =>
+    ipcRenderer.invoke('docs:print', scale, job, paper),
   listPrinters: () => ipcRenderer.invoke('docs:printers'),
   exportPdf: (
     defaultName: string,
@@ -214,12 +243,17 @@ const api: DesktopApi = {
     ),
   exportHtml: (defaultName: string, html: string, outPath?: string) =>
     ipcRenderer.invoke('docs:export-html', defaultName, html, outPath),
+  exportHwp: (defaultName: string, docx: ArrayBuffer, outPath?: string, passwordSet?: boolean) =>
+    ipcRenderer.invoke('docs:export-hwp', defaultName, docx, outPath, passwordSet),
   exportMarkdown: (
     defaultName: string,
     markdown: string,
     images: MarkdownImage[],
     outPath?: string,
   ) => ipcRenderer.invoke('docs:export-markdown', defaultName, markdown, images, outPath),
+  printLayout: createPrintLayoutBridge<DocsPrintJobRequest>(ipcRenderer, 'docs'),
+  printSelectionPdf: (docx: ArrayBuffer, sectPr: string | null) =>
+    ipcRenderer.invoke('docs:print-selection-pdf', docx, sectPr),
   printPdfBuffer: (pageWidthTwips: number, pageHeightTwips: number, scale?: number) =>
     ipcRenderer.invoke('docs:print-pdf-buffer', pageWidthTwips, pageHeightTwips, scale),
   saveMergedPdf: (
@@ -258,7 +292,7 @@ const api: DesktopApi = {
   analyzeMedia: (op: { mediaUrls: string[]; requirements: string }) =>
     ipcRenderer.invoke('docs:analyze-media', op),
   fetchImage: (url: string) => ipcRenderer.invoke('ai:fetch-image', url),
-  aiGenerateImage: (op: { prompt: string; aspectRatio?: string }) =>
+  aiGenerateImage: (op: { prompt: string; aspectRatio?: string; model?: string }) =>
     ipcRenderer.invoke('docs:ai-generate-image', op),
   pickAttachments: () => ipcRenderer.invoke('files:pick'),
   addAttachmentPaths: (paths: string[]) => ipcRenderer.invoke('files:add', paths),
@@ -335,9 +369,12 @@ const subscriptionApi: SubscriptionApi = {
       ),
     )
   },
-  async login(provider) {
+  async login(provider, mode) {
     return subscriptionLaunchResultOf(
-      await ipcRenderer.invoke(SUBSCRIPTION_IPC_CHANNELS.login, { provider }),
+      await ipcRenderer.invoke(
+        SUBSCRIPTION_IPC_CHANNELS.login,
+        mode ? { provider, mode } : { provider },
+      ),
     )
   },
   async install(provider) {
@@ -369,20 +406,39 @@ const subscriptionApi: SubscriptionApi = {
     ipcRenderer.on(SUBSCRIPTION_IPC_CHANNELS.changed, listener)
     return () => ipcRenderer.removeListener(SUBSCRIPTION_IPC_CHANNELS.changed, listener)
   },
+  onUsage(handler) {
+    const listener = (_event: unknown, usage: unknown) => handler(Array.isArray(usage) ? usage : [])
+    ipcRenderer.on(SUBSCRIPTION_USAGE_CHANNEL, listener)
+    return () => ipcRenderer.removeListener(SUBSCRIPTION_USAGE_CHANNEL, listener)
+  },
 }
 
 contextBridge.exposeInMainWorld('desktop', api)
 // Google Drive for this editor's AI: search and read only (decision 0033)
 contextBridge.exposeInMainWorld('aiOfficeDriveAi', driveAiBridge())
 contextBridge.exposeInMainWorld('aiOfficeOutbound', outboundBridge())
+contextBridge.exposeInMainWorld(ACP_TOOL_BRIDGE_KEY, acpToolBridge())
+// the person's MCP servers for this editor's AI: list and call approved tools (the shell checks each)
+contextBridge.exposeInMainWorld('aiOfficeMcpTools', mcpToolsBridge())
 // the person's skills: the AI panel's `/` list and skill reads, skill cards (shell main checks each)
 contextBridge.exposeInMainWorld(USER_SKILLS_BRIDGE_KEY, userSkillsBridge())
 // The shell's document picker, for this editor's AI attach button
 contextBridge.exposeInMainWorld(DOC_ATTACH_BRIDGE_KEY, docAttachBridge())
+contextBridge.exposeInMainWorld(CONNECTOR_ATTACH_BRIDGE_KEY, connectorAttachBridge())
 contextBridge.exposeInMainWorld('projectApi', projectApi)
+// project folders (decision 0088): main identifies this window, the bridge forwards ids only
+contextBridge.exposeInMainWorld(PROJECT_FOLDER_BRIDGE_KEY, projectFolderBridge(ipcRenderer))
 contextBridge.exposeInMainWorld('aiOfficeSubscription', subscriptionApi)
 // The shell's split panes: which pane this view is, and focus requests for it
 contextBridge.exposeInMainWorld('aiOfficeSplit', splitPaneBridge(ipcRenderer))
+// Settings › Editors and AI: the screen reads and hears the choice (hides its AI parts
+// while AI is off); changing it or stopping AI jobs is the shell's alone
+const editorChoice = appChoiceBridge()
+contextBridge.exposeInMainWorld(APP_CHOICE_BRIDGE_KEY, {
+  get: editorChoice.get,
+  onChange: editorChoice.onChange,
+})
 
+contextBridge.exposeInMainWorld('aiOfficeGenerateEditor', generateEditorBridge())
 // open documents dragged from the OS onto this tab as a new shell tab
 installDropOpenBridge()

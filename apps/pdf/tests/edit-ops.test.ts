@@ -642,6 +642,41 @@ describe('in-place updates of pending records', () => {
     expect(b.state.textInserts[0]!.input).toMatchObject({ text: 'x', origin: [5, 6] })
   })
 
+  it('patchTextInsert drops selection styles when the text is retyped', () => {
+    const styleRuns = [{ start: 0, end: 1, color: [200, 0, 0] }]
+    const a = run(empty(), [
+      { op: 'addTextInsert', input: { pageIndex: 0, text: 'ab', origin: [1, 1], styleRuns } },
+    ])
+    const id = a.state.textInserts[0]!.id
+    const moved = run(a.state, [{ op: 'patchTextInsert', id, input: { origin: [5, 6] } }])
+    expect(moved.state.textInserts[0]!.input.styleRuns).toEqual(styleRuns)
+    const retyped = run(a.state, [{ op: 'patchTextInsert', id, input: { text: 'xyz' } }])
+    expect(retyped.state.textInserts[0]!.input.styleRuns).toBeUndefined()
+  })
+
+  it('scan edits keep their flags: a patch hides words, a run deletion has no preview', () => {
+    const a = run(empty(), [
+      {
+        op: 'addImageEdit',
+        input: {
+          kind: 'insertImage',
+          pageIndex: 0,
+          image: 'x',
+          rect: [0, 0, 1, 1],
+          layer: 'belowText',
+        },
+        scanPatch: true,
+      },
+      {
+        op: 'putTextEdit',
+        input: { pageIndex: 0, rect: [0, 0, 1, 1], oldText: 'a', newText: '', fontSize: 9 },
+        scanLayer: true,
+      },
+    ])
+    expect(a.state.imageEdits[0]!.scanPatch).toBe(true)
+    expect(a.state.textEdits[0]!.scanLayer).toBe(true)
+  })
+
   it('patchImageEdit merges input fields, sets or clears opacityBase, and skips deletes', () => {
     const oldRect: [number, number, number, number] = [0, 0, 10, 10]
     const a = run(empty(), [
@@ -793,5 +828,32 @@ describe('edit-op geometry rejects non-finite numbers', () => {
     )
     expect(plan.ops).toEqual([])
     expect(plan.failures).toHaveLength(1)
+  })
+})
+
+describe('link drawings', () => {
+  const link = (over: Record<string, unknown> = {}) => ({
+    kind: 'link' as const,
+    pageIndex: 0,
+    rect: [10, 10, 100, 40] as [number, number, number, number],
+    ...over,
+  })
+
+  it('accepts a link with exactly one of url or destPage', () => {
+    const a = run(empty(), [{ op: 'addDrawing', drawing: link({ url: 'https://example.com' }) }])
+    expect(a.state.drawings).toHaveLength(1)
+    const b = run(empty(), [{ op: 'addDrawing', drawing: link({ destPage: 2 }) }])
+    expect(b.state.drawings).toHaveLength(1)
+  })
+
+  it('rejects a link with neither or both targets, and non-positive pages', () => {
+    const plan = (drawing: Record<string, unknown>) =>
+      planEditOps([{ op: 'addDrawing', drawing }], ctx(), newId)
+    expect(plan(link()).failures[0]?.error).toMatch(/exactly one/)
+    expect(plan(link({ url: 'https://a.com', destPage: 1 })).failures[0]?.error).toMatch(
+      /exactly one/,
+    )
+    expect(plan(link({ destPage: 0 })).failures[0]?.error).toMatch(/1-based/)
+    expect(plan(link({ destPage: 1.5 })).failures[0]?.error).toMatch(/1-based/)
   })
 })

@@ -6,7 +6,12 @@ import {
   type RangeBounds,
 } from '@genoffice/xlsx-gateway/domain/cell-address'
 import { InMemoryWorkbookAdapter } from '@genoffice/xlsx-gateway/domain/in-memory-workbook'
-import type { ChangePlan, WorkbookSnapshot } from '@genoffice/xlsx-gateway/domain/workbook.types'
+import type {
+  ChangePlan,
+  CellState,
+  WorkbookSnapshot,
+  WorksheetState,
+} from '@genoffice/xlsx-gateway/domain/workbook.types'
 import type {
   CellFormatPatch,
   FillPatch,
@@ -30,6 +35,7 @@ import {
 import type { StructuralOp } from '@genoffice/xlsx-gateway/gateway/xlsx-structure'
 import type { DefinedNameEntry } from '@genoffice/xlsx-gateway/gateway/xlsx-defined-names'
 import type { SheetNote } from '@genoffice/xlsx-gateway/gateway/xlsx-notes'
+import { parseLegacyComments } from '@genoffice/xlsx-gateway/gateway/xlsx-threaded-comments'
 import type { WorkbookStyleEdit } from '@genoffice/xlsx-gateway/shared/edit-schemas'
 import {
   expandToPrimitiveOps,
@@ -41,6 +47,7 @@ import {
 } from '@genoffice/xlsx-gateway/domain/workbook-dsl'
 import JSZip from 'jszip'
 import { PRODUCT_NAME } from '@genoffice/i18n'
+import { loadUserZip } from './gated-zip'
 import type { PathContext } from '../fs'
 import { classifyOpError } from '../op-errors'
 import { CliError, EXIT, type ErrorHints, type ErrorReason } from '../result'
@@ -211,6 +218,59 @@ export async function runWorkbookDsl(
   const fallback = defaultSheet ?? active ?? snapshot.sheets[0]?.name
   const convertWarnings: string[] = []
   const frozen = new Map<string, unknown>()
+  // A chart over formula results: the editable model keeps formulas valueless
+  // (the file's cached <v> is dropped), so the numeric-column check refuses a
+  // Total column — the most common thing to chart. Fill the sidecar's computed
+  // values into the rehearsal snapshot for each add_chart dataRange up front:
+  // value only, the formula stays, no cell change results from it, and a cell
+  // an earlier op rewrites takes that op's state (formula and null value) and
+  // is still rejected, the same batch-order hazard convert_to_values guards.
+  if (opts.sourcePath !== undefined) {
+    const filled = new Set<string>()
+    for (const raw of rawOps) {
+      const op = raw as { op?: unknown; sheet?: unknown; sheetId?: unknown; dataRange?: unknown }
+      if (op.op !== 'add_chart' || typeof op.dataRange !== 'string') continue
+      const wanted =
+        typeof op.sheet === 'string'
+          ? op.sheet
+          : typeof op.sheetId === 'string'
+            ? op.sheetId
+            : fallback
+      if (wanted === undefined) continue
+      const name = idByName.has(wanted) ? wanted : (imported.sheetNamesById[wanted] ?? undefined)
+      const sheetState =
+        name === undefined ? undefined : snapshot.sheets.find((s) => s.name === name)
+      if (sheetState === undefined) continue
+      let bounds: RangeBounds
+      try {
+        bounds = parseRange(op.dataRange)
+      } catch {
+        continue // an invalid range is the rehearsal's rejection to raise
+      }
+      if (filled.has(`${name}!${op.dataRange}`)) continue
+      const pending = rangeAddresses(bounds).filter((address) => {
+        const cell = sheetState.cells[address]
+        return cell?.formula !== undefined && (cell.value ?? null) === null
+      })
+      filled.add(`${name}!${op.dataRange}`)
+      if (pending.length === 0) continue
+      const values = await computedValues(opts.sourcePath, name!, bounds)
+      const cells = { ...sheetState.cells } as Record<string, CellState>
+      let filledAny = false
+      for (const address of pending) {
+        const { row, column } = parseAddress(address)
+        const computed = values.get(`${row}|${column}`)
+        if (computed && !computed.isError && computed.value !== null) {
+          cells[address] = { ...cells[address]!, value: computed.value }
+          filledAny = true
+        }
+      }
+      if (filledAny) {
+        const sheets = snapshot.sheets as WorksheetState[]
+        sheets[sheets.indexOf(sheetState)] = { ...sheetState, cells }
+      }
+    }
+  }
   const adapter = new InMemoryWorkbookAdapter(snapshot)
   const before = adapter.getSnapshot()
   // one plan per op, applied before the next is planned: sort_range / find_replace
@@ -273,6 +333,15 @@ export async function runWorkbookDsl(
         const sheetId = 'sheetId' in typed ? typed.sheetId : undefined
         labels.push(sheetId ? label.replaceAll(sheetId, idByName_(live, sheetId)) : label)
         continue
+      }
+      const clash = sheetNameClash(op, adapter.getSnapshot().sheets)
+      if (clash) {
+        throw new CliError(
+          EXIT.usage,
+          `ops[${index}] (${op.op}) rejected: ${clash}`,
+          pinned(index, op.op, clash),
+          OP_REJECTED,
+        )
       }
       let plan: ChangePlan
       try {
@@ -775,7 +844,7 @@ interface WorkbookMeta extends WorkbookFileState {
  * (rules, filter, notes) so existing content is carried or the op refused.
  */
 async function readWorkbookMeta(source: Buffer): Promise<WorkbookMeta> {
-  const zip = await JSZip.loadAsync(source)
+  const zip = await loadUserZip(source)
   const workbook = (await zip.file('xl/workbook.xml')?.async('string')) ?? ''
   const rels = (await zip.file('xl/_rels/workbook.xml.rels')?.async('string')) ?? ''
   const targets = new Map(
@@ -861,19 +930,10 @@ async function readNotes(zip: JSZip, sheetPath: string): Promise<SheetNote[]> {
     : normalizePath(`${dir}${rel.target}`)
   const xml = await zip.file(target)?.async('string')
   if (!xml) return []
-  const authors = [...xml.matchAll(/<author>([\s\S]*?)<\/author>/g)].map((m) => unescapeXml(m[1]!))
-  const notes: SheetNote[] = []
-  for (const m of xml.matchAll(/<comment\b([^>]*)>([\s\S]*?)<\/comment>/g)) {
-    const ref = /\bref="([^"]+)"/.exec(m[1]!)?.[1]
-    if (!ref) continue
-    const authorId = /\bauthorId="(\d+)"/.exec(m[1]!)?.[1]
+  return [...parseLegacyComments(xml)].map(([ref, note]) => {
     const { row, column } = parseAddress(ref)
-    const text = [...m[2]!.matchAll(/<t\b[^>]*>([\s\S]*?)<\/t>/g)]
-      .map((t) => unescapeXml(t[1]!))
-      .join('')
-    notes.push({ row, column, author: authors[Number(authorId ?? 0)] ?? '', text })
-  }
-  return notes
+    return { row, column, author: note.author, text: note.text }
+  })
 }
 
 /** Modeled names only: Excel's `_xlnm.*` built-ins and hidden names stay in the file untouched. */
@@ -1072,6 +1132,27 @@ function fillSpec(fill: FillPatch): FillSpec {
     fg: normalizeStyleColor(fill.fg),
     ...(fill.bg === undefined ? {} : { bg: normalizeStyleColor(fill.bg) }),
   }
+}
+
+/**
+ * Excel compares sheet names without regard to case, and a workbook holding "Data" and
+ * "data" opens with a repair prompt. The in-memory adapter compares exactly, so the
+ * case-only clash is refused here, with the adapter's own message. A sheet renamed
+ * to its own name in another case is still a rename.
+ */
+function sheetNameClash(
+  op: NormalizedOp,
+  sheets: readonly { id: string; name: string }[],
+): string | undefined {
+  if ((op.op !== 'add_sheet' && op.op !== 'rename_sheet') || typeof op.name !== 'string') {
+    return undefined
+  }
+  const wanted = op.name.toLowerCase()
+  const taken = sheets.some(
+    (sheet) =>
+      sheet.name.toLowerCase() === wanted && (op.op === 'add_sheet' || sheet.id !== op.sheetId),
+  )
+  return taken ? `A sheet named "${op.name}" already exists.` : undefined
 }
 
 function describeError(err: unknown): string {

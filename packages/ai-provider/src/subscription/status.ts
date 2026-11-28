@@ -14,8 +14,11 @@
  * account is for the Settings card alone: it stays in the status in memory and
  * is never written anywhere. The organisation is dropped as before.
  */
+import { realpath } from 'node:fs/promises'
+import { detectChatGptConnection } from '../chatgpt/status'
 import { AI_SUBSCRIPTION_PROVIDERS } from '../providers'
 import type {
+  AiSubscriptionCliId,
   AiSubscriptionLoginMethod,
   AiSubscriptionProviderId,
   AiSubscriptionState,
@@ -25,6 +28,7 @@ import {
   subscriptionAccountOf,
   subscriptionStatusErrorText,
   subscriptionVersionAtLeast,
+  subscriptionVersionOf,
   type SubscriptionStatusErrorKind,
 } from './contract'
 import {
@@ -41,6 +45,9 @@ import {
 
 /** A status check that has not answered by then is an `error` */
 export const SUBSCRIPTION_STATUS_TIMEOUT_MS = 20_000
+
+/** Antigravity ACP `session/new` can fall back across Google endpoints (~12-15s) */
+const ANTIGRAVITY_STATUS_TIMEOUT_MS = 30_000
 
 /** What a CLI says about its login; of the account identity only the e-mail address is kept */
 export type SubscriptionLogin =
@@ -63,10 +70,11 @@ export type SubscriptionLogin =
 /**
  * Outcome of one status check, before the stored metered acceptance is applied.
  * `state` is never `checking`: that is the status of a provider not checked yet.
+ * Nor `off`: a CLI turned off in this app is not checked at all.
  */
 export interface SubscriptionDetection {
   provider: AiSubscriptionProviderId
-  state: Exclude<AiSubscriptionState, 'checking'>
+  state: Exclude<AiSubscriptionState, 'checking' | 'off'>
   version?: string
   loginMethod?: AiSubscriptionLoginMethod
   planName?: string
@@ -88,6 +96,17 @@ export type CodexAccountSource = (context: {
   signal: AbortSignal
 }) => Promise<unknown>
 
+/**
+ * Antigravity login check supplied by the ACP module (`antigravity-acp.ts`).
+ * Runs `agy acp` initialize + session/new (no model call) to read login state
+ * and tier without invoking a separate unsupported CLI subcommand.
+ */
+export type AntigravityStatusSource = (context: {
+  program: SubscriptionProgram
+  signal: AbortSignal
+  timeoutMs: number
+}) => Promise<SubscriptionLogin | null>
+
 export interface SubscriptionDetectOptions {
   /** the user's own path to the CLI (the Codex `cliPath` setting) */
   configuredPath?: string | undefined
@@ -96,6 +115,8 @@ export interface SubscriptionDetectOptions {
   run?: SubscriptionRunner | undefined
   /** overrides the source set with `setCodexAccountSource`; null turns it off */
   codexAccount?: CodexAccountSource | null | undefined
+  /** overrides the source set with `setAntigravityStatusSource`; null turns it off */
+  antigravityStatus?: AntigravityStatusSource | null | undefined
 }
 
 export type SubscriptionDetector = (
@@ -137,12 +158,19 @@ const CODEX_LOGIN_KINDS = [
   'no-account',
 ] as const
 
+const ANTIGRAVITY_LOGIN_KINDS = [
+  'antigravity-subscription',
+  'antigravity-enterprise',
+  'antigravity-api-key',
+  'no-account',
+] as const
+
 type CodexLoginKind = (typeof CODEX_LOGIN_KINDS)[number]
 
 /**
  * Every value a `loginKind` can take. Claude: `<authMethod>/<apiProvider>`, each
- * half from its list above or `unknown`. Codex: one of its list. All of them
- * are constants of this file; none is built from what a CLI printed.
+ * half from its list above or `unknown`. Codex and Antigravity: one of their
+ * listed constants. None is built from what a CLI printed.
  */
 export const SUBSCRIPTION_LOGIN_KINDS: readonly string[] = [
   UNKNOWN_KIND,
@@ -150,6 +178,7 @@ export const SUBSCRIPTION_LOGIN_KINDS: readonly string[] = [
     [...CLAUDE_API_PROVIDER_KINDS, UNKNOWN_KIND].map((api) => `${auth}/${api}`),
   ),
   ...CODEX_LOGIN_KINDS,
+  ...ANTIGRAVITY_LOGIN_KINDS,
 ]
 
 /** `value` when it is one of the listed kinds, the fixed token `unknown` otherwise */
@@ -288,6 +317,7 @@ export function codexAccountInfo(accountRead: unknown): SubscriptionLogin | null
 }
 
 let codexAccountSource: CodexAccountSource | null = null
+let antigravityStatusSource: AntigravityStatusSource | null = null
 
 /**
  * Let the Codex bridge supply `account/read` to the status check (plan name,
@@ -296,6 +326,14 @@ let codexAccountSource: CodexAccountSource | null = null
  */
 export function setCodexAccountSource(source: CodexAccountSource | null): void {
   codexAccountSource = source
+}
+
+/**
+ * Let the Antigravity ACP bridge supply the sign-in and tier status check
+ * (`initialize` + `session/new`, no model call). Pass null to remove it.
+ */
+export function setAntigravityStatusSource(source: AntigravityStatusSource | null): void {
+  antigravityStatusSource = source
 }
 
 /**
@@ -363,10 +401,6 @@ function loginDetection(
   }
 }
 
-function parseVersion(output: string): string | undefined {
-  return /\d+\.\d+\.\d+/.exec(output)?.[0]
-}
-
 const UNKNOWN_COMMAND =
   /unknown (command|option)|unrecognized (subcommand|option)|unexpected argument/i
 
@@ -380,13 +414,13 @@ function errorCodeSuffix(error: unknown): string {
   return typeof code === 'string' && /^E[A-Z0-9_]{1,30}$/.test(code) ? ` (${code})` : ''
 }
 
-const STATUS_ARGS: Record<AiSubscriptionProviderId, string[]> = {
+const STATUS_ARGS: Record<Exclude<AiSubscriptionCliId, 'antigravity'>, string[]> = {
   'claude-code': ['auth', 'status', '--json'],
   codex: ['login', 'status'],
 }
 
 function parseStatus(
-  provider: AiSubscriptionProviderId,
+  provider: Exclude<AiSubscriptionCliId, 'antigravity'>,
   result: SubscriptionCommandResult,
 ): SubscriptionLogin | null {
   return provider === 'claude-code'
@@ -394,8 +428,16 @@ function parseStatus(
     : parseCodexLoginStatus(`${result.stderr}\n${result.stdout}`)
 }
 
+/**
+ * The command is often a link (`/opt/homebrew/bin/claude`); the file behind it
+ * tells a Homebrew copy, which only Homebrew updates, from the others.
+ */
+async function programFileOf(program: SubscriptionProgram): Promise<string> {
+  return realpath(program.entry).catch(() => program.entry)
+}
+
 async function inspect(
-  provider: AiSubscriptionProviderId,
+  provider: AiSubscriptionCliId,
   options: SubscriptionDetectOptions,
   signal: AbortSignal,
   timeoutMs: number,
@@ -422,7 +464,7 @@ async function inspect(
   try {
     if (minimum) {
       // version first: nothing else is asked of a CLI that may not know the question
-      version = parseVersion((await ask(['--version'])).stdout)
+      version = subscriptionVersionOf((await ask(['--version'])).stdout)
       if (!version) {
         return errorDetection(provider, 'failed', `${name} did not report its version`)
       }
@@ -432,11 +474,33 @@ async function inspect(
           'needs-update',
           `${name} ${version} is too old; version ${minimum} or newer is required`,
           version,
-          program.entry,
+          await programFileOf(program),
         )
+      }
+      if (provider === 'antigravity') {
+        const source =
+          options.antigravityStatus === undefined
+            ? antigravityStatusSource
+            : options.antigravityStatus
+        if (!source) {
+          return errorDetection(provider, 'failed', `${name} status check is unavailable`, version)
+        }
+        const agyLogin = await source({ program, signal, timeoutMs })
+        if (!agyLogin) {
+          return errorDetection(
+            provider,
+            'failed',
+            `${name} did not report its login status`,
+            version,
+          )
+        }
+        return loginDetection(provider, version, agyLogin)
       }
       status = await ask(STATUS_ARGS[provider])
     } else {
+      if (provider === 'antigravity') {
+        return errorDetection(provider, 'failed', `${name} status check is unavailable`, version)
+      }
       const source = options.codexAccount === undefined ? codexAccountSource : options.codexAccount
       const [versionResult, statusResult, accountResult] = await Promise.all([
         ask(['--version']).catch(() => null),
@@ -445,7 +509,7 @@ async function inspect(
           ? source({ configuredPath: options.configuredPath, signal }).catch(() => null)
           : null,
       ])
-      version = versionResult ? parseVersion(versionResult.stdout) : undefined
+      version = versionResult ? subscriptionVersionOf(versionResult.stdout) : undefined
       status = statusResult
       account = codexAccountInfo(accountResult)
     }
@@ -472,7 +536,7 @@ async function inspect(
         'needs-update',
         `${name}${version ? ` ${version}` : ''} is too old to report its login status`,
         version,
-        program.entry,
+        await programFileOf(program),
       )
     }
     // what the CLI printed instead stays here: it may name the account
@@ -493,7 +557,11 @@ async function inspect(
  * that outlasts `timeoutMs` included, is an `error` detection.
  */
 export const detectSubscriptionLogin: SubscriptionDetector = async (provider, options = {}) => {
-  const timeoutMs = options.timeoutMs ?? SUBSCRIPTION_STATUS_TIMEOUT_MS
+  // no program: the app's own sign-in is what there is to look at
+  if (provider === 'chatgpt') return detectChatGptConnection()
+  const timeoutMs =
+    options.timeoutMs ??
+    (provider === 'antigravity' ? ANTIGRAVITY_STATUS_TIMEOUT_MS : SUBSCRIPTION_STATUS_TIMEOUT_MS)
   const controller = new AbortController()
   let timer: ReturnType<typeof setTimeout> | undefined
   const deadline = new Promise<SubscriptionDetection>((resolve) => {

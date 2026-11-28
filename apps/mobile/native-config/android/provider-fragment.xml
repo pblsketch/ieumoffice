@@ -1,0 +1,11 @@
+<!-- IEUM_MOBILE_NATIVE_CONFIG_START -->
+<provider
+    android:name="androidx.core.content.FileProvider"
+    android:authorities="com.ieumoffice.mobile.fileprovider"
+    android:exported="false"
+    android:grantUriPermissions="true">
+    <meta-data
+        android:name="android.support.FILE_PROVIDER_PATHS"
+        android:resource="@xml/file_paths" />
+</provider>
+<!-- IEUM_MOBILE_NATIVE_CONFIG_END -->

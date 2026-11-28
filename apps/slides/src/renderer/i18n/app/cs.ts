@@ -1,6 +1,8 @@
 import type { zh } from './zh'
 
 export const cs = {
+  appLegacyPptImported:
+    'Soubor .ppt byl otevřen jako převedená kopie .pptx. Původní soubor zůstává beze změny; uložením vznikne nový soubor .pptx. Poznámky řečníka a animace se nepřenášejí.',
   redactMenuLabel: 'Skrýt výběr před AI',
   redactDialogDesc:
     'Vybraný obsah zůstane v dokumentu i v souboru; model uvidí jen zástupný symbol. Pojmenujte ho, aby věděl, co zastupuje.',
@@ -172,6 +174,9 @@ export const cs = {
   appPrintLandscape: 'Na šířku',
   appPrintFrame: 'Orámovat snímky',
   appPrintHidden: 'Tisknout skryté snímky',
+  appPrintRangeSelected: 'Vybrané snímky',
+  appPrintLayoutBlocked:
+    'Podklady a stránky poznámek se tisknou po jedné stránce na list. Chcete-li stránky uspořádat, zvolte Snímky na celou stránku.',
   appPrintPageCount: '{n} stránek',
   appPrintNoPages: 'Žádné snímky k tisku',
   appPrintRendering: 'Generuje se náhled…',
@@ -181,6 +186,7 @@ export const cs = {
   appCtxSendToBack: 'Přenést do pozadí',
   appCtxBringForward: 'Přenést blíž',
   appCtxSendBackward: 'Přenést dál',
+  appCtxRotate: 'Otočit',
   appCtxRotateLeft90: 'Otočit vlevo o 90°',
   appCtxRotateRight90: 'Otočit vpravo o 90°',
   appCtxFlipH: 'Překlopit vodorovně',
@@ -220,6 +226,8 @@ export const cs = {
   appMasterFillNone: 'Bez výplně',
   appMasterStroke: 'Barva obrysu…',
   appMasterStrokeNone: 'Bez obrysu',
+  appMasterInsertTextBox: 'Textové pole',
+  appMasterInsertShape: 'Obrazce',
   appStartOpening: 'Otevírá se…',
   appReadingSlideTitle:
     'Kliknutím přejdete na další snímek (zobrazení pro čtení ukončíte klávesou Esc)',
@@ -256,4 +264,12 @@ export const cs = {
   appStatusSummaryZoomInserted: 'Vložen souhrnný snímek Zoom s {count} dlaždicemi',
   appSectionSummary: 'Souhrnný oddíl',
   appSectionN: 'Oddíl {n}',
+  appStatusAnimPainterNone: 'Vybraný prvek nemá žádné animace',
+  appStatusAnimPainterOnce:
+    'Klikněte na prvek, na který chcete animace použít; dvojklikem na tlačítko zapnete nepřetržitý režim',
+  appStatusAnimPainterContinuous: 'Nepřetržitý režim Kopírovat animaci; ukončíte klávesou Esc',
+  appStatusAnimPainted: 'Animace použity',
+  appStatusMergeUnsupported:
+    'Tyto obrazce nelze sloučit (čáry, obrázky, tabulky, grafy a některé obrazce jsou vynechány)',
+  appStatusMergeEmpty: 'Po sloučení nic nezůstalo (obrazce se nepřekrývají)',
 } satisfies Record<keyof typeof zh, string>

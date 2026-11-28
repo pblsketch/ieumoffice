@@ -20,7 +20,7 @@ const MAX_ROW_CELL_PARAGRAPHS = 3
  * node_modules; the packaged app has no node_modules and ships it under
  * Resources/wasm (apps/shell/electron-builder.cjs), like the PDF engines.
  */
-function rhwpWasmPath(): string {
+export function rhwpWasmPath(): string {
   const fromEnv = process.env.GENOFFICE_RHWP_WASM
   if (fromEnv) return fromEnv
   try {
@@ -136,6 +136,43 @@ function rowText(cells: string[]): string {
   return cells.slice(0, end).join(' | ')
 }
 
+/** A memo as the engine lists it; `page` is 1-based and 0 when it has no page. */
+interface Memo {
+  author?: string
+  text?: string
+  page?: number
+}
+
+/**
+ * The document's memos as a `### Comments` block, in the document order the engine
+ * already sorts them in. A document without memos gets no block, so its text is
+ * exactly what it was before memos were read. Memos that cannot be listed are left out
+ * rather than failing the read of a body that could be read.
+ */
+function commentLines(doc: HwpDocument): string[] {
+  let memos: Memo[]
+  try {
+    const listed = JSON.parse(doc.getMemoList()) as unknown
+    memos = Array.isArray(listed) ? (listed as Memo[]) : []
+  } catch {
+    return []
+  }
+  if (memos.length === 0) return []
+  const lines = ['### Comments']
+  for (const memo of memos) {
+    const author = memo.author?.trim() || 'unknown'
+    const page = typeof memo.page === 'number' && memo.page > 0 ? ` (p.${memo.page})` : ''
+    const [first = '', ...rest] = String(memo.text ?? '')
+      .replace(/\r\n/g, '\n')
+      .split('\n')
+    // a memo saved with a closing newline should not leave a blank line after the block
+    while (rest.length > 0 && rest[rest.length - 1] === '') rest.pop()
+    lines.push(`- ${author}${page}:${first ? ` ${first}` : ''}`)
+    for (const line of rest) lines.push(line ? `  ${line}` : '')
+  }
+  return lines
+}
+
 /** The body of the document, paragraph by paragraph, each followed by the tables it holds. */
 function bodyEntries(doc: HwpDocument): Entry[] {
   const entries: Entry[] = []
@@ -212,6 +249,70 @@ function withMissingText(entries: Entry[], flat: string): string[] {
   return out
 }
 
+/** One memo as the engine lists it: where its anchor sits in the body, and the note itself. */
+export interface HwpMemo {
+  id?: number
+  index?: number
+  author?: string
+  date?: string | null
+  text?: string
+  place?: string
+  sectionIndex?: number | null
+  paraIndex?: number | null
+  startCharIdx?: number | null
+  endCharIdx?: number | null
+  path?: Array<{
+    type: string
+    controlIndex?: number
+    cellIndex?: number
+    paraIndex?: number
+  }> | null
+}
+
+/**
+ * The memos of an HWP / HWPX document, as the engine holds them. Records in the bytes
+ * the engine does not model are not listed; a caller checking a save counts those
+ * separately from the raw file.
+ */
+export async function hwpMemosOf(bytes: Uint8Array): Promise<HwpMemo[]> {
+  // HWPX is a zip, and the engine inflates it itself: the gate the other zip formats
+  // pass runs before the engine gets the bytes
+  if (bytes[0] === 0x50 && bytes[1] === 0x4b) await assertZipInflatesWithinLimits(bytes)
+  const { HwpDocument } = await loadEngine()
+  let doc: HwpDocument
+  try {
+    // a copy: the engine may keep or change the buffer it is given
+    doc = new HwpDocument(new Uint8Array(bytes))
+  } catch (thrown) {
+    throw engineError(thrown)
+  }
+  try {
+    const listed = JSON.parse(doc.getMemoList()) as unknown
+    return Array.isArray(listed) ? (listed as HwpMemo[]) : []
+  } catch (thrown) {
+    throw engineError(thrown)
+  } finally {
+    doc.free()
+  }
+}
+
+/**
+ * The bytes of an `.hwp` / `.hwpx` file, checked as parseFileToText checks them before the
+ * engine gets them: the content must be what the name says (an HWPX is a zip; an HWP is
+ * Hangul 5, Hangul 3, or an HWPX under the old name), and a zip must pass the zip gate.
+ * For a caller that opens the document with the engine itself, such as the HWP editor
+ * reading the formatting of an attached document. Throws when a check fails.
+ */
+export async function checkedHwpBytes(bytes: Uint8Array, ext: string): Promise<Uint8Array> {
+  const zip = bytes[0] === 0x50 && bytes[1] === 0x4b
+  const ole = bytes[0] === 0xd0 && bytes[1] === 0xcf && bytes[2] === 0x11 && bytes[3] === 0xe0
+  const hwp3 = Buffer.from(bytes.subarray(0, 17)).toString('latin1') === 'HWP Document File'
+  const fits = ext === 'hwpx' ? zip : ext === 'hwp' ? zip || ole || hwp3 : false
+  if (!fits) throw new Error(`Content mismatch: the .${ext} file is not a Hangul document`)
+  if (zip) await assertZipInflatesWithinLimits(bytes)
+  return bytes
+}
+
 /** The text of an HWP / HWPX document: paragraphs as lines, data tables as " | " rows. */
 export async function hwpToText(bytes: Uint8Array): Promise<string> {
   // HWPX is a zip, and the engine inflates it itself: the gate the other zip formats
@@ -227,7 +328,8 @@ export async function hwpToText(bytes: Uint8Array): Promise<string> {
   }
   try {
     const flat = JSON.parse(doc.getTextFileText()) as string
-    return withMissingText(bodyEntries(doc), flat).join('\n')
+    const lines = withMissingText(bodyEntries(doc), flat)
+    return [...lines, ...commentLines(doc)].join('\n')
   } catch (thrown) {
     throw engineError(thrown)
   } finally {

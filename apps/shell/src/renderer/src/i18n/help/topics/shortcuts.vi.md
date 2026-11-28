@@ -12,10 +12,12 @@ Mỗi trình soạn thảo có tổ hợp phím riêng, và chỉ vài tổ hợ
 | Thu gọn / mở rộng Ribbon — mọi trình soạn thảo            | ⌥⌘R   | Ctrl+F1         |
 | Ruy-băng gọn — chỉ Docs                                   | ⌥⌘K   | Ctrl+Alt+K      |
 | Mở bảng Phím tắt — chỉ Word                               | ⌘/    | Ctrl+/          |
+| Mở Cài đặt — mọi thẻ trừ Word                             | ⌘,    | Ctrl+,          |
 
 - **F1 mở sổ tay này**, không phải bảng phím tắt. Nó thuộc về menu ứng dụng, nên hoạt động như nhau kể cả từ Word, Sheets, Slides, PDF hay thẻ Trang chủ.
 - **Phím bật/tắt Ribbon là `Ctrl+F1`, hoặc `⌥⌘R` trên macOS.** Nhấn `F1` trần không làm gì — F1 là sổ tay, còn phím của Ribbon cố ý không dùng chung với nó. `Ctrl+F1` cũng được chấp nhận trên macOS, dù `⌥⌘R` mới là phím mà Office for Mac dùng.
 - **Bảng Phím tắt là của riêng Word** (`⌘/`). Nó liệt kê đúng bảng Word ở dưới đây. Không trình soạn thảo nào khác có bảng đó.
+- **`⌘,` mở Cài đặt** (`Ctrl+,` trên Windows và Linux), giống hầu hết ứng dụng Mac. Trong thẻ Word, tổ hợp này vẫn là chỉ số dưới, nên ở đó hãy mở Cài đặt từ menu ứng dụng trên Mac, hoặc từ Menu (☰) ▸ Cài đặt… trên Windows và Linux.
 
 ![Bảng Phím tắt của riêng Word: hành động ở bên trái, tổ hợp phím ở bên phải, chia theo nhóm Tệp, Chỉnh sửa, Định dạng văn bản, Định dạng đoạn văn, Chèn, Rà soát và công cụ, Xem](img/word-shortcuts.png)
 
@@ -24,7 +26,7 @@ Mỗi trình soạn thảo có tổ hợp phím riêng, và chỉ vài tổ hợ
 
 ## Chế độ trình bày
 
-- **Bắt đầu**: F5 trong Word, PDF, Mindmap, HTML và Markdown. Trong bảng tính, Ctrl+F5 (từ A1) hoặc Shift+F5 (từ ô hiện tại).
+- **Bắt đầu**: F5 trong Word, PDF, Mindmap, HTML và Markdown. Trong bảng tính, Ctrl+F5 (từ A1) hoặc Shift+F5 (từ ô hiện tại). Trong tài liệu HWP, Ctrl+F5 (ở đó F5 chọn ô bảng).
 - **Lối vào khác**: trong Word, Ctrl+F5 và Shift+F5 mở chế độ đọc không toàn màn hình; trong PDF bắt đầu từ trang hiện tại; trong HTML trình bày trong thẻ.
 - **Kết thúc**: Esc hoặc F5. F11 là toàn màn hình của cửa sổ và không đổi chế độ xem tài liệu.
 
@@ -278,18 +280,19 @@ Phím lọc của Excel là Ctrl+Shift+L, không làm gì trên Windows hay Linu
 
 ### Cửa sổ
 
-| Hành động                                                    | macOS         | Windows / Linux  |
-| ------------------------------------------------------------ | ------------- | ---------------- |
-| Lưu sổ làm việc                                              | ⌘S            | Ctrl+S           |
-| Lưu dưới dạng                                                | ⇧⌘S           | Ctrl+Shift+S     |
-| Mở sổ làm việc                                               | ⌘O            | Ctrl+O           |
-| In                                                           | ⌘P            | Ctrl+P           |
-| Đóng sổ làm việc (macOS) / Thoát ứng dụng (Windows và Linux) | ⌘W            | Ctrl+Q           |
-| Mở Hướng dẫn sử dụng                                         | F1            | F1               |
-| Phóng to                                                     | ⌘=            | Ctrl+=           |
-| Thu phóng bằng lăn chuột                                     | ⌘ + lăn chuột | Ctrl + lăn chuột |
-| Hiện hoặc ẩn công thức trong các ô                           | ⌘`            | Ctrl+`           |
-| Mở rộng hoặc thu gọn thanh công thức                         | ⌘⇧U           | Ctrl+Shift+U     |
+| Hành động                                                                  | macOS         | Windows / Linux  |
+| -------------------------------------------------------------------------- | ------------- | ---------------- |
+| Lưu sổ làm việc                                                            | ⌘S            | Ctrl+S           |
+| Lưu dưới dạng                                                              | ⇧⌘S           | Ctrl+Shift+S     |
+| Mở sổ làm việc                                                             | ⌘O            | Ctrl+O           |
+| In                                                                         | ⌘P            | Ctrl+P           |
+| Đóng sổ làm việc (macOS) / Thoát ứng dụng (Windows và Linux)               | ⌘W            | Ctrl+Q           |
+| Mở Hướng dẫn sử dụng                                                       | F1            | F1               |
+| Phóng to                                                                   | ⌘=            | Ctrl+=           |
+| Thu phóng bằng lăn chuột                                                   | ⌘ + lăn chuột | Ctrl + lăn chuột |
+| Hiện hoặc ẩn công thức trong các ô                                         | ⌘`            | Ctrl+`           |
+| Mở rộng hoặc thu gọn thanh công thức                                       | ⌘⇧U           | Ctrl+Shift+U     |
+| Chạy nút trên Thanh công cụ Truy nhập Nhanh theo vị trí (thứ 1 đến thứ 10) |               | Alt+1 … Alt+0    |
 
 ## Slides
 
@@ -312,20 +315,24 @@ GenOffice Slides là một trình soạn thảo trình chiếu kiểu PowerPoint
 
 ### Chỉnh sửa
 
-| Hành động                                             | macOS  | Windows / Linux |
-| ----------------------------------------------------- | ------ | --------------- |
-| Trang chiếu mới                                       | ⇧⌘N    | Ctrl+M          |
-| Tìm (không dùng khi đang soạn văn bản trong một hình) | ⌘F     | Ctrl+F          |
-| Chú thích vùng chọn bằng AI (khi đã chọn hình)        | ⌘K     | Ctrl+K          |
-| Phóng to                                              | ⌘=     | Ctrl+=          |
-| Thu nhỏ                                               | ⌘-     | Ctrl+-          |
-| Kích thước thật (100%)                                | ⌘0     | Ctrl+0          |
-| Chọn tất cả                                           | ⌘A     | Ctrl+A          |
-| Chuyển vùng chọn hình tới trước / sau                 | ⇥ / ⇧⇥ | Tab / Shift+Tab |
+| Hành động                                                                 | macOS  | Windows / Linux |
+| ------------------------------------------------------------------------- | ------ | --------------- |
+| Trang chiếu mới                                                           | ⇧⌘N    | Ctrl+M          |
+| Tìm (không dùng khi đang soạn văn bản trong một hình)                     | ⌘F     | Ctrl+F          |
+| Chú thích vùng chọn bằng AI (khi đã chọn hình)                            | ⌘K     | Ctrl+K          |
+| Phóng to                                                                  | ⌘=     | Ctrl+=          |
+| Thu nhỏ                                                                   | ⌘-     | Ctrl+-          |
+| Kích thước thật (100%)                                                    | ⌘0     | Ctrl+0          |
+| Chọn tất cả                                                               | ⌘A     | Ctrl+A          |
+| Chuyển vùng chọn hình tới trước / sau                                     | ⇥ / ⇧⇥ | Tab / Shift+Tab |
+| Lặp lại thao tác cuối (định dạng, tô màu, đường kẻ, căn chỉnh, nhân bản…) | F4     | F4              |
+| Hiện/ẩn Ngăn chọn                                                         | ⌥F10   | Alt+F10         |
 
 Trang chiếu mới là chỗ chia theo nền tảng còn lại. Mỗi nền tảng có phím riêng và phím của nền tảng kia không làm gì: ⇧⌘N trên macOS, Ctrl+M trên Windows và Linux. `⌘M` không thể đảm nhiệm việc đó trên macOS vì đó là phím Thu nhỏ của hệ thống.
 
 Chọn tất cả phụ thuộc vào tiêu điểm: khi khung hình thu nhỏ, khung dàn ý hay bộ sắp xếp có tiêu điểm, nó chọn mọi trang chiếu, còn ở bất kỳ nơi nào khác nó chọn mọi phần tử trên trang chiếu hiện tại. Tab luân phiên qua các hình trên trang chiếu, và chỉ khi chính vùng vẽ trang chiếu có tiêu điểm.
+
+F4 cũng hoạt động bên trong hộp văn bản, áp dụng định dạng cuối cùng cho văn bản đang chọn.
 
 ### Định dạng văn bản
 
@@ -445,12 +452,12 @@ Hoàn tác và Làm lại chuyển bước trong lịch sử tài liệu; khi co
 
 ### Xem
 
-| Hành động            | macOS         | Windows / Linux  |
-| -------------------- | ------------- | ---------------- |
-| Phóng to             | ⌘=            | Ctrl+=           |
-| Thu nhỏ              | ⌘-            | Ctrl+-           |
-| Vừa chiều rộng       | ⌘0            | Ctrl+0           |
-| Thu phóng (liên tục) | ⌘ + lăn chuột | Ctrl + lăn chuột |
+| Hành động              | macOS         | Windows / Linux  |
+| ---------------------- | ------------- | ---------------- |
+| Phóng to               | ⌘=            | Ctrl+=           |
+| Thu nhỏ                | ⌘-            | Ctrl+-           |
+| Vừa chiều rộng         | ⌘0            | Ctrl+0           |
+| Thu phóng (mỗi nấc 5%) | ⌘ + lăn chuột | Ctrl + lăn chuột |
 
 Phóng to cũng nhận ⌘+ và Ctrl++.
 
@@ -627,6 +634,8 @@ Các phím này hoạt động khi thẻ HWP/HWPX ở phía trước và tài li
 | Tìm tiếp           | ⌃L          | Ctrl+L                       |
 | Tìm ngược          | ⌃Q, L       | Ctrl+Q, L                    |
 | Đi tới             | ⌥G          | Alt+G                        |
+| Về đầu tài liệu    | ⌃⇞          | Ctrl+PageUp                  |
+| Về cuối tài liệu   | ⌃⇟          | Ctrl+PageDown                |
 | So sánh tài liệu   | ⌥⇧V         | Alt+Shift+V                  |
 
 ### Ký tự
@@ -690,21 +699,29 @@ Các phím này hoạt động khi thẻ HWP/HWPX ở phía trước và tài li
 | Chuỗi ngày/giờ                          | ⌃K, D       | Ctrl+K, D          |
 | Chỉnh sửa đối tượng, trường hoặc bảng/ô | ⌃N, K       | Ctrl+N, K          |
 | Ký hiệu                                 | ⌃F10 / ⌥F10 | Ctrl+F10 / Alt+F10 |
+| Chuyển sang Hanja                       | F9          | Phím Hanja / F9    |
 
 ### Bảng
 
-| Hành động       | macOS        | Windows / Linux        |
-| --------------- | ------------ | ---------------------- |
-| Thêm hàng/cột   | ⌥⏎ / ⌥Insert | Alt+Enter / Alt+Insert |
-| Xóa hàng/cột    | ⌥⌫           | Alt+Delete             |
-| Tách ô          | F5 → S       | F5 → S                 |
-| Hợp nhất ô      | F5 → M       | F5 → M                 |
-| Tổng khối       | F5 → ⇧⌘S     | F5 → Ctrl+Shift+S      |
-| Trung bình khối | F5 → ⌃⇧A     | F5 → Ctrl+Shift+A      |
-| Tích khối       | F5 → ⌃⇧P     | F5 → Ctrl+Shift+P      |
-| Tách bảng       | ⌃N, A        | Ctrl+N, A              |
-| Nối bảng        | ⌃N, Z        | Ctrl+N, Z              |
-| Công thức tính  | ⌃N, F        | Ctrl+N, F              |
+| Hành động                            | macOS        | Windows / Linux        |
+| ------------------------------------ | ------------ | ---------------------- |
+| Thêm hàng/cột                        | ⌥⏎ / ⌥Insert | Alt+Enter / Alt+Insert |
+| Xóa hàng/cột                         | ⌥⌫           | Alt+Delete             |
+| Tách ô                               | F5 → S       | F5 → S                 |
+| Hợp nhất ô                           | F5 → M       | F5 → M                 |
+| Thuộc tính bảng/ô                    | F5 → P       | F5 → P                 |
+| Viền / tô nền, từng ô                | F5 → L / C   | F5 → L / C             |
+| Viền / tô nền, các ô như một         | F5 → B / F   | F5 → B / F             |
+| Bằng chiều cao hàng / chiều rộng cột | F5 → H / W   | F5 → H / W             |
+| Tự động điền bảng                    | F5 → A       | F5 → A                 |
+| Quay lại sửa ô                       | F5 → ⏎       | F5 → Enter             |
+| Thụt lề treo nhanh (trong ô)         | ⌃⇧⇥          | Ctrl+Shift+Tab         |
+| Tổng khối                            | F5 → ⇧⌘S     | F5 → Ctrl+Shift+S      |
+| Trung bình khối                      | F5 → ⌃⇧A     | F5 → Ctrl+Shift+A      |
+| Tích khối                            | F5 → ⌃⇧P     | F5 → Ctrl+Shift+P      |
+| Tách bảng                            | ⌃N, A        | Ctrl+N, A              |
+| Nối bảng                             | ⌃N, Z        | Ctrl+N, Z              |
+| Công thức tính                       | ⌃N, F        | Ctrl+N, F              |
 
 ### Tính toán bảng
 
@@ -745,3 +762,5 @@ Chỉ hoạt động khi con trỏ ở trong một ô bảng trống. Có phím 
 | Đi tới thẻ Trang chủ (ngoài bảng) | ⇧⌘H   | Ctrl+Shift+H    |
 
 Phím ghi là `Ctrl+N,T` nghĩa là nhấn Ctrl+N, nhả ra rồi nhấn T. `F5 → S` nghĩa là chọn khối ô bằng F5 rồi nhấn S. `Ctrl+1 … Ctrl+0` là kiểu thứ nhất đến thứ mười của tài liệu; `Ctrl+Alt+1 … Ctrl+Alt+0` áp dụng cùng các kiểu đó. Khi chọn một khối ô, `Ctrl+Shift+S` (trên macOS `⇧⌘S`) là tổng khối; ngoài khối, phím này lưu thành tên mới.
+
+Với chuột, giống như trong Hangul, nhấp đúp chọn một từ, nhấp ba lần chọn cả đoạn, còn nhấp đúp rồi giữ và kéo sẽ mở rộng vùng chọn theo từng từ. Điều này cũng áp dụng khi sửa đầu trang, chân trang hoặc chú thích cuối trang. Sao chép một khối ô (`Ctrl+C`) sẽ sao chép cả chữ trong ô lẫn chính bảng, nên khi dán vào phần thân văn bản sẽ tạo lại đúng bảng đó. Dán khi chỉ đặt con trỏ trong một ô của bảng khác sẽ mở hộp thoại Paste Cells: ghi đè bắt đầu từ ô đó (các ô vượt ra ngoài bảng bị bỏ) hoặc chèn các ô ở trên, dưới, bên trái hoặc bên phải. Kéo tay cầm ở góc của ảnh sẽ giữ nguyên tỉ lệ; hình vẽ hoặc hộp văn bản giữ tỉ lệ khi bạn nhấn giữ `Shift` trong lúc kéo góc. Nhấn `Shift` khi đang di chuyển đối tượng để chỉ di chuyển theo chiều ngang hoặc dọc, và nhấn `Esc` khi đang di chuyển hoặc đổi kích thước để đưa đối tượng về chỗ cũ. Khi đang chọn một đối tượng, các phím mũi tên di chuyển nó 0,2 mm và `Shift`+mũi tên đổi kích thước 1 mm. `Tab` và `Shift+Tab` chọn đối tượng kế tiếp và trước đó trên trang, `Shift+PageUp` và `Shift+PageDown` đưa đối tượng lên trên cùng hoặc xuống dưới cùng, còn `Shift+Home` và `Shift+End` đặt đối tượng trước hoặc sau văn bản. `G` và `U` nhóm và bỏ nhóm, `L` và `C` mở thẻ Đường và Tô màu trong thuộc tính đối tượng, còn `Ctrl+E` xóa đối tượng. Để chọn một đối tượng nằm dưới đối tượng khác, hãy giữ `Alt` và nhấp; mỗi lần nhấp tiếp theo sẽ chọn đối tượng nằm dưới kế tiếp. Giữ `Shift` và kéo góc của ảnh sẽ cắt ảnh theo đúng tỉ lệ hiện tại, còn giữ `Ctrl` và kéo một đối tượng sẽ để nguyên đối tượng đó và đặt một bản sao ở chỗ bạn thả chuột.

@@ -1,6 +1,8 @@
-import { readFile } from 'node:fs/promises'
+import { open, readFile, stat } from 'node:fs/promises'
 import { extname } from 'node:path'
+import { REDACT_NS } from '@genoffice/agent-core/redact-range'
 import { OdtNotTextError, isOdtOpenError } from '@genoffice/odt-engine'
+import { diagramFormatOf, readDiagramText } from './diagram'
 import { docToText } from './doc'
 import { docxToText } from './docx'
 import { epubToText } from './epub'
@@ -11,8 +13,13 @@ import { pptToText } from './ppt'
 import { pptxToText } from './pptx'
 import { xlsxToText } from './xlsx'
 import { xmindToText } from './xmind'
+import { whiteboardToText } from './whiteboard'
+import { readZipTextParts } from './zip-text-parts'
+import { decodeCsvBuffer } from '@genoffice/xlsx-gateway/gateway/csv-import'
 import { redactHtmlSource } from './html-redaction'
 import { redactMarkdownSource } from './markdown-redaction'
+import { getInteractiveParseSidecar, SidecarInfraError } from './sidecar-client'
+import { isParseSidecarEnabled } from './sidecar-path'
 
 export type ParsedFileKind = 'text' | 'image' | 'unsupported'
 
@@ -68,12 +75,24 @@ const FATAL_UTF8_DECODER = new TextDecoder('utf-8', { fatal: true })
 const WINDOWS_1252_DECODER = new TextDecoder('windows-1252')
 
 /**
+ * Whether the bytes open with a UTF-32LE or UTF-32BE BOM. Neither
+ * `decodeTextBytes` nor `decodeCsvBuffer` can decode UTF-32, and a
+ * UTF-32LE BOM (`FF FE 00 00`) is also a valid UTF-16LE BOM followed by two
+ * NUL bytes, so this must be checked before any UTF-16 handling runs.
+ */
+function isUtf32BomDeclared(bytes: Buffer | Uint8Array): boolean {
+  if (bytes[0] === 0 && bytes[1] === 0 && bytes[2] === 0xfe && bytes[3] === 0xff) return true // UTF-32BE
+  if (bytes[0] === 0xff && bytes[1] === 0xfe && bytes[2] === 0 && bytes[3] === 0) return true // UTF-32LE
+  return false
+}
+
+/**
  * BOM-aware text decode; invalid UTF-8 falls back to windows-1252 so callers
  * index what survives. null only for a BOM-declared UTF-32 file.
  */
 function decodeTextBytes(bytes: Buffer): string | null {
+  if (isUtf32BomDeclared(bytes)) return null
   if (bytes[0] === 0xff && bytes[1] === 0xfe) {
-    if (bytes[2] === 0 && bytes[3] === 0) return null // UTF-32LE BOM
     return bytes.toString('utf16le', 2)
   }
   if (bytes[0] === 0xfe && bytes[1] === 0xff) {
@@ -149,7 +168,84 @@ async function parseOdt(bytes: Buffer): Promise<ParsedFile> {
 export interface ParseFileOptions {
   /// Character budget for extractors that can stop early (xlsx and docx today).
   maxChars?: number
+  /// Size past which a zip-based document is read for its text parts only
+  /// (`WHOLE_ZIP_READ_MAX_BYTES` when absent; tests pass a small value).
+  wholeZipMaxBytes?: number
 }
+
+/**
+ * Up to this size a zip-based document is read whole, as it always was. A
+ * larger one (a slide deck full of photos) is read for its text parts only
+ * (`readZipTextParts`), so its size never decides whether it can be read.
+ */
+export const WHOLE_ZIP_READ_MAX_BYTES = 50 * 1024 * 1024
+
+/** extensions that are, or may be, a zip-based document */
+const ZIP_DOCUMENT_EXTS = new Set([
+  'docx',
+  'pptx',
+  'xlsx',
+  'xlsm',
+  'hwpx',
+  'odt',
+  'epub',
+  'xmind',
+  'whiteboard',
+  // a DOCX under a .doc name and an HWPX under a .hwp name are read by content
+  'doc',
+  'hwp',
+])
+
+async function startsWithZipMagic(filePath: string): Promise<boolean> {
+  const file = await open(filePath, 'r')
+  try {
+    const head = Buffer.alloc(2)
+    const { bytesRead } = await file.read(head, 0, 2, 0)
+    return bytesRead === 2 && head[0] === 0x50 && head[1] === 0x4b
+  } finally {
+    await file.close()
+  }
+}
+
+/** the file's bytes, or for a large zip-based document its text parts only */
+async function readDocumentBytes(
+  filePath: string,
+  ext: string,
+  opts: ParseFileOptions,
+): Promise<Buffer> {
+  if (ZIP_DOCUMENT_EXTS.has(ext)) {
+    const limit = opts.wholeZipMaxBytes ?? WHOLE_ZIP_READ_MAX_BYTES
+    if ((await stat(filePath)).size > limit && (await startsWithZipMagic(filePath))) {
+      return readZipTextParts(filePath)
+    }
+  }
+  return readFile(filePath)
+}
+
+/**
+ * Formats routed to the native Rust `ieum-parse-sidecar` binary.
+ * Redaction-bearing text/markup (`md`, `markdown`, `txt`, `json`, `html`, `htm`)
+ * and formats handled exclusively in JS/WASM (`pdf`, `hwp`, `hwpx`,
+ * `drawio*`, images) are intentionally excluded and go directly to TypeScript.
+ */
+export const SIDECAR_EXTS: ReadonlySet<string> = new Set([
+  // ZIP-based document formats and legacy OLE2 Office formats (`.doc`, `.ppt`)
+  'docx',
+  'xlsx',
+  'xlsm',
+  'pptx',
+  'odt',
+  'epub',
+  'xmind',
+  'doc',
+  'ppt',
+  // Non-redacted plain / tabular formats
+  'csv',
+  'tsv',
+  'xml',
+  'log',
+  'py',
+])
 
 /** parse an attachment into plain text (or flag it as image / unsupported) */
 export async function parseFileToText(
@@ -157,11 +253,65 @@ export async function parseFileToText(
   opts: ParseFileOptions = {},
 ): Promise<ParsedFile> {
   const ext = extname(filePath).slice(1).toLowerCase()
+  // a draw.io diagram is named first: `.drawio.png` and `.drawio.svg` are read
+  // as diagram text, not by their last extension
+  if (diagramFormatOf(filePath)) {
+    try {
+      const read = readDiagramText(filePath, await readFile(filePath))
+      if (read.ok) return { ok: true, kind: 'text', text: read.text }
+      // a picture that only carries the name is the picture it is: read on by
+      // its last extension below
+      if (read.reason !== 'no_original') {
+        return {
+          ok: false,
+          kind: 'text',
+          error: `Cannot read diagram (${read.reason}): ${read.message}`,
+        }
+      }
+    } catch (e) {
+      return { ok: false, kind: 'text', error: e instanceof Error ? e.message : String(e) }
+    }
+  }
   const imageMime = IMAGE_MIMES[ext]
   if (imageMime) return { ok: true, kind: 'image', mime: imageMime }
+
+  if (isParseSidecarEnabled() && SIDECAR_EXTS.has(ext)) {
+    try {
+      const result = await getInteractiveParseSidecar().extractFile({
+        path: filePath,
+        ext,
+        ...(opts.maxChars !== undefined ? { maxChars: opts.maxChars } : {}),
+        redactNamespaces: [REDACT_NS],
+      })
+      switch (result.status) {
+        case 'ok':
+          return { ok: true, kind: 'text', text: result.text }
+        case 'rejected':
+          // Strict gate: never fall back to TS extractors on document rejections.
+          return { ok: false, kind: 'text', error: result.message }
+        case 'unsupported':
+          // Strict gate: never fall back to TS extractors on unsupported results.
+          return { ok: false, kind: 'unsupported', error: result.message }
+        case 'fallback':
+          // Allowed fallback (`redaction_present` or `unsupported_format`, e.g. legacy OLE2 .doc).
+          break
+      }
+    } catch (e) {
+      if (!(e instanceof SidecarInfraError)) {
+        return { ok: false, kind: 'text', error: e instanceof Error ? e.message : String(e) }
+      }
+      // Allowed fallback on SidecarInfraError (binary missing, crash, IPC/protocol error).
+    }
+  }
   try {
     if (TEXT_EXTS.has(ext)) {
-      const text = decodeTextBytes(await readFile(filePath))
+      const bytes = await readFile(filePath)
+      const text =
+        ext === 'csv' || ext === 'tsv'
+          ? isUtf32BomDeclared(bytes)
+            ? null
+            : decodeCsvBuffer(bytes)
+          : decodeTextBytes(bytes)
       if (text === null) {
         return {
           ok: false,
@@ -174,7 +324,7 @@ export async function parseFileToText(
       if (redact) return { ok: true, kind: 'text', text: redact(text) }
       return { ok: true, kind: 'text', text }
     }
-    const bytes = await readFile(filePath)
+    const bytes = await readDocumentBytes(filePath, ext, opts)
     const sniffed = sniffBinary(bytes)
     if (ext === 'pdf' && sniffed !== 'pdf') {
       return {
@@ -202,7 +352,7 @@ export async function parseFileToText(
         error: `Content mismatch: .${ext} file has ${sniffed} magic bytes`,
       }
     }
-    if ((ext === 'xmind' || ext === 'epub') && sniffed !== 'zip') {
+    if ((ext === 'xmind' || ext === 'epub' || ext === 'whiteboard') && sniffed !== 'zip') {
       return {
         ok: false,
         kind: 'text',
@@ -257,6 +407,8 @@ export async function parseFileToText(
         return { ok: true, kind: 'text', text: await pdfToText(bytes) }
       case 'xmind':
         return { ok: true, kind: 'text', text: await xmindToText(bytes) }
+      case 'whiteboard':
+        return { ok: true, kind: 'text', text: whiteboardToText(bytes) }
       case 'epub':
         return { ok: true, kind: 'text', text: await epubToText(bytes) }
     }

@@ -1,6 +1,8 @@
 import type { zh } from './zh'
 
 export const hi = {
+  appLegacyPptImported:
+    '.ppt फ़ाइल को परिवर्तित .pptx प्रति के रूप में खोला गया। मूल फ़ाइल वैसी ही रहती है; सहेजने पर नई .pptx फ़ाइल लिखी जाती है। वक्ता नोट्स और एनिमेशन नहीं लाए जाते।',
   redactMenuLabel: 'चयन को AI से छिपाएँ',
   redactDialogDesc:
     'चुनी हुई सामग्री दस्तावेज़ और फ़ाइल में बनी रहती है; मॉडल को केवल नीचे वाला प्लेसहोल्डर दिखता है। नाम दें ताकि उसे पता चले कि यह किसका स्थान है।',
@@ -178,6 +180,9 @@ export const hi = {
   appPrintLandscape: 'लैंडस्केप',
   appPrintFrame: 'स्लाइड के चारों ओर फ़्रेम',
   appPrintHidden: 'छिपी स्लाइड प्रिंट करें',
+  appPrintRangeSelected: 'चुनी गई स्लाइड',
+  appPrintLayoutBlocked:
+    'हैंडआउट और नोट्स पृष्ठ एक शीट पर एक पृष्ठ छपते हैं। पृष्ठ व्यवस्थित करने के लिए पूर्ण पृष्ठ स्लाइड चुनें।',
   appPrintPageCount: 'कुल {n} पृष्ठ',
   appPrintNoPages: 'प्रिंट करने के लिए कोई स्लाइड नहीं',
   appPrintRendering: 'पूर्वावलोकन बनाया जा रहा है…',
@@ -187,6 +192,7 @@ export const hi = {
   appCtxSendToBack: 'सबसे पीछे भेजें',
   appCtxBringForward: 'आगे लाएँ',
   appCtxSendBackward: 'पीछे भेजें',
+  appCtxRotate: 'घुमाएँ',
   appCtxRotateLeft90: '90° बाएँ घुमाएँ',
   appCtxRotateRight90: '90° दाएँ घुमाएँ',
   appCtxFlipH: 'क्षैतिज पलटें',
@@ -226,6 +232,8 @@ export const hi = {
   appMasterFillNone: 'कोई भरण नहीं',
   appMasterStroke: 'रूपरेखा रंग…',
   appMasterStrokeNone: 'कोई रूपरेखा नहीं',
+  appMasterInsertTextBox: 'पाठ बॉक्स',
+  appMasterInsertShape: 'आकृतियाँ',
   appStartOpening: 'खोला जा रहा है…',
   appReadingSlideTitle:
     'अगली स्लाइड पर जाने के लिए क्लिक करें (पठन दृश्य से बाहर निकलने के लिए Esc)',
@@ -263,4 +271,12 @@ export const hi = {
   appStatusSummaryZoomInserted: '{count} टाइलों के साथ सारांश ज़ूम स्लाइड डाली गई',
   appSectionSummary: 'सारांश अनुभाग',
   appSectionN: 'अनुभाग {n}',
+  appStatusAnimPainterNone: 'चयनित तत्व में कोई एनिमेशन नहीं है',
+  appStatusAnimPainterOnce:
+    'वह तत्व क्लिक करें जिस पर एनिमेशन लागू करने हैं; निरंतर मोड के लिए बटन पर डबल-क्लिक करें',
+  appStatusAnimPainterContinuous: 'निरंतर एनिमेशन पेंटर मोड; बाहर निकलने के लिए Esc दबाएँ',
+  appStatusAnimPainted: 'एनिमेशन लागू किए गए',
+  appStatusMergeUnsupported:
+    'इन आकृतियों को मर्ज नहीं किया जा सकता (रेखाएँ, चित्र, तालिकाएँ, चार्ट और कुछ आकृतियाँ शामिल नहीं होतीं)',
+  appStatusMergeEmpty: 'मर्ज करने के बाद कुछ नहीं बचा (आकृतियाँ ओवरलैप नहीं होतीं)',
 } satisfies Record<keyof typeof zh, string>

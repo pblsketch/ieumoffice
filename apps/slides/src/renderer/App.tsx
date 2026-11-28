@@ -33,10 +33,20 @@ import type {
   TransitionKind,
 } from '../shared/ipc'
 import { baseName } from '../shared/base-name'
+import { mergeBroadcastUpdate, mergeSlideUpdate, setDeckRefresh } from '../shared/slide-update'
 import { SlideCanvas, selectionChromeColor, type SlideCanvasHandle } from './SlideCanvas'
 import { tableCellOverlayBox } from './table-hit'
+import { isCellSelected, type TableCellSelection } from './table-selection'
 import { ZOOM_PREVIEW_EVENT } from './zoom-preview'
-import { ZOOM_MAX, ZOOM_MIN, clampZoom, nextPreset, notchStep, prevPreset } from './zoom-steps'
+import {
+  ZOOM_MAX,
+  ZOOM_MIN,
+  clampZoom,
+  nextPreset,
+  notchStep,
+  prevPreset,
+  wheelStep,
+} from './zoom-steps'
 import type { DrawRect } from './draw-shape'
 import { paragraphsBlank } from './textbox-insert'
 import { SlideThumb } from './SlideThumb'
@@ -68,6 +78,8 @@ import { SlideShowView } from './components/SlideShowView'
 import { IconNotes, IconPlayBoxed } from './components/icons'
 import { PresenterView } from './components/PresenterView'
 import { CustomShowDialog } from './components/CustomShowDialog'
+import { createDefaultOptions } from '@genoffice/print-layout/plan'
+import { renderSlidesToPngBase64 } from './export-render'
 import { PrintDialog } from './components/PrintDialog'
 import { FindReplaceDialog } from './components/FindReplaceDialog'
 import { formatClock, type CustomShow } from './slideshow-utils'
@@ -97,10 +109,13 @@ import { AnimPreviewOverlay } from './components/AnimatedSlide'
 import { EquationDialog, HeaderFooterDialog, LinkDialog } from './components/InsertDialogs'
 import { RedactDialog } from './components/RedactDialog'
 import { ZoomDialog } from './components/ZoomDialog'
+import { SlideSizeDialog } from './components/SlideSizeDialog'
+import { defaultNewSlideSize } from './slide-size'
 import { CutoutDialog } from './components/CutoutDialog'
 import {
   createWheelPager,
   createZoomWheelClassifier,
+  printLayoutText,
   useAutoSavePref,
   useSplitPaneFocusPing,
   type AiScopeQuoteData,
@@ -109,19 +124,43 @@ import {
   rememberAiPanelOpen,
   AiMark,
   aiSubscriptionText,
+  aiVisible,
   templateDocumentOf,
   type TemplateDocument,
   useAiSidebarEnabled,
+  useAppChoice,
+  VersionTimelineDrawer,
+  tweaksText,
+  versionTimelineText,
+  type DrawerVersionEntry,
 } from '@genoffice/ui'
+import '@genoffice/ui/tweaks-panel.css'
+import {
+  VERSION_TIMELINE_BRIDGE_KEY,
+  type VersionTimelineBridge,
+} from '@genoffice/electron-utils/version-timeline-channels'
+import {
+  DEFAULT_SLIDES_TWEAKS,
+  buildSlidesTweaksTxnChunks,
+  type SlidesTweaksState,
+} from './tweaks/slides-tweaks'
+import { SlidesTweaksPanel } from './tweaks/SlidesTweaksPanel'
+import { SlidesTimelineAdapter } from './timeline/slides-timeline-adapter'
 import type { ChartPresetDef, IconDef, SmartArtDef } from './insert-presets'
 import { IconAiBeautify, IconAiFactCheck, IconAiImage } from './components/icons'
 import { ToastHost } from './components/toast'
 import { showToast } from './components/toast-bus'
 import { t, useI18n } from './i18n/locale'
 import { AiPanel } from './ai/AiPanel'
+import { markedNodeIds, slideKey, type DeckMarks } from './ai/run-changes'
 import { useAiDock } from './ai/use-ai-dock'
 import { ChartDataDialog } from './components/ChartDataDialog'
 import type { BrushFormat } from './format-brush'
+import type { AnimPainterState } from './action-context'
+import { rememberRepeat } from './repeat-action'
+import { batched } from './history-batch'
+import { SelectionPane } from './components/SelectionPane'
+import { mergeOutline } from './merge-shapes'
 import { isTextUndoTarget, shouldRouteHistoryToDeck } from './undo-routing'
 import type {
   ActionCtx,
@@ -393,8 +432,21 @@ export function App() {
   )
   const [editing, setEditing] = useState<EditingState | null>(null)
   const [editingCell, setEditingCell] = useState<EditingCellState | null>(null)
+  const [tableSelection, setTableSelection] = useState<TableCellSelection | null>(null)
+  useEffect(() => {
+    setTableSelection(null)
+    setEditingCell(null)
+  }, [current])
+  useEffect(() => {
+    if (!tableSelection) return
+    if (selectedIds.length !== 1 || selectedIds[0] !== tableSelection.sourceId) {
+      setTableSelection(null)
+    }
+  }, [selectedIds, tableSelection])
   /** Element-scoped AI edits waiting to be submitted (session-only, see the queue helpers below) */
   const [editQueue, setEditQueue] = useState<EditQueueItem[]>([])
+  /** What the AI panel's last run changed: marked on the canvas and the thumbnails, screen only */
+  const [aiMarks, setAiMarks] = useState<DeckMarks | null>(null)
   // Armed shape draw mode (ribbon gallery pick); null = normal selection behavior
   const [drawKind, setDrawKind] = useState<InsertKind | null>(null)
   /** Latest-state bundle for the extracted action modules; refreshed every render (see action-context.ts). */
@@ -459,6 +511,10 @@ export function App() {
   useEffect(() => {
     window.slidesApi.setAutoSavePref?.(autoSave)
   }, [autoSave])
+  /** AI turned on in Settings: off, no AI part is drawn and nothing opens the panel */
+  const aiOn = aiVisible(useAppChoice(window.aiOfficeEditorChoice))
+  const aiOnRef = useRef(aiOn)
+  aiOnRef.current = aiOn
   const [showAi, setShowAi] = useState(() => aiPanelInitiallyOpen('ai-slides-show-ai'))
   // Split panes (decision 0036): as the secondary pane this view's panel is
   // forced to the rail, and the rail's click asks the shell to focus it first.
@@ -475,6 +531,13 @@ export function App() {
   const aiSidebarEnabled = useAiSidebarEnabled(setShowAi)
   const [showFormat, setShowFormat] = useState(false)
   const [showBgFormat, setShowBgFormat] = useState(false)
+  const [isEncrypted, setIsEncrypted] = useState(false)
+  const isEncryptedRef = useRef(false)
+  isEncryptedRef.current = isEncrypted
+  const [tweaksOpen, setTweaksOpen] = useState(false)
+  const [tweaksState, setTweaksState] = useState<SlidesTweaksState>(DEFAULT_SLIDES_TWEAKS)
+  const [timelineOpen, setTimelineOpen] = useState(false)
+  const [timelineEntries, setTimelineEntries] = useState<DrawerVersionEntry[]>([])
   const [aiSettings, setAiSettings] = useState<AiSettings | null>(null)
   const [aiPreset, setAiPreset] = useState<{
     text: string
@@ -503,6 +566,7 @@ export function App() {
   // ── Animations tab: current page's animation list + pane/preview ─────────────
   const [animations, setAnimations] = useState<AnimationItem[]>([])
   const [showAnimPane, setShowAnimPane] = useState(false)
+  const [showSelPane, setShowSelPane] = useState(false)
   /** Animation pane selection (the timing controls bind to it first); -1 = none */
   const [selAnim, setSelAnim] = useState(-1)
   /** Canvas animation preview (plays when nonce>0; re-entering +1) */
@@ -626,6 +690,8 @@ export function App() {
   const [hfDialog, setHfDialog] = useState<HfDialogState | null>(null)
   const [eqDialogOpen, setEqDialogOpen] = useState(false)
   const [zoomDialog, setZoomDialog] = useState<zoomActions.ZoomMode | null>(null)
+  /** Design › Slide Size › Custom Size… open, with the deck size it opened on */
+  const [slideSizeDialog, setSlideSizeDialog] = useState<{ cx: number; cy: number } | null>(null)
   const recorderRef = useRef<{ rec: MediaRecorder; stream: MediaStream } | null>(null)
   const [recording, setRecording] = useState(false)
   // ── Layout picking: layout list + slide size (loaded after the file opens) ─────────────────
@@ -647,6 +713,7 @@ export function App() {
    *  - 'continuous' = continuous mode (double-click the button to enter, Esc to exit)
    */
   const [brushMode, setBrushMode] = useState<'once' | 'continuous' | null>(null)
+  const [animPainter, setAnimPainter] = useState<AnimPainterState | null>(null)
 
   const slide = slides[current]
   // Rail multi-selection: stale entries (page deleted, anchor moved elsewhere) collapse to the anchor
@@ -706,14 +773,14 @@ export function App() {
       const viewportW =
         el?.clientWidth ||
         stageViewportSize.w ||
-        window.innerWidth - (showThumbs ? thumbsW : 0) - (aiDock.open ? 360 : 34)
+        window.innerWidth - (showThumbs ? thumbsW : 0) - (!aiOn ? 0 : aiDock.open ? 360 : 34)
       const viewportH = el?.clientHeight || stageViewportSize.h || window.innerHeight - 150
       const availW = viewportW - 56
       // -72: vertical padding is 48 (AI-bar headroom) + 32, minus the same 8px slack as width
       const availH = viewportH - 72
       return Math.min(availW / s.widthPx, availH / s.heightPx)
     },
-    [showThumbs, aiDock.open, stageViewportSize.h, stageViewportSize.w, thumbsW],
+    [showThumbs, aiOn, aiDock.open, stageViewportSize.h, stageViewportSize.w, thumbsW],
   )
   /** Fit zoom for display: rawFit clamped to the 0.1–1.5 auto-fit range */
   const fitZoom = useCallback(
@@ -871,8 +938,16 @@ export function App() {
   }, [hasDoc, fitZoom, rawFit, viewMode])
 
   const applyOpen = useCallback(
-    (result: { path: string; slides: RenderSlide[]; defaultFont?: string } | null) => {
+    (
+      result: {
+        path: string
+        slides: RenderSlide[]
+        defaultFont?: string
+        encrypted?: boolean
+      } | null,
+    ) => {
       if (!result) return
+      setIsEncrypted(Boolean(result.encrypted))
       setSlides(result.slides)
       setDefaultFont(result.defaultFont ?? null)
       setPath(result.path)
@@ -939,6 +1014,79 @@ export function App() {
     [enteredGroupNode],
   )
 
+  const slidesTimelineAdapter = useMemo(() => {
+    const bridge = (window as unknown as Record<string, VersionTimelineBridge | undefined>)[
+      VERSION_TIMELINE_BRIDGE_KEY
+    ]
+    return new SlidesTimelineAdapter(bridge, {
+      docKey: path || 'slides_untitled',
+      isEncrypted: () => isEncryptedRef.current,
+      formatSlideCount: (n) => versionTimelineText(lang, 'slideCount', { n }),
+      beforeRestoreLabel: () => versionTimelineText(lang, 'sourceRestore'),
+      captureSnapshot: async () => {
+        const cur = ctxRef.current?.slides ?? []
+        const res = await window.slidesApi.templateBytes?.()
+        return {
+          bytes: res?.bytes ?? new Uint8Array(),
+          slideCount: cur.length,
+        }
+      },
+      applySnapshot: async (bytes) => {
+        try {
+          const restored = await window.slidesApi.restoreTimelineBytes?.(bytes)
+          if (!restored) return false
+          setSlides(restored)
+          setDirty(true)
+          return true
+        } catch {
+          return false
+        }
+      },
+    })
+  }, [path, lang])
+
+  const refreshSlidesTimeline = useCallback(() => {
+    void slidesTimelineAdapter.list().then((items) => setTimelineEntries(items))
+  }, [slidesTimelineAdapter])
+
+  useEffect(() => {
+    if (timelineOpen) refreshSlidesTimeline()
+  }, [timelineOpen, refreshSlidesTimeline])
+
+  const applySlidesTweaks = useCallback((next: SlidesTweaksState) => {
+    setTweaksState(next)
+    const curSlides = ctxRef.current?.slides ?? []
+    if (curSlides.length === 0) return
+    const chunks = buildSlidesTweaksTxnChunks(curSlides, ctxRef.current?.current ?? 0, next)
+    if (chunks.length === 0) return
+    void (async () => {
+      await window.slidesApi.beginHistoryBatch()
+      let latestSlides: RenderSlide[] | null = null
+      try {
+        for (const txn of chunks) {
+          const res = await window.slidesApi.applyTxn(txn)
+          if (res?.applied && res.slides) latestSlides = res.slides
+        }
+      } finally {
+        await window.slidesApi.endHistoryBatch()
+      }
+      if (latestSlides) {
+        setSlides(latestSlides)
+        setDirty(true)
+      }
+    })()
+  }, [])
+
+  const resetSlidesTweaks = useCallback(() => {
+    setTweaksState(DEFAULT_SLIDES_TWEAKS)
+    void window.slidesApi.undo().then((undone) => {
+      if (undone) {
+        setSlides(undone)
+        setDirty(true)
+      }
+    })
+  }, [])
+
   const openDialog = useCallback(async () => {
     const r = await window.slidesApi.openPptx(FIT_WIDTH)
     applyOpen(r)
@@ -951,8 +1099,14 @@ export function App() {
   const askOpenRef = useRef(false)
 
   const save = useCallback(
-    (auto = false): Promise<boolean> => fileActions.save(() => ctxRef.current, auto),
-    [],
+    async (auto = false): Promise<boolean> => {
+      const ok = await fileActions.save(() => ctxRef.current, auto)
+      if (ok) {
+        void slidesTimelineAdapter.record('save').then(() => refreshSlidesTimeline())
+      }
+      return ok
+    },
+    [slidesTimelineAdapter, refreshSlidesTimeline],
   )
 
   // Close guard (closing tab/window) chose "Save": run the full save flow and report the result
@@ -972,11 +1126,27 @@ export function App() {
   // Shared session (a second window on the same file): apply the other window's
   // edits without touching local selection or an open editor — the ids are stable,
   // so the selection stays valid; a same-element conflict resolves last-write-wins.
+  const refreshDeck = useCallback(() => {
+    void window.slidesApi
+      .getRenderSlides()
+      .then((slides) => {
+        if (slides) setSlides(slides)
+      })
+      .catch((error) => console.error('Failed to refresh deck:', error))
+  }, [])
+  useEffect(() => {
+    setDeckRefresh(refreshDeck)
+    return () => setDeckRefresh(null)
+  }, [refreshDeck])
   useEffect(
     () =>
-      window.slidesApi.onDeckChanged?.(({ slides: all }) => {
-        setSlides(all)
-        setCurrent((c) => Math.min(c, Math.max(0, all.length - 1)))
+      window.slidesApi.onDeckChanged?.(({ slides: all, order }) => {
+        setSlides((current) =>
+          order
+            ? (mergeBroadcastUpdate(current, { slides: all, order }, refreshDeck) ?? current)
+            : all,
+        )
+        setCurrent((c) => Math.min(c, Math.max(0, (order?.length ?? all.length) - 1)))
         // Comments live outside RenderSlide: re-read the current page list (ribbon badge)
         // and the all-pages list together. Notes drafts stay untouched (no annotations bump).
         setCommentsRefreshNonce((n) => n + 1)
@@ -984,7 +1154,7 @@ export function App() {
         // session instead of assuming the change dirtied it
         void window.slidesApi.isDirty?.().then((d) => setDirty(!!d))
       }),
-    [],
+    [refreshDeck],
   )
 
   // Auto-save (off by default): when on and a file path exists, silently write back every 30s + on blur.
@@ -1010,7 +1180,8 @@ export function App() {
     const tick = () => {
       if (saving || editing || editingCell || mouseDownRef.current) return
       void window.slidesApi.isDirty().then((d) => {
-        if (!d || saving) return
+        // notes typed into the pane reach the deck only when flushed, which save() does first
+        if ((!d && !notesDraftRef.current) || saving) return
         saving = true
         void save(true).finally(() => {
           saving = false
@@ -1026,7 +1197,10 @@ export function App() {
   }, [autoSave, path, editing, editingCell, save])
 
   const saveAs = useCallback(() => fileActions.saveAs(() => ctxRef.current), [])
-  const exportImages = useCallback(() => fileActions.exportImages(ctxRef.current), [])
+  const exportImages = useCallback(
+    (format: 'png' | 'jpg' = 'png') => fileActions.exportImages(ctxRef.current, format),
+    [],
+  )
   const exportPdf = useCallback(() => void fileActions.exportPdf(ctxRef.current), [])
 
   // Headless export mode (--headless-export): this renderer lives in a hidden
@@ -1060,6 +1234,7 @@ export function App() {
   }, [])
 
   const [printDlgOpen, setPrintDlgOpen] = useState(false)
+  const [printDlgInitialDest, setPrintDlgInitialDest] = useState<string | undefined>(undefined)
 
   /** Whether focus is in a text input (input/textarea/contentEditable) — these cases use native undo/delete */
   const inTextField = () => {
@@ -1205,8 +1380,9 @@ export function App() {
     }
   }, [])
 
-  // Trackpad pinch zoom: Chromium synthesizes pinch gestures as ctrlKey+wheel events;
-  // Ctrl/⌘ + wheel zoom also supported. Needs passive:false to preventDefault.
+  // Ctrl/⌘ + wheel zoom: five percentage points per notch whatever the OS scroll
+  // setting; a trackpad pinch (ctrlKey wheel events in Chromium) moves in the same
+  // steps. Needs passive:false to preventDefault.
   // Plain wheel/trackpad scroll turns pages (PowerPoint/WPS behavior) — but only
   // while the slide fits the viewport; zoomed-in overflow keeps native panning.
   useEffect(() => {
@@ -1219,14 +1395,8 @@ export function App() {
         ev.preventDefault()
         const intent = zoomWheel.feed(ev, ev.timeStamp)
         if (!intent) return
-        const anchor = { x: ev.clientX, y: ev.clientY }
-        if (intent === 'pinch') {
-          const factor = Math.exp(-ev.deltaY * 0.01)
-          previewZoom((z) => z * factor, anchor)
-        } else {
-          const dir = intent === 'zoom-in' ? 1 : -1
-          previewZoom((z) => notchStep(z, dir), anchor)
-        }
+        const dir = intent === 'zoom-in' ? 1 : -1
+        previewZoom((z) => wheelStep(z, dir), { x: ev.clientX, y: ev.clientY })
         return
       }
       // Never flip out from under a live text edit — the overlay's commit
@@ -1244,7 +1414,7 @@ export function App() {
   }, [hasDoc, viewMode, previewZoom, slides.length])
 
   const newBlank = useCallback(async () => {
-    const r = await window.slidesApi.newBlank(FIT_WIDTH)
+    const r = await window.slidesApi.newBlank(FIT_WIDTH, defaultNewSlideSize() ?? undefined)
     applyOpen(r)
     return r
   }, [applyOpen])
@@ -1269,8 +1439,11 @@ export function App() {
       .then((r) => {
         if (bootHandledRef.current) return
         bootHandledRef.current = true
-        if (r) applyOpen(r)
-        else void bootBlank()
+        if (r) {
+          applyOpen(r)
+          // a converted .ppt: the original is untouched and the first save writes a .pptx
+          if (r.importedFrom) showToast(t('appLegacyPptImported'))
+        } else void bootBlank()
       })
       // Open failures (corrupt file etc.) also land on a blank deck, or it stays at "Opening…" forever
       .catch(() => {
@@ -1305,6 +1478,7 @@ export function App() {
   }, [slides.length])
 
   const toggleAi = useCallback(() => {
+    if (!aiOnRef.current) return
     setShowAi((v) => {
       rememberAiPanelOpen('ai-slides-show-ai', !v)
       return !v
@@ -1320,6 +1494,8 @@ export function App() {
       slideShot?: boolean,
       scope?: AiScopeQuoteData,
     ) => {
+      // AI turned off: a preset that still finds its way here starts nothing
+      if (!aiOnRef.current) return
       setShowAi(() => {
         rememberAiPanelOpen('ai-slides-show-ai', true)
         return true
@@ -1344,6 +1520,10 @@ export function App() {
   /** Open annotation popover; ids are the canvas selection it was opened on */
   const [askState, setAskState] = useState<{ ids: string[]; itemKey?: string } | null>(null)
   askOpenRef.current = askState !== null
+  // AI turned off closes an open annotation popover rather than keeping it for later
+  useEffect(() => {
+    if (!aiOn) setAskState(null)
+  }, [aiOn])
   /** When the popover last dismissed itself — see the guard in openAskPopover */
   const askClosedAtRef = useRef(0)
 
@@ -1427,6 +1607,7 @@ export function App() {
   )
 
   const openAskPopover = useCallback(() => {
+    if (!aiOnRef.current) return
     if (editing || editingCell || selectedIds.length === 0) return
     // Clicking the trigger while the popover is open dismisses it through
     // the capture-phase outside-click handler before onClick runs.
@@ -1479,6 +1660,24 @@ export function App() {
       setSelectedIds(resolved.nodes.map((n) => n.sourceId))
     },
     [editQueue, slides, current],
+  )
+
+  const focusSlideChange = useCallback(
+    (slideIndex: number, nodeKeyId?: string) => {
+      const slide = slides[slideIndex]
+      if (!slide) return
+      if (slideIndex !== current) setCurrent(slideIndex)
+      setEditing(null)
+      if (nodeKeyId) {
+        const target = slide.nodes.find(
+          (n) => !n.decoration && (n.durableId ?? n.sourceId) === nodeKeyId,
+        )
+        setSelectedIds(target ? [target.sourceId] : [])
+      } else {
+        setSelectedIds([])
+      }
+    },
+    [slides, current],
   )
 
   const applySlide = useCallback((slideIndex: number, updated: RenderSlide) => {
@@ -1640,6 +1839,19 @@ export function App() {
     [],
   )
 
+  // Painter armed while editing text: the selection made with the mouse takes the format
+  const brushInText = !!brushMode && !!(editing || editingCell)
+  useEffect(() => {
+    if (!brushInText) return
+    const onUp = (e: MouseEvent) => {
+      if (!(e.target instanceof Element) || !e.target.closest('.slide-text-editor')) return
+      // after the browser has settled the selection for this release
+      window.setTimeout(() => clipboardActions.applyBrushToTextSelection(ctxRef.current), 0)
+    }
+    document.addEventListener('mouseup', onUp)
+    return () => document.removeEventListener('mouseup', onUp)
+  }, [brushInText])
+
   /**
    * Format-painter-aware select handler: while the painter is active, intercept clicks →
    * applyBrushToElement, without changing the selection (existing selection preserved).
@@ -1648,6 +1860,10 @@ export function App() {
     (id: string | null, additive = false) => {
       if (brushMode && id) {
         void applyBrushToElement(id)
+        return
+      }
+      if (animPainter && id) {
+        void animationActions.paintAnimationsOnto(ctxRef.current, id)
         return
       }
       // Clicking blank/an element outside the group during in-group editing = exit the group
@@ -1659,7 +1875,7 @@ export function App() {
       }
       setSelectedId(id, additive)
     },
-    [brushMode, applyBrushToElement, setSelectedId, enteredGroupId, enteredGroupNode],
+    [brushMode, animPainter, applyBrushToElement, setSelectedId, enteredGroupId, enteredGroupNode],
   )
 
   const handleEnterGroup = useCallback((groupId: string, childId: string | null) => {
@@ -1862,6 +2078,19 @@ export function App() {
         setShowFormat(false)
         setShowBgFormat(false)
         setShowComments(false)
+        setShowSelPane(false)
+      }
+      return !v
+    })
+  }, [])
+
+  const toggleSelectionPane = useCallback(() => {
+    setShowSelPane((v) => {
+      if (!v) {
+        setShowFormat(false)
+        setShowBgFormat(false)
+        setShowComments(false)
+        setShowAnimPane(false)
       }
       return !v
     })
@@ -1873,6 +2102,7 @@ export function App() {
     setShowFormat(false)
     setShowAnimPane(false)
     setShowComments(false)
+    setShowSelPane(false)
   }, [])
 
   /** Open the format pane (Home ribbon toggle / element context menu); never auto-opens on selection */
@@ -1881,6 +2111,7 @@ export function App() {
     setShowBgFormat(false)
     setShowAnimPane(false)
     setShowComments(false)
+    setShowSelPane(false)
     if (section === 'size') setFormatSizeNonce((n) => n + 1)
   }, [])
 
@@ -2093,6 +2324,7 @@ export function App() {
     setShowFormat(false)
     setShowBgFormat(false)
     setShowAnimPane(false)
+    setShowSelPane(false)
     if (focus) {
       setCommentsMode('page')
       setCommentsFocusNonce((n) => n + 1)
@@ -2324,6 +2556,19 @@ export function App() {
     showThumbs,
     viewMode,
   ])
+  // Width the list's right border and scrollbar lane take out of its inline width.
+  // The lane is always reserved (scrollbar-gutter in CSS), so thumbnails sized to
+  // the rest keep their right edge in view whether or not the list scrolls.
+  const [thumbsChromeW, setThumbsChromeW] = useState(0)
+  useLayoutEffect(() => {
+    const list = thumbsListRef.current
+    if (!list) return
+    const measure = () => setThumbsChromeW(list.offsetWidth - list.clientWidth)
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(list)
+    return () => ro.disconnect()
+  }, [showThumbs, viewMode])
   const visibleSorterItems = useVisibleThumbs(sorterViewRef, '.sorter-item', [
     slides.length,
     viewMode,
@@ -2332,18 +2577,22 @@ export function App() {
   /** Canvas right-click: select the hit element first (replace the selection if it isn't in it), clear selection on blank */
   const onCanvasContextMenu = useCallback(
     (sourceId: string | null, x: number, y: number, cell?: { row: number; col: number }) => {
-      if (editing) return
+      if (editing || editingCell) return
       // The clipboard may have been filled from another window (or externally) since our last copy
       void window.slidesApi.clipboardProbe().then(setHasClipboard)
       if (sourceId) {
         setSelectedIds((prev) => (prev.includes(sourceId) ? prev : [sourceId]))
+        if (!cell || !isCellSelected(tableSelection, sourceId, cell.row, cell.col)) {
+          setTableSelection(null)
+        }
         setCtxMenu({ kind: 'element', x, y, targetId: sourceId, ...(cell ? { cell } : {}) })
       } else {
         setSelectedIds([])
+        setTableSelection(null)
         setCtxMenu({ kind: 'canvas', x, y })
       }
     },
-    [editing],
+    [editing, editingCell, tableSelection],
   )
 
   const onTextContextMenu = useCallback((x: number, y: number, collapsed: boolean) => {
@@ -2364,7 +2613,8 @@ export function App() {
       else if (cmd === 'save-as') void saveAs()
       // macOS has no File ribbon tab, so these only exist in the menu
       else if (cmd === 'export-pdf') void exportPdf()
-      else if (cmd === 'export-images') void exportImages()
+      else if (cmd === 'export-images') void exportImages('png')
+      else if (cmd === 'export-images-jpg') void exportImages('jpg')
       else if (cmd === 'print') setPrintDlgOpen(true)
       // Through the preview path so the zoom pivots on the viewport center, not the scroll origin
       else if (cmd === 'zoom-in') previewZoom(nextPreset)
@@ -2373,15 +2623,15 @@ export function App() {
       else if (cmd === 'undo') void undo()
       else if (cmd === 'redo') void redo()
       else if (cmd === 'cut') {
-        if (editing || inTextField() || hasDomTextSelection())
+        if (editing || editingCell || inTextField() || hasDomTextSelection())
           void window.slidesApi.nativeClipboard('cut')
         else void cutSelected()
       } else if (cmd === 'copy') {
-        if (editing || inTextField() || hasDomTextSelection())
+        if (editing || editingCell || inTextField() || hasDomTextSelection())
           void window.slidesApi.nativeClipboard('copy')
         else void copySelected()
       } else if (cmd === 'paste') {
-        if (editing || inTextField()) void window.slidesApi.nativeClipboard('paste')
+        if (editing || editingCell || inTextField()) void window.slidesApi.nativeClipboard('paste')
         else void pasteClipboard()
       }
     })
@@ -2394,6 +2644,7 @@ export function App() {
     undo,
     redo,
     editing,
+    editingCell,
     cutSelected,
     copySelected,
     pasteClipboard,
@@ -2480,11 +2731,11 @@ export function App() {
 
   const startEdit = useCallback(
     (sourceId: string, caret?: EditCaret) => {
-      if (brushMode) return // the click already applied the format brush
+      if (brushMode || animPainter) return // the click already applied the painter
       const isChild = enteredGroupNode?.children.some((c) => c.sourceId === sourceId)
       setEditing({ sourceId, caret, ...(isChild ? { groupId: enteredGroupNode!.sourceId } : {}) })
     },
-    [enteredGroupNode, brushMode],
+    [enteredGroupNode, brushMode, animPainter],
   )
 
   // Audio/video playback overlay: triggered by double-clicking a media element, closed on page switch/Escape
@@ -2517,9 +2768,28 @@ export function App() {
   useEscOverlay(!!mediaPlay || !!drawKind || viewMode === 'reading')
   const overlayOpen = useEscOverlayOpen()
 
-  const startEditCell = useCallback((sourceId: string, row: number, col: number) => {
-    setEditing(null)
-    setEditingCell({ sourceId, row, col })
+  const startEditCell = useCallback(
+    (sourceId: string, row: number, col: number, caret?: EditCaret) => {
+      if (brushMode || animPainter) return
+      setEditing(null)
+      setTableSelection(null)
+      setEditingCell({
+        sourceId,
+        row,
+        col,
+        ...(caret ? { caret } : {}),
+        session: tableActions.nextCellSession(),
+      })
+    },
+    [brushMode, animPainter],
+  )
+
+  const handleSelectTableCells = useCallback((sel: TableCellSelection | null) => {
+    setTableSelection(sel)
+    if (sel) {
+      setEditing(null)
+      setEditingCell(null)
+    }
   }, [])
 
   /** Pseudo-node for the cell edit overlay: table box + cell local box → absolute page box */
@@ -2530,8 +2800,8 @@ export function App() {
     const cell = tbl.cells.find((c) => c.row === editingCell.row && c.col === editingCell.col)
     if (!cell) return null
     return {
-      id: `cellEdit_${tbl.sourceId}_${cell.row}_${cell.col}`,
-      type: 'shape',
+      id: `cellEdit_${tbl.sourceId}_${cell.row}_${cell.col}_${editingCell.session ?? 0}`,
+      type: 'text',
       sourceId: tbl.sourceId,
       box: {
         ...tableCellOverlayBox(tbl.box, cell),
@@ -2553,7 +2823,8 @@ export function App() {
     [],
   )
   const commitCellEdit = useCallback(
-    (paragraphs: EditParagraph[]) => tableActions.commitCellEdit(ctxRef.current, paragraphs),
+    (paragraphs: EditParagraph[], target?: EditingCellState) =>
+      tableActions.commitCellEdit(ctxRef.current, paragraphs, target),
     [],
   )
   const navigateCell = useCallback(
@@ -2983,6 +3254,21 @@ export function App() {
     [editingCell, selectedNode],
   )
 
+  const tableActiveCells = useMemo(() => {
+    if (selectedNode?.type !== 'table') return null
+    if (editingCell && editingCell.sourceId === selectedNode.sourceId) {
+      return [{ row: editingCell.row, col: editingCell.col }]
+    }
+    if (
+      tableSelection &&
+      tableSelection.sourceId === selectedNode.sourceId &&
+      tableSelection.cells.length > 0
+    ) {
+      return tableSelection.cells
+    }
+    return null
+  }, [editingCell, tableSelection, selectedNode])
+
   // Theme-derived chart colors (fetched when a chart is selected; re-selecting after applying a theme refreshes)
   const [chartColorSchemes, setChartColorSchemes] = useState<Array<{
     key: string
@@ -3043,6 +3329,25 @@ export function App() {
     let st: { family: string; sizePt: number; sizeMixed?: boolean } | null = null
     if (inTextEdit) {
       st = selFont
+    } else if (tableSelection && tableSelection.cells.length > 0 && slide) {
+      const tbl = slide.nodes.find((n) => n.sourceId === tableSelection.sourceId)
+      if (tbl?.type === 'table') {
+        const runs: Array<{ family: string; sizePt: number }> = []
+        const selCells = tbl.cells.filter((c) =>
+          tableSelection.cells.some((s) => s.row === c.row && s.col === c.col),
+        )
+        collectFontRuns({ ...tbl, cells: selCells }, slide.scale ?? 1, runs)
+        if (runs.length) {
+          const families = new Set(runs.map((r) => r.family))
+          const sizes = runs.map((r) => r.sizePt)
+          const minSize = Math.min(...sizes)
+          st = {
+            family: families.size === 1 ? runs[0]!.family : '',
+            sizePt: minSize,
+            sizeMixed: sizes.some((s) => s !== minSize),
+          }
+        }
+      }
     } else if (selectedIds.length) {
       const runs: Array<{ family: string; sizePt: number }> = []
       for (const n of slide?.nodes ?? []) {
@@ -3064,7 +3369,7 @@ export function App() {
     if (!st && defaultFont) st = { family: defaultFont, sizePt: 18 }
     if (st) lastFontRef.current = st
     return st
-  }, [inTextEdit, selFont, selectedIds, slide, defaultFont])
+  }, [inTextEdit, selFont, tableSelection, selectedIds, slide, defaultFont])
 
   // Current bullet char for the ribbon bullet gallery highlight: '' = no bullet
   // (None tile), a glyph = its preset tile, null = mixed/unknown (no highlight)
@@ -3085,6 +3390,17 @@ export function App() {
       collectBodyBulletChars(cell.text, cellFound)
       return cellFound.size === 1 ? [...cellFound][0]! : null
     }
+    if (tableSelection && tableSelection.cells.length > 0) {
+      const tbl = findNodeCtx(tableSelection.sourceId)?.node
+      if (tbl?.type === 'table') {
+        const cellFound = new Set<string>()
+        for (const coord of tableSelection.cells) {
+          const cell = tbl.cells.find((c) => c.row === coord.row && c.col === coord.col)
+          if (cell) collectBodyBulletChars(cell.text, cellFound)
+        }
+        return cellFound.size === 1 ? [...cellFound][0]! : null
+      }
+    }
     const ids = selectedIds.length ? selectedIds : editing ? [editing.sourceId] : []
     if (!ids.length) return null
     const found = new Set<string>()
@@ -3095,12 +3411,23 @@ export function App() {
     }
     if (found.size !== 1) return null
     return [...found][0]!
-  }, [selectedIds, editing, editingCell, inTextEdit, findNodeCtx, paraFmtTick])
+  }, [selectedIds, editing, editingCell, tableSelection, inTextEdit, findNodeCtx, paraFmtTick])
 
   // Current paragraph alignment for the ribbon highlight: unset text defaults to 'left',
   // so text always has exactly one alignment current; null = mixed/no text (no highlight)
   const curAlign = useMemo((): ParaAlign | null => {
     if (inTextEdit) return selAlign
+    if (tableSelection && tableSelection.cells.length > 0) {
+      const tbl = findNodeCtx(tableSelection.sourceId)?.node
+      if (tbl?.type === 'table') {
+        const found = new Set<ParaAlign>()
+        for (const coord of tableSelection.cells) {
+          const cell = tbl.cells.find((c) => c.row === coord.row && c.col === coord.col)
+          if (cell) collectBodyAligns(cell.text, found)
+        }
+        return found.size === 1 ? [...found][0]! : null
+      }
+    }
     if (!selectedIds.length) return null
     const found = new Set<ParaAlign>()
     for (const id of selectedIds) {
@@ -3108,11 +3435,22 @@ export function App() {
       if (node) collectAligns(node, found)
     }
     return found.size === 1 ? [...found][0]! : null
-  }, [inTextEdit, selAlign, selectedIds, findNodeCtx])
+  }, [inTextEdit, selAlign, tableSelection, selectedIds, findNodeCtx])
 
   // Effective base direction for the ribbon LTR/RTL toggle; null = mixed/no text
   const curRtl = useMemo((): boolean | null => {
     if (inTextEdit) return selRtl
+    if (tableSelection && tableSelection.cells.length > 0) {
+      const tbl = findNodeCtx(tableSelection.sourceId)?.node
+      if (tbl?.type === 'table') {
+        const found = new Set<boolean>()
+        for (const coord of tableSelection.cells) {
+          const cell = tbl.cells.find((c) => c.row === coord.row && c.col === coord.col)
+          if (cell) collectBodyRtls(cell.text, found)
+        }
+        return found.size === 1 ? [...found][0]! : null
+      }
+    }
     if (!selectedIds.length) return null
     const found = new Set<boolean>()
     for (const id of selectedIds) {
@@ -3120,7 +3458,7 @@ export function App() {
       if (node) collectRtls(node, found)
     }
     return found.size === 1 ? [...found][0]! : null
-  }, [inTextEdit, selRtl, selectedIds, findNodeCtx])
+  }, [inTextEdit, selRtl, tableSelection, selectedIds, findNodeCtx])
 
   // Refresh the action-module context every render so extracted actions never see stale state
   ctxRef.current = {
@@ -3142,6 +3480,8 @@ export function App() {
     setEditing,
     editingCell,
     setEditingCell,
+    tableSelection,
+    setTableSelection,
     enteredGroupId,
     setEnteredGroupId,
     enteredGroupNode,
@@ -3163,6 +3503,9 @@ export function App() {
     viewMode,
     animations,
     setAnimations,
+    animPainter,
+    setAnimPainter,
+    toggleSelectionPane,
     selAnim,
     setSelAnim,
     setHoverAnim,
@@ -3319,6 +3662,17 @@ export function App() {
       })
   })
 
+  const applySlideSize = (cx: number, cy: number) =>
+    void window.slidesApi.setSlideSize({ cx, cy }).then((all) => {
+      if (all) {
+        setSlides(all)
+        // Every slide re-materializes with fresh element ids
+        setSelectedIds([])
+        setEditing(null)
+        setDirty(true)
+      }
+    })
+
   return (
     <div className="app">
       <ToastHost />
@@ -3337,13 +3691,48 @@ export function App() {
         onRedo={() => void redo()}
         onSaveAs={() => void saveAs()}
         onExportPdf={() => void exportPdf()}
-        onPrint={() => setPrintDlgOpen(true)}
-        onExportImages={() => void exportImages()}
+        onPrint={(dest) => {
+          setPrintDlgInitialDest(dest)
+          setPrintDlgOpen(true)
+        }}
+        onQuickPrint={async (printerLabel) => {
+          const visible = slides.filter((s) => !s.hidden)
+          if (visible.length === 0) return
+          setStatus(printLayoutText(lang, 'quickPrintSending', { printer: printerLabel }))
+          try {
+            const pngsBase64 = await renderSlidesToPngBase64(visible, images)
+            const first = visible[0]!
+            const result = await window.slidesApi.printLayout.print({
+              options: createDefaultOptions(),
+              editor: {
+                pngsBase64,
+                widthPx: first.widthPx,
+                heightPx: first.heightPx,
+                layout: 'full',
+              },
+              job: { deviceName: '', copies: 1, collate: true, duplex: 'simplex' },
+            })
+            if (result.ok) {
+              setStatus(printLayoutText(lang, 'quickPrintSent', { printer: printerLabel }))
+            } else if (!('aborted' in result)) {
+              setStatus(t('appPrintFailed', { error: result.error }))
+            }
+          } catch (err) {
+            setStatus(t('appPrintFailed', { error: String(err) }))
+          }
+        }}
+        listPrinters={() => window.slidesApi?.printLayout?.listPrinters?.() ?? Promise.resolve([])}
+        quickPrintPrefStore={window.slidesApi?.printLayout}
+        getPrintPageCount={() => slides.filter((s) => !s.hidden).length}
+        onQuickPrintNotice={setStatus}
+        onExportImages={() => void exportImages('png')}
+        onExportImagesJpg={() => void exportImages('jpg')}
         onFormat={onFormat}
         zoom={zoom}
         onZoom={previewZoom}
         showThumbs={showThumbs}
         onToggleThumbs={() => setShowThumbs((v) => !v)}
+        aiOn={aiOn}
         aiOpen={showAi}
         onToggleAi={toggleAi}
         onAiPreset={(text, opts) => pushAiPreset(text, true, undefined, undefined, opts?.slideShot)}
@@ -3362,6 +3751,7 @@ export function App() {
             if (!v) {
               setShowAnimPane(false)
               setShowBgFormat(false)
+              setShowSelPane(false)
             }
             return !v
           })
@@ -3388,25 +3778,12 @@ export function App() {
           void slideActions.setSlideLayoutAt(ctxRef.current, current, layoutPath)
         }
         onResetLayout={() => void slideActions.setSlideLayoutAt(ctxRef.current, current)}
-        onSlideSize={(cx, cy) =>
-          void window.slidesApi.setSlideSize({ cx, cy }).then((all) => {
-            if (all) {
-              setSlides(all)
-              // Every slide re-materializes with fresh element ids
-              setSelectedIds([])
-              setEditing(null)
-              setDirty(true)
-            }
+        onSlideSize={applySlideSize}
+        getSlideSize={() => window.slidesApi.getSlideSize()}
+        onCustomSlideSize={() =>
+          void window.slidesApi.getSlideSize().then((size) => {
+            if (size) setSlideSizeDialog(size)
           })
-        }
-        slideSizeKey={
-          slide
-            ? Math.abs(slide.widthPx / slide.heightPx - 16 / 9) < 0.02
-              ? '16:9'
-              : Math.abs(slide.widthPx / slide.heightPx - 4 / 3) < 0.02
-                ? '4:3'
-                : null
-            : null
         }
         onParagraphFormat={onParagraphFormat}
         onDirection={onDirection}
@@ -3437,6 +3814,16 @@ export function App() {
         onAnimTiming={patchAnimTiming}
         animPaneOpen={showAnimPane}
         onToggleAnimPane={toggleAnimPane}
+        animPainterMode={animPainter?.mode ?? null}
+        onAnimPainterClick={() => animationActions.armAnimPainter(ctxRef.current, 'once')}
+        onAnimPainterDoubleClick={() =>
+          animationActions.armAnimPainter(ctxRef.current, 'continuous')
+        }
+        selectionPaneOpen={showSelPane}
+        onToggleSelectionPane={toggleSelectionPane}
+        onChangeCase={(mode) => styleActions.onChangeCase(ctxRef.current, mode)}
+        onHighlight={(hex) => styleActions.onHighlight(ctxRef.current, hex)}
+        onLetterSpacing={(pt) => styleActions.onLetterSpacing(ctxRef.current, pt)}
         animCount={animations.length}
         onAnimPreview={() => setAnimPreview((n) => n + 1)}
         onSlideShow={startSlideShow}
@@ -3640,15 +4027,25 @@ export function App() {
         onEditTableStyle={(op) => void onEditTableStyle(op)}
         tableStyleFlags={tableStyleFlags}
         tableActiveCell={tableActiveCell}
+        tableActiveCells={tableActiveCells}
         onEditChart={(op) => void onEditChart(op)}
         onOpenChartDataDialog={() => void openChartDataDialog()}
         onArrange={(op) => void alignSelected(op)}
         onFlip={(axis) => void flipSelected(axis)}
         canDistribute={selectedIds.length >= 3}
+        canMatchSize={selectedIds.length >= 2}
+        onMergeShapes={(mode) => void arrangeActions.mergeSelected(ctxRef.current, mode)}
+        canMergeShapes={
+          selectedIds.length >= 2 &&
+          selectedIds.every((id) => {
+            const n = slide?.nodes.find((x) => x.sourceId === id)
+            return !!n && mergeOutline(n) !== null
+          })
+        }
       />
 
       <div className="app-main">
-        {slide && viewMode !== 'reading' && viewMode !== 'sorter' && (
+        {slide && aiOn && viewMode !== 'reading' && viewMode !== 'sorter' && (
           <div
             className={`ai-dock${aiDock.open && aiSettings ? '' : ' collapsed'}${
               !aiSidebarEnabled && !aiDock.open ? ' ai-dock-off' : ''
@@ -3673,12 +4070,14 @@ export function App() {
                 open={aiDock.open}
                 onExpand={aiDock.onExpand}
                 onCollapse={toggleAi}
-                onUndo={() => void undo()}
+                onAiMarks={setAiMarks}
                 onPathChange={(p) => {
                   setPath(p)
                   setDirty(false)
                 }}
                 onBeforeRun={flushNotes}
+                // a deck a create flow handed over goes into the panel's project once made (spec 6)
+                onHandedRunDone={() => void fileActions.saveIntoProject(() => ctxRef.current)}
                 currentFilePath={path}
                 editQueue={editQueue}
                 onQueueEditInstruction={(key, instruction) =>
@@ -3689,10 +4088,17 @@ export function App() {
                 onQueueRemove={(key) => setEditQueue((prev) => prev.filter((it) => it.key !== key))}
                 onQueueClear={() => setEditQueue([])}
                 onQueueFocus={focusQueueItem}
+                onFocusChange={focusSlideChange}
                 onQueueConsume={(keys) =>
                   setEditQueue((prev) => prev.filter((it) => !keys.includes(it.key)))
                 }
                 templateDocument={templateDocument}
+                onOpenTweaks={() => setTweaksOpen(true)}
+                onAiDoneRecord={(summary) =>
+                  void slidesTimelineAdapter
+                    .record('ai', { promptSummary: summary })
+                    .then(() => refreshSlidesTimeline())
+                }
               />
             ) : aiSidebarEnabled ? (
               <button
@@ -3832,15 +4238,16 @@ export function App() {
                         onContextMenu={(e) => onGapContextMenu(e)}
                       >
                         {(() => {
-                          // width = sidebar minus horizontal padding (20) and .thumb border (4)
-                          const thumbW = Math.max(60, thumbsW - 24)
+                          // width = sidebar minus its border and scrollbar lane, horizontal
+                          // padding (20) and .thumb border (4)
+                          const thumbW = Math.max(60, thumbsW - thumbsChromeW - 24)
                           const thumbItem = (s: RenderSlide, i: number) => (
                             <div
                               key={i}
                               data-index={i}
                               role="option"
                               aria-selected={selectedSlides.includes(i)}
-                              className={`thumb ${i === current ? 'active' : selectedSlides.includes(i) ? 'selected' : ''} ${s.hidden ? 'thumb-hidden' : ''}${thumbDragCls(i)}`}
+                              className={`thumb ${i === current ? 'active' : selectedSlides.includes(i) ? 'selected' : ''} ${s.hidden ? 'thumb-hidden' : ''}${aiMarks?.has(slideKey(s, i)) ? ' thumb-ai-changed' : ''}${thumbDragCls(i)}`}
                               data-tip={s.hidden ? t('appThumbHiddenTitle') : undefined}
                               {...thumbDragProps(i)}
                               onClick={(e) => selectThumb(i, e)}
@@ -3994,7 +4401,7 @@ export function App() {
                       />
                     )}
                     <div
-                      className={`stage-wrap${stageFitsViewport ? ' stage-fits-viewport' : ''}${brushMode ? ' format-brush-mode' : ''}`}
+                      className={`stage-wrap${stageFitsViewport ? ' stage-fits-viewport' : ''}${brushMode || animPainter ? ' format-brush-mode' : ''}`}
                       ref={stageWrapRef}
                       onMouseDownCapture={() => {
                         // Focus leaves the rail so slide-level Delete/cut/copy stop applying
@@ -4013,57 +4420,59 @@ export function App() {
                             : undefined
                         }
                       >
-                        <div className="stage-ai-bar">
-                          <div className="stage-ai-group">
-                            <button
-                              className={`stage-ai-btn${aiDock.open ? ' active' : ''}`}
-                              data-tip={t('aiOpenAssistant')}
-                              onClick={toggleAi}
-                            >
-                              <AiMark size={14} className="ai-mark" />
-                              <span>{aiSubscriptionText(lang, 'aiAssistant')}</span>
-                            </button>
-                            {/* Same one-click presets as the Home tab; hidden instead of
+                        {aiOn && (
+                          <div className="stage-ai-bar">
+                            <div className="stage-ai-group">
+                              <button
+                                className={`stage-ai-btn${aiDock.open ? ' active' : ''}`}
+                                data-tip={t('aiOpenAssistant')}
+                                onClick={toggleAi}
+                              >
+                                <AiMark size={14} className="ai-mark" />
+                                <span>{aiSubscriptionText(lang, 'aiAssistant')}</span>
+                              </button>
+                              {/* Same one-click presets as the Home tab; hidden instead of
                         disabled while the deck has no real content */}
-                            {!deckEmpty && (
-                              <>
-                                <span className="stage-ai-divider" aria-hidden="true" />
-                                <button
-                                  className="stage-ai-btn"
-                                  data-tip={t('aiBeautifyBtn')}
-                                  onClick={() =>
-                                    pushAiPreset(
-                                      t('aiBeautifyPrompt'),
-                                      true,
-                                      undefined,
-                                      undefined,
-                                      true,
-                                    )
-                                  }
-                                >
-                                  <IconAiBeautify size={14} />
-                                  <span>{t('aiBeautifyBtn')}</span>
-                                </button>
-                                <button
-                                  className="stage-ai-btn"
-                                  data-tip={t('aiFactCheckBtn')}
-                                  onClick={() => pushAiPreset(t('aiFactCheckPrompt'))}
-                                >
-                                  <IconAiFactCheck size={14} />
-                                  <span>{t('aiFactCheckBtn')}</span>
-                                </button>
-                                <button
-                                  className="stage-ai-btn"
-                                  data-tip={t('aiImageBtn')}
-                                  onClick={() => pushAiPreset(t('aiImagePrompt'))}
-                                >
-                                  <IconAiImage size={14} />
-                                  <span>{t('aiImageBtn')}</span>
-                                </button>
-                              </>
-                            )}
+                              {!deckEmpty && (
+                                <>
+                                  <span className="stage-ai-divider" aria-hidden="true" />
+                                  <button
+                                    className="stage-ai-btn"
+                                    data-tip={t('aiBeautifyBtn')}
+                                    onClick={() =>
+                                      pushAiPreset(
+                                        t('aiBeautifyPrompt'),
+                                        true,
+                                        undefined,
+                                        undefined,
+                                        true,
+                                      )
+                                    }
+                                  >
+                                    <IconAiBeautify size={14} />
+                                    <span>{t('aiBeautifyBtn')}</span>
+                                  </button>
+                                  <button
+                                    className="stage-ai-btn"
+                                    data-tip={t('aiFactCheckBtn')}
+                                    onClick={() => pushAiPreset(t('aiFactCheckPrompt'))}
+                                  >
+                                    <IconAiFactCheck size={14} />
+                                    <span>{t('aiFactCheckBtn')}</span>
+                                  </button>
+                                  <button
+                                    className="stage-ai-btn"
+                                    data-tip={t('aiImageBtn')}
+                                    onClick={() => pushAiPreset(t('aiImagePrompt'))}
+                                  >
+                                    <IconAiImage size={14} />
+                                    <span>{t('aiImageBtn')}</span>
+                                  </button>
+                                </>
+                              )}
+                            </div>
                           </div>
-                        </div>
+                        )}
                         <div
                           ref={stageScaleRef}
                           className="stage-scale"
@@ -4119,10 +4528,13 @@ export function App() {
                               ref={canvasRef}
                               slide={slide}
                               selectedIds={selectedIds}
+                              aiMarkedIds={markedNodeIds(slide, current, aiMarks)}
                               onSelect={handleCanvasSelect}
                               onEditText={startEdit}
                               onTransform={onTransform}
                               onEditTableCell={startEditCell}
+                              tableSelection={tableSelection}
+                              onSelectTableCells={handleSelectTableCells}
                               onTableColResize={onTableColResize}
                               onTableRowResize={(id, row, hPx) =>
                                 void onTableRowResize(id, row, hPx)
@@ -4266,11 +4678,70 @@ export function App() {
                             )}
                             {editingCell && cellEditNode && (
                               <TextEditOverlay
+                                key={`${editingCell.sourceId}_${editingCell.row}_${editingCell.col}_${editingCell.session ?? 0}`}
                                 node={cellEditNode}
                                 scale={slide.scale}
-                                onCommit={commitCellEdit}
-                                onCancel={() => setEditingCell(null)}
+                                isTableCell
+                                caretPoint={editingCell.caret}
+                                replaceWith={editingCell.replaceWith}
+                                selectAll={editingCell.selectAll}
+                                onCommit={(paragraphs) =>
+                                  void commitCellEdit(paragraphs, editingCell)
+                                }
+                                onCancel={() =>
+                                  setEditingCell((cur) =>
+                                    cur?.session === editingCell.session ? null : cur,
+                                  )
+                                }
                                 onTabNav={(paragraphs, dir) => void navigateCell(paragraphs, dir)}
+                                onArrowNav={(paragraphs, dir) =>
+                                  tableActions.navigateCellArrow(ctxRef.current, paragraphs, dir)
+                                }
+                                onExtendCellSelection={(paragraphs, dir) =>
+                                  tableActions.extendCellSelectionFromEdit(
+                                    ctxRef.current,
+                                    paragraphs,
+                                    dir,
+                                  )
+                                }
+                                onSelectAllCells={(paragraphs) =>
+                                  tableActions.selectAllCellsFromEdit(ctxRef.current, paragraphs)
+                                }
+                                onDragExitCell={(paragraphs, ev) => {
+                                  const hit = canvasRef.current?.tableCellAtClientPoint(
+                                    editingCell.sourceId,
+                                    ev.clientX,
+                                    ev.clientY,
+                                  )
+                                  if (
+                                    !hit ||
+                                    (hit.row === editingCell.row && hit.col === editingCell.col)
+                                  ) {
+                                    return false
+                                  }
+                                  const anchor = { row: editingCell.row, col: editingCell.col }
+                                  const sourceId = editingCell.sourceId
+                                  void tableActions.commitCellSilently(
+                                    ctxRef.current,
+                                    editingCell,
+                                    paragraphs,
+                                  )
+                                  setEditingCell(null)
+                                  setSelectedIds([sourceId])
+                                  canvasRef.current?.startTableCellDrag(sourceId, anchor, ev)
+                                  return true
+                                }}
+                                onPasteTableGrid={(_paragraphs, grid) => {
+                                  const start = { row: editingCell.row, col: editingCell.col }
+                                  const sourceId = editingCell.sourceId
+                                  setEditingCell(null)
+                                  void tableActions.pasteGridIntoTable(
+                                    ctxRef.current,
+                                    sourceId,
+                                    start,
+                                    grid,
+                                  )
+                                }}
                                 onFollowLink={followRunLink}
                                 frameColor={selectionChromeColor(slide, images, cellEditNode.box)}
                                 zoom={zoom}
@@ -4451,7 +4922,21 @@ export function App() {
                         .setTextBodyProps({ slideIndex: current, sourceId: id, props })
                         .then((r) => r && applySlide(current, r))
                     }
-                    onEffects={(id, effects) => sendEffects(current, id, effects)}
+                    onEffects={(id, effects) => {
+                      rememberRepeat((c) =>
+                        batched(async () => {
+                          for (const sid of c.selectedIds) {
+                            const r = await window.slidesApi.setEffects({
+                              slideIndex: c.current,
+                              sourceId: sid,
+                              effects,
+                            })
+                            if (r) c.applySlide(c.current, r)
+                          }
+                        }),
+                      )
+                      sendEffects(current, id, effects)
+                    }}
                     onStroke={(id, stroke) => void onStroke(id, stroke)}
                     onCollapse={() => setShowFormat(false)}
                     onPictureCrop={startCrop}
@@ -4486,7 +4971,95 @@ export function App() {
                     onGoToSlide={goToCommentSlide}
                     onCollapse={() => setShowComments(false)}
                   />
+                ) : showSelPane ? (
+                  <SelectionPane
+                    slideIndex={current}
+                    slide={slide}
+                    selectedIds={selectedIds}
+                    enteredGroupId={enteredGroupId}
+                    onSelect={(id, groupId, additive) => {
+                      if (groupId) {
+                        setEnteredGroupId(groupId)
+                        setSelectedIds((prev) =>
+                          additive && enteredGroupId === groupId
+                            ? nextSelection(prev, id, true)
+                            : [id],
+                        )
+                      } else {
+                        if (enteredGroupId) setEnteredGroupId(null)
+                        setSelectedIds((prev) =>
+                          nextSelection(enteredGroupId ? [] : prev, id, additive),
+                        )
+                      }
+                    }}
+                    onMove={(dir) =>
+                      void batched(async () => {
+                        // Forward moves the front-most first so neighbours never leapfrog
+                        const order = slide?.nodes.map((n) => n.sourceId) ?? []
+                        const ids = [...selectedIds].sort(
+                          (a, b) => order.indexOf(a) - order.indexOf(b),
+                        )
+                        if (dir === 'forward') ids.reverse()
+                        for (const id of ids) {
+                          await arrangeActions.reorderSelected(ctxRef.current, id, dir)
+                        }
+                      })
+                    }
+                    onSetHidden={(id, hidden) => {
+                      const slideIndex = current
+                      void window.slidesApi
+                        .setElementHidden({ slideIndex, sourceId: id, hidden })
+                        .then(async (r) => {
+                          if (!r) return
+                          // the slide was reparsed: every element id changed
+                          setEnteredGroupId(null)
+                          setSelectedIds([])
+                          applySlide(slideIndex, r)
+                          setDirty(true)
+                          setAnimations(await window.slidesApi.getAnimations(slideIndex))
+                        })
+                    }}
+                    onRename={(id, name) => {
+                      const slideIndex = current
+                      void window.slidesApi
+                        .setElementName({ slideIndex, sourceId: id, name })
+                        .then((r) => {
+                          if (!r) return
+                          applySlide(slideIndex, r)
+                          setDirty(true)
+                        })
+                    }}
+                    onCollapse={() => setShowSelPane(false)}
+                  />
                 ) : null}
+                {tweaksOpen && (
+                  <SlidesTweaksPanel
+                    lang={lang}
+                    value={tweaksState}
+                    onChange={applySlidesTweaks}
+                    onReset={resetSlidesTweaks}
+                    onClose={() => setTweaksOpen(false)}
+                  />
+                )}
+                <VersionTimelineDrawer
+                  open={timelineOpen}
+                  lang={lang}
+                  entries={timelineEntries}
+                  encryptedMemoryOnly={isEncrypted}
+                  onSaveCheckpoint={async (label) => {
+                    await slidesTimelineAdapter.record('checkpoint', { label })
+                    refreshSlidesTimeline()
+                  }}
+                  onRestore={async (entry) => {
+                    await slidesTimelineAdapter.restore(entry.id)
+                    refreshSlidesTimeline()
+                  }}
+                  onDelete={async (entry) => {
+                    await slidesTimelineAdapter.deleteEntry(entry.id)
+                    refreshSlidesTimeline()
+                  }}
+                  onClose={() => setTimelineOpen(false)}
+                />
               </>
             )}
           </div>
@@ -4503,6 +5076,24 @@ export function App() {
               {status && <span className="status-msg"> — {status}</span>}
             </div>
             <div className="status-right">
+              {hasDoc && (
+                <button
+                  type="button"
+                  className={`status-notes-btn${tweaksOpen ? ' on' : ''}`}
+                  onClick={() => setTweaksOpen((v) => !v)}
+                >
+                  <span>{tweaksText(lang, 'title')}</span>
+                </button>
+              )}
+              {hasDoc && (
+                <button
+                  type="button"
+                  className={`status-notes-btn${timelineOpen ? ' on' : ''}`}
+                  onClick={() => setTimelineOpen((v) => !v)}
+                >
+                  <span>{versionTimelineText(lang, 'title')}</span>
+                </button>
+              )}
               {hasDoc && (
                 <button
                   className={`status-notes-btn${showNotes ? ' on' : ''}`}
@@ -4611,6 +5202,18 @@ export function App() {
         />
       )}
 
+      {slideSizeDialog && (
+        <SlideSizeDialog
+          initial={slideSizeDialog}
+          defaultUnit={rulerUnit}
+          onApply={(cx, cy) => {
+            setSlideSizeDialog(null)
+            applySlideSize(cx, cy)
+          }}
+          onClose={() => setSlideSizeDialog(null)}
+        />
+      )}
+
       {cutoutTarget && (
         <CutoutDialog
           dataUrl={cutoutTarget.dataUrl}
@@ -4634,7 +5237,12 @@ export function App() {
           slides={slides}
           images={images}
           current={current}
-          onClose={() => setPrintDlgOpen(false)}
+          selectedSlides={selectedSlides}
+          initialDestination={printDlgInitialDest}
+          onClose={() => {
+            setPrintDlgOpen(false)
+            setPrintDlgInitialDest(undefined)
+          }}
           setStatus={setStatus}
         />
       )}
@@ -4646,8 +5254,8 @@ export function App() {
             setCurrent(si)
             setSelectedIds([id])
           }}
-          onReplaced={(all) => {
-            setSlides(all)
+          onReplaced={(update) => {
+            setSlides((current) => mergeSlideUpdate(current, update))
             setDirty(true)
           }}
           onClose={() => setFindOpen(false)}
@@ -4673,7 +5281,8 @@ export function App() {
         </div>
       )}
 
-      {!askState &&
+      {aiOn &&
+        !askState &&
         !editing &&
         !editingCell &&
         !cropTarget &&
@@ -4683,7 +5292,7 @@ export function App() {
           <AiAskTrigger getAnchorRect={getAskTriggerRect} onOpen={openAskPopover} />
         )}
 
-      {askState && askTargets.length > 0 && (
+      {aiOn && askState && askTargets.length > 0 && (
         <AiAskPopover
           targets={askTargets}
           getAnchorRect={getAskAnchorRect}

@@ -10,8 +10,13 @@
     "./browser": "./src/browser.ts",
     "./codex-app-server": "./src/codex-app-server.ts",
     "./custom-models": "./src/custom-models.ts",
+    "./key-models": "./src/key-model-refresh.ts",
+    "./local-models": "./src/local-models.ts",
+    "./local-test": "./src/local-test.ts",
     "./free-connect": "./src/free-connect.ts",
     "./subscription": "./src/subscription.ts",
+    "./antigravity-acp": "./src/antigravity-acp.ts",
+    "./antigravity-panel": "./src/antigravity-panel.ts",
     "./claude-code-cli": "./src/claude-code-cli.ts",
     "./agent-session": "./src/agent-session.ts",
     "./codex-image": "./src/codex-image.ts"

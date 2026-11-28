@@ -1,8 +1,8 @@
 /**
- * One PDF from JPEG and PNG images, one image per page in the given order
- * (the PDF tools window, decision 0030). pdf-lib embeds the image data as it
- * is, so a JPEG is not re-encoded and a photo keeps its quality. A JPEG's EXIF
- * orientation is applied, so a phone photo stands the way it was taken.
+ * One PDF from images, one image per page in the given order (the PDF tools
+ * window, decision 0030, extended in v2). pdf-lib embeds JPEG and PNG data as
+ * it is so photos keep their quality, applying EXIF orientation plus optional
+ * per-image clockwise rotation and explicit portrait/landscape paper control.
  */
 import {
   PDFDocument,
@@ -13,6 +13,9 @@ import {
 } from 'pdf-lib'
 
 export type ImageKind = 'jpg' | 'png'
+export type WebImageKind = 'jpg' | 'png' | 'webp' | 'bmp' | 'gif'
+export type ImagePaperOrientation = 'auto' | 'portrait' | 'landscape'
+export type ImageRotation = 0 | 90 | 180 | 270
 
 export interface ImageInfo {
   kind: ImageKind
@@ -24,10 +27,14 @@ export interface ImageInfo {
 }
 
 export interface ImagesToPdfOptions {
-  /** page size in points (portrait), turned to landscape for a wide image; null: each page is its image's size */
+  /** page size in points (portrait); null: each page is its image's size */
   paper: { w: number; h: number } | null
   /** space kept clear on every side, in points (paper pages only) */
   marginPt: number
+  /** paper orientation policy (default: 'auto' — wide image turns paper landscape) */
+  orientation?: ImagePaperOrientation
+  /** optional per-image clockwise rotation added on top of EXIF orientation */
+  rotations?: ReadonlyArray<ImageRotation>
 }
 
 /** points per pixel when a page takes its image's size (96 dpi) */
@@ -106,6 +113,41 @@ function jpegInfo(b: Uint8Array): ImageInfo | null {
 
 const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]
 
+/** Magic-byte sniff for JPG, PNG, WebP, BMP, and GIF images */
+export function isSupportedWebImageBytes(bytes: Uint8Array): WebImageKind | null {
+  if (bytes.length >= 4 && bytes[0] === 0xff && bytes[1] === 0xd8) return 'jpg'
+  if (bytes.length >= 24 && PNG_SIGNATURE.every((v, i) => bytes[i] === v)) return 'png'
+  // WebP: "RIFF" + 4-byte size + "WEBP"
+  if (
+    bytes.length >= 12 &&
+    bytes[0] === 0x52 &&
+    bytes[1] === 0x49 &&
+    bytes[2] === 0x46 &&
+    bytes[3] === 0x46 &&
+    bytes[8] === 0x57 &&
+    bytes[9] === 0x45 &&
+    bytes[10] === 0x42 &&
+    bytes[11] === 0x50
+  ) {
+    return 'webp'
+  }
+  // BMP: "BM"
+  if (bytes.length >= 26 && bytes[0] === 0x42 && bytes[1] === 0x4d) return 'bmp'
+  // GIF: "GIF87a" or "GIF89a"
+  if (
+    bytes.length >= 10 &&
+    bytes[0] === 0x47 &&
+    bytes[1] === 0x49 &&
+    bytes[2] === 0x46 &&
+    bytes[3] === 0x38 &&
+    (bytes[4] === 0x37 || bytes[4] === 0x39) &&
+    bytes[5] === 0x61
+  ) {
+    return 'gif'
+  }
+  return null
+}
+
 /** What an image file is and its size, read from its header; null: not a JPEG or PNG */
 export function readImageInfo(bytes: Uint8Array): ImageInfo | null {
   if (bytes.length >= 4 && bytes[0] === 0xff && bytes[1] === 0xd8) return jpegInfo(bytes)
@@ -116,6 +158,36 @@ export function readImageInfo(bytes: Uint8Array): ImageInfo | null {
     return width > 0 && height > 0 ? { kind: 'png', width, height, orientation: 1 } : null
   }
   return null
+}
+
+/**
+ * 90-degree clockwise composition table on EXIF orientation codes 1..8.
+ * Verified against orientedImageMatrix: turning a rendered image 90 deg CW
+ * in PDF space (x' = y, y' = -x) permutes the 8 dihedral group elements:
+ * 1->6->3->8->1 and 2->7->4->5->2.
+ */
+const CW90_NEXT: Record<number, number> = {
+  1: 6,
+  6: 3,
+  3: 8,
+  8: 1,
+  2: 7,
+  7: 4,
+  4: 5,
+  5: 2,
+}
+
+/** Compose an EXIF orientation (1..8) with an additional clockwise rotation (0/90/180/270) */
+export function composeRotationWithExif(
+  orientation: number,
+  extraClockwiseDeg: ImageRotation,
+): number {
+  let cur = orientation >= 1 && orientation <= 8 ? orientation : 1
+  const steps = (((extraClockwiseDeg % 360) + 360) % 360) / 90
+  for (let i = 0; i < steps; i++) {
+    cur = CW90_NEXT[cur] ?? 1
+  }
+  return cur
 }
 
 /** Orientations 5-8 turn the image a quarter, so it shows with width and height swapped */
@@ -158,11 +230,15 @@ export async function imagesToPdfBytes(
   options: ImagesToPdfOptions,
 ): Promise<Uint8Array> {
   const doc = await PDFDocument.create()
-  for (const bytes of images) {
+  const orientationMode = options.orientation ?? 'auto'
+  for (let i = 0; i < images.length; i++) {
+    const bytes = images[i]!
     const info = readImageInfo(bytes)
     if (!info) throw new Error('not a JPEG or PNG image')
     const image = info.kind === 'jpg' ? await doc.embedJpg(bytes) : await doc.embedPng(bytes)
-    const quarter = turnsQuarter(info.orientation)
+    const extraRot = options.rotations?.[i] ?? 0
+    const effectiveOrientation = composeRotationWithExif(info.orientation, extraRot)
+    const quarter = turnsQuarter(effectiveOrientation)
     // the image as it is meant to be seen
     const shownW = quarter ? image.height : image.width
     const shownH = quarter ? image.width : image.height
@@ -171,9 +247,14 @@ export async function imagesToPdfBytes(
     let pageH: number
     let box: { x: number; y: number; w: number; h: number }
     if (options.paper) {
-      const wide = shownW > shownH
-      pageW = wide ? options.paper.h : options.paper.w
-      pageH = wide ? options.paper.w : options.paper.h
+      const useLandscape =
+        orientationMode === 'landscape'
+          ? true
+          : orientationMode === 'portrait'
+            ? false
+            : shownW > shownH
+      pageW = useLandscape ? options.paper.h : options.paper.w
+      pageH = useLandscape ? options.paper.w : options.paper.h
       const margin = Math.max(0, Math.min(options.marginPt, pageW / 4, pageH / 4))
       const room = { w: pageW - margin * 2, h: pageH - margin * 2 }
       const scale = Math.min(room.w / shownW, room.h / shownH)
@@ -192,7 +273,7 @@ export async function imagesToPdfBytes(
     page.pushOperators(
       pushGraphicsState(),
       concatTransformationMatrix(
-        ...orientedImageMatrix(info.orientation, box.x, box.y, box.w, box.h),
+        ...orientedImageMatrix(effectiveOrientation, box.x, box.y, box.w, box.h),
       ),
       drawObject(name),
       popGraphicsState(),

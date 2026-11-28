@@ -1,18 +1,27 @@
 /**
- * Image generation through the Codex subscription is not part of this build:
- * loading this package's main entry registers no Codex generator and declares
- * nothing available. A ready Codex subscription therefore never becomes the
- * image route; the request goes to a key provider or ends in "unavailable".
+ * Loading the package entry alone registers no Codex image generator and
+ * declares nothing available. The entry exports the generator factory
+ * (`createCodexImageGenerator`), but only a process that calls it and
+ * registers the result (the app's docs main, the command-line process) gets
+ * the Codex image route. A process that only loaded this package (a test, a
+ * tool that imports the search helpers) keeps Codex off the image route and
+ * starts no Codex, so a stray registration is noticed here.
  */
 import { describe, expect, it } from 'vitest'
 import { codexImageGenerationAvailable, normalizeAiSettings } from '@genoffice/ai-provider'
-import { aiToolCapabilities, codexImageGenerator, generateImageTool } from '../src/index'
+import {
+  aiToolCapabilities,
+  codexImageGenerator,
+  createCodexImageGenerator,
+  generateImageTool,
+} from '../src/index'
 import { keyMedia, status, writeSettings } from './routing-helpers'
 
 const READY = { codex: status('codex', 'ready') }
 
 describe('a process that loaded the main entry', () => {
   it('has no Codex image generator and no declared availability', () => {
+    expect(typeof createCodexImageGenerator).toBe('function')
     expect(codexImageGenerator()).toBeNull()
     expect(codexImageGenerationAvailable()).toBe(false)
   })

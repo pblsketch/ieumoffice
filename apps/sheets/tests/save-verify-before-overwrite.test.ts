@@ -55,8 +55,14 @@ vi.mock('electron', () => ({
       once: vi.fn(),
     })
   },
+  clipboard: { writeText: (text: string) => copied.push(text) },
   desktopCapturer: {},
-  dialog: {},
+  dialog: {
+    showMessageBox: async (...args: unknown[]) => {
+      dialogs.push(args.at(-1) as MessageBoxShown)
+      return { response: dialogAnswer.value }
+    },
+  },
   net: {},
   screen: {},
   session: {},
@@ -64,6 +70,16 @@ vi.mock('electron', () => ({
   systemPreferences: {},
   webContents: { getAllWebContents: () => [], fromId: () => null },
 }))
+
+interface MessageBoxShown {
+  message: string
+  detail: string
+  buttons: string[]
+}
+/** message boxes the save showed, and the button the next one answers with */
+const dialogs: MessageBoxShown[] = []
+const dialogAnswer = { value: 1 }
+const copied: string[] = []
 
 /** the per-test userData folder the mocked app reads through getPath */
 const userDataDirRef = { value: '' }
@@ -106,6 +122,8 @@ function mockOpenResult(): unknown {
 const openFails = { value: (_path: string): boolean => false }
 const opened: string[] = []
 const closed: string[] = []
+/** the request limit each open asked for (undefined = the client default) */
+const openTimeouts: (number | undefined)[] = []
 
 vi.mock('../src/main/xlsx-sidecar-client', () => ({
   XlsxSidecarClient: class {
@@ -114,8 +132,16 @@ vi.mock('../src/main/xlsx-sidecar-client', () => ({
     async close(sessionId: string): Promise<void> {
       closed.push(sessionId)
     }
-    async open(path: string): Promise<unknown> {
-      if (openFails.value(path)) throw new Error('Workbook part is malformed.')
+    async open(
+      path: string,
+      _locale?: string,
+      _shortDate?: string,
+      options?: { timeoutMs?: number },
+    ): Promise<unknown> {
+      openTimeouts.push(options?.timeoutMs)
+      // the engine names the broken part, and its message may carry the path
+      if (openFails.value(path))
+        throw new Error(`Invalid XML in xl/styles.xml: expected </fonts> (${path})`)
       const result = mockOpenResult() as { sessionId: string }
       opened.push(result.sessionId)
       return result
@@ -141,7 +167,7 @@ vi.mock('@genoffice/ai-provider/subscription', async (importOriginal) => ({
   sharedSubscriptionStatuses: () => ({}),
 }))
 
-import { createSheetsView } from '../src/main/sheets-main'
+import { createSheetsView, queueWorkbookForView } from '../src/main/sheets-main'
 
 let dir: string
 
@@ -159,14 +185,19 @@ function writeWorkbook(name = 'book.xlsx', bytes = 'original-bytes'): string {
 }
 
 async function openWorkbook(path: string): Promise<{ sessionId: string }> {
-  return (await call(IPC_CHANNELS.reopenWorkbook, path)) as { sessionId: string }
+  // the way a shell-routed open reaches the tab: the crash re-open channel
+  // only continues a workbook this view already has open (path grants)
+  if (!lastContents) createSheetsView({ includeAiHandlers: false })
+  queueWorkbookForView(lastContents as never, path)
+  return (await call(IPC_CHANNELS.selectWorkbook)) as { sessionId: string }
 }
 
 /** an in-place save with one real cell edit, the way the renderer sends it */
-function saveRequest(sessionId: string): unknown {
+function saveRequest(sessionId: string, quiet = false): unknown {
   return {
     sessionId,
     mode: 'save',
+    ...(quiet ? { quiet: true } : {}),
     edits: [{ sheetId: 'sheet-1', row: 0, column: 0, writeValue: true, value: 'edited' }],
     structuralOps: [],
     chartEdits: [],
@@ -191,8 +222,8 @@ function saveRequest(sessionId: string): unknown {
   }
 }
 
-async function saveWorkbook(sessionId: string): Promise<SaveResult> {
-  return (await call(IPC_CHANNELS.saveWorkbook, saveRequest(sessionId))) as SaveResult
+async function saveWorkbook(sessionId: string, quiet = false): Promise<SaveResult> {
+  return (await call(IPC_CHANNELS.saveWorkbook, saveRequest(sessionId, quiet))) as SaveResult
 }
 
 /** what the stubbed save writes: the bytes it read, marked */
@@ -215,6 +246,10 @@ beforeEach(() => {
   openFails.value = () => false
   opened.length = 0
   closed.length = 0
+  openTimeouts.length = 0
+  dialogs.length = 0
+  copied.length = 0
+  dialogAnswer.value = 1
 })
 
 afterEach(() => {
@@ -234,6 +269,78 @@ describe('save opens its output back before replacing the file', () => {
     expect(readFileSync(path).toString()).toBe('original-bytes')
     // nothing of the failed save is left beside the user's file
     expect(readdirSync(dir)).toEqual(['book.xlsx'])
+  })
+
+  it('keeps the reason, without the path, in the message and the data folder', async () => {
+    const path = writeWorkbook()
+    const session = await openWorkbook(path)
+    openFails.value = isSavedOutput
+
+    const reason = '[unreadable: Invalid XML in xl/styles.xml: expected </fonts> (<path>)]'
+    await expect(saveWorkbook(session.sessionId)).rejects.toThrow(reason)
+    const lines = readFileSync(join(userDataDirRef.value, 'sheets-save-failures.jsonl'), 'utf8')
+      .trim()
+      .split('\n')
+    expect(lines).toHaveLength(1)
+    const entry = JSON.parse(lines[0]!) as Record<string, unknown>
+    expect(entry).toMatchObject({
+      app: '0',
+      source: 'xlsx',
+      kind: 'unreadable',
+      detail: 'Invalid XML in xl/styles.xml: expected </fonts> (<path>)',
+    })
+    expect(entry.bytes).toBe(savedFrom('original-bytes').length)
+    // the staged output sat in the temp folder; no form of it is kept, raw or JSON-escaped
+    expect(lines[0]).not.toContain(JSON.stringify(tmpdir()).slice(1, -1))
+  })
+
+  it('shows the reason in full in a dialog and copies it on request', async () => {
+    const path = writeWorkbook()
+    const session = await openWorkbook(path)
+    openFails.value = isSavedOutput
+    dialogAnswer.value = 0
+
+    const reason = '[unreadable: Invalid XML in xl/styles.xml: expected </fonts> (<path>)]'
+    await expect(saveWorkbook(session.sessionId)).rejects.toThrow(reason)
+    // the toast and the status bar cut the line short; the dialog does not
+    expect(dialogs).toHaveLength(1)
+    expect(dialogs[0]?.message).toContain('因此没有覆盖原文件')
+    expect(dialogs[0]?.detail).toContain(reason)
+    expect(dialogs[0]?.buttons).toEqual(['复制原因', '关闭'])
+    expect(copied).toHaveLength(1)
+    expect(copied[0]).toContain(reason)
+    expect(copied[0]).toContain('(xlsx, 0)')
+  })
+
+  it('copies nothing when the dialog is closed', async () => {
+    const path = writeWorkbook()
+    const session = await openWorkbook(path)
+    openFails.value = isSavedOutput
+
+    await expect(saveWorkbook(session.sessionId)).rejects.toThrow()
+    expect(dialogs).toHaveLength(1)
+    expect(copied).toEqual([])
+  })
+
+  it('shows no dialog for a quiet save, which still keeps the reason', async () => {
+    const path = writeWorkbook()
+    const session = await openWorkbook(path)
+    openFails.value = isSavedOutput
+
+    await expect(saveWorkbook(session.sessionId, true)).rejects.toThrow('[unreadable:')
+    expect(dialogs).toEqual([])
+    expect(
+      readFileSync(join(userDataDirRef.value, 'sheets-save-failures.jsonl'), 'utf8'),
+    ).toContain('"kind":"unreadable"')
+  })
+
+  it("gives the output's open the save's request limit, not the plain open's", async () => {
+    const path = writeWorkbook()
+    const session = await openWorkbook(path)
+    expect(openTimeouts).toEqual([undefined])
+
+    await saveWorkbook(session.sessionId)
+    expect(openTimeouts).toEqual([undefined, 180_000])
   })
 
   it('keeps the session alive, so the next Save still works', async () => {

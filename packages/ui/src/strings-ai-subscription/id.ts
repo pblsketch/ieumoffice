@@ -17,11 +17,15 @@ export const id = {
   cardErrNeedsUpdatePath: 'File yang dijalankan aplikasi ini:',
   cardErrNeedsUpdateWindows:
     'Memperbarui {provider} di dalam WSL (Ubuntu) atau di folder lain tidak mengubah file ini. Jalankan {command} di Windows PowerShell.',
+  claudeDesktopNote:
+    'Aplikasi desktop Claude bukan Claude Code yang dijalankan aplikasi ini. Claude Code adalah program terpisah yang dipakai di terminal, jadi memasang atau memperbarui aplikasi desktop tidak mengubahnya.',
   cardErrTimeout: 'Program {provider} tidak menjawab tepat waktu. Periksa lagi sebentar lagi.',
   cardErrFailed: 'Terjadi masalah saat memeriksa {provider}. Periksa lagi.',
   actionInstall: 'Pasang',
   actionLogin: 'Masuk',
   actionLoginWindow: 'Browser tidak terbuka?',
+  actionLoginWithCode: 'Browser menampilkan kode?',
+  actionLoginBrowser: 'Masuk lewat browser',
   actionRecheck: 'Periksa lagi',
   actionAcceptMetered: 'Tetap gunakan',
   actionInstallHelp: 'Panduan pemasangan resmi',
@@ -40,16 +44,18 @@ export const id = {
     'Login ini memakai kunci API atau akun bayar sesuai pemakaian, atau jenisnya tidak dapat dipastikan. Dengan "Tetap gunakan", AI berjalan melalui koneksi ini dan setiap permintaan ditagihkan ke akun tersebut.',
   connectTitle: 'Hubungkan AI untuk memulai',
   connectBody:
-    'AI berjalan dengan langganan Claude atau Codex yang sudah Anda miliki. Kunci API tidak diperlukan.',
+    'AI berjalan dengan langganan Claude, ChatGPT, atau Google Antigravity yang sudah Anda miliki. Tidak perlu kunci API.',
   connectProviderTitle: 'Koneksi {provider} belum bisa dipakai saat ini',
   connectKeyBody:
     'Penyiapan {provider} belum selesai. Selesaikan di Pengaturan, atau pilih AI lain.',
   errNotConnected:
-    'Belum ada AI yang terhubung. Hubungkan dulu langganan Claude atau Codex, atau AI gratis.',
+    'Belum ada AI yang terhubung. Hubungkan langganan Claude, ChatGPT, Codex, atau Antigravity, atau AI gratis terlebih dahulu.',
   errNotInstalled: 'Program {provider} tidak ditemukan di PC ini.',
   errSignedOut: 'Sesi masuk {provider} sudah berakhir. Masuk lagi untuk melanjutkan.',
   errRateLimit: 'Batas langganan {provider} sudah habis.',
   errRateLimitReset: 'Batas langganan {provider} sudah habis. Batas diatur ulang pada {time}.',
+  errChatGptAppLimit:
+    'Aplikasi ini sudah menghabiskan penggunaan ChatGPT yang bisa dipakainya. Batas itu bisa batas seluruh paket Anda atau batas yang ditetapkan untuk aplikasi ini. Periksa di ChatGPT pada Pengaturan → Penggunaan.',
   errUnsafeTools:
     'Program {provider} dimulai dengan alat bawaannya masih aktif, sehingga proses dihentikan demi keamanan.',
   errMeteredNotAccepted:
@@ -64,6 +70,8 @@ export const id = {
   errFreeLimit:
     'Jatah gratis hari ini sudah habis. Coba lagi besok, atau pilih AI lain di Pengaturan.',
   errFreeLimitReset: 'Jatah gratis hari ini sudah habis. Anda bisa memakainya lagi pada {time}.',
+  errFreeTierModel:
+    'Model ini tidak punya tingkat gratis, jadi kunci gratis tidak bisa memakainya. Pilih model yang termasuk tingkat gratis (misalnya model Flash), atau aktifkan penagihan di konsol penyedia.',
   continueWith: 'Lanjutkan dengan {provider}',
   continueMeteredNote:
     'Koneksi {provider} bukan langganan: melanjutkan akan ditagih sesuai pemakaian.',
@@ -72,7 +80,7 @@ export const id = {
   usageWindowSevenDay: 'Batas 7 hari',
   noticeTitle: 'Sebelum memakai AI dengan langganan Anda',
   noticeSend:
-    'Isi dokumen dan percakapan Anda dikirim ke Anthropic atau OpenAI dengan akun Anda sendiri. Setiap permintaan juga membawa nama, judul, dan deskripsi setiap skill yang disetel ke "AI yang menentukan"; skill yang dipakai dan file skill yang dibaca AI juga ikut dikirim.',
+    'Isi dokumen dan percakapan Anda dikirim ke Anthropic, OpenAI, atau Google dengan akun Anda sendiri. Setiap permintaan juga membawa nama, judul, dan deskripsi setiap skill yang disetel ke "AI yang menentukan"; skill yang dipakai dan file skill yang dibaca AI juga ikut dikirim.',
   noticeTraining:
     'Apakah isi itu dipakai untuk melatih AI ditentukan oleh pengaturan akun Anda sendiri di perusahaan tersebut.',
   noticeCodexHistory:
@@ -98,7 +106,7 @@ export const id = {
   guidePathCodexTitle: 'Saya memakai ChatGPT',
   guidePathCodexBody:
     'Masuk ke program Codex dari OpenAI dengan akun ChatGPT Anda. Paket gratis hanya memberi sedikit pemakaian.',
-  guidePathFreeTitle: 'Belum punya keduanya',
+  guidePathFreeTitle: 'Belum pakai yang mana pun',
   guidePathFreeBody:
     'Hubungkan AI gratis dalam sekitar satu menit. Selama Anda memakainya secara gratis, konten yang Anda kirim dapat digunakan untuk meningkatkan AI perusahaan tersebut.',
   guideBack: 'Pilih cara lain',
@@ -110,12 +118,14 @@ export const id = {
   stepLogin: 'Masuk',
   stepReady: 'Terhubung',
   installReturnNote:
-    'Setelah pemasangan di jendela itu selesai, kembali ke sini. Aplikasi akan memeriksa lagi dengan sendirinya.',
+    'Selama mengunduh, jendela itu mungkin tidak menampilkan apa pun selama beberapa menit. Biarkan tetap terbuka. Setelah pemasangan selesai, kembali ke sini. Aplikasi akan memeriksa lagi dengan sendirinya.',
   loginHowNote:
     'Browser akan terbuka saat Anda menekannya. Masuk dengan akun {vendor} Anda dan tekan Izinkan; koneksi akan selesai dengan sendirinya.',
   signingInStalledNote:
     'Jika halaman masuk tidak terbuka di browser Anda, buka jendela masuk dengan tombol di bawah. Jika Anda masih sedang masuk di browser, selesaikan saja di sana: tombol ini menghentikan proses masuk itu dan memulai lagi dari awal.',
   actionLoginWindowOpen: 'Buka jendela masuk',
+  loginUnfinishedNote:
+    'Proses masuk belum selesai. Jika browser menampilkan kode, kode itu harus ditempel di jendela masuk: buka jendelanya dan masuk lagi di sana. Kode yang muncul sebelumnya sudah tidak berlaku.',
   loginWindowTitle: 'Masuk ke {provider}',
   loginWindowIntro:
     'Ini jendela masuk program {provider}. Teks berbahasa Inggris di bawah berasal dari program {provider}.',
@@ -138,4 +148,50 @@ export const id = {
   actionCopyInfo: 'Salin info untuk bantuan',
   copyInfoDone: 'Disalin',
   actionConnectHelp: 'Lihat setiap langkah di layar (halaman berbahasa Korea)',
+  guidePathChatGptBody:
+    'Masuk dengan akun ChatGPT Anda dan gunakan paket Anda. Tidak perlu memasang apa pun. Paket gratis hanya memberi sedikit pemakaian.',
+  guideUseCodex: 'Sudah memakai program Codex di PC ini? Hubungkan dengan Codex',
+  guideUseDirect: 'Hubungkan langsung di aplikasi, tanpa Codex',
+  chatgptLoginNote:
+    'Halaman masuk ChatGPT akan terbuka di browser Anda. Masuk lalu izinkan aplikasi ini memakai paket ChatGPT Anda; koneksi akan tersambung sendiri.',
+  chatgptLoginUnfinishedNote:
+    'Proses masuk belum selesai. Tekan lagi untuk memulai dari awal. Koneksi memerlukan izin Anda untuk memakai paket ChatGPT.',
+  chatgptLoginNoPlanNote:
+    'Anda sudah masuk ke ChatGPT, tetapi aplikasi ini tidak mendapat izin memakai paket Anda. Tekan lagi dan izinkan pemakaian paket di halaman persetujuan. Jika sudah Anda izinkan, mungkin OpenAI tidak menyediakan pemakaian ini untuk akun Anda (misalnya akun yang dikelola perusahaan atau sekolah) atau paket Anda. Dalam hal itu, Anda bisa terhubung dengan program Codex.',
+  chatgptLoginDeniedNote:
+    'Anda sudah masuk di browser, tetapi OpenAI tidak menerima koneksi ini, atau jawabannya tidak dapat diperiksa. Pastikan tanggal dan jam PC ini benar, lalu tekan lagi untuk memulai dari awal.',
+  chatgptLoginNetworkNote:
+    'Proses masuk tidak dapat diselesaikan: OpenAI tidak dapat dihubungi, atau browser tidak terbuka. Periksa koneksi internet (termasuk jaringan kantor, VPN, atau proxy), lalu tekan lagi.',
+  chatgptLoginWorkspacePolicyNote:
+    'Akun ChatGPT ini termasuk ruang kerja yang dikelola perusahaan atau sekolah, dan OpenAI tidak mengizinkan aplikasi memakai paket ChatGPT ruang kerja. Admin ruang kerja tidak punya pengaturan untuk mengizinkan aplikasi ini, jadi masuk lagi tidak akan membantu. Masuk dengan akun ChatGPT pribadi (Go, Plus, atau Pro), atau sambungkan lewat kartu Codex.',
+  chatgptLoginNotAllowedNote:
+    'Anda tidak mengizinkan aplikasi ini memakai paket ChatGPT Anda, atau browser kembali dari proses masuk dengan kegagalan. Tekan lagi, masuk, lalu izinkan di halaman persetujuan.',
+  chatgptSigningInNote:
+    'Masuk dengan akun ChatGPT Anda di browser yang terbuka, lalu izinkan aplikasi ini memakai paket Anda. Koneksi akan tersambung sendiri.',
+  chatgptPlanNote:
+    'AI di aplikasi ini berjalan dengan paket ChatGPT Anda. Memutus koneksi hanya berlaku untuk aplikasi ini; program lain di PC ini tetap dalam keadaan masuk.',
+  actionContinueWithChatGpt: 'Lanjutkan dengan ChatGPT',
+  actionManageUsage: 'Kelola pemakaian',
+  browserPageDoneBody: 'Anda dapat menutup tab ini dan kembali ke aplikasi.',
+  browserPageFailedTitle: 'Koneksi tidak berhasil',
+  browserPageFailedBody: 'Kembali ke aplikasi dan coba lagi.',
+  cardOff: 'Dimatikan di aplikasi ini',
+  offNote:
+    'Aplikasi ini tidak menjalankan program {provider} dan tidak memeriksa statusnya. Login {provider} di PC ini dan pemakaiannya di terminal tetap seperti semula.',
+  offElsewhereNote: 'Anda bisa memakainya lagi di Pengaturan → AI.',
+  offSwitchNote:
+    '"Jangan pakai di aplikasi ini" membiarkan login {provider} di PC ini dan hanya menghentikan aplikasi ini. Keluar berlaku untuk seluruh PC.',
+  actionTurnOff: 'Jangan pakai di aplikasi ini',
+  actionTurnOn: 'Pakai lagi',
+  connectOffTitle: '{provider} dimatikan di aplikasi ini',
+  connectOffBody:
+    'Tekan "Pakai lagi" pada kartu {provider} di Pengaturan → AI, atau pilih AI lain.',
+  errOffInApp:
+    '{provider} dimatikan di aplikasi ini, jadi tidak ada yang dijalankan. Anda bisa memakainya lagi di Pengaturan → AI.',
+  guideBadgeOff: 'Dimatikan',
+  guidePathAntigravityTitle: 'Saya memakai Google Antigravity',
+  guidePathAntigravityBody:
+    'Masuk ke program Antigravity dari Google dengan akun Google Anda untuk memakai paket Google AI Anda.',
+  antigravityCardNote:
+    'Berjalan di panel AI dan mode Agen melalui protokol ACP resmi Antigravity CLI. Model yang tersedia, preferensi penggunaan data, dan pengaturan kredit tambahan mengikuti pengaturan Antigravity Anda.',
 } satisfies Record<keyof typeof zh, string>

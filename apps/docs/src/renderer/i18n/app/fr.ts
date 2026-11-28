@@ -1,6 +1,8 @@
 import type { zh } from './zh'
 
 export const fr = {
+  appLegacyDocImported:
+    'Le fichier .{ext} a été ouvert comme copie .docx convertie. L’original reste inchangé ; l’enregistrement crée un nouveau fichier .docx.',
   appScTitle: 'Raccourcis clavier',
   appScFilter: 'Rechercher un raccourci',
   appScNone: 'Aucun raccourci correspondant',
@@ -54,6 +56,7 @@ export const fr = {
   appVerticalTextNotice:
     "Ce document contient du texte vertical (affiché horizontalement pour l'instant ; l'enregistrement n'est pas affecté)",
   appNewDocCreated: 'Document vierge créé. Décrivez le contenu à générer dans le volet IA à gauche',
+  appNewDocCreatedNoAi: 'Document vierge créé.',
   appNewFailed: 'Échec de la création du document : {error}',
   appSaveFailed: "Échec de l'enregistrement : {error}",
   appAutoSavedAt: 'Enregistrement automatique ({time})',
@@ -97,6 +100,9 @@ export const fr = {
   appPrintRangeAll: 'Toutes les pages',
   appPrintRangeCurrent: 'Page actuelle',
   appPrintRangeCustom: 'Plage personnalisée',
+  appPrintRangeSelection: 'Sélection',
+  appPrintSelectionPreparing: 'Mise en page de la sélection…',
+  appPrintSelectionFailed: 'Impossible de mettre en page la sélection : {error}',
   appPrintRangeHint: 'ex. 1,3,5-8',
   appPrintPageCount: '{n} pages',
   appPrintNoPages: 'Aucune page à imprimer',
@@ -360,6 +366,9 @@ export const fr = {
   appAiBadgeTip: "Utilise l'IA",
   appTranslate: 'Traduire',
   appTranslateTo: 'Traduire en {lang}',
+  appEasyWords: 'Expliquer en mots simples',
+  appEasyWordsPrompt:
+    "Expliquez le passage sélectionné en français pour que le comprennent aussi les personnes qui ont besoin d'un texte facile (enfants, personnes âgées, personnes qui apprennent le français). Utilisez des mots courants et des phrases courtes, et conservez tous les faits, chiffres et conditions. Ne modifiez pas le document : « {text} »",
   redactMenuLabel: 'Masquer la sélection à l’IA',
   redactDialogDesc:
     'Les mots restent dans le document et dans le fichier ; le modèle ne voit que le marqueur ci-dessous. Donnez-lui un nom pour qu’il sache ce qu’il désigne.',
@@ -390,6 +399,7 @@ export const fr = {
   appLangHindi: 'hindi',
   appLangTraditionalChinese: 'chinois traditionnel',
   appLangVietnamese: 'vietnamien',
+  appLangTurkish: 'turc',
   appWrapTextMenu: 'Habillage du texte',
   appViewImage: "Afficher l'image",
   appSaveImageAs: "Enregistrer l'image sous…",
@@ -483,6 +493,12 @@ export const fr = {
   appLatexPlaceholder: 'p. ex. x = \\frac{-b \\pm \\sqrt{b^2-4ac}}{2a}',
   appLatexPreviewHint: 'Saisissez du LaTeX pour afficher un aperçu',
   appPreviewUnavailable: 'Impossible de générer un aperçu',
+  appMathTypeConvertNote:
+    'Équation MathType — l’enregistrement la convertit en équation Word native (OMML).',
+  appMathTypeConvertOnlyNote:
+    'Cette équation MathType utilise des structures hors du sous-ensemble LaTeX. Vous pouvez la convertir directement en équation Word native (OMML) tout en conservant sa mise en forme.',
+  appMathTypeConvertAction: 'Convertir et mettre à jour',
+  appMathTypeEditHint: 'Équation MathType (double-cliquez pour modifier ou convertir)',
   appInlineEquationToggle: 'Équation incorporée (insérée au curseur, suit le texte)',
   appInsertNewEquation: 'π Insérer une nouvelle équation (LaTeX)…',
   appEqCircleArea: 'Aire du cercle',
@@ -590,4 +606,13 @@ export const fr = {
   appOdtLabelObject: 'Objet (visible dans Hancom)',
   appOdtLabelNotice:
     'Les objets dessinés sous forme de cadres étiquetés peuvent s’afficher différemment dans Hancom Office.',
+  appMergeSourceLoaded: '{name} chargé ({n} enregistrements)',
+  appMergeWritten: '{n} documents écrits',
+  appMergeNothingToWrite: "Il n'y a rien à écrire",
+  appExportingHwp: 'Exportation du document HWP…',
+  appExportedHwp: 'Document HWP exporté : {path}',
+  appExportHwpFailed: 'Échec de l’exportation HWP : {error}',
+  appExportHwpCanceled: 'Exportation HWP annulée',
+  appExportHwpReadback:
+    'Ce document n’a pas pu être écrit exactement en .hwp. Essayez de l’enregistrer en .hwpx.',
 } satisfies Record<keyof typeof zh, string>

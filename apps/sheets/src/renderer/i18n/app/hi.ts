@@ -101,8 +101,10 @@ export const hi = {
   appChartNoRepoint: 'यह चार्ट अपनी डेटा श्रेणियों को फिर से निर्दिष्ट करने का समर्थन नहीं करता।',
   appKeepOneSeries: 'कम से कम एक शृंखला रखें।',
   appNoCategoriesToSwitch: 'बदलने के लिए कोई श्रेणियाँ नहीं हैं।',
-  appComboNoSelectData: 'कॉम्बो चार्ट का डेटा स्रोत बदलना अभी समर्थित नहीं है।',
+  appSelectDataUnsupported: 'इस चार्ट प्रकार का डेटा स्रोत बदलना समर्थित नहीं है।',
   appSeriesName: 'शृंखला नाम',
+  appSeriesType: 'श्रृंखला प्रकार',
+  appSecondaryAxis: 'द्वितीय अक्ष',
   appValuesRange: 'मान श्रेणी',
   appCategoriesRange: 'श्रेणी सीमा',
   appKeepUnchanged: 'अपरिवर्तित रखें',
@@ -182,6 +184,13 @@ export const hi = {
   appInvalidGroupField: 'अमान्य समूहन फ़ील्ड।',
   appInvalidPageField: 'अमान्य रिपोर्ट फ़िल्टर फ़ील्ड।',
   appPivotPageItemMissing: 'रिपोर्ट फ़िल्टर आइटम "{item}" फ़ील्ड "{label}" का सदस्य नहीं है।',
+  appInvalidPivotBaseField:
+    '"मान इस रूप में दिखाएँ" का आधार फ़ील्ड पंक्तियों या कॉलम में होना चाहिए।',
+  appPivotBaseFieldMissing:
+    'वैल्यू फ़ील्ड के "मान इस रूप में दिखाएँ" मोड के लिए आधार फ़ील्ड आवश्यक है।',
+  appPivotBaseFieldNotAxis:
+    'आधार फ़ील्ड "{label}" पिवट तालिका की पंक्तियों या कॉलम में होना चाहिए।',
+  appPivotBaseItemMissing: 'आधार आइटम "{item}" फ़ील्ड "{label}" का सदस्य नहीं है।',
   appInvalidLabelFilterField: 'लेबल फ़िल्टर फ़ील्ड अमान्य है।',
   appInvalidValueFieldIndex: 'मान फ़ील्ड अनुक्रमांक {index} अमान्य है।',
   appInvalidValueField: 'अमान्य मान फ़ील्ड।',
@@ -321,8 +330,7 @@ export const hi = {
   appPivotSheetNoMove: 'इस शीट में पिवट टेबल है — श्रेणियाँ स्थानांतरित करना अभी समर्थित नहीं है।',
   appMergeOverTable:
     'चयन Excel तालिका से ओवरलैप करता है — तालिका के भीतर सेल मर्ज करना अभी समर्थित नहीं है।',
-  appTableFilterNoEdit:
-    'इस शीट का फ़िल्टर एक Excel तालिका का है — इसका संपादन अभी सहेजा नहीं जा सकता।',
+  appFilterToggleFailed: 'फ़िल्टर लागू नहीं हुआ — पहले वह रेंज चुनें जिसमें आपका डेटा है।',
   appAutofillStreaming:
     'जो क्षेत्र अभी स्ट्रीम होकर लोड हो रहा है, उसमें स्वतः भरण की अनुमति अभी नहीं है।',
   appDvNeedsIndexed:
@@ -372,6 +380,9 @@ export const hi = {
   appTableNameUsed: 'तालिका नाम "{name}" इस सत्र में पहले से उपयोग हो चुका है।',
   appTableNameInFile: 'तालिका नाम "{name}" फ़ाइल की किसी तालिका द्वारा पहले से उपयोग में है।',
   appTableOverlapsSession: 'यह श्रेणी इस सत्र में बनाई गई तालिका "{name}" से अतिव्याप्त होती है।',
+  appTableOverlapsFile: 'यह श्रेणी फ़ाइल की तालिका "{name}" से अतिव्याप्त होती है।',
+  appTableAlreadyInTable:
+    'चयन पहले से तालिका "{name}" में है — शैली बदलने के लिए तालिका डिज़ाइन का उपयोग करें।',
   appTablesNeedFile: 'पहले एक XLSX फ़ाइल खोलें — तालिकाएँ फ़ाइल में लिखी जाती हैं।',
   appTableSelectRange: 'पहले डेटा श्रेणी चुनें — पहली पंक्ति में शीर्ष।',
   appTableCreated: 'तालिका बनाई गई — ⌘S से सहेजें।',
@@ -452,6 +463,7 @@ export const hi = {
   appGridlinesHidden: 'ग्रिडलाइन छिपाई गईं।',
   appGridlinesShown: 'ग्रिडलाइन दिखाई गईं।',
   appShowingFormulas: 'सूत्र दिखाए जा रहे हैं — मानों के लिए फिर टॉगल करें।',
+  appShowingFormulasActive: 'सूत्र दिखाए जा रहे हैं',
   appShowingValues: 'परिकलित मान दिखाए जा रहे हैं।',
   appTraceNoFormula: 'पूर्ववर्ती ट्रेस करें: सक्रिय सेल में कोई सूत्र नहीं है।',
   appTraceNoRefs: 'पूर्ववर्ती ट्रेस करें: इस सूत्र में कोई सेल संदर्भ नहीं है।',
@@ -545,6 +557,9 @@ export const hi = {
     'CSV निर्यात के लिए पूरी तरह लोड की गई कार्यपुस्तिका चाहिए — लोडिंग पूरी होने तक प्रतीक्षा करें।',
   appCsvExportTooLarge: 'शीट बहुत बड़ी है, CSV के रूप में निर्यात नहीं की जा सकती।',
   appCsvExportCanceled: 'CSV निर्यात रद्द किया गया।',
+  appOdsExported: '{path} निर्यात किया गया।',
+  appOdsExportCanceled: 'ODS निर्यात रद्द किया गया।',
+  appOdsExportFailed: 'ODS निर्यात विफल।',
   appCsvExported: '{path} निर्यात किया गया।',
   appCsvExportedActiveOnly:
     'CSV फ़ाइलों में केवल एक शीट होती है — सक्रिय शीट “{name}” को {path} पर निर्यात किया गया।',
@@ -561,8 +576,6 @@ export const hi = {
   appSaveFailed: 'कार्यपुस्तिका सहेजी नहीं जा सकी।',
   appCfRuleUnsaveable:
     'यह सशर्त स्वरूपण नियम xlsx में सहेजा नहीं जा सकता — कृपया दूसरा नियम प्रकार चुनें।',
-  appSaveErrX14Dv:
-    'इस शीट में विस्तारित (x14) डेटा सत्यापन है; इसके सत्यापन नियमों का संपादन अभी समर्थित नहीं है।',
   appSaveErrMultiSelectList:
     'बहु-चयन सूची सत्यापन xlsx में सहेजा नहीं जा सकता — सहेजने से पहले वह नियम हटाएँ।',
   appSaveErrX14Cf: 'इस श्रेणी में विस्तारित (x14) सशर्त स्वरूपण है, इसे अभी बदला नहीं जा सकता।',
@@ -582,6 +595,10 @@ export const hi = {
     'इस कार्यपुस्तिका की स्टाइलशीट में बुनियादी संरचना नहीं है, इसलिए शैली बदलाव सहेजे नहीं जा सकते।',
   appSaveErrPackageGuard:
     'सहेजने से कार्यपुस्तिका की पैकेज संरचना बदल जाएगी — फ़ाइल की सुरक्षा के लिए रोक दिया गया।',
+  appSaveErrSheetNotFound:
+    'इस सहेजने में जिस शीट का उल्लेख है वह वर्कबुक में नहीं मिली — सहेजना रोक दिया गया और फ़ाइल जैसी थी वैसी ही रही।',
+  appSaveErrSheetNameReused:
+    'एक नई शीट उस शीट का पुराना नाम इस्तेमाल कर रही है जिसका नाम बदला गया है, इसलिए सहेजा नहीं जा सकता। अभी नई शीट को कोई दूसरा नाम दें, सहेजें, फिर उसका नाम बदलें। फ़ाइल जैसी थी वैसी ही रही।',
   appSaveErrChartUnsupported:
     'यह चार्ट प्रकार उस संपादन का समर्थन नहीं करता; सहेजना रोक दिया गया — चार्ट बदलाव को पूर्ववत करें।',
   appSaveErrMoveOverlap:
@@ -691,6 +708,12 @@ export const hi = {
   appSaveAs: 'इस रूप में सहेजें',
   appUndo: 'पूर्ववत करें',
   appRedo: 'फिर से करें',
+  appQuickAccessCustomize: 'त्वरित पहुँच टूलबार अनुकूलित करें',
+  appQuickAccessHint: 'Alt और कोई अंक दबाएँ, तो बाईं ओर से उस स्थान का बटन चलता है।',
+  appQuickAccessMoveEarlier: 'आगे ले जाएँ',
+  appQuickAccessMoveLater: 'पीछे ले जाएँ',
+  appQuickAccessReset: 'डिफ़ॉल्ट पर रीसेट करें',
+  appQuickAccessFull: 'टूलबार में अधिकतम 10 बटन रखे जा सकते हैं।',
   appUnsavedEditOne: '● {count} असहेजा संपादन',
   appUnsavedEditMany: '● {count} असहेजे संपादन',
   appSavedState: 'सहेजा गया',
@@ -720,7 +743,6 @@ export const hi = {
   appLinkPlaceholder: 'https://example.com या Sheet1!A1',
   appRemoveLink: 'लिंक निकालें',
   appNotAvailableYet: 'अभी उपलब्ध नहीं',
-  appComingSoon: 'जल्द आ रहा है',
   appGroupChartLayouts: 'चार्ट लेआउट',
   appAddChartElement: 'चार्ट तत्व जोड़ें',
   appAddChartElementTitle: 'शीर्षक, डेटा लेबल, लीजेंड',
@@ -1153,6 +1175,8 @@ export const hi = {
   appRefreshAll: 'सभी ताज़ा करें',
   appWorkbookNoPivot: 'इस वर्कबुक में कोई पिवट टेबल नहीं।',
   appRefreshAllTitle: 'सभी पिवट टेबल रीफ़्रेश करें',
+  appQueriesConnections: 'क्वेरी और कनेक्शन',
+  appQueriesConnectionsTitle: 'वर्कबुक की क्वेरी और डेटा कनेक्शन दिखाएँ',
   appErrorCheckingDetail: 'शीट में त्रुटि मान खोजें',
   appErrorsFound: '{count} त्रुटियाँ — {cell} पर: {value}',
   appCheckingErrors: 'पूरी शीट में त्रुटियों के लिए स्कैन हो रहा है…',
@@ -1187,6 +1211,7 @@ export const hi = {
   appGroupForecast: 'पूर्वानुमान',
   appWhatIfAnalysis: 'क्या-यदि विश्लेषण',
   appGoalSeek: 'लक्ष्य खोज',
+  appDataTable: 'डेटा टेबल',
   appWhatIfTitle: 'लक्ष्य मान के लिए इनपुट खोजें',
   appGoalSeekNeedsFormula: 'सेट सेल में सूत्र होना चाहिए।',
   appGoalSeekByCellNotNumber: 'बदले जाने वाले सेल में संख्या हो या वह खाली हो।',
@@ -1447,6 +1472,15 @@ export const hi = {
   appTableFileUnnamed: 'इस तालिका का फ़ाइल में कोई नाम नहीं है और इसे यहाँ बदला नहीं जा सकता।',
   appTableRowsNotLoaded: 'तालिका की पंक्तियाँ अभी लोड हो रही हैं — कुछ देर बाद पुनः प्रयास करें।',
   appTableTotalLabel: 'कुल',
+  appNotePicturesPaneTitle: 'नोट चित्र',
+  appNotePicturesClose: 'बंद करें',
+  appNotePicturesNone: 'इस कार्यपुस्तिका में ऐसा कोई नोट नहीं है जो चित्र दिखा रहा हो।',
+  appNotePictureUnavailable: 'यह चित्र प्रदर्शित नहीं किया जा सकता।',
+  appNotePicturesToggle: 'नोट चित्र',
+  appNoteInsertPicture: 'चित्र सम्मिलित करें',
+  appNotePictureInserted: '{cell} की टिप्पणी में चित्र जोड़ा गया। फ़ाइल में लिखने के लिए सहेजें।',
+  appNotePictureRemoved: '{cell} की टिप्पणी से चित्र हटा दिया गया।',
+  appNotePictureRemove: 'चित्र हटाएँ',
   appCommentsPaneTitle: 'टिप्पणियाँ',
   appThreadReply: 'उत्तर दें',
   appThreadReplyPlaceholder: 'उत्तर दें…',
@@ -1513,4 +1547,33 @@ export const hi = {
   appVisualFlipV: 'लंबवत पलटें',
   appVisualFlipH: 'क्षैतिज पलटें',
   appCtxPasteVisual: 'चित्र या आकृति पेस्ट करें',
+
+  // ── Spelling check (F7 / Review ▸ Proofing) ──
+  appSpellTitle: 'वर्तनी',
+  appSpellBtnDetail: 'शीट टेक्स्ट जाँचें (F7)',
+  appSpellToggle: 'वर्तनी जाँचें',
+  appSpellToggleTip:
+    'वर्तनी जाँच (F7 और Review बटन) चालू करता है; बंद होने पर टिप्पणी बॉक्स लहरदार रेखाएँ नहीं दिखाते',
+  appSpellOn: 'वर्तनी जाँच चालू कर दी गई।',
+  appSpellOff: 'वर्तनी जाँच बंद है। इसे Review ▸ प्रूफ़िंग में चालू करें।',
+  appSpellRecheck: 'फिर जाँचें',
+  appSpellNone: 'कोई संदिग्ध वर्तनी त्रुटि नहीं मिली।',
+  appSpellFindings: '{count} संदिग्ध त्रुटियाँ। स्थान पर जाने के लिए किसी पंक्ति पर क्लिक करें।',
+  appSpellTruncated: 'टेक्स्ट सेल बहुत अधिक हैं; केवल पहले वाले जाँचे गए।',
+  appSpellColWord: 'संदिग्ध',
+  appSpellIgnore: 'अनदेखा करें',
+  appSpellIgnoreAll: 'सभी अनदेखा करें',
+  appSpellLearn: 'शब्दकोश में जोड़ें',
+  appSpellNoSuggestions: 'कोई सुझाव नहीं',
+  appSpellIgnoredAll: 'इस सत्र में "{word}" को दोबारा चिह्नित नहीं किया जाएगा।',
+  appSpellLearned: '"{word}" शब्दकोश में जोड़ा गया।',
+  appSpellChanged: '{address} ठीक किया गया।',
+  appSpellChangeFailed: '{address} ठीक नहीं किया जा सका।',
+  appSpellUnavailable: 'इस विंडो में वर्तनी जाँच उपलब्ध नहीं है।',
+  appSpellReplaceAll: 'सबको "{suggestion}" से बदलें',
+  appSpellChangedAll: '"{word}" वाले {count} सेल ठीक किए गए।',
+
+  // ── ODS import ──
+  appOdsImportNotice: 'ODS को xlsx प्रति के रूप में खोला गया। सहेजने पर xlsx फ़ाइल लिखी जाएगी।',
+  appOdsFormulasDropped: '{count} सूत्रों में केवल मान रखे गए।',
 } satisfies Record<keyof typeof zh, string>

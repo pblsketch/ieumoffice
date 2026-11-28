@@ -58,3 +58,11 @@ Tag meta viewport sengaja tidak disertakan: ini dirender di panel desktop, tanpa
 `lang` mengikuti bahasa antarmuka aplikasi, jadi kerangka yang Anda sisipkan adalah kerangka yang sudah disiapkan untuk perkakas Anda. Suntinglah sesuka hati setelahnya.
 
 Butir ini hanya muncul dalam mode sunting, dan hanya selama dokumennya masih kosong — begitu ada isi, tidak ada lagi yang bisa disisipkan kerangka _ke dalam_.
+
+## Edit persamaan
+
+Ketik secara visual atau edit LaTeX. HTML menyimpan sumber untuk diedit kembali.
+
+Pilih Sisipkan persamaan di bilah alat, gunakan kolom visual, templat atau LaTeX, lalu terapkan. Klik persamaan tersimpan di pratinjau untuk mengeditnya. Untuk menyisipkan dalam teks, pilih paragraf dan matikan baris terpisah; persamaan ditambahkan di akhir paragraf.
+
+Ekspresi yang tidak didukung penata huruf tidak hilang: persamaan tetap menyimpan sumber LaTeX dan menampilkan teks mentah di halaman, sehingga bisa dibuka lagi dan diperbaiki.

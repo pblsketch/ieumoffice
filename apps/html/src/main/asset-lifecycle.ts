@@ -1,17 +1,7 @@
 import { createHash } from 'node:crypto'
-import { constants } from 'node:fs'
-import {
-  copyFile,
-  lstat,
-  mkdir,
-  readFile,
-  readdir,
-  realpath,
-  rm,
-  stat,
-  writeFile,
-} from 'node:fs/promises'
+import { lstat, mkdir, readFile, readdir, realpath, rm, stat, writeFile } from 'node:fs/promises'
 import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path'
+import { copyFileExclusive } from '@genoffice/electron-utils/copy-file'
 import { atomicWriteFile } from './atomic-write'
 
 export const ASSET_MANIFEST_FILENAME = '.genoffice-assets.json'
@@ -96,7 +86,12 @@ function replaceControlCharacters(value: string): string {
 }
 
 function sanitizeAssetName(input: string): string {
-  const raw = basename(input.replace(/\\/g, '/'))
+  // path.win32.basename reads a leading <letter>: as a drive prefix and
+  // strips it before the sanitizer ever sees the colon (a:b.png ->
+  // b.png on Windows, a_b.png elsewhere). Replace colons first so the
+  // sanitizer - not the platform's path semantics - decides what a
+  // colon becomes, identically on every platform.
+  const raw = basename(input.replace(/\\/g, '/').replace(/:/g, '_'))
   const rawExt = extname(raw)
   const ext = /^\.[a-z0-9]{1,10}$/i.test(rawExt) ? rawExt.toLowerCase() : ''
   const maxStem = 140 - ext.length
@@ -330,7 +325,7 @@ export async function copyImageIntoOwnedAssets(
   sourcePath: string,
 ): Promise<string> {
   return createOwnedAsset(documentPath, basename(sourcePath), (target) =>
-    copyFile(sourcePath, target, constants.COPYFILE_EXCL),
+    copyFileExclusive(sourcePath, target),
   )
 }
 
@@ -1062,7 +1057,7 @@ export async function prepareAssetsForSaveAs(
           if (reservedNames.has(name)) continue
           const target = join(targetAssetsDir, name)
           try {
-            await copyFile(safeSource, target, constants.COPYFILE_EXCL)
+            await copyFileExclusive(safeSource, target)
             copied = { name, sha256: await sha256File(target) }
             break
           } catch (error) {

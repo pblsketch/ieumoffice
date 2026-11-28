@@ -12,13 +12,22 @@ Trình soạn thảo sách điện tử mở sách EPUB (`.epub`) trong một th
 
 ## Đọc
 
-- Ngăn **Mục lục** bên trái hiển thị mục lục của sách. Bấm vào một mục để đi tới đó. Sách không có mục lục sẽ có danh sách các chương thay thế.
+- Ngăn **Mục lục** bên trái hiển thị mục lục của sách. Bấm vào một mục để đi tới đó. Sách không có mục lục sẽ có danh sách các chương thay thế. Kéo mép trong của ngăn để đổi độ rộng; bấm đúp vào mép để trở về độ rộng ban đầu. Ngăn tìm kiếm dùng cùng độ rộng.
 - Mỗi chương cuộn lên xuống. Cứ cuộn tiếp qua cuối chương để sang chương sau, hoặc qua đầu chương để quay lại. Dòng trạng thái cho biết bạn đang ở chương nào.
 - Thẻ **Xem** đổi cỡ chữ và giãn dòng, đồng thời bật tắt **Chế độ đọc tối**. Các thiết lập này chỉ đổi cách hiển thị trên màn hình, không bao giờ đổi sách, và áp dụng cho mọi cuốn sách.
 - Chỗ bạn đọc dở được ghi nhớ riêng cho từng tệp, trong thư mục dữ liệu của ứng dụng chứ không phải trong sách.
 - **Tìm trong sách** (Ctrl+F) tìm trong mọi chương. Bấm vào một kết quả để đi tới đó.
 - Liên kết bên trong sách sẽ chuyển tới vị trí được liên kết. Liên kết web và email mở trong trình duyệt mặc định của bạn; các loại địa chỉ khác không được mở.
 - Script riêng của sách không bao giờ chạy và không có gì được tải từ internet. Âm thanh và video không phát.
+
+## Xem trước
+
+- Bấm **Xem trước** trên thẻ **Trang đầu** hoặc **Xem** để xem sách theo từng trang, giống như máy đọc sách hiển thị. Bản xem trước mở ở chỗ bạn đang đọc.
+- Trên thanh phía trên, chọn màn hình (**Máy đọc sách**, **Điện thoại**, **Máy tính bảng** hoặc **Vừa cửa sổ**), chiều ngang, cỡ chữ và màu nền (trắng, nâu đỏ hoặc tối). Màn hình rộng xoay ngang sẽ hiện hai trang cạnh nhau. Các thiết lập này chỉ đổi bản xem trước, không bao giờ đổi sách.
+- Lật trang bằng các phím mũi tên, Page Up và Page Down, phím cách, con lăn chuột hoặc các nút ở hai bên. Lật qua trang cuối của một chương sẽ sang chương tiếp theo. Mục lục và các liên kết trong sách đưa bản xem trước tới chỗ đó.
+- Không thể sửa chữ trong bản xem trước. Khi AI sửa sách hoặc bạn hoàn tác một thay đổi, bản xem trước cũng thay đổi theo.
+- Bấm **Đóng xem trước** hoặc nhấn Esc để quay lại chỉnh sửa ở chỗ bản xem trước đang hiển thị.
+- Cách ngắt trang hơi khác nhau giữa ứng dụng của từng cửa hàng và từng thiết bị, nên hãy coi bản xem trước là hình dung gần đúng.
 
 ## Chỉnh sửa chữ
 
@@ -38,7 +47,7 @@ Trình soạn thảo sách điện tử mở sách EPUB (`.epub`) trong một th
 ## Bảng AI
 
 - Hỏi về cuốn sách, nhờ tóm tắt một chương, hoặc nhờ sửa hay viết lại chữ trong đó. AI đọc mục lục và các chương của sách, và tìm chữ trong sách.
-- Thay đổi của AI hiện ra ngay, và một lần hoàn tác (Ctrl+Z) sẽ lấy lại mọi thứ AI đã đổi trong lượt đó. AI có thể làm chữ đậm hoặc nghiêng, nhưng không thể thêm hình ảnh, bảng hay chương.
+- Thay đổi của AI hiện ra ngay, các khối đã sửa được đánh dấu màu vàng, và **Hoàn tác các thay đổi này** trên thẻ dưới câu trả lời sẽ lấy lại mọi thứ AI đã đổi trong lượt đó (miễn là sách chưa được sửa sau lượt đó). AI có thể làm chữ đậm hoặc nghiêng, nhưng không thể thêm hình ảnh, bảng hay chương.
 - Chữ trong sách là tư liệu cho AI, không phải lệnh dành cho AI.
 - Hãy nói "Dịch cuốn sách này sang tiếng Pháp" và AI sẽ mở cửa sổ dịch với ngôn ngữ đó đã được điền sẵn. Không có gì được gửi đi cho tới khi bạn bấm **Bắt đầu**.
 - Sách EPUB cũng có thể được đính kèm trong bảng AI của các trình soạn thảo khác, chọn bằng `@`, và tìm thấy qua tìm kiếm tệp ở màn hình Trang chủ.
@@ -58,11 +67,12 @@ Trình soạn thảo sách điện tử mở sách EPUB (`.epub`) trong một th
 - Phần đã dịch được giữ lại. Nếu bạn dừng, hãy chọn **Xuất phần đã dịch đến giờ** (phần còn lại giữ ngôn ngữ gốc) hoặc **Tiếp tục sau**. Khi bạn mở một cuốn sách có bản dịch chưa xong, GenOffice sẽ đề nghị dịch tiếp. **Dịch lại từ đầu** sẽ xóa bản dịch đã giữ của ngôn ngữ đó trước.
 - Bản dịch đã giữ được tính trong Cài đặt ▸ Chung ▸ **Kết quả AI đã lưu**, cùng với kết quả của tài liệu PDF, và **Xóa tất cả** cũng xóa luôn chúng.
 - Cũng có thể chạy cùng phép dịch này từ [lệnh trên terminal](help://cli) bằng `ieumoffice epub translate`.
+- Chọn **Bản dễ hiểu** ở mục **Cách làm** để viết lại cuốn sách bằng lời dễ hiểu trong ngôn ngữ đã chọn. Kết quả là **Sách bản dễ hiểu** và **Bản gốc, tiếp theo là bản dễ hiểu**; tên sách được ghi chú là bản dễ hiểu bằng ngôn ngữ đó, còn tên tệp mang ghi chú này bằng ngôn ngữ giao diện để khác với tên tệp của bản dịch. Ngôn ngữ ban đầu là ngôn ngữ giao diện và có thể trùng với ngôn ngữ của sách. Bản dễ hiểu được lưu riêng với bản dịch, lời mời làm tiếp cũng hiện riêng, và lệnh terminal không tạo ra nó.
 
 ## Chưa hỗ trợ
 
 - Thêm, xóa hoặc sắp xếp lại chương; đổi tên sách, tác giả hoặc ảnh bìa; chèn hình ảnh hoặc bảng; biến một đoạn văn thành tiêu đề hoặc danh sách.
 - Chỉnh sửa hoặc dịch sách bố cục cố định, và mở sách có bảo vệ bản quyền.
-- Lật trang như sách in, và tạo một cuốn sách mới trống.
+- Tạo một cuốn sách mới trống.
 - So sánh nguyên văn và bản dịch đặt cạnh nhau trong trình soạn thảo. Thay vào đó, hãy mở bản song ngữ, và sửa bản dịch như mọi cuốn sách khác.
 - Ẩn các phần của sách khỏi AI.

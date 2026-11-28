@@ -118,12 +118,29 @@ async function dropTabOnEdge(
     tabId,
   )
   expect(torn, 'the tab was torn off').toBe(true)
-  await shell.evaluate(
-    (p) => (window as unknown as TabsApiOnWindow).aiOfficeTabs.dragTornWindow(p.x, p.y),
-    target,
-  )
+  // A real drag emits a stream of pointer moves, so one lost hint message is
+  // repaired by the next. This test sends a handful of synthetic moves instead,
+  // and main de-duplicates a repeated hint, so a single message that the shell
+  // renderer misses would never be resent. Step out of the zone (clears the
+  // hint) and back in before each retry, like a hand wobbling over the edge.
+  const middle = {
+    x: bounds.x + Math.round(bounds.width / 2),
+    y: bounds.y + Math.round(bounds.height / 2),
+  }
+  const moveTornWindow = (p: { x: number; y: number }) =>
+    shell.evaluate(
+      (q) => (window as unknown as TabsApiOnWindow).aiOfficeTabs.dragTornWindow(q.x, q.y),
+      p,
+    )
+  await moveTornWindow(target)
   // the hint lives inside the strip (panes are covered by their views)
-  await expect(shell.locator('.tab-split-hint')).toBeVisible()
+  await expect(async () => {
+    if ((await shell.locator('.tab-split-hint').count()) === 0) {
+      await moveTornWindow(middle)
+      await moveTornWindow(target)
+    }
+    await expect(shell.locator('.tab-split-hint')).toBeVisible({ timeout: 1000 })
+  }).toPass({ timeout: 15_000 })
   await shell.evaluate(() => (window as unknown as TabsApiOnWindow).aiOfficeTabs.endTornDrag())
 }
 
@@ -280,7 +297,9 @@ test.describe('split view', () => {
 
       // divider: an in-between drag resizes, the far end closes the b side
       const bounds = await contentBounds(app)
-      await shell.evaluate(() => (window as unknown as TabsApiOnWindow).aiOfficeTabs.setSplitRatio(0.7))
+      await shell.evaluate(() =>
+        (window as unknown as TabsApiOnWindow).aiOfficeTabs.setSplitRatio(0.7),
+      )
       await expect
         .poll(async () => {
           const [left] = (await markdownViews(app))
@@ -289,7 +308,9 @@ test.describe('split view', () => {
           return left ? Math.round(left.bounds.width) : 0
         })
         .toBeGreaterThan(Math.round((bounds.width - 6) * 0.6))
-      await shell.evaluate(() => (window as unknown as TabsApiOnWindow).aiOfficeTabs.setSplitRatio(1))
+      await shell.evaluate(() =>
+        (window as unknown as TabsApiOnWindow).aiOfficeTabs.setSplitRatio(1),
+      )
       await expect.poll(async () => splitState(shell)).toBeNull()
       // the closed side returns to the strip; the survivor fills the window
       await expect.poll(async () => (await tabsApi(shell)).length).toBe(3)
@@ -442,7 +463,9 @@ test.describe('split view', () => {
       // first copy saves a marker: the disk now differs from the other copy's read
       await appendToMarkdown(focusPane, 'FIRST-COPY-MARKER')
       await focusPane.keyboard.press('ControlOrMeta+s')
-      await expect.poll(async () => (await readFile(soloPath, 'utf8')).includes('FIRST-COPY-MARKER')).toBe(true)
+      await expect
+        .poll(async () => (await readFile(soloPath, 'utf8')).includes('FIRST-COPY-MARKER'))
+        .toBe(true)
 
       // the other copy's save must stop at the overwrite prompt; answer Cancel
       await app.evaluate(({ dialog }) => {
@@ -457,7 +480,9 @@ test.describe('split view', () => {
       await otherPane.keyboard.press('ControlOrMeta+s')
       await expect
         .poll(() =>
-          app.evaluate(() => (globalThis as unknown as { __splitGuardAsks: number }).__splitGuardAsks),
+          app.evaluate(
+            () => (globalThis as unknown as { __splitGuardAsks: number }).__splitGuardAsks,
+          ),
         )
         .toBeGreaterThan(0)
       // the canceled save did not touch the file

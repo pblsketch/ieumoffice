@@ -8,6 +8,7 @@ Der Markdown-Editor öffnet .md / .markdown — und .txt / .json, direkt in der 
 - **Speichern**: bytegetreu — BOM, CRLF und das Vorhandensein eines abschließenden Zeilenumbruchs bleiben erhalten; ein Speichern ohne Änderung schreibt die Datei nicht neu.
 - **Suchen und Ersetzen**: Strg+F durchsucht den Quelltext; „Alle ersetzen“ schreibt zurück.
 - **KI**: Voreinstellungs-Schaltflächen lassen den Assistenten das Dokument umformulieren, ausbauen oder übersetzen. Eine Auswahl lässt sich vor der KI verbergen (siehe Kapitel zum KI-Panel).
+- **Links öffnen**: Beim Bearbeiten öffnet Strg+Klick auf einen Link (⌘ auf dem Mac) ihn im Browser; ein einfacher Klick setzt den Cursor in den Linktext, damit er bearbeitet werden kann. In der Präsentation (F5) öffnet ein einfacher Klick den Link.
 
 ## Die Werkzeugleiste
 
@@ -36,6 +37,7 @@ Menü Datei, alles lokal und alles fragt nach, wohin das Ergebnis soll:
 
 - **Als Word exportieren…** und **Als PDF exportieren…** schreiben eine echte .docx bzw. .pdf.
 - **Als ODT exportieren…** schreibt eine .odt (OpenDocument-Text) über dieselbe Umwandlung wie der Word-Export; ändert sich dabei etwas oder fällt etwas weg, sehen Sie die Liste und bestätigen zuerst.
+- **Als HWP-Dokument exportieren…** schreibt über dieselbe Umwandlung ein HWP-Dokument (.hwp oder .hwpx); Überschriften, Listen und Tabellen kommen als solche im HWP-Dokument an, und eine lange Tabelle läuft auf der nächsten Seite weiter. Lässt sich etwas nicht übernehmen, sehen Sie die Liste und bestätigen zuerst.
 - **Als Bilder exportieren…** schreibt ein PNG pro Seite in einen Ordner, den Sie auswählen.
 - **In Docs umwandeln und öffnen** konvertiert nach .docx und öffnet sie im integrierten Docs-Tab hier in der App — es ist keine Übergabe an etwas in der Cloud, und die konvertierte Kopie liegt in einem Cache-Ordner, der nach etwa einer Woche aufgeräumt wird.
 
@@ -43,6 +45,7 @@ Menü Datei, alles lokal und alles fragt nach, wohin das Ergebnis soll:
 
 Die Werkzeugleiste trägt einen Schalter **Quelltext** (wie die App lokalisiert). Schalten Sie ihn ein, und der Editor wird durch das rohe Markdown ersetzt: genau der Text, den ein Speichern schreibt, nichts hübsch gemacht, nichts unter der Hand normalisiert.
 
+- **Tastatur**: Ctrl+E (⌘E auf dem Mac) wechselt zwischen Quelltextansicht und gerendertem Bearbeitungsbereich. F5 zeigt das Dokument im Vollbild.
 - **Bearbeiten ist bytegetreu.** Ein Speichern aus der Quelltextansicht erzeugt dieselben Bytes wie ein Speichern aus dem Editor — BOM, CRLF und ein abschließender Zeilenumbruch bleiben alle erhalten.
 - **Es ist dasselbe Dokument.** Wechseln Sie frei hin und her; der Quelltext ist der Text des Editors selbst, keine Kopie, die zusammengeführt werden müsste.
 - **Die Formatierungsleiste steht nicht zur Verfügung**, solange die Ansicht offen ist, weil die meisten dieser Schaltflächen Editor-Strukturen einfügen, die auf der gerenderten Seite erst einen Sinn ergeben. Sie ist wieder da, wenn Sie die Ansicht schließen.

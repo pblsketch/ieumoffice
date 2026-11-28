@@ -18,11 +18,15 @@ export const vi = {
   cardErrNeedsUpdatePath: 'Tệp mà ứng dụng này chạy:',
   cardErrNeedsUpdateWindows:
     'Cập nhật {provider} trong WSL (Ubuntu) hoặc ở thư mục khác không làm thay đổi tệp này. Hãy chạy {command} trong Windows PowerShell.',
+  claudeDesktopNote:
+    'Ứng dụng Claude cho máy tính không phải là Claude Code mà ứng dụng này chạy. Claude Code là một chương trình riêng dùng trong terminal, nên cài đặt hay cập nhật ứng dụng máy tính không làm thay đổi nó.',
   cardErrTimeout: 'Chương trình {provider} không trả lời kịp thời. Hãy kiểm tra lại sau giây lát.',
   cardErrFailed: 'Đã xảy ra sự cố khi kiểm tra {provider}. Hãy kiểm tra lại.',
   actionInstall: 'Cài đặt',
   actionLogin: 'Đăng nhập',
   actionLoginWindow: 'Trình duyệt không mở?',
+  actionLoginWithCode: 'Trình duyệt hiện mã?',
+  actionLoginBrowser: 'Đăng nhập trong trình duyệt',
   actionRecheck: 'Kiểm tra lại',
   actionAcceptMetered: 'Vẫn sử dụng',
   actionInstallHelp: 'Hướng dẫn cài đặt chính thức',
@@ -40,17 +44,20 @@ export const vi = {
   meteredMeaning:
     'Lần đăng nhập này dùng khóa API hoặc tài khoản trả phí theo mức sử dụng, hoặc không xác định được loại đăng nhập. Chọn "Vẫn sử dụng" để AI chạy qua kết nối này, và mỗi yêu cầu sẽ được tính vào tài khoản đó.',
   connectTitle: 'Kết nối AI để bắt đầu',
-  connectBody: 'AI chạy bằng gói đăng ký Claude hoặc Codex mà bạn đã có. Không cần khóa API.',
+  connectBody:
+    'AI chạy bằng gói đăng ký Claude, ChatGPT hoặc Google Antigravity mà bạn đã có. Không cần khóa API.',
   connectProviderTitle: 'Kết nối {provider} hiện chưa dùng được',
   connectKeyBody:
     'Thiết lập {provider} chưa hoàn tất. Hãy hoàn tất trong Cài đặt hoặc chọn AI khác.',
   errNotConnected:
-    'Chưa có AI nào được kết nối. Hãy kết nối gói đăng ký Claude hoặc Codex, hoặc một AI miễn phí trước.',
+    'Chưa có AI nào được kết nối. Hãy kết nối gói Claude, ChatGPT, Codex hoặc Antigravity, hoặc một AI miễn phí trước.',
   errNotInstalled: 'Không tìm thấy chương trình {provider} trên máy tính này.',
   errSignedOut: 'Phiên đăng nhập {provider} đã hết hạn. Hãy đăng nhập lại để tiếp tục.',
   errRateLimit: 'Đã dùng hết giới hạn của gói đăng ký {provider}.',
   errRateLimitReset:
     'Đã dùng hết giới hạn của gói đăng ký {provider}. Giới hạn sẽ được đặt lại lúc {time}.',
+  errChatGptAppLimit:
+    'Ứng dụng này đã dùng hết lượng ChatGPT mà nó được dùng. Đó có thể là giới hạn của cả gói hoặc giới hạn đặt riêng cho ứng dụng này. Hãy kiểm tra trong ChatGPT tại Cài đặt → Mức sử dụng.',
   errUnsafeTools:
     'Chương trình {provider} khởi động khi các công cụ riêng của nó vẫn bật, nên lượt chạy đã bị dừng để đảm bảo an toàn.',
   errMeteredNotAccepted:
@@ -66,6 +73,8 @@ export const vi = {
   errFreeLimit:
     'Đã dùng hết lượt miễn phí hôm nay. Hãy thử lại vào ngày mai hoặc chọn AI khác trong Cài đặt.',
   errFreeLimitReset: 'Đã dùng hết lượt miễn phí hôm nay. Bạn có thể dùng lại lúc {time}.',
+  errFreeTierModel:
+    'Mô hình này không có gói miễn phí nên khóa miễn phí không dùng được. Hãy chọn mô hình có trong gói miễn phí (ví dụ mô hình Flash) hoặc bật thanh toán trong bảng điều khiển của nhà cung cấp.',
   continueWith: 'Tiếp tục với {provider}',
   continueMeteredNote:
     'Kết nối {provider} không phải gói đăng ký: tiếp tục sẽ bị tính phí theo mức sử dụng.',
@@ -74,7 +83,7 @@ export const vi = {
   usageWindowSevenDay: 'Giới hạn 7 ngày',
   noticeTitle: 'Trước khi dùng AI bằng gói đăng ký của bạn',
   noticeSend:
-    'Nội dung tài liệu và cuộc trò chuyện được gửi đến Anthropic hoặc OpenAI bằng chính tài khoản của bạn. Mỗi yêu cầu còn kèm tên, tiêu đề và mô tả của mọi kỹ năng đặt ở "AI tự quyết định"; kỹ năng đang dùng và các tệp kỹ năng mà AI đọc cũng được gửi kèm.',
+    'Nội dung tài liệu và cuộc trò chuyện được gửi đến Anthropic, OpenAI hoặc Google bằng chính tài khoản của bạn. Mỗi yêu cầu còn kèm tên, tiêu đề và mô tả của mọi kỹ năng đặt ở "AI tự quyết định"; kỹ năng đang dùng và các tệp kỹ năng mà AI đọc cũng được gửi kèm.',
   noticeTraining:
     'Nội dung đó có được dùng để huấn luyện AI hay không tùy thuộc vào cài đặt tài khoản của bạn tại công ty đó.',
   noticeCodexHistory:
@@ -112,12 +121,14 @@ export const vi = {
   stepLogin: 'Đăng nhập',
   stepReady: 'Đã kết nối',
   installReturnNote:
-    'Khi cài đặt trong cửa sổ đó xong, hãy quay lại màn hình này. Ứng dụng sẽ tự kiểm tra lại.',
+    'Trong lúc tải xuống, cửa sổ đó có thể không hiện gì trong vài phút. Đừng đóng nó. Khi cài đặt xong, hãy quay lại màn hình này. Ứng dụng sẽ tự kiểm tra lại.',
   loginHowNote:
     'Khi bạn nhấn, trình duyệt sẽ mở ra. Đăng nhập bằng tài khoản {vendor} của bạn rồi nhấn Cho phép, kết nối sẽ tự hoàn tất.',
   signingInStalledNote:
     'Nếu trình duyệt không mở trang đăng nhập nào, hãy mở cửa sổ đăng nhập bằng nút bên dưới. Nếu bạn vẫn đang đăng nhập trong trình duyệt, đừng nhấn nút mà hãy hoàn tất ở đó: nút này sẽ dừng lần đăng nhập đó và bắt đầu lại từ đầu.',
   actionLoginWindowOpen: 'Mở cửa sổ đăng nhập',
+  loginUnfinishedNote:
+    'Quá trình đăng nhập chưa hoàn tất. Nếu trình duyệt hiện mã, bạn cần dán mã vào cửa sổ đăng nhập: hãy mở cửa sổ đó và đăng nhập lại tại đó. Mã hiện trước đó không còn dùng được.',
   loginWindowTitle: 'Đăng nhập {provider}',
   loginWindowIntro:
     'Đây là cửa sổ đăng nhập của chương trình {provider}. Đoạn tiếng Anh bên dưới là hướng dẫn của chương trình {provider}.',
@@ -140,4 +151,49 @@ export const vi = {
   actionCopyInfo: 'Sao chép thông tin để nhờ hỗ trợ',
   copyInfoDone: 'Đã sao chép',
   actionConnectHelp: 'Xem từng bước trên màn hình (trang tiếng Hàn)',
+  guidePathChatGptBody:
+    'Đăng nhập bằng tài khoản ChatGPT và dùng gói của bạn. Không cần cài đặt gì. Gói miễn phí chỉ cho dùng một ít.',
+  guideUseCodex: 'Đã dùng chương trình Codex trên máy tính này? Kết nối bằng Codex',
+  guideUseDirect: 'Kết nối trực tiếp trong ứng dụng, không cần Codex',
+  chatgptLoginNote:
+    'Trang đăng nhập ChatGPT sẽ mở trong trình duyệt. Hãy đăng nhập và cho phép ứng dụng này dùng gói ChatGPT của bạn; kết nối sẽ tự hoàn tất.',
+  chatgptLoginUnfinishedNote:
+    'Quá trình đăng nhập chưa hoàn tất. Nhấn lại để bắt đầu lại từ đầu. Bạn cần cho phép dùng gói ChatGPT của mình thì mới kết nối được.',
+  chatgptLoginNoPlanNote:
+    'Bạn đã đăng nhập ChatGPT, nhưng ứng dụng này chưa được phép dùng gói của bạn. Nhấn lại và cho phép dùng gói ở trang cấp quyền. Nếu bạn đã cho phép, có thể OpenAI không mở cách dùng này cho tài khoản của bạn (ví dụ tài khoản do công ty hoặc trường học quản lý) hoặc cho gói của bạn. Khi đó bạn có thể kết nối bằng chương trình Codex.',
+  chatgptLoginDeniedNote:
+    'Bạn đã đăng nhập trong trình duyệt, nhưng OpenAI không chấp nhận kết nối này, hoặc không kiểm tra được phản hồi trả về. Hãy kiểm tra ngày giờ của máy tính này cho đúng, rồi nhấn lại để bắt đầu lại từ đầu.',
+  chatgptLoginNetworkNote:
+    'Không thể hoàn tất đăng nhập: không kết nối được tới OpenAI hoặc không mở được trình duyệt. Hãy kiểm tra kết nối internet (kể cả mạng công ty, VPN hoặc proxy), rồi nhấn lại.',
+  chatgptLoginWorkspacePolicyNote:
+    'Tài khoản ChatGPT này thuộc một không gian làm việc do công ty hoặc trường học quản lý, và OpenAI không cho phép ứng dụng dùng gói ChatGPT của không gian làm việc. Quản trị viên không gian làm việc không có cài đặt nào để cho phép ứng dụng này, nên đăng nhập lại sẽ không giúp được. Hãy đăng nhập bằng tài khoản ChatGPT cá nhân (Go, Plus hoặc Pro), hoặc kết nối qua thẻ Codex.',
+  chatgptLoginNotAllowedNote:
+    'Bạn chưa cho phép ứng dụng này dùng gói ChatGPT của bạn, hoặc trình duyệt quay lại từ bước đăng nhập với lỗi. Nhấn lại, đăng nhập rồi cho phép ở trang cấp quyền.',
+  chatgptSigningInNote:
+    'Đăng nhập bằng tài khoản ChatGPT trong trình duyệt vừa mở và cho phép ứng dụng này dùng gói của bạn. Kết nối sẽ tự hoàn tất.',
+  chatgptPlanNote:
+    'AI trong ứng dụng này chạy bằng gói ChatGPT của bạn. Ngắt kết nối chỉ có tác dụng với ứng dụng này; các chương trình khác trên máy tính này vẫn giữ trạng thái đăng nhập.',
+  actionContinueWithChatGpt: 'Tiếp tục với ChatGPT',
+  actionManageUsage: 'Quản lý mức sử dụng',
+  browserPageDoneBody: 'Bạn có thể đóng thẻ này và quay lại ứng dụng.',
+  browserPageFailedTitle: 'Không kết nối được',
+  browserPageFailedBody: 'Hãy quay lại ứng dụng và thử lại.',
+  cardOff: 'Đã tắt trong ứng dụng này',
+  offNote:
+    'Ứng dụng này không chạy chương trình {provider} và cũng không kiểm tra trạng thái của nó. Đăng nhập {provider} trên máy tính này và việc dùng nó trong terminal vẫn giữ nguyên.',
+  offElsewhereNote: 'Bạn có thể dùng lại trong Cài đặt → AI.',
+  offSwitchNote:
+    '"Không dùng trong ứng dụng này" giữ nguyên đăng nhập {provider} trên máy tính này và chỉ dừng trong ứng dụng này. Đăng xuất áp dụng cho cả máy tính.',
+  actionTurnOff: 'Không dùng trong ứng dụng này',
+  actionTurnOn: 'Dùng lại',
+  connectOffTitle: '{provider} đang tắt trong ứng dụng này',
+  connectOffBody: 'Nhấn "Dùng lại" trên thẻ {provider} trong Cài đặt → AI, hoặc chọn AI khác.',
+  errOffInApp:
+    '{provider} đang tắt trong ứng dụng này nên không có gì được chạy. Bạn có thể dùng lại trong Cài đặt → AI.',
+  guideBadgeOff: 'Đã tắt',
+  guidePathAntigravityTitle: 'Tôi dùng Google Antigravity',
+  guidePathAntigravityBody:
+    'Đăng nhập vào chương trình Antigravity của Google bằng tài khoản Google để dùng gói Google AI của bạn.',
+  antigravityCardNote:
+    'Chạy trong bảng AI và chế độ Tác tử qua giao thức ACP chính thức của Antigravity CLI. Các mô hình khả dụng, tùy chọn dữ liệu và tín dụng vượt mức tuân theo cài đặt Antigravity của bạn.',
 } satisfies Record<keyof typeof zh, string>

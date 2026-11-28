@@ -62,6 +62,15 @@ describe('one product name', () => {
     expect(USER_DATA_DIR_NAME).toBe(shellPackage.productName)
   })
 
+  it('names the installer process with the product name', () => {
+    // electron-builder writes package.json "description" into the NSIS
+    // installer's FileDescription (the app exe gets productName). Task Manager
+    // and Windows' "file in use" dialog show a running installer by that
+    // field, so a sentence there hid a stuck installer from a user looking
+    // for the product (external report, 2026-10-27).
+    expect(shellPackage.description).toBe(PRODUCT_NAME)
+  })
+
   it('titles every window document with the product name before any script runs', () => {
     const apps = readdirSync(join(ROOT, 'apps'))
     const pages = apps.flatMap((app) => {
@@ -233,6 +242,22 @@ describe('coexistence with the upstream app on one machine', () => {
     expect(nsh).toContain(`!define GENOFFICE_EPUB_PROGID "${progId}"`)
   })
 
+  it('names the Visio drawing type within the ProgId rule, and keeps it off the Windows default path', () => {
+    const entry = config.mac.fileAssociations.find(
+      (candidate: { ext: string }) => candidate.ext === 'vsdx',
+    ) as { name: string } | undefined
+    expect(entry, '.vsdx is not offered on mac / Linux').toBeTruthy()
+    const progId = `${PRODUCT_NAME}.${entry!.name.replace(/[^A-Za-z0-9]/g, '')}`
+    expect(progId).toMatch(/^PosidOffice\.[A-Za-z][A-Za-z0-9]*$/)
+    expect(progId.length, progId).toBeLessThanOrEqual(39)
+    expect(UPSTREAM.progIds).not.toContain(progId)
+    const winExts = config.win.fileAssociations.map((candidate: { ext: string }) => candidate.ext)
+    expect(winExts).not.toContain('vsdx')
+    for (const type of OFFICE_TYPES) expect(type.ext).not.toBe('vsdx')
+    const nsh = readFileSync(join(SHELL, 'build/installer.nsh'), 'utf8')
+    expect(nsh).toContain(`!define GENOFFICE_VSDX_PROGID "${progId}"`)
+  })
+
   it('recognizes only its own ProgIds as "this app is the default"', () => {
     for (const type of OFFICE_TYPES) {
       const packaged = config.win.fileAssociations.find(
@@ -265,7 +290,7 @@ describe('repository coordinates', () => {
   })
 
   it('names the same repository in the package metadata', () => {
-    expect(GITHUB_REPO_URL).toBe('https://github.com/pblsketch/openoffice')
+    expect(GITHUB_REPO_URL).toBe('https://github.com/pblsketch/ieumoffice')
     expect(shellPackage.homepage).toBe(GITHUB_REPO_URL)
     expect((rootPackage.repository as { url: string }).url).toBe(`git+${GITHUB_REPO_URL}.git`)
   })

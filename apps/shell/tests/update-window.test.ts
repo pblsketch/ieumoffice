@@ -14,7 +14,10 @@ const handlers = new Map<string, Handler>()
 const sent: Array<{ channel: string; state: UpdateUiState | null }> = []
 const winOptions: Array<Record<string, unknown>> = []
 const shown = vi.fn()
+const shownInactive = vi.fn()
 const focused = vi.fn()
+// 'ready-to-show' listeners of the windows made so far, fired by the test
+const readyToShow: Array<() => void> = []
 
 class FakeWebContents {
   send(channel: string, state: UpdateUiState | null): void {
@@ -33,10 +36,15 @@ class FakeBrowserWindow {
   show(): void {
     shown()
   }
+  showInactive(): void {
+    shownInactive()
+  }
   focus(): void {
     focused()
   }
-  once(): void {}
+  once(event: string, listener: () => void): void {
+    if (event === 'ready-to-show') readyToShow.push(listener)
+  }
   on(): void {}
   close(): void {}
   loadURL(): Promise<void> {
@@ -95,7 +103,9 @@ beforeEach(() => {
   sent.length = 0
   winOptions.length = 0
   shown.mockClear()
+  shownInactive.mockClear()
   focused.mockClear()
+  readyToShow.length = 0
 })
 
 async function loadModule() {
@@ -108,6 +118,18 @@ describe('update window — settings-facing surface', () => {
     mod.showUpdateWindow(parent, state('available'), actions())
     expect(winOptions[0]!.modal).toBeUndefined()
     expect(winOptions[0]!.parent).toBe(parent)
+  })
+
+  it('comes back without taking the focus when asked to (a download finished unseen)', async () => {
+    const mod = await loadModule()
+    mod.showUpdateWindow(parent, state('downloaded'), actions(), { inactive: true })
+    for (const ready of readyToShow) ready()
+    expect(shownInactive).toHaveBeenCalledTimes(1)
+    expect(shown).not.toHaveBeenCalled()
+    // already on screen: brought up again, still without the focus
+    mod.showUpdateWindow(parent, state('downloaded'), actions(), { inactive: true })
+    expect(shownInactive).toHaveBeenCalledTimes(2)
+    expect(focused).not.toHaveBeenCalled()
   })
 
   it('sizes the card larger when release notes are shown', async () => {
@@ -150,6 +172,15 @@ describe('update window — settings-facing surface', () => {
     expect(act.onDownload).toHaveBeenCalledTimes(1)
     // re-opening also re-broadcasts for the About row
     expect(sent.some((s) => s.channel === 'update:state-changed')).toBe(true)
+  })
+
+  it('open-for-update starts the retry download after an install that did not apply', async () => {
+    const mod = await loadModule()
+    const act = actions()
+    mod.showUpdateWindow(parent, state('install-failed'), act)
+    mod.closeUpdateWindow()
+    expect(handlers.get('update:open-for-update')!()).toBe(true)
+    expect(act.onDownload).toHaveBeenCalledTimes(1)
   })
 
   it('open-for-update never restarts an in-flight or finished download', async () => {

@@ -1,6 +1,6 @@
 # Snel starten: de interface en de basis
 
-GenOffice is een kantoorsuite die op je eigen computer draait: één venster, één rij tabbladen, met acht editors — Docs (tekstverwerking), Sheets (spreadsheets), Slides (presentaties), PDF, Markdown en platte tekst, HTML, HWP/HWPX (Hangul-documenten) en mindmaps (.xmind). Elke editor opent en bewaart bestanden in zijn eigen formaat: .docx, .xlsx, .pptx, .pdf, .md, .html, .hwp/.hwpx en .xmind. Voor bewerken is geen netwerk nodig; voor de AI-functies wel.
+GenOffice is een kantoorsuite die op je eigen computer draait: één venster, één rij tabbladen, met acht editors — Docs (tekstverwerking), Sheets (spreadsheets), Slides (presentaties), PDF, Markdown en platte tekst, HTML, HWP/HWPX (Hangul-documenten) en mindmaps (.xmind). Elke editor opent en bewaart bestanden in zijn eigen formaat: .docx, .xlsx, .pptx, .pdf, .md, .html, .hwp/.hwpx en .xmind. Voor bewerken is geen netwerk nodig; voor de AI-functies wel. De mindmap-editor importeert ook FreeMind- en Freeplane-bestanden (.mm) als nieuwe maps, die als .xmind worden opgeslagen.
 
 ## Overzicht van de interface
 
@@ -38,7 +38,7 @@ Een nieuw document opent zonder titel; het bestand op schijf wordt pas aangemaak
 ## Het opslagmodel
 
 - **Handmatig opslaan**: ⌘S/ctrl+S, of Bestand ▸ Opslaan / Opslaan als… Bij de eerste keer opslaan wordt om locatie en naam gevraagd.
-- **Automatisch opslaan** gaat pas aan nadat je het bestand minstens één keer handmatig hebt opgeslagen — een PDF dat je alleen hebt gelezen wordt nooit stilletjes overschreven. Automatisch opslaan treedt kort op nadat de inhoud is gewijzigd.
+- **Automatisch opslaan** volgt de schakelaar van elke editor (en de appbrede standaard). Een PDF die je alleen leest, wordt nooit stilletjes overschreven; een nieuw document zonder eigen bestand wordt pas na de eerste keer opslaan automatisch opgeslagen.
 - Een tabblad met onopgeslagen wijzigingen sluiten vraagt eerst om Opslaan / Weggooien / Annuleren.
 - Elke schrijfactie is atomair (tijdelijk bestand + hernoemen), zodat een stroomstoring nooit een half bestand achterlaat.
 

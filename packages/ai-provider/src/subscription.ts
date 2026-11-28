@@ -18,3 +18,14 @@ export * from './subscription/models'
 export * from './subscription/service'
 export * from './subscription/launch'
 export * from './subscription/ipc'
+// Side-effect registration of Antigravity ACP status, model list, and logout sources
+export {
+  ANTIGRAVITY_TEMP_PREFIX,
+  antigravityAcpLaunchArgs,
+  clearAntigravityModelCache,
+  listAntigravitySubscriptionModels,
+  logoutAntigravityAcp,
+  parseAntigravityModels,
+  parseAntigravityTier,
+  probeAntigravityAcp,
+} from './antigravity-acp'

@@ -34,6 +34,20 @@ export { documentHash }
  */
 export function parsePageList(spec: string, count?: number): number[] {
   const pages: number[] = []
+  for (const { start, end } of pageSpans(spec)) {
+    if (count !== undefined && end > count) throw pagesOutOfRange(spec, count)
+    for (let p = start; p <= end; p++) if (!pages.includes(p)) pages.push(p)
+  }
+  return pages
+}
+
+/** Validate syntax and integer bounds without expanding ranges before the PDF page count is known. */
+export function validatePageList(spec: string): void {
+  pageSpans(spec)
+}
+
+function pageSpans(spec: string): { start: number; end: number }[] {
+  const spans: { start: number; end: number }[] = []
   const parts = spec.split(',').map((p) => p.trim())
   for (const part of parts) {
     const m = /^(\d+)(?:-(\d+))?$/.exec(part)
@@ -47,15 +61,14 @@ export function parsePageList(spec: string, count?: number): number[] {
     }
     const start = Number(m[1])
     const end = m[2] === undefined ? start : Number(m[2])
-    if (start < 1 || end < start) {
+    if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 1 || end < start) {
       throw new CliError(EXIT.usage, `--pages: ${part} is not a 1-based span`, undefined, {
         reason: 'invalid_argument',
       })
     }
-    if (count !== undefined && end > count) throw pagesOutOfRange(spec, count)
-    for (let p = start; p <= end; p++) if (!pages.includes(p)) pages.push(p)
+    spans.push({ start, end })
   }
-  return pages
+  return spans
 }
 
 export function pagesOutOfRange(spec: string, count: number): CliError {

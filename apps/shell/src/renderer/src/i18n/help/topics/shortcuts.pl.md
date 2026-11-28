@@ -12,10 +12,12 @@ Każdy edytor ma własne przypisania klawiszy i tylko kilka z nich działa wszę
 | Zwiń / rozwiń wstążkę — każdy edytor                        | ⌥⌘R   | Ctrl+F1         |
 | Kompaktowa wstążka — tylko Docs                             | ⌥⌘K   | Ctrl+Alt+K      |
 | Otwórz arkusz Skrótów klawiszowych — tylko Word             | ⌘/    | Ctrl+/          |
+| Otwórz ustawienia — każda karta oprócz Word                 | ⌘,    | Ctrl+,          |
 
 - **F1 otwiera ten podręcznik**, a nie arkusz skrótów. Należy do menu aplikacji, więc działa z poziomu Word, Sheets, Slides, PDF czy karty Home.
 - **Przełącznik wstążki to `Ctrl+F1`, albo `⌥⌘R` na macOS.** Samo `F1` nic nie robi — F1 to podręcznik, a klawisz wstążki celowo go nie współdzieli. `Ctrl+F1` jest akceptowany także na macOS, ale `⌥⌘R` to klawisz używany przez Office dla Maca.
 - **Arkusz Skrótów klawiszowych należy wyłącznie do Worda** (`⌘/`). Wypisuje dokładnie tabelę Worda poniżej. Żaden inny edytor go nie ma.
+- **`⌘,` otwiera ustawienia** (`Ctrl+,` w systemach Windows i Linux), jak w większości aplikacji na Maca. W karcie Word ten skrót pozostaje indeksem dolnym, więc tam otwórz ustawienia z menu aplikacji na Macu albo przez Menu (☰) ▸ Ustawienia… w systemach Windows i Linux.
 
 ![Arkusz Skrótów klawiszowych w Wordzie: czynność po lewej, skrót po prawej, pogrupowane według Plik, Edycja, Formatowanie tekstu, Formatowanie akapitu, Wstawianie, Sprawdzanie i narzędzia, Widok](img/word-shortcuts.png)
 
@@ -24,7 +26,7 @@ Każdy edytor ma własne przypisania klawiszy i tylko kilka z nich działa wszę
 
 ## Tryb prezentacji
 
-- **Start**: F5 w Word, PDF, Mindmap, HTML i Markdown. W arkuszu Ctrl+F5 (od A1) lub Shift+F5 (od aktywnej komórki).
+- **Start**: F5 w Word, PDF, Mindmap, HTML i Markdown. W arkuszu Ctrl+F5 (od A1) lub Shift+F5 (od aktywnej komórki). W dokumencie HWP Ctrl+F5 (tam F5 zaznacza komórki tabeli).
 - **Inne wejścia**: w Word Ctrl+F5 i Shift+F5 otwierają widok czytania bez pełnego ekranu; w PDF zaczynają od bieżącej strony; w HTML prezentują w karcie.
 - **Zakończenie**: Esc lub F5. F11 to pełny ekran okna i nie zmienia widoku dokumentu.
 
@@ -278,18 +280,19 @@ Skrót filtru Excela, Ctrl+Shift+L, nie działa w Windows ani Linux. Naciśnij �
 
 ### Okno
 
-| Czynność                                                        | macOS           | Windows / Linux    |
-| --------------------------------------------------------------- | --------------- | ------------------ |
-| Zapisz skoroszyt                                                | ⌘S              | Ctrl+S             |
-| Zapisz jako                                                     | ⇧⌘S             | Ctrl+Shift+S       |
-| Otwórz skoroszyt                                                | ⌘O              | Ctrl+O             |
-| Drukuj                                                          | ⌘P              | Ctrl+P             |
-| Zamknij skoroszyt (macOS) / Zakończ aplikację (Windows i Linux) | ⌘W              | Ctrl+Q             |
-| Otwórz Podręcznik użytkownika                                   | F1              | F1                 |
-| Powiększ                                                        | ⌘=              | Ctrl+=             |
-| Zoom kółkiem myszy                                              | ⌘ + przewijanie | Ctrl + przewijanie |
-| Pokaż lub ukryj formuły w komórkach                             | ⌘`              | Ctrl+`             |
-| Rozwiń lub zwiń pasek formuły                                   | ⌘⇧U             | Ctrl+Shift+U       |
+| Czynność                                                           | macOS           | Windows / Linux    |
+| ------------------------------------------------------------------ | --------------- | ------------------ |
+| Zapisz skoroszyt                                                   | ⌘S              | Ctrl+S             |
+| Zapisz jako                                                        | ⇧⌘S             | Ctrl+Shift+S       |
+| Otwórz skoroszyt                                                   | ⌘O              | Ctrl+O             |
+| Drukuj                                                             | ⌘P              | Ctrl+P             |
+| Zamknij skoroszyt (macOS) / Zakończ aplikację (Windows i Linux)    | ⌘W              | Ctrl+Q             |
+| Otwórz Podręcznik użytkownika                                      | F1              | F1                 |
+| Powiększ                                                           | ⌘=              | Ctrl+=             |
+| Zoom kółkiem myszy                                                 | ⌘ + przewijanie | Ctrl + przewijanie |
+| Pokaż lub ukryj formuły w komórkach                                | ⌘`              | Ctrl+`             |
+| Rozwiń lub zwiń pasek formuły                                      | ⌘⇧U             | Ctrl+Shift+U       |
+| Uruchom przycisk paska Szybki dostęp według pozycji (od 1. do 10.) |                 | Alt+1 … Alt+0      |
 
 ## Slides
 
@@ -312,20 +315,24 @@ Zamykanie karty to jedyne miejsce, w którym obie platformy dzielą się całkow
 
 ### Edycja
 
-| Czynność                                                   | macOS  | Windows / Linux |
-| ---------------------------------------------------------- | ------ | --------------- |
-| Nowy slajd                                                 | ⇧⌘N    | Ctrl+M          |
-| Znajdź (nie podczas edycji tekstu w kształcie)             | ⌘F     | Ctrl+F          |
-| Opisz zaznaczenie za pomocą AI (z zaznaczonymi kształtami) | ⌘K     | Ctrl+K          |
-| Powiększ                                                   | ⌘=     | Ctrl+=          |
-| Pomniejsz                                                  | ⌘-     | Ctrl+-          |
-| Rozmiar rzeczywisty (100%)                                 | ⌘0     | Ctrl+0          |
-| Zaznacz wszystko                                           | ⌘A     | Ctrl+A          |
-| Przechodź po zaznaczeniu kształtów do przodu / do tyłu     | ⇥ / ⇧⇥ | Tab / Shift+Tab |
+| Czynność                                                                          | macOS  | Windows / Linux |
+| --------------------------------------------------------------------------------- | ------ | --------------- |
+| Nowy slajd                                                                        | ⇧⌘N    | Ctrl+M          |
+| Znajdź (nie podczas edycji tekstu w kształcie)                                    | ⌘F     | Ctrl+F          |
+| Opisz zaznaczenie za pomocą AI (z zaznaczonymi kształtami)                        | ⌘K     | Ctrl+K          |
+| Powiększ                                                                          | ⌘=     | Ctrl+=          |
+| Pomniejsz                                                                         | ⌘-     | Ctrl+-          |
+| Rozmiar rzeczywisty (100%)                                                        | ⌘0     | Ctrl+0          |
+| Zaznacz wszystko                                                                  | ⌘A     | Ctrl+A          |
+| Przechodź po zaznaczeniu kształtów do przodu / do tyłu                            | ⇥ / ⇧⇥ | Tab / Shift+Tab |
+| Powtórz ostatnią czynność (format, wypełnienie, linia, wyrównanie, duplikowanie…) | F4     | F4              |
+| Pokaż/ukryj okienko zaznaczenia                                                   | ⌥F10   | Alt+F10         |
 
 Nowy slajd to drugi podział platform. Każda platforma ma własny klawisz, a drugi nic nie robi: ⇧⌘N w macOS, Ctrl+M w Windows i Linux. ⌘M nie może tego zrobić w macOS, bo jest systemowym skrótem Minimalizuj.
 
 Zaznacz wszystko zależy od fokusu: przy fokusie na panel miniatur, panelu konspektu lub sortowaniu slajdów zaznacza wszystkie slajdy, a wszędzie indziej wszystkie elementy bieżącego slajdu. Tab przechodzi po kształtach slajdu i tylko wtedy, gdy fokus ma sama plansza slajdu.
+
+F4 działa też w polu tekstowym: stosuje ostatni format do zaznaczonego tekstu.
 
 ### Formatowanie tekstu
 
@@ -445,12 +452,12 @@ Cofnij i Ponów przechodzą po historii dokumentu; gdy kursor znajduje się w po
 
 ### Widok
 
-| Czynność            | macOS                 | Windows / Linux          |
-| ------------------- | --------------------- | ------------------------ |
-| Powiększ            | ⌘=                    | Ctrl+=                   |
-| Pomniejsz           | ⌘-                    | Ctrl+-                   |
-| Dopasuj szerokość   | ⌘0                    | Ctrl+0                   |
-| Powiększanie ciągłe | ⌘ + kółko przewijania | Ctrl + kółko przewijania |
+| Czynność             | macOS                 | Windows / Linux          |
+| -------------------- | --------------------- | ------------------------ |
+| Powiększ             | ⌘=                    | Ctrl+=                   |
+| Pomniejsz            | ⌘-                    | Ctrl+-                   |
+| Dopasuj szerokość    | ⌘0                    | Ctrl+0                   |
+| Powiększanie (co 5%) | ⌘ + kółko przewijania | Ctrl + kółko przewijania |
 
 Powiększ reaguje też na ⌘+ i Ctrl++.
 
@@ -627,6 +634,8 @@ Te klawisze działają, gdy karta HWP/HWPX jest na wierzchu, a dokument ma fokus
 | Znajdź następny     | ⌃L          | Ctrl+L                       |
 | Znajdź wstecz       | ⌃Q, L       | Ctrl+Q, L                    |
 | Przejdź do          | ⌥G          | Alt+G                        |
+| Początek dokumentu  | ⌃⇞          | Ctrl+PageUp                  |
+| Koniec dokumentu    | ⌃⇟          | Ctrl+PageDown                |
 | Porównaj dokumenty  | ⌥⇧V         | Alt+Shift+V                  |
 
 ### Znak
@@ -690,21 +699,29 @@ Te klawisze działają, gdy karta HWP/HWPX jest na wierzchu, a dokument ma fokus
 | Tekst daty/godziny                     | ⌃K, D       | Ctrl+K, D          |
 | Edytuj obiekt, pole lub tabelę/komórkę | ⌃N, K       | Ctrl+N, K          |
 | Symbole                                | ⌃F10 / ⌥F10 | Ctrl+F10 / Alt+F10 |
+| Zamień na hanja                        | F9          | Klawisz Hanja / F9 |
 
 ### Tabela
 
-| Czynność             | macOS        | Windows / Linux        |
-| -------------------- | ------------ | ---------------------- |
-| Dodaj wiersz/kolumnę | ⌥⏎ / ⌥Insert | Alt+Enter / Alt+Insert |
-| Usuń wiersz/kolumnę  | ⌥⌫           | Alt+Delete             |
-| Podziel komórkę      | F5 → S       | F5 → S                 |
-| Scal komórki         | F5 → M       | F5 → M                 |
-| Suma bloku           | F5 → ⇧⌘S     | F5 → Ctrl+Shift+S      |
-| Średnia bloku        | F5 → ⌃⇧A     | F5 → Ctrl+Shift+A      |
-| Iloczyn bloku        | F5 → ⌃⇧P     | F5 → Ctrl+Shift+P      |
-| Podziel tabelę       | ⌃N, A        | Ctrl+N, A              |
-| Połącz tabele        | ⌃N, Z        | Ctrl+N, Z              |
-| Formuła obliczeniowa | ⌃N, F        | Ctrl+N, F              |
+| Czynność                                      | macOS        | Windows / Linux        |
+| --------------------------------------------- | ------------ | ---------------------- |
+| Dodaj wiersz/kolumnę                          | ⌥⏎ / ⌥Insert | Alt+Enter / Alt+Insert |
+| Usuń wiersz/kolumnę                           | ⌥⌫           | Alt+Delete             |
+| Podziel komórkę                               | F5 → S       | F5 → S                 |
+| Scal komórki                                  | F5 → M       | F5 → M                 |
+| Właściwości tabeli/komórki                    | F5 → P       | F5 → P                 |
+| Obramowanie / cieniowanie, każda komórka      | F5 → L / C   | F5 → L / C             |
+| Obramowanie / cieniowanie, komórki jako jedna | F5 → B / F   | F5 → B / F             |
+| Równa wysokość wiersza / szerokość kolumny    | F5 → H / W   | F5 → H / W             |
+| Autouzupełnianie tabeli                       | F5 → A       | F5 → A                 |
+| Powrót do edycji komórki                      | F5 → ⏎       | F5 → Enter             |
+| Szybkie wcięcie wiszące (w komórce)           | ⌃⇧⇥          | Ctrl+Shift+Tab         |
+| Suma bloku                                    | F5 → ⇧⌘S     | F5 → Ctrl+Shift+S      |
+| Średnia bloku                                 | F5 → ⌃⇧A     | F5 → Ctrl+Shift+A      |
+| Iloczyn bloku                                 | F5 → ⌃⇧P     | F5 → Ctrl+Shift+P      |
+| Podziel tabelę                                | ⌃N, A        | Ctrl+N, A              |
+| Połącz tabele                                 | ⌃N, Z        | Ctrl+N, Z              |
+| Formuła obliczeniowa                          | ⌃N, F        | Ctrl+N, F              |
 
 ### Obliczenia tabeli
 
@@ -745,3 +762,5 @@ Działają tylko wtedy, gdy kursor znajduje się w pustej komórce tabeli. Osobn
 | Przejdź do karty Start (poza tabelą) | ⇧⌘H   | Ctrl+Shift+H    |
 
 Klawisz zapisany jako `Ctrl+N,T` oznacza: naciśnij Ctrl+N, puść, a następnie naciśnij T. `F5 → S` oznacza zaznaczenie bloku komórek za pomocą F5 i naciśnięcie S. `Ctrl+1 … Ctrl+0` oznaczają style od pierwszego do dziesiątego w dokumencie; `Ctrl+Alt+1 … Ctrl+Alt+0` stosują te same style. Gdy zaznaczony jest blok komórek, `Ctrl+Shift+S` (w macOS `⇧⌘S`) oznacza sumę bloku; poza nim ten klawisz zapisuje jako.
+
+Myszą, tak jak w Hangul, dwukrotne kliknięcie zaznacza słowo, trzykrotne cały akapit, a dwukrotne kliknięcie z przytrzymaniem i przeciągnięciem rozszerza zaznaczenie słowami. Działa to także podczas edycji nagłówka, stopki lub przypisu. Skopiowanie bloku komórek (`Ctrl+C`) kopiuje tekst komórek i samą tabelę, więc wklejenie w tekście głównym tworzy tę samą tabelę od nowa. Wklejenie, gdy kursor stoi tylko w komórce innej tabeli, otwiera okno Paste Cells: nadpisanie od tej komórki (komórki wychodzące poza tabelę są pomijane) albo wstawienie komórek powyżej, poniżej, z lewej lub z prawej. Przeciągnięcie uchwytu narożnego obrazu zachowuje jego proporcje; kształt lub pole tekstowe zachowuje je, gdy podczas przeciągania narożnika trzymasz `Shift`. Naciśnij `Shift` podczas przesuwania obiektu, aby poruszał się tylko poziomo lub pionowo, a `Esc` w trakcie przesuwania lub zmiany rozmiaru, aby przywrócić obiekt na miejsce. Gdy obiekt jest zaznaczony, klawisze strzałek przesuwają go o 0,2 mm, a `Shift`+strzałki zmieniają jego rozmiar o 1 mm. `Tab` i `Shift+Tab` zaznaczają następny i poprzedni obiekt na stronie, `Shift+PageUp` i `Shift+PageDown` przenoszą obiekt na wierzch lub pod spód, a `Shift+Home` i `Shift+End` umieszczają obiekt przed tekstem lub za nim. `G` i `U` grupują i rozgrupowują, `L` i `C` otwierają karty Linia i Wypełnienie we właściwościach obiektu, a `Ctrl+E` usuwa obiekt. Aby zaznaczyć obiekt leżący pod innym, przytrzymaj `Alt` i kliknij; każde kolejne kliknięcie zaznacza następny obiekt pod spodem. Przeciągnięcie narożnika obrazu z wciśniętym `Shift` przycina obraz w jego skali, a przeciągnięcie obiektu z wciśniętym `Ctrl` zostawia go na miejscu i kładzie kopię tam, gdzie go upuścisz.

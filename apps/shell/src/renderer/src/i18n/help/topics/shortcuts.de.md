@@ -12,10 +12,12 @@ Jeder Editor hat eigene Tastenbelegungen, und nur wenige davon funktionieren üb
 | Menüband einklappen / ausklappen — jeder Editor           | ⌥⌘R   | Ctrl+F1         |
 | Menüband kompakt — nur Docs                               | ⌥⌘K   | Ctrl+Alt+K      |
 | Tastenkürzel-Tabelle öffnen — nur Word                    | ⌘/    | Ctrl+/          |
+| Einstellungen öffnen — jeder Tab außer Word               | ⌘,    | Ctrl+,          |
 
 - **F1 öffnet dieses Handbuch**, nicht die Kürzel-Tabelle. Die Taste gehört zum Anwendungsmenü und funktioniert daher aus Word, Sheets, Slides, PDF oder dem Tab Home gleichermaßen.
 - **Der Umschalter für das Menüband ist `Ctrl+F1`, auf macOS `⌥⌘R`.** Ein bloßer Druck auf `F1` bewirkt nichts — F1 ist das Handbuch, und die Menüband-Taste teilt sich diese Belegung bewusst nicht. `Ctrl+F1` wird auch auf macOS akzeptiert, aber `⌥⌘R` ist die Taste, die Office für Mac verwendet.
 - **Die Tastenkürzel-Tabelle gehört allein zu Word** (`⌘/`). Sie listet genau die Word-Tabelle weiter unten auf. Kein anderer Editor hat eine.
+- **`⌘,` öffnet die Einstellungen** (`Ctrl+,` unter Windows und Linux), wie in den meisten Mac-Apps. In einem Word-Tab bleibt die Tastenkombination Tiefgestellt; öffnen Sie die Einstellungen dort über das App-Menü (Mac) oder über Menü (☰) ▸ Einstellungen… (Windows und Linux).
 
 ![Die Tastenkürzel-Tabelle von Word selbst: die Aktion links, die Tastenkombination rechts, gruppiert nach Datei, Bearbeiten, Textformatierung, Absatzformatierung, Einfügen, Überprüfen und Werkzeuge, Ansicht](img/word-shortcuts.png)
 
@@ -24,7 +26,7 @@ Jeder Editor hat eigene Tastenbelegungen, und nur wenige davon funktionieren üb
 
 ## Präsentationsmodus
 
-- **Start**: F5 in Word, PDF, Mindmap, HTML und Markdown. In einer Tabelle Ctrl+F5 (ab A1) oder Shift+F5 (ab der aktuellen Zelle).
+- **Start**: F5 in Word, PDF, Mindmap, HTML und Markdown. In einer Tabelle Ctrl+F5 (ab A1) oder Shift+F5 (ab der aktuellen Zelle). In HWP-Dokumenten Ctrl+F5 (F5 markiert dort Tabellenzellen).
 - **Weitere Einstiege**: In Word öffnen Ctrl+F5 und Shift+F5 die Leseansicht ohne Vollbild, in PDF starten sie ab der aktuellen Seite, in HTML präsentieren sie im Tab.
 - **Beenden**: Esc oder F5. F11 ist der Vollbildmodus des Fensters und ändert die Dokumentansicht nicht.
 
@@ -278,18 +280,19 @@ Excels Kürzel für den Filter, Ctrl+Shift+L, bewirkt unter Windows und Linux ni
 
 ### Fenster
 
-| Aktion                                                           | macOS      | Windows / Linux |
-| ---------------------------------------------------------------- | ---------- | --------------- |
-| Arbeitsmappe speichern                                           | ⌘S         | Ctrl+S          |
-| Speichern unter                                                  | ⇧⌘S        | Ctrl+Shift+S    |
-| Arbeitsmappe öffnen                                              | ⌘O         | Ctrl+O          |
-| Drucken                                                          | ⌘P         | Ctrl+P          |
-| Arbeitsmappe schließen (macOS) / App beenden (Windows und Linux) | ⌘W         | Ctrl+Q          |
-| Benutzerhandbuch öffnen                                          | F1         | F1              |
-| Vergrößern                                                       | ⌘=         | Ctrl+=          |
-| Mit dem Mausrad zoomen                                           | ⌘ + rollen | Ctrl + rollen   |
-| Formeln in den Zellen ein- oder ausblenden                       | ⌘`         | Ctrl+`          |
-| Formelleiste ausklappen oder einklappen                          | ⌘⇧U        | Ctrl+Shift+U    |
+| Aktion                                                                                    | macOS      | Windows / Linux |
+| ----------------------------------------------------------------------------------------- | ---------- | --------------- |
+| Arbeitsmappe speichern                                                                    | ⌘S         | Ctrl+S          |
+| Speichern unter                                                                           | ⇧⌘S        | Ctrl+Shift+S    |
+| Arbeitsmappe öffnen                                                                       | ⌘O         | Ctrl+O          |
+| Drucken                                                                                   | ⌘P         | Ctrl+P          |
+| Arbeitsmappe schließen (macOS) / App beenden (Windows und Linux)                          | ⌘W         | Ctrl+Q          |
+| Benutzerhandbuch öffnen                                                                   | F1         | F1              |
+| Vergrößern                                                                                | ⌘=         | Ctrl+=          |
+| Mit dem Mausrad zoomen                                                                    | ⌘ + rollen | Ctrl + rollen   |
+| Formeln in den Zellen ein- oder ausblenden                                                | ⌘`         | Ctrl+`          |
+| Formelleiste ausklappen oder einklappen                                                   | ⌘⇧U        | Ctrl+Shift+U    |
+| Schaltfläche der Symbolleiste für den Schnellzugriff nach Position ausführen (1. bis 10.) |            | Alt+1 … Alt+0   |
 
 ## Slides
 
@@ -312,20 +315,24 @@ Einen Tab zu schließen ist die eine Stelle, an der sich die beiden Plattformen 
 
 ### Bearbeiten
 
-| Aktion                                                | macOS  | Windows / Linux |
-| ----------------------------------------------------- | ------ | --------------- |
-| Neue Folie                                            | ⇧⌘N    | Ctrl+M          |
-| Suchen (nicht beim Bearbeiten von Text in einer Form) | ⌘F     | Ctrl+F          |
-| Auswahl mit KI kommentieren (mit ausgewählten Formen) | ⌘K     | Ctrl+K          |
-| Vergrößern                                            | ⌘=     | Ctrl+=          |
-| Verkleinern                                           | ⌘-     | Ctrl+-          |
-| Originalgröße (100 %)                                 | ⌘0     | Ctrl+0          |
-| Alles auswählen                                       | ⌘A     | Ctrl+A          |
-| Formenauswahl vorwärts / rückwärts durchlaufen        | ⇥ / ⇧⇥ | Tab / Shift+Tab |
+| Aktion                                                                              | macOS  | Windows / Linux |
+| ----------------------------------------------------------------------------------- | ------ | --------------- |
+| Neue Folie                                                                          | ⇧⌘N    | Ctrl+M          |
+| Suchen (nicht beim Bearbeiten von Text in einer Form)                               | ⌘F     | Ctrl+F          |
+| Auswahl mit KI kommentieren (mit ausgewählten Formen)                               | ⌘K     | Ctrl+K          |
+| Vergrößern                                                                          | ⌘=     | Ctrl+=          |
+| Verkleinern                                                                         | ⌘-     | Ctrl+-          |
+| Originalgröße (100 %)                                                               | ⌘0     | Ctrl+0          |
+| Alles auswählen                                                                     | ⌘A     | Ctrl+A          |
+| Formenauswahl vorwärts / rückwärts durchlaufen                                      | ⇥ / ⇧⇥ | Tab / Shift+Tab |
+| Letzte Aktion wiederholen (Formatierung, Füllung, Linie, Ausrichtung, Duplizieren…) | F4     | F4              |
+| Auswahlbereich ein-/ausblenden                                                      | ⌥F10   | Alt+F10         |
 
 Neue Folie ist die andere Plattformtrennung. Jede Plattform hat ihre eigene Taste, und die andere tut nichts: `⇧⌘N` auf macOS, Ctrl+M unter Windows und Linux. `⌘M` kann auf macOS nicht die Aufgabe erfüllen, weil das die systemweite Taste zum Minimieren ist.
 
 Alles auswählen richtet sich nach dem Fokus: Ist das Miniaturenbereichsfenster, der Gliederungsbereich oder die Foliensortierung fokussiert, wählt der Befehl alle Folien aus, und überall sonst wählt er jedes Element der aktuellen Folie aus. Tab durchläuft die Formen auf der Folie, und nur wenn die Folienfläche selbst den Fokus hat.
+
+F4 funktioniert auch im Textfeld und wendet die letzte Formatierung auf den ausgewählten Text an.
 
 ### Textformatierung
 
@@ -445,12 +452,12 @@ Rückgängig und Wiederholen gehen durch die Dokumenthistorie; steht der Cursor 
 
 ### Ansicht
 
-| Aktion             | macOS       | Windows / Linux |
-| ------------------ | ----------- | --------------- |
-| Vergrößern         | ⌘=          | Ctrl+=          |
-| Verkleinern        | ⌘-          | Ctrl+-          |
-| An Breite anpassen | ⌘0          | Ctrl+0          |
-| Zoom (stufenlos)   | ⌘ + Mausrad | Ctrl + Mausrad  |
+| Aktion                  | macOS       | Windows / Linux |
+| ----------------------- | ----------- | --------------- |
+| Vergrößern              | ⌘=          | Ctrl+=          |
+| Verkleinern             | ⌘-          | Ctrl+-          |
+| An Breite anpassen      | ⌘0          | Ctrl+0          |
+| Zoom (in 5-%-Schritten) | ⌘ + Mausrad | Ctrl + Mausrad  |
 
 Vergrößern reagiert auch auf `⌘+` und Ctrl++.
 
@@ -627,6 +634,8 @@ Diese Tasten gelten, solange der Tab HWP/HWPX im Vordergrund ist und das Dokumen
 | Weitersuchen          | ⌃L          | Ctrl+L                       |
 | Rückwärts suchen      | ⌃Q, L       | Ctrl+Q, L                    |
 | Gehe zu               | ⌥G          | Alt+G                        |
+| Zum Dokumentanfang    | ⌃⇞          | Ctrl+PageUp                  |
+| Zum Dokumentende      | ⌃⇟          | Ctrl+PageDown                |
 | Dokumente vergleichen | ⌥⇧V         | Alt+Shift+V                  |
 
 ### Zeichen
@@ -690,21 +699,29 @@ Diese Tasten gelten, solange der Tab HWP/HWPX im Vordergrund ist und das Dokumen
 | Datum/Uhrzeit als Text                     | ⌃K, D       | Ctrl+K, D          |
 | Objekt, Feld oder Tabelle/Zelle bearbeiten | ⌃N, K       | Ctrl+N, K          |
 | Sonderzeichen                              | ⌃F10 / ⌥F10 | Ctrl+F10 / Alt+F10 |
+| In Hanja umwandeln                         | F9          | Hanja-Taste / F9   |
 
 ### Tabelle
 
-| Aktion                  | macOS        | Windows / Linux        |
-| ----------------------- | ------------ | ---------------------- |
-| Zeile/Spalte hinzufügen | ⌥⏎ / ⌥Insert | Alt+Enter / Alt+Insert |
-| Zeile/Spalte löschen    | ⌥⌫           | Alt+Delete             |
-| Zelle teilen            | F5 → S       | F5 → S                 |
-| Zellen verbinden        | F5 → M       | F5 → M                 |
-| Blocksumme              | F5 → ⇧⌘S     | F5 → Ctrl+Shift+S      |
-| Blockmittelwert         | F5 → ⌃⇧A     | F5 → Ctrl+Shift+A      |
-| Blockprodukt            | F5 → ⌃⇧P     | F5 → Ctrl+Shift+P      |
-| Tabelle teilen          | ⌃N, A        | Ctrl+N, A              |
-| Tabelle verbinden       | ⌃N, Z        | Ctrl+N, Z              |
-| Berechnungsformel       | ⌃N, F        | Ctrl+N, F              |
+| Aktion                                      | macOS        | Windows / Linux        |
+| ------------------------------------------- | ------------ | ---------------------- |
+| Zeile/Spalte hinzufügen                     | ⌥⏎ / ⌥Insert | Alt+Enter / Alt+Insert |
+| Zeile/Spalte löschen                        | ⌥⌫           | Alt+Delete             |
+| Zelle teilen                                | F5 → S       | F5 → S                 |
+| Zellen verbinden                            | F5 → M       | F5 → M                 |
+| Tabellen-/Zelleigenschaften                 | F5 → P       | F5 → P                 |
+| Rahmen / Schattierung je Zelle              | F5 → L / C   | F5 → L / C             |
+| Rahmen / Schattierung als eine Zelle        | F5 → B / F   | F5 → B / F             |
+| Gleiche Zeilenhöhe / Spaltenbreite          | F5 → H / W   | F5 → H / W             |
+| Tabelle automatisch füllen                  | F5 → A       | F5 → A                 |
+| Zurück zur Zellbearbeitung                  | F5 → ⏎       | F5 → Enter             |
+| Schneller hängender Einzug (in einer Zelle) | ⌃⇧⇥          | Ctrl+Shift+Tab         |
+| Blocksumme                                  | F5 → ⇧⌘S     | F5 → Ctrl+Shift+S      |
+| Blockmittelwert                             | F5 → ⌃⇧A     | F5 → Ctrl+Shift+A      |
+| Blockprodukt                                | F5 → ⌃⇧P     | F5 → Ctrl+Shift+P      |
+| Tabelle teilen                              | ⌃N, A        | Ctrl+N, A              |
+| Tabelle verbinden                           | ⌃N, Z        | Ctrl+N, Z              |
+| Berechnungsformel                           | ⌃N, F        | Ctrl+N, F              |
 
 ### Tabellenberechnung
 
@@ -745,3 +762,5 @@ Sie gelten nur, wenn der Cursor in einer leeren Tabellenzelle steht. Getrennte T
 | Zum Tab „Start“ (außerhalb einer Tabelle) | ⇧⌘H   | Ctrl+Shift+H    |
 
 Eine Taste wie `Ctrl+N,T` bedeutet: Ctrl+N drücken, loslassen und dann T drücken. `F5 → S` heißt: mit F5 einen Zellblock auswählen und dann S drücken. `Ctrl+1 … Ctrl+0` stehen für die erste bis zehnte Formatvorlage des Dokuments; `Ctrl+Alt+1 … Ctrl+Alt+0` wenden dieselben Formatvorlagen an. Ist ein Zellblock ausgewählt, ist `Ctrl+Shift+S` (unter macOS `⇧⌘S`) die Blocksumme; sonst speichert diese Taste unter einem neuen Namen.
+
+Mit der Maus gilt wie in Hangul: Ein Doppelklick markiert ein Wort, ein Dreifachklick den ganzen Absatz, und ein Doppelklick mit gedrückter Taste und Ziehen erweitert die Markierung wortweise. Das gilt auch beim Bearbeiten einer Kopf- oder Fußzeile oder einer Fußnote. Beim Kopieren eines Zellblocks (`Ctrl+C`) werden der Text der Zellen und die Tabelle selbst kopiert; im Fließtext eingefügt entsteht dieselbe Tabelle neu. Steht nur der Cursor in einer Zelle einer anderen Tabelle, öffnet das Einfügen den Dialog Paste Cells: ab dieser Zelle überschreiben (Zellen außerhalb der Tabelle entfallen) oder die Zellen oberhalb, unterhalb, links oder rechts einfügen. Zieht man an einer Ecke eines Bildes, bleibt sein Seitenverhältnis erhalten; Formen und Textfelder behalten es, wenn man dabei `Shift` gedrückt hält. Wer beim Verschieben eines Objekts `Shift` drückt, bewegt es nur waagerecht oder senkrecht, und `Esc` während des Verschiebens oder der Größenänderung setzt das Objekt zurück. Bei markiertem Objekt verschieben die Pfeiltasten es um 0,2 mm, `Shift`+Pfeiltasten ändern seine Größe um 1 mm. `Tab` und `Shift+Tab` markieren das nächste bzw. vorige Objekt der Seite, `Shift+PageUp` und `Shift+PageDown` bringen das Objekt ganz nach vorn bzw. hinten, `Shift+Home` und `Shift+End` legen das Objekt vor bzw. hinter den Text. `G` und `U` gruppieren und lösen Gruppen auf, `L` und `C` öffnen die Registerkarten Linie und Füllung der Objekteigenschaften, und `Ctrl+E` löscht das Objekt. Ein Objekt unter einem anderen markiert man mit gedrückter `Alt`-Taste per Klick; jeder weitere Klick wählt das nächste darunter. Zieht man eine Ecke eines Bildes mit gedrückter `Shift`-Taste, wird das Bild in seinem Maßstab zugeschnitten; zieht man ein Objekt mit gedrückter `Ctrl`-Taste, bleibt es an seinem Platz und eine Kopie entsteht dort, wo man loslässt.

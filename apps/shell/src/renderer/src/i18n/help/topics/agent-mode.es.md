@@ -4,7 +4,7 @@ El agente toma como proyecto una carpeta que usted elige y ejecuta en ella el Cl
 
 ## Antes de empezar
 
-- Una suscripción de Claude o una suscripción de ChatGPT conectada en **Configuración ▸ IA**. El tema «Conexión por suscripción» explica cómo hacerlo.
+- El programa Claude Code o Codex conectado en **Configuración ▸ IA** (con la sesión iniciada con una suscripción de Claude o un plan de ChatGPT). El agente no usa ChatGPT conectado directamente en la aplicación. El tema «Conexión por suscripción» explica cómo hacerlo.
 - Una carpeta con su material. No se pueden elegir una unidad entera, toda su carpeta personal ni carpetas con datos de inicio de sesión o de aplicaciones.
 
 ## Iniciar una sesión

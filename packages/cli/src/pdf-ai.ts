@@ -73,7 +73,7 @@ function visibleStatuses(settings: AiSettings, context: AiToolCallContext): AiSu
   const statuses = context.statuses ?? {}
   if (!headlessSubscriptionBlocked(settings, context)) return statuses
   const visible: AiSubscriptionStatuses = {}
-  for (const id of ['claude-code', 'codex'] as const) {
+  for (const id of ['claude-code', 'chatgpt', 'codex'] as const) {
     const status = statuses[id]
     if (status && status.state !== 'ready') visible[id] = status
   }

@@ -131,3 +131,29 @@ export async function decryptPdfBytes(
   if (result.output) return result.output
   throw new QpdfFailedError()
 }
+
+export interface OptimizePdfOptions {
+  /** Fast Web View (--linearize) */
+  linearize?: boolean
+  /** password when the source PDF is encrypted */
+  password?: string
+}
+
+/** Optimize a PDF with qpdf: object streams, Flate recompression, unreferenced resource cleanup, and optional linearization */
+export async function optimizePdfBytes(
+  wasmPath: string,
+  bytes: Uint8Array,
+  options: OptimizePdfOptions = {},
+): Promise<Uint8Array> {
+  const result = await run(wasmPath, bytes, (p) => [
+    ...(options.password ? [`--password=${options.password}`] : []),
+    '--object-streams=generate',
+    '--recompress-flate',
+    '--remove-unreferenced-resources=yes',
+    ...(options.linearize ? ['--linearize'] : []),
+    p.in,
+    p.out,
+  ])
+  if (result.output) return result.output
+  throw new QpdfFailedError()
+}

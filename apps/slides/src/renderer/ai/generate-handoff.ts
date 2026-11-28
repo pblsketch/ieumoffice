@@ -61,6 +61,8 @@ export interface GenerateHandoffPanel {
   readonly attach: (result: AttachmentAddResult) => void
   /** put text in the composer */
   readonly fill: (text: string) => void
+  /** apply optional speaker-notes separation preference carried by the hand-off */
+  readonly onSpeakerNotesSeparate?: (enabled: boolean) => void
   /** the panel's own send path with the composer's attachments (goes through the send gate) */
   readonly send: (text: string) => void
 }
@@ -87,6 +89,7 @@ export function useGenerateHandoff(panel: GenerateHandoffPanel): void {
       s.reportOpen = true
       const p = panelRef.current
       if (!p.open) p.expand()
+      if (handoff.speakerNotesSeparate === true) p.onSpeakerNotesSeparate?.(true)
       p.attach(added)
       p.fill(handoff.text)
       // the request was to make it from the materials: with none attached, the

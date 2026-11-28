@@ -32,7 +32,7 @@ ieumoffice slides replace deck.pptx --slide 2 --spec deck/pages/03.json   # rebu
 ieumoffice slides apply deck.pptx --ops edit.json [--dry-run] [--out copy.pptx]
 ieumoffice slides audit deck.pptx [--slide 0] --json            # out_of_bounds / off_slide / text_overflow / text_overflow_width / overlap / picture_distorted: typed issues with durable ids and a setTransform `suggest` where geometry fixes it
 ieumoffice slides render deck.pptx --out shots/ [--scale 2]     # one PNG per slide through the app's PDF export
-ieumoffice render report.docx|book.xlsx|page.html|file.pdf --out shots/ [--page 3] [--scale 2]   # one PNG per page of any document, to look at what was made
+ieumoffice render report.docx|book.xlsx|page.html|form.hwp|file.pdf --out shots/ [--page 3] [--scale 2]   # one PNG per page of any document, to look at what was made
 ieumoffice render deck.pptx --out shots/ --el e_12 [--pad 16]   # plus the page cropped to that element (<stem>-NN-e_12.png)
 ieumoffice render deck.pptx --out shots/ --grid [--cols 4] [--tile 320]   # plus <stem>-grid.png: every page on one contact sheet
 ieumoffice create --type xlsx --from table.json --out book.xlsx   # 2-D array or {sheets:[{name,rows}]}; "=..." cells are formulas
@@ -41,28 +41,34 @@ ieumoffice sheet read book.xlsx [--sheet Data] [--range A1:D20] [--formats] --js
 ieumoffice sheet apply book.xlsx --cells cells.json    # [{cell:"B2", value|formula, style?, sheet?}]
 ieumoffice sheet apply book.xlsx --ops ops.json [--dry-run]   # workbook DSL: cells, formats, charts, tables, filters, conditional formats, validation, links, notes, panes, page setup, sheets (`ieumoffice guide sheets`)
 ieumoffice sheet check book.xlsx --json                # formula errors, missing-sheet references, broken defined names, chart ranges off the data, ### columns (suggest: set_col_width), placeholder text, existing rules; exit 0
+ieumoffice sheet links book.xlsx                       # external [n] links: stored path, resolved path, reachable, source sheets
+ieumoffice sheet links book.xlsx --update              # re-read reachable sources and write the computed values as the formulas' cached <v> (formulas untouched; unreachable links keep their cache)
+ieumoffice sheet links book.xlsx --break 1,2           # break links: formulas become their cached values, the links' parts are removed and surviving links renumber
 ieumoffice create --type docx --from report.md --out report.docx      # or --from fragment.html (restricted HTML)
 ieumoffice convert notes.md --to docx|html
 ieumoffice convert report.docx --to html               # the Word editor's standalone-HTML export
 ieumoffice convert page.html --to docx                 # html2docx, same as the HTML app's Export as Word
-ieumoffice convert report.docx --to md                 # GFM via the markdown editor's serializer
-ieumoffice convert book.xlsx --to csv [--sheet Data]   # one sheet, cell text as displayed, UTF-8 BOM, CRLF
+ieumoffice convert report.docx --to md                 # GFM via the markdown editor's serializer; nested tables become cell text with a nested_tables_flattened warning
+ieumoffice convert book.xlsx --to csv [--sheet Data] [--neutralize-formulas]   # one sheet, cell text as displayed, UTF-8 BOM, CRLF; --neutralize-formulas prefixes formula-like cells (=, @/+/- function calls, DDE) with an apostrophe — off by default so ordinary data keeps its bytes
+ieumoffice convert book.xlsx --to ods                  # a complete ODS package (also .xlsm→ods); detail.dropped and warnings list the features ODS cannot hold
 ieumoffice convert form.odt --to docx|pdf|md|html      # through the ODT bridge docx (pdf/html: a temporary docx the app exports, always deleted)
+ieumoffice convert letter.doc --to docx                # Word 97-2003 .doc/.dot through the in-process doc2docx importer
 ieumoffice convert report.docx --to odt                # also md→odt and html→odt; warnings[] odt_converted / odt_dropped + detail.odt_report
 ieumoffice capabilities --json                        # which of search, image generation, image/video analysis and the PDF AI jobs work here and by which route (free, key, subscription); no model call
 ieumoffice search "electron headless export" [--images] [--max 6] --json
 ieumoffice read-url https://example.com/guide.md [--offset 50000] --json   # the readable text of an http(s) page (article, document, skill); the address goes to that site; private GitHub files use the app's read-only token
 ieumoffice image "isometric office, soft light" --aspect 16:9 --out hero.png
 ieumoffice media photo.jpg --ask "What text is in this picture?" --json
-ieumoffice docs read report.docx [--range 0-9] [--html] [--full] [--comments] [--revisions] [--header-footer] --json   # blocks (--full: whole text), comment threads, tracked changes, header/footer text
+ieumoffice docs read report.docx [--range 0-9] [--html] [--full] [--comments] [--revisions] [--header-footer] --json   # blocks (--full: whole text; contentControls chain + inlineContentControls for w:sdt controls), comment threads, tracked changes, header/footer text
 ieumoffice docs apply report.docx --ops ops.json [--dry-run]           # apply_ops entries + insert_content / replace_blocks / insert_image / insert_chart / edit_chart / set_header_footer / reply_comment / resolve_comment
 ieumoffice docs check report.docx --json                               # fields without results, broken bookmark references, stale TOC, missing images, empty charts/headings, heading level skips, placeholder text, pending revisions, open comments; exit 0
+ieumoffice docs compare original.docx revised.docx --out redline.docx [--author name] [--date iso] [--granularity word|char] [--ignore formatting,case,whitespace]   # redline: the revised document with the differences marked as tracked insertions and deletions; --json reports the counts
 ieumoffice docs apply form.odt --ops ops.json         # an .odt is written back as .odt (narrow patch); --out keeps .odt; comment / tracked-change / TOC / equation / chart / text box / column / watermark ops → unsupported, locked cells and locked objects → op_rejected
 ieumoffice merge invoice-template.docx --data values.json --out invoice.docx [--force] [--strict]   # fill {{key}} placeholders in a docx/pptx/xlsx template; reports used, unused and unresolved keys (or --data '{"name":"Ada"}')
 ieumoffice pdf read scan.pdf [--page 3 | --range 1-5] [--full] --json     # text layer page by page (pages 1-20 by default, 4000 characters each) with page sizes and metadata; headless pdfium, no app process
 ieumoffice pdf read book.pdf --structured --range 1-5 --json   # same shape, each page's text from the document tree: headings, lists, tables, captions, footnotes (detail.structured: true)
 ieumoffice convert book.pdf --to md [--pages 1-5,8]            # reflowed Markdown, pictures in assets/ beside it
-ieumoffice convert book.pdf --to epub --title "Field Notes" [--no-cover]   # EPUB 3; title and author from the PDF unless given
+ieumoffice convert book.pdf --to epub --title "Field Notes" [--no-cover] [--page-breaks]   # EPUB 3; title and author from the PDF unless given; --page-breaks starts each original page on a new screen
 ieumoffice pdf images book.pdf --out pictures/ [--pages 2-4] --json   # the pictures on the pages as <name>-p<page>-<n>.png (detail.images[]: page, file, width, height)
 ieumoffice pdf ai-read scan.pdf --pages 1-3 --json             # estimate only: detail.estimate { calls, pages, provider, route, metered }; nothing is sent
 ieumoffice pdf ai-read scan.pdf --pages 1-3 --yes [--allow-paid] --json   # send the page images, one request per page; --allow-paid when the route bills per request
@@ -72,11 +78,31 @@ ieumoffice pdf status book.pdf --json                          # what the result
 ieumoffice epub translate novel.epub --to ko --json            # estimate only: detail.estimate { calls, chapters, provider, route, metered } and detail.chapters[] { index, title, read_only }; nothing is sent
 ieumoffice epub translate novel.epub --to ko --chapters 1-5,8 --kind translated,bilingual --out out/novel --partial --restart --yes --allow-paid --force   # out/novel.epub + out/novel.bilingual.epub (default: novel.ko.epub, novel.ko.bilingual.epub beside the source); progress on stderr
 ieumoffice epub status novel.epub --json                       # translations the result store holds for the book, each with its job
-ieumoffice hwp read notice.hwp [--offset 20000] [--full] --json           # text of a Hangul (HWP / HWPX) document, tables as "a | b" rows (first 20000 characters by default); read-only, no app process
+ieumoffice hwp read notice.hwp [--offset 20000] [--full] --json           # text of a Hangul (HWP / HWPX) document, tables as "a | b" rows (first 20000 characters by default); no app process
+ieumoffice hwp apply form.hwp --ops ops.json [--bibliography refs.json] [--out filled.hwpx] [--dry-run] [--force] --json   # the in-app AI's tools as ops (replace_text, insert_paragraphs, fill_cells, fill_field, insert_citation, insert_bibliography ...; `guide hwp`); written back in its own format, the replaced file kept as form.hwp.bak
+ieumoffice create --type hwp --ops ops.json [--bibliography refs.json] --out minutes.hwp             # a new Hangul document: the same ops on a blank A4 page (--type hwpx for .hwpx)
+ieumoffice guide hwp                                                    # the hwp apply ops, built from the in-app AI's tool definitions
+ieumoffice convert notice.hwp --to pdf                                  # .hwp/.hwpx → PDF: the Hangul editor's own PDF export in a hidden app, pages as the editor draws them, with a text layer
+ieumoffice convert letter.docx --to hwpx                               # .docx → .hwp/.hwpx with the Word editor's "Export as HWP Document" converter, no app process; warnings[] hwp_dropped / hwp_changed + detail.hwp_report; a .hwp that reads back with other pages is exit 3, detail.reason hwp-readback
+ieumoffice convert notes.md --to hwp                                    # .md → .hwp/.hwpx through the same converter: headings, lists and tables arrive as Hangul ones; tables run on to the next page with their header row and get column widths from their content
+ieumoffice diagram read flow.drawio [--page Two] --json               # shapes and edges of each page of a draw.io diagram (.drawio, .dio, .drawio.svg, .drawio.png); no app process
+ieumoffice diagram apply flow.drawio --ops '[{"op":"add_shape","label":"Check","x":40,"y":200}]' [--page Two] [--out flow.dio] [--force] --json   # the in-app AI's diagram ops (`guide diagram`); .drawio/.dio keep untouched pages byte for byte
+ieumoffice create --type drawio --mermaid flow.mmd [--ops @more.json] --out flow.drawio   # Mermaid drawn by draw.io (a hidden IeumOffice), then the ops; --out x.drawio.png writes that format
+ieumoffice convert flow.drawio --to png [--page Two] [--out pictures]  # one PNG per page (flow-p1.png ...) into the folder, or one file with --page; --to svg the same, --to pdf one file
+ieumoffice guide diagram                                                # the diagram ops, built from the same definitions as the in-app AI's tools
+ieumoffice map read plan.xmind --json                          # every topic of a mind map (.xmind) with the ids ops target; plain `map read` prints the outline, one `# ` heading per sheet
+ieumoffice map apply plan.xmind --ops '[{"op":"rename_topic","id":"<id>","title":"New"}]' --json   # the map ops (`guide map`: add_topic, rename_topic, move_topic, delete_topic, set_note, set_link); untouched parts of the file stay byte for byte, a delete that would take preserved elements is refused with the count
+ieumoffice map create --outline plan.md --out plan.xmind       # a new .xmind from a markdown outline (`# ` sheet heading, `- ` topic item); without --out the outline name gets .xmind
+ieumoffice guide map                                           # the map ops, built from the same definitions `map apply` checks against
+ieumoffice whiteboard read board.ieumboard --json              # inspect a whiteboard (.ieumboard) pages and objects
+ieumoffice create --type ieumboard --template blank --out board.ieumboard   # create a new whiteboard from a built-in template
+ieumoffice guide whiteboard                                    # the whiteboard ops (`whiteboard apply`)
 ieumoffice guide docs                                                   # op signatures + restricted-HTML rules (`guide <domain> --json` = the catalog with each op's schema and a fingerprint)
 ieumoffice selection report.docx --json   # what the user has selected in the editor showing the file
 ieumoffice skill list   # coding agents found on this machine and the skill version each has
+ieumoffice skill install codex   # Codex, Cursor, Gemini CLI, Copilot and OpenCode share ~/.agents/skills (`skill install agents`)
 ieumoffice skill install --dir ./skills --force   # copy the bundled skill into a skills directory
+ieumoffice skill remove codex   # remove a copy this app wrote (here: the older one in ~/.codex/skills)
 ieumoffice install-cli   # put ieumoffice on the PATH
 ieumoffice mcp --http 3000 [--host 127.0.0.1] [--token secret]   # Streamable HTTP for clients on other machines; omit --http for stdio
 ieumoffice mcp --compact-schemas   # advertise ops/cells/data as plain arrays instead of the per-op schema (smaller tools/list; also GENOFFICE_MCP_COMPACT_SCHEMAS=1)
@@ -111,8 +137,10 @@ ranges, available ids, sheet names, usage lines) come back as fields in
 
 `ieumoffice merge <template> --data <values> --out <file>` fills `{{key}}`
 placeholders in a `.docx`, `.pptx` or `.xlsx` template from a JSON object
-(a file, inline JSON or `-` for stdin). Nested objects flatten to dotted keys
-(`{{a.b}}`); arrays are not expanded and come back in `detail.ignored_keys`;
+(a file, inline JSON or `-` for stdin). UTF-8 files and stdin may carry one
+leading BOM; characters inside the JSON values are not removed. Nested objects flatten to dotted keys
+(`{{a.b}}`); keys may be in any script (`{{이름}}`), made of letters, digits, `_`, `.` and `-`;
+arrays are not expanded and come back in `detail.ignored_keys`;
 whitespace inside the braces is tolerated. The fill runs on the engines' own
 find/replace paths: `findReplace` in the docs editor (a table block with a placeholder that has a
 value goes through `replace_blocks` on its restricted HTML, since `findReplace`
@@ -128,11 +156,18 @@ element id, or sheet and cell). `reason: no_key` is a placeholder the data
 does not cover; `split_placeholder` is one Word or PowerPoint stored across
 runs with different formatting, which run-level replace cannot match (retype
 it in one run); `unreachable_nested` sits inside a nested pptx group or a
-table in a group, which deck-level `findReplace` does not reach (ungroup it). Unresolved placeholders stay in place and the result carries an
+table in a group, which deck-level `findReplace` does not reach (ungroup it);
+`formula_cell` is a placeholder inside an xlsx formula's text, which merge never
+rewrites (put it in a plain text cell). Unresolved placeholders stay in place and the result carries an
 `unresolved_placeholder` warning; `--strict` turns them into an error of the
 same name and writes nothing. The output is written atomically, an existing
 file needs `--force`, and the GUI-open check and `GENOFFICE_ALLOWED_ROOTS`
 apply as for every other write.
+
+Word placeholders inside nested tables are reported as `unreachable_nested`
+with `location.nested: true`, including tables nested more than one level deep.
+The CLI leaves those read-only tables intact; fill them in Word. `--strict`
+refuses the output rather than claiming the nested placeholders are resolved.
 
 ## MCP server
 
@@ -275,10 +310,15 @@ at a screen when it runs. That decides which route it may take.
   used only when it is the one selected in the app's settings and its key is
   there; Parallel, Tavily, Exa and Firecrawl provide web search only. Search
   never uses a subscription.
-- **Image generation** is key-based only in this version: it runs on an image
-  provider whose key is set up in the app, and answers "unavailable"
-  otherwise. `--model` is ignored (a successful result says so in
-  `detail.note`) and `--size` has no effect on the key-based providers.
+- **Image generation** runs on the image route chosen in the app: the ChatGPT
+  plan through the Codex program (a Codex subscription login, used only with
+  the automatic-call setting below), or an image provider whose key is set up
+  in the app; otherwise it answers "unavailable". `--ref` images go with the
+  request on either route. `--model` is used when the route in use offers it
+  (on the Codex route a `gpt-image` name leaves the image model to Codex, and
+  `detail.note` says so); any other name is refused before anything is sent,
+  with the model names that route can use. `--size` has no effect on the
+  key-based providers.
 - **Media analysis**: a picture is shown to the AI provider the chat runs on,
   or to the key-based analysis provider chosen in the app. Video and sound
   need a key-based provider that can analyse video.

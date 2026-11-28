@@ -17,11 +17,15 @@ export const en = {
   cardErrNeedsUpdatePath: 'The file this app runs:',
   cardErrNeedsUpdateWindows:
     'Updating {provider} inside WSL (Ubuntu) or in another folder does not change this file. Run {command} in Windows PowerShell.',
+  claudeDesktopNote:
+    'The Claude desktop app is not Claude Code, which this app runs. Claude Code is a separate program used in a terminal, so installing or updating the desktop app does not change it.',
   cardErrTimeout: 'The {provider} program did not answer in time. Check again in a moment.',
   cardErrFailed: 'Something went wrong while checking {provider}. Check again.',
   actionInstall: 'Install',
   actionLogin: 'Sign in',
   actionLoginWindow: 'Browser did not open?',
+  actionLoginWithCode: 'Browser showed a code?',
+  actionLoginBrowser: 'Sign in in the browser instead',
   actionRecheck: 'Check again',
   actionAcceptMetered: 'Use anyway',
   actionInstallHelp: 'Official install guide',
@@ -40,16 +44,18 @@ export const en = {
     'This login is an API key or a pay-as-you-go account, or its type could not be confirmed. "Use anyway" lets AI run on this connection, and every request is billed to that account.',
   connectTitle: 'Connect an AI to get started',
   connectBody:
-    'AI runs on the Claude or Codex subscription you already have. No API key is needed.',
+    'AI runs on the Claude, ChatGPT, or Google Antigravity subscription you already have. No API key is needed.',
   connectProviderTitle: 'The {provider} connection cannot be used right now',
   connectKeyBody:
     'The {provider} setup is not finished. Complete it in Settings, or choose another AI.',
   errNotConnected:
-    'No AI is connected. Connect a Claude or Codex subscription, or a free AI, first.',
+    'No AI is connected. Connect a Claude, ChatGPT, Codex, or Antigravity subscription, or a free AI, first.',
   errNotInstalled: 'The {provider} program was not found on this PC.',
   errSignedOut: 'The {provider} sign-in has expired. Sign in again to continue.',
   errRateLimit: 'The {provider} subscription limit has been used up.',
   errRateLimitReset: 'The {provider} subscription limit has been used up. It resets at {time}.',
+  errChatGptAppLimit:
+    'This app has used up the ChatGPT usage it can draw on. The limit may be your whole plan’s or one set for this app. Check Settings → Usage in ChatGPT.',
   errUnsafeTools:
     'The {provider} program started with its own tools turned on, so the run was stopped for safety.',
   errMeteredNotAccepted:
@@ -58,11 +64,14 @@ export const en = {
   errHeadlessLimit: 'The hourly limit for automatic requests has been reached.',
   errHeadlessLimitReset:
     'The hourly limit for automatic requests has been reached. Requests are possible again at {time}.',
-  connectFreeHint: 'No subscription? You can connect a free AI in Settings in about a minute.',
+  connectFreeHint:
+    'Without a subscription, you can connect a free AI in Settings in about a minute.',
   actionConnectFree: 'Connect a free AI',
   errFreeLimit:
     "Today's free allowance is used up. Try again tomorrow, or choose another AI in Settings.",
   errFreeLimitReset: "Today's free allowance is used up. You can use it again at {time}.",
+  errFreeTierModel:
+    "This model has no free tier, so a free key cannot use it. Pick a model the free tier covers (such as a Flash model), or turn on billing in the provider's console.",
   continueWith: 'Continue with {provider}',
   continueMeteredNote:
     'The {provider} connection is not a subscription: continuing is charged by usage.',
@@ -71,7 +80,7 @@ export const en = {
   usageWindowSevenDay: '7-day limit',
   noticeTitle: 'Before you use AI with your subscription',
   noticeSend:
-    'Document content and your conversation are sent to Anthropic or OpenAI under your own account. Each request also carries the name, title and description of every skill set to “AI decides”; skills in use, and skill files the AI reads, go along with them.',
+    'Document content and your conversation are sent to Anthropic, OpenAI, or Google under your own account. Each request also carries the name, title and description of every skill set to “AI decides”; skills in use, and skill files the AI reads, go along with them.',
   noticeTraining:
     'Whether that content is used to train AI is decided by your own account settings at that company.',
   noticeCodexHistory:
@@ -97,7 +106,7 @@ export const en = {
   guidePathCodexTitle: 'I use ChatGPT',
   guidePathCodexBody:
     "Sign in to OpenAI's Codex program with your ChatGPT account. The free plan allows only a little use.",
-  guidePathFreeTitle: 'Neither yet',
+  guidePathFreeTitle: 'None of these yet',
   guidePathFreeBody:
     "Connect a free AI in about a minute. While you use it for free, what you send may be used to improve that company's AI.",
   guideBack: 'Choose another way',
@@ -109,12 +118,14 @@ export const en = {
   stepLogin: 'Sign in',
   stepReady: 'Connected',
   installReturnNote:
-    'When the install has finished in that window, come back here. The app checks again by itself.',
+    'That window may show nothing for a few minutes while it downloads. Leave it open. When the install has finished, come back here. The app checks again by itself.',
   loginHowNote:
     'A browser opens when you press it. Sign in with your {vendor} account and press Allow; the connection finishes by itself.',
   signingInStalledNote:
     'If no sign-in page opened in your browser, open the sign-in window with the button below. If you are still signing in in the browser, finish there instead: the button stops that sign-in and starts over.',
   actionLoginWindowOpen: 'Open the sign-in window',
+  loginUnfinishedNote:
+    'The sign-in did not finish. If the browser showed a code, it has to be pasted into the sign-in window: open the window and sign in again there. A code shown earlier no longer works.',
   loginWindowTitle: '{provider} sign-in',
   loginWindowIntro:
     'This is the sign-in window of the {provider} program. The English text below comes from the {provider} program.',
@@ -137,4 +148,50 @@ export const en = {
   actionCopyInfo: 'Copy details for help',
   copyInfoDone: 'Copied',
   actionConnectHelp: 'See each step on screen (page in Korean)',
+  guidePathChatGptBody:
+    'Sign in with your ChatGPT account and use your plan. Nothing to install. The free plan allows only a little use.',
+  guideUseCodex: 'Already use the Codex program on this PC? Connect with Codex',
+  guideUseDirect: 'Connect directly in the app, without Codex',
+  chatgptLoginNote:
+    'A ChatGPT sign-in page opens in your browser. Sign in and allow this app to use your ChatGPT plan; the connection finishes by itself.',
+  chatgptLoginUnfinishedNote:
+    'The sign-in did not finish. Press it again to start over. The connection needs you to allow use of your ChatGPT plan.',
+  chatgptLoginNoPlanNote:
+    'You signed in to ChatGPT, but this app was not allowed to use your plan. Press it again and allow plan use on the consent page. If you did allow it, OpenAI may not offer this for your account (for example one managed by a company or school) or your plan. You can connect with the Codex program instead.',
+  chatgptLoginDeniedNote:
+    'You signed in in the browser, but OpenAI did not accept this connection, or its answer could not be checked. Make sure the date and time on this PC are right, then press it again to start over.',
+  chatgptLoginNetworkNote:
+    'The sign-in could not finish: OpenAI could not be reached, or no browser opened. Check the internet connection (including a company network, VPN or proxy), then press it again.',
+  chatgptLoginWorkspacePolicyNote:
+    'This ChatGPT account belongs to a workspace run by a company or school, and OpenAI does not let apps use a workspace’s ChatGPT plan. The workspace admin has no setting to allow it, so signing in again will not help. Sign in with a personal ChatGPT account (Go, Plus, or Pro), or connect through the Codex card instead.',
+  chatgptLoginNotAllowedNote:
+    'This app was not allowed to use your ChatGPT plan, or the browser came back from the sign-in with a failure. Press it again, sign in, and allow it on the consent page.',
+  chatgptSigningInNote:
+    'Sign in with your ChatGPT account in the browser that opened, and allow this app to use your plan. The connection finishes by itself.',
+  chatgptPlanNote:
+    'AI in this app runs on your ChatGPT plan. Disconnecting ends it for this app only; other programs on this PC stay signed in.',
+  actionContinueWithChatGpt: 'Continue with ChatGPT',
+  actionManageUsage: 'Manage usage',
+  browserPageDoneBody: 'You can close this tab and go back to the app.',
+  browserPageFailedTitle: 'The connection was not made',
+  browserPageFailedBody: 'Go back to the app and try again.',
+  cardOff: 'Off in this app',
+  offNote:
+    'This app neither runs the {provider} program nor checks on it. The {provider} sign-in on this PC, and its use in a terminal, stay as they are.',
+  offElsewhereNote: 'You can turn it back on in Settings → AI.',
+  offSwitchNote:
+    '"Don\'t use in this app" keeps the {provider} sign-in on this PC and stops only this app. Sign out applies to the whole PC.',
+  actionTurnOff: "Don't use in this app",
+  actionTurnOn: 'Use again',
+  connectOffTitle: '{provider} is turned off in this app',
+  connectOffBody:
+    'Press "Use again" on the {provider} card in Settings → AI, or choose another AI.',
+  errOffInApp:
+    '{provider} is turned off in this app, so nothing was run. You can turn it back on in Settings → AI.',
+  guideBadgeOff: 'Off',
+  guidePathAntigravityTitle: 'I use Google Antigravity',
+  guidePathAntigravityBody:
+    "Sign in to Google's Antigravity program with your Google account to use your Google AI plan.",
+  antigravityCardNote:
+    'Runs in the AI panel and Agent mode through the official Antigravity CLI ACP protocol. Available models, data-use preferences, and overage credit settings follow your Antigravity settings.',
 } satisfies Record<keyof typeof zh, string>

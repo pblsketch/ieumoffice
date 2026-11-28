@@ -28,28 +28,76 @@ const parseFileToText = vi.fn(async (_path: string) => ({
 vi.mock('@genoffice/file-parse', () => ({
   parseFileToText: (path: string) => parseFileToText(path),
   ATTACHABLE_EXTS: new Set([
-    'txt', 'md', 'markdown', 'csv', 'tsv', 'json', 'yaml', 'yml', 'xml', 'html', 'htm',
-    'log', 'js', 'ts', 'tsx', 'jsx', 'py', 'java', 'c', 'h', 'cpp', 'go', 'rs', 'rb',
-    'sh', 'sql', 'css', 'doc', 'docx', 'odt', 'pdf', 'pptx', 'ppt', 'xlsx', 'xlsm',
-    'xls', 'xmind', 'hwp', 'hwpx', 'png', 'jpg', 'jpeg', 'gif', 'webp',
+    'txt',
+    'md',
+    'markdown',
+    'csv',
+    'tsv',
+    'json',
+    'yaml',
+    'yml',
+    'xml',
+    'html',
+    'htm',
+    'log',
+    'js',
+    'ts',
+    'tsx',
+    'jsx',
+    'py',
+    'java',
+    'c',
+    'h',
+    'cpp',
+    'go',
+    'rs',
+    'rb',
+    'sh',
+    'sql',
+    'css',
+    'doc',
+    'docx',
+    'odt',
+    'pdf',
+    'pptx',
+    'ppt',
+    'xlsx',
+    'xlsm',
+    'xls',
+    'xmind',
+    'hwp',
+    'hwpx',
+    'png',
+    'jpg',
+    'jpeg',
+    'gif',
+    'webp',
   ]),
   ATTACHABLE_IMAGE_EXTS: new Set(['png', 'jpg', 'jpeg', 'gif', 'webp']),
   ATTACHABLE_MAX_BYTES: 50 * 1024 * 1024,
+  attachableMaxBytes: () => 50 * 1024 * 1024,
   ATTACHABLE_IMAGE_MAX_BYTES: 5 * 1024 * 1024,
+  diagramPictureExtOf: () => null,
+  diagramPictureExtOfName: () => null,
 }))
 vi.mock('@genoffice/cli/agent-skills', () => ({}))
 vi.mock('@genoffice/cli/install', () => ({}))
-// the real unsaved-files helper, by path: the package root reaches Electron
+// the real unsaved-files & path-grants helpers, by path: the package root reaches Electron
 vi.mock('@genoffice/electron-utils', async () => ({
   showOpenDialogWithMemory: vi.fn(),
   ...(await import('../../../packages/electron-utils/src/unsaved-files')),
+  ...(await import('../../../packages/electron-utils/src/path-grants')),
 }))
-vi.mock('../src/main/session-state', () => ({ dialogParent: vi.fn(() => null) }))
+vi.mock('../src/main/session-state', () => ({
+  dialogParent: vi.fn(() => null),
+  sessions: new Map(),
+}))
 
 import {
   UNSAVED_CHANGES_MESSAGE,
   setOpenFilesSource,
 } from '../../../packages/electron-utils/src/unsaved-files'
+import { sharedPathGrants } from '../../../packages/electron-utils/src/path-grants'
 import { registerAttachmentIpc } from '../src/main/attachments-ipc'
 
 type ReadResult = { ok: boolean; text?: string; error?: string }
@@ -57,6 +105,7 @@ let dir: string
 
 function read(path: string): Promise<ReadResult> {
   handlers.clear()
+  sharedPathGrants().grant(5, [path])
   registerAttachmentIpc()
   const fn = handlers.get('slides:files-read') as unknown as (
     e: unknown,
@@ -64,7 +113,7 @@ function read(path: string): Promise<ReadResult> {
     offset: number,
     maxChars: number,
   ) => Promise<ReadResult>
-  return fn({}, path, 0, 1000)
+  return fn({ sender: { id: 5 } }, path, 0, 1000)
 }
 
 beforeEach(() => {
@@ -72,6 +121,7 @@ beforeEach(() => {
   parseFileToText.mockClear()
 })
 afterEach(() => {
+  sharedPathGrants().release(5)
   setOpenFilesSource(null)
   rmSync(dir, { recursive: true, force: true })
 })

@@ -4,7 +4,7 @@ Tác tử lấy một thư mục bạn chọn làm dự án và chạy Claude Co
 
 ## Cần chuẩn bị
 
-- Một gói đăng ký Claude hoặc gói đăng ký ChatGPT đã kết nối trong **Cài đặt ▸ AI**. Chủ đề "Kết nối gói đăng ký" giải thích cách làm.
+- Chương trình Claude Code hoặc Codex đã kết nối trong **Cài đặt ▸ AI** (đăng nhập bằng gói đăng ký Claude hoặc gói ChatGPT). Tác tử không dùng ChatGPT kết nối trực tiếp trong ứng dụng. Chủ đề "Kết nối gói đăng ký" giải thích cách làm.
 - Một thư mục chứa tài liệu của bạn. Không thể chọn cả một ổ đĩa, toàn bộ thư mục người dùng, hay thư mục chứa dữ liệu đăng nhập hoặc dữ liệu ứng dụng.
 
 ## Bắt đầu một phiên

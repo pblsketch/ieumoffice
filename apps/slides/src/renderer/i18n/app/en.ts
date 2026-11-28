@@ -1,6 +1,8 @@
 import type { zh } from './zh'
 
 export const en = {
+  appLegacyPptImported:
+    'Opened the .ppt file as a converted .pptx copy. The original stays as it was; saving writes a new .pptx file. Speaker notes and animations are not carried over.',
   redactMenuLabel: 'Hide the selection from AI',
   redactDialogDesc:
     'The selection stays in the document and in the file; the model sees the placeholder below instead. Name it so the model knows what it stands for.',
@@ -170,6 +172,9 @@ export const en = {
   appPrintLandscape: 'Landscape',
   appPrintFrame: 'Frame slides',
   appPrintHidden: 'Print hidden slides',
+  appPrintRangeSelected: 'Selected slides',
+  appPrintLayoutBlocked:
+    'Handouts and notes pages print one page per sheet. To arrange pages, choose Full Page Slides.',
   appPrintPageCount: '{n} pages',
   appPrintNoPages: 'No slides to print',
   appPrintRendering: 'Generating preview…',
@@ -179,6 +184,7 @@ export const en = {
   appCtxSendToBack: 'Send to Back',
   appCtxBringForward: 'Bring Forward',
   appCtxSendBackward: 'Send Backward',
+  appCtxRotate: 'Rotate',
   appCtxRotateLeft90: 'Rotate Left 90°',
   appCtxRotateRight90: 'Rotate Right 90°',
   appCtxFlipH: 'Flip Horizontal',
@@ -218,6 +224,8 @@ export const en = {
   appMasterFillNone: 'No Fill',
   appMasterStroke: 'Outline Color…',
   appMasterStrokeNone: 'No Outline',
+  appMasterInsertTextBox: 'Text Box',
+  appMasterInsertShape: 'Shapes',
   appStartOpening: 'Opening…',
   appReadingSlideTitle: 'Click to go to the next slide (Esc to exit Reading View)',
   appReadingPrev: '‹ Previous',
@@ -254,4 +262,12 @@ export const en = {
   appStatusSummaryZoomInserted: 'Summary Zoom slide inserted with {count} tiles',
   appSectionSummary: 'Summary Section',
   appSectionN: 'Section {n}',
+  appStatusAnimPainterNone: 'The selected element has no animations',
+  appStatusAnimPainterOnce:
+    'Click the element to apply the animations to; double-click the button for continuous mode',
+  appStatusAnimPainterContinuous: 'Continuous Animation Painter mode; press Esc to exit',
+  appStatusAnimPainted: 'Animations applied',
+  appStatusMergeUnsupported:
+    "These shapes can't be merged (lines, pictures, tables, charts and some shapes are left out)",
+  appStatusMergeEmpty: "Nothing is left after merging (the shapes don't overlap)",
 } satisfies Record<keyof typeof zh, string>

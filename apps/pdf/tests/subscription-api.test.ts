@@ -31,12 +31,18 @@ vi.mock('electron', () => ({
 vi.mock('@genoffice/electron-utils/drop-open', () => ({ installDropOpenBridge: vi.fn() }))
 
 const CHECKING = checkingSubscriptionStatuses()
+/** an answer that names no ChatGPT status comes from an app without that connection */
+const ANSWERED = {
+  ...CHECKING,
+  chatgpt: { provider: 'chatgpt', state: 'signed-out', meteredAccepted: false },
+  antigravity: { provider: 'antigravity', state: 'signed-out', meteredAccepted: false },
+}
 
 describe('subscriptionStatusMapOf', () => {
   it('reads a missing or malformed answer as still checking', () => {
     expect(subscriptionStatusMapOf(undefined)).toEqual(CHECKING)
     expect(subscriptionStatusMapOf('nope')).toEqual(CHECKING)
-    expect(subscriptionStatusMapOf({ codex: { state: 'bogus' } })).toEqual(CHECKING)
+    expect(subscriptionStatusMapOf({ codex: { state: 'bogus' } })).toEqual(ANSWERED)
   })
 
   it('fills in the provider an answer leaves out', () => {
@@ -162,7 +168,7 @@ describe('pdf preload bridge', () => {
     invoke.mockResolvedValue({ ok: true, statuses: {} })
     expect(await api.subscription.setMeteredAccepted('codex', true)).toEqual({
       ok: true,
-      statuses: CHECKING,
+      statuses: ANSWERED,
     })
     expect(invoke).toHaveBeenLastCalledWith(SUBSCRIPTION_IPC_CHANNELS.metered, {
       provider: 'codex',
@@ -186,7 +192,9 @@ describe('pdf preload bridge', () => {
     expect(seen).toEqual([
       {
         'claude-code': CHECKING['claude-code'],
+        chatgpt: ANSWERED.chatgpt,
         codex: { provider: 'codex', state: 'signed-out', meteredAccepted: false },
+        antigravity: ANSWERED.antigravity,
       },
     ])
     off()

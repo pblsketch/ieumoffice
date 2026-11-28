@@ -1,0 +1,245 @@
+/* Inline question card (AiQuestionCard, AiQuestionCardReadOnly) — chrome tokens only. */
+
+.ai-qcard {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-12);
+  background: var(--ai-card-bg);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-xs);
+}
+
+.ai-qcard-locked {
+  opacity: 0.88;
+}
+
+.ai-qcard-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ai-qcard-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-strong);
+}
+
+.ai-qcard-badge {
+  font-size: 11px;
+  padding: 2px 7px;
+  border-radius: var(--radius-6);
+  background: var(--fill-muted);
+  color: var(--text-secondary);
+}
+
+.ai-qcard-desc,
+.ai-qcard-footer {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin: 0;
+  white-space: pre-line;
+}
+
+.ai-qcard-footer {
+  color: var(--text-tertiary);
+}
+
+.ai-qcard-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ai-qcard-label {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.ai-qcard-req {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-tertiary);
+}
+
+.ai-qcard-field-desc {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  white-space: pre-line;
+}
+
+.ai-qcard-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.ai-qcard-opt {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-8);
+  background: var(--ai-card-inset-bg);
+  color: var(--text-primary);
+  font-size: 13px;
+  cursor: pointer;
+  transition:
+    background-color var(--transition-fast),
+    border-color var(--transition-fast);
+}
+
+.ai-qcard-opt:hover:not(:disabled) {
+  background: var(--hover);
+  border-color: var(--border-hover);
+}
+
+.ai-qcard-opt-decide {
+  border-style: dashed;
+  color: var(--text-secondary);
+}
+
+.ai-qcard-opt-selected {
+  border-color: var(--accent, var(--color-border-brand));
+  border-style: solid;
+  background: var(--fill-muted);
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.ai-qcard-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 9px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-8);
+  background: var(--ai-card-inset-bg);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 13px;
+}
+
+textarea.ai-qcard-input {
+  resize: vertical;
+  min-height: 56px;
+}
+
+.ai-qcard-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.ai-qcard-check input {
+  accent-color: var(--accent, var(--color-border-brand));
+}
+
+.ai-qcard-slider {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ai-qcard-slider input[type='range'] {
+  flex: 1;
+  min-width: 0;
+  accent-color: var(--accent, var(--color-border-brand));
+}
+
+.ai-qcard-slider-value {
+  min-width: 2.5em;
+  text-align: end;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+
+.ai-qcard-summary {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.ai-qcard-summary-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 6px;
+}
+
+.ai-qcard-summary-label {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.ai-qcard-summary-answer {
+  white-space: pre-line;
+}
+
+.ai-qcard-summary-muted {
+  color: var(--text-tertiary);
+}
+
+.ai-qcard-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 4px;
+}
+
+.ai-qcard-btn-primary {
+  padding: 6px 12px;
+  border: none;
+  border-radius: var(--radius-8);
+  background: var(--color-btn-primary);
+  color: var(--color-btn-primary-text);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.ai-qcard-btn-primary:disabled {
+  background: var(--ai-btn-disabled-bg);
+  color: var(--ai-btn-disabled-ink);
+  cursor: not-allowed;
+}
+
+.ai-qcard-btn-secondary {
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-8);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.ai-qcard-btn-secondary:hover:not(:disabled) {
+  background: var(--hover);
+  color: var(--text-primary);
+}
+
+.ai-qcard-pending {
+  font-size: 13px;
+  color: var(--text-tertiary);
+  padding: 8px 12px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-8);
+  background: var(--fill-subtle);
+}

@@ -6,6 +6,12 @@ import {
   applyAiPanelPrefs,
   aiPanelWidthAtPointer,
 } from '../src/ai-panel-prefs-store'
+import {
+  DEFAULT_AI_PANEL_PREFS,
+  aiPanelStartOf,
+  aiPanelStartPatch,
+  type AiPanelPrefs,
+} from '../src/ai-panel-prefs'
 
 beforeAll(() => {
   // jsdom's opaque origin has no localStorage; the initial-open tests need it
@@ -47,6 +53,27 @@ describe('AI panel side in the renderer', () => {
     applyAiPanelPrefs({ side: 'right' })
     expect(aiPanelWidthAtPointer(850)).toBe(350)
     expect(aiPanelWidthAtPointer(750)).toBe(450)
+  })
+})
+
+describe('AI panel start choice', () => {
+  const prefs = (patch: Partial<AiPanelPrefs>): AiPanelPrefs => ({
+    ...DEFAULT_AI_PANEL_PREFS,
+    ...patch,
+  })
+
+  it('reads one choice from the two stored switches', () => {
+    expect(aiPanelStartOf(prefs({ showAiSidebar: false }))).toBe('off')
+    expect(aiPanelStartOf(prefs({ openInNewDocs: false }))).toBe('collapsed')
+    expect(aiPanelStartOf(prefs({}))).toBe('last')
+    // fields missing from an old or partial payload read as the defaults
+    expect(aiPanelStartOf({} as AiPanelPrefs)).toBe('last')
+  })
+
+  it('maps the choice back to the switches so no new settings field is needed', () => {
+    expect(aiPanelStartPatch('off')).toEqual({ showAiSidebar: false, openInNewDocs: false })
+    expect(aiPanelStartPatch('collapsed')).toEqual({ showAiSidebar: true, openInNewDocs: false })
+    expect(aiPanelStartPatch('last')).toEqual({ showAiSidebar: true, openInNewDocs: true })
   })
 })
 

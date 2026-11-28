@@ -1,13 +1,16 @@
 import { openAiSecrets } from './settings-secrets'
 import { resolveCustomEndpoints } from './custom-endpoints'
 import { normalizeOllamaServers } from './ollama-servers'
+import { aiModelEffortsOf } from './effort'
 import { defaultAiMediaSettings, resolveAiMediaSettings } from './media'
 import { defaultAiSearchSettings, resolveAiSearchSettings } from './search-settings'
 import type {
+  AiProviderConfig,
   AiProviderId,
   AiProviderMeta,
   AiReadUrlSettings,
   AiSettings,
+  AiSubscriptionCliId,
   AiSubscriptionProviderId,
   LegacyAiSettings,
 } from './types'
@@ -38,6 +41,16 @@ export const AI_PROVIDERS: AiProviderMeta[] = [
     models: ['opus', 'sonnet', 'haiku'],
     defaultModel: '',
     keyPlaceholder: '',
+    needsCliPath: true,
+  },
+  {
+    id: 'chatgpt',
+    label: 'ChatGPT',
+    // Read at runtime from the plan's model catalog (/v1/models). Empty runs
+    // on the first model the catalog lists.
+    models: [],
+    defaultModel: '',
+    keyPlaceholder: '',
   },
   {
     id: 'codex',
@@ -50,31 +63,50 @@ export const AI_PROVIDERS: AiProviderMeta[] = [
     needsCliPath: true,
   },
   {
+    id: 'antigravity',
+    label: 'Antigravity',
+    // Populated at runtime from `agy acp` session/new metadata. Empty leaves
+    // the choice to the CLI's own default model.
+    models: [],
+    defaultModel: '',
+    keyPlaceholder: '',
+    needsCliPath: true,
+  },
+  {
     id: 'anthropic',
     label: 'Claude',
-    // current-generation ids per platform.claude.com models overview (2026-10-09).
-    // Fable needs data retention enabled on the org, otherwise the API answers
-    // model_not_available; every other id is served to any key.
+    // current lineup per platform.claude.com models overview (2026-10-27):
+    // Sonnet 5.5 (2026-09-28) replaces Sonnet 5 as the speed/intelligence
+    // default; it accepts only tool_choice auto/none, which is all this
+    // adapter sends. Fable 5.2 (2026-11) supersedes 5.1 at a lower price.
+    // Fable needs data retention enabled on the org, otherwise the API
+    // answers model_not_available; every other id is served to any key.
     models: [
       'claude-opus-5-5',
-      'claude-sonnet-5',
+      'claude-sonnet-5-5',
+      'claude-fable-5-2',
+      'claude-haiku-5-5',
       'claude-fable-5-1',
+      'claude-sonnet-5',
       'claude-opus-5',
       'claude-fable-5',
       'claude-sonnet-4-6',
-      'claude-haiku-5-5',
     ],
-    defaultModel: 'claude-sonnet-5',
+    defaultModel: 'claude-sonnet-5-5',
     keyPlaceholder: 'sk-ant-api03-...',
   },
   {
     id: 'gemini',
     label: 'Gemini',
-    // 3.x lineup per ai.google.dev/gemini-api/docs/models (2026-09-23). 3.8 Flash
-    // is the current stable Flash Google recommends; 3.1 Pro is still preview-only.
+    // per ai.google.dev/gemini-api/docs/models (2026-10-29). 4 Argon (GA
+    // 2026-10-13) is the flagship reasoning model and 3.1 Pro is still
+    // preview-only; neither has a free tier, so 3.8 Flash, the stable Flash
+    // Google recommends, stays the default. 3.7 Flash was deprecated on
+    // 2026-10-08 (see RETIRED_MODELS). Models released after this list come
+    // from the key's live list (key-models.ts).
     models: [
       'gemini-3.8-flash',
-      'gemini-3.7-flash',
+      'gemini-4-argon',
       'gemini-3.1-pro-preview',
       'gemini-3.6-flash',
       'gemini-3.5-flash-lite',
@@ -97,21 +129,35 @@ export const AI_PROVIDERS: AiProviderMeta[] = [
   {
     id: 'openai',
     label: 'OpenAI',
-    // GPT-5.6 naming: sol is the flagship (the bare `gpt-5.6` alias resolves to
-    // it, but spell it out so the picker says which tier it is), terra balances
-    // cost/intelligence, luna is the high-volume tier (2026-08). The GPT-6
-    // family (astra, sol, luna) is deliberately absent: Chat Completions
-    // supports its function calling only with reasoning_effort none, full
-    // tool use needs the Responses API, which has no protocol here (2026-09-24)
-    models: ['gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna', 'gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini'],
-    defaultModel: 'gpt-5.6-terra',
+    // Tier names: astra/sol = flagship, terra = balanced cost/intelligence,
+    // luna = high-volume. GPT-5.4+ and GPT-6 run on the Responses API (see
+    // modelUsesResponsesApi), which is the only route where they call tools
+    // with reasoning on (live-verified 2026-10-27). 6.1 Terra (2026-10-26,
+    // $1/$5) is the default: cheaper than 5.6 Terra, and the 5.6 tiers have
+    // left OpenAI's models page.
+    models: [
+      'gpt-6.1-terra',
+      'gpt-6.1-sol',
+      'gpt-6-astra',
+      'gpt-6-sol',
+      'gpt-6-luna',
+      'gpt-5.6-sol',
+      'gpt-5.6-terra',
+      'gpt-5.6-luna',
+      'gpt-5.5',
+      'gpt-5.4',
+      'gpt-5.4-mini',
+    ],
+    defaultModel: 'gpt-6.1-terra',
     keyPlaceholder: 'sk-...',
   },
   {
     id: 'kimi',
     label: 'Kimi',
-    models: ['kimi-k3'],
-    defaultModel: 'kimi-k3',
+    // K3.1 Pro opens the K3.1 series: 3T-class parameters, native vision, 1M
+    // context (2026-10). K3 stays listed while the vendor still sells it.
+    models: ['kimi-k3.1-pro', 'kimi-k3'],
+    defaultModel: 'kimi-k3.1-pro',
     keyPlaceholder: 'sk-...',
   },
   {
@@ -232,12 +278,26 @@ export const AI_PROVIDERS: AiProviderMeta[] = [
   },
   {
     id: 'upstage',
-    label: 'Solar',
-    // GET api.upstage.ai/v1/models (2026-10-21); every id here answered a
+    label: 'Upstage Solar',
+    // GET api.upstage.ai/v1/models (2026-10-21); every id there answered a
     // tool call. Pro4 is the flagship, Mini4 the fast, cheap tier.
-    models: ['solar-pro4', 'solar-pro3', 'solar-mini4'],
+    // Mini 4.5 Preview (released 2026-11-23) is missing from that list, so it
+    // is named here: Upstage's model page lists tool calling, and it answered
+    // a chat in the app when typed in by hand (2026-11-26). From 2026-12-03
+    // Upstage routes the preview id to `solar-mini-4-5`.
+    models: ['solar-pro4', 'solar-pro3', 'solar-mini-4-5-preview', 'solar-mini4'],
     defaultModel: 'solar-pro4',
     keyPlaceholder: 'up_...',
+  },
+  {
+    id: 'exaone',
+    label: 'EXAONE',
+    // LG AI Research's API (docs.exaone.ai): GET api.exaone.ai/v1/models lists
+    // this one id (2026-11-10), and it answered a tool call, a streamed tool
+    // call and the turn after a tool result. Text only, 512K context.
+    models: ['k-exaone_v2.5'],
+    defaultModel: 'k-exaone_v2.5',
+    keyPlaceholder: 'sk-...',
   },
   {
     id: 'openrouter',
@@ -247,11 +307,13 @@ export const AI_PROVIDERS: AiProviderMeta[] = [
     models: [
       'openrouter/auto',
       'anthropic/claude-opus-5.5',
+      'anthropic/claude-fable-5.2',
       'anthropic/claude-sonnet-5',
       'openai/gpt-6-astra',
       'openai/gpt-6-sol',
       'openai/gpt-6-luna',
       'openai/gpt-5.6-sol',
+      'moonshotai/kimi-k3.1-pro',
       'moonshotai/kimi-k3',
     ],
     defaultModel: 'openrouter/auto',
@@ -338,6 +400,79 @@ export const AI_PROVIDERS: AiProviderMeta[] = [
     keyPlaceholder: 'apikey-...',
   },
   {
+    id: 'runcrate',
+    label: 'Runcrate',
+    // Lab-namespaced ids exactly as GET api.runcrate.ai/v1/models lists them
+    // (2026-10-25, public endpoint, no key needed); the rest of the catalog
+    // works as-is when typed in. Chat, streaming and tool calls are
+    // live-verified; image support follows each id's catalog input_modalities,
+    // and the text-only ids (GLM-5.3, Qwen3.8 Flash, gpt-oss 120B) are covered
+    // by modelLacksVision().
+    models: [
+      'deepseek-ai/DeepSeek-V4.1-Flash',
+      'deepseek-ai/DeepSeek-V4.1-Flash-1017',
+      'zai-org/GLM-5.3',
+      'zai-org/GLM-5.3-Flash',
+      'moonshotai/Kimi-K2.6',
+      'Qwen/Qwen3.8-Flash',
+      'openai/gpt-oss-120b',
+    ],
+    defaultModel: 'deepseek-ai/DeepSeek-V4.1-Flash',
+    keyPlaceholder: 'rc_live_...',
+  },
+  {
+    id: 'cloudgpu',
+    label: 'CloudGPU',
+    // Bare model ids exactly as GET https://cloudgpu.app/v1/models lists them
+    // (2026-10-29, public endpoint, no key needed); the rest of the catalog
+    // works as-is when typed in. Docs: https://cloudgpu.app/api/docs.
+    // The catalog does not report input modalities, so vision follows the
+    // existing modelLacksVision() rules.
+    models: ['deepseek-v4.1-flash', 'deepseek-v4-pro', 'glm-5.3-flash', 'kimi-k2.6', 'minimax-m3'],
+    defaultModel: 'deepseek-v4.1-flash',
+    keyPlaceholder: 'sk-...',
+  },
+  {
+    id: 'siliconflow',
+    label: 'SiliconFlow',
+    // Lab-namespaced ids exactly as the pricing page and GET
+    // api.siliconflow.cn/v1/models (type=text&sub_type=chat) list them
+    // (2026-11-02); the rest of the catalog works as-is when typed in, and a
+    // Pro/<id> prefix selects the accelerated serving. OpenAI-compatible
+    // /chat/completions; docs: https://api-docs.siliconflow.cn. The CN and
+    // global platforms (api.siliconflow.com) do not share keys or base URLs.
+    models: [
+      'deepseek-ai/DeepSeek-V4.1-Flash',
+      'deepseek-ai/DeepSeek-V4-Pro',
+      'deepseek-ai/DeepSeek-V3.2',
+      'zai-org/GLM-5.3',
+      'zai-org/GLM-5.3-Flash',
+      'moonshotai/Kimi-K2.7-Code',
+      'Qwen/Qwen3.8-27B',
+    ],
+    defaultModel: 'deepseek-ai/DeepSeek-V4-Pro',
+    keyPlaceholder: 'sk-...',
+  },
+  {
+    id: 'ppio',
+    label: 'PPIO',
+    // Lowercase lab-namespaced ids exactly as GET <base>/models lists them for
+    // the OpenAI-compatible endpoint (2026-11-02); the rest of the catalog
+    // works as-is when typed in. Docs: https://ppio.com/docs/model/llm — the
+    // official SDK base_url is https://api.ppio.com/openai, so the chat
+    // endpoint rides /openai/v1.
+    models: [
+      'deepseek/deepseek-v4.1-flash',
+      'deepseek/deepseek-v4-pro',
+      'moonshotai/kimi-k3',
+      'zai-org/glm-5.3',
+      'qwen/qwen3.8-max',
+      'minimax/minimax-m3.1-flash',
+    ],
+    defaultModel: 'deepseek/deepseek-v4.1-flash',
+    keyPlaceholder: 'sk-...',
+  },
+  {
     id: 'opencode-zen',
     label: 'OpenCode Zen',
     // Pay-as-you-go gateway (opencode.ai/docs/zen); ids exactly as GET
@@ -348,6 +483,7 @@ export const AI_PROVIDERS: AiProviderMeta[] = [
       'claude-sonnet-5',
       'claude-opus-5-5',
       'claude-opus-5',
+      'claude-fable-5-2',
       'claude-fable-5-1',
       'claude-haiku-5-5',
       'gemini-3.7-flash',
@@ -396,6 +532,37 @@ export const AI_PROVIDERS: AiProviderMeta[] = [
     keyPlaceholder: 'API Key',
   },
   {
+    id: 'commandcode',
+    label: 'Command Code',
+    // Coding-plan gateway (commandcode.ai/docs/provider): one key serves
+    // OpenAI Chat Completions and Anthropic Messages at
+    // api.commandcode.ai/provider/v1; every plan except the $1 Go tier has
+    // API access (GOAT = $10/month). Vendor-prefixed ids exactly as the CLI
+    // model reference lists them (2026-11-03); the rest of the catalog works
+    // as-is when typed in. Claude ids answer only on /v1/messages, so they
+    // ride the Anthropic route. GPT-5.4+/6 call tools only over the Responses
+    // API, which this route does not take, so GPT and Grok stay out as on the
+    // OpenCode tiers.
+    models: [
+      'zai-org/GLM-5.3',
+      'zai-org/GLM-5.2',
+      'deepseek/deepseek-v4-pro',
+      'deepseek/deepseek-v4.1-flash',
+      'deepseek/deepseek-v4-flash',
+      'moonshotai/Kimi-K2.7-Code',
+      'moonshotai/Kimi-K3',
+      'Qwen/Qwen3.8-Max',
+      'Qwen/Qwen3.8-27B',
+      'MiniMaxAI/MiniMax-M3',
+      'minimax/minimax-m3.1-flash',
+      'tencent/hy3-paid',
+      'google/gemini-3.8-flash',
+      'google/gemini-3.7-flash',
+    ],
+    defaultModel: 'zai-org/GLM-5.3',
+    keyPlaceholder: 'CMD API key',
+  },
+  {
     id: 'custom',
     label: 'Custom',
     models: [],
@@ -432,7 +599,48 @@ export function defaultAiSettings(
     headlessSubscriptionEnabled: false,
     headlessSubscriptionConsentVersion: 0,
     subscriptionNoticeSeen: false,
+    subscriptionNoticeVersion: 0,
+    pdfSendNoticeSeen: 0,
   }
+}
+
+/** The current wording of the first-connection notice: version 2 added the PDF sentence */
+export const AI_SUBSCRIPTION_NOTICE_VERSION = 2
+
+/** The notice version an older settings file without one had acknowledged */
+const LEGACY_SUBSCRIPTION_NOTICE_VERSION = 1
+
+/**
+ * A stored notice version, or the version an old boolean-only file implies.
+ * The app's settings reader migrates a truly old file to version 1 before it
+ * reaches this function, so a boolean-only value from a fresh default object
+ * means the current wording.
+ */
+export function subscriptionNoticeVersionOf(version: unknown, seen: unknown): number {
+  if (typeof version === 'number' && Number.isInteger(version) && version >= 0) {
+    return Math.min(version, AI_SUBSCRIPTION_NOTICE_VERSION)
+  }
+  return seen === true ? AI_SUBSCRIPTION_NOTICE_VERSION : 0
+}
+
+/** The version an old settings file is migrated to, so its user sees the added sentence once */
+export const LEGACY_NOTICE_VERSION_FOR_MIGRATION = LEGACY_SUBSCRIPTION_NOTICE_VERSION
+
+/**
+ * The settings object a file written before notice versions needs, or null
+ * when it already has one (or is not a settings object). The caller writes the
+ * returned object back; normalizing without this would treat the old boolean
+ * as the current wording and the user would never see the added sentence.
+ */
+export function withMigratedSubscriptionNoticeVersion(
+  raw: unknown,
+): Record<string, unknown> | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
+  const value = raw as Record<string, unknown>
+  if (value.subscriptionNoticeSeen !== true) return null
+  const version = value.subscriptionNoticeVersion
+  if (typeof version === 'number' && Number.isInteger(version) && version >= 0) return null
+  return { ...value, subscriptionNoticeVersion: LEGACY_SUBSCRIPTION_NOTICE_VERSION }
 }
 
 /**
@@ -459,18 +667,157 @@ export function headlessSubscriptionOn(
   )
 }
 
-/** Providers reached through the vendor CLI's own login, in the order `auto` tries them */
+/**
+ * Providers that run on the user's subscription, in `auto` preference order
+ * for interactive surfaces (Basic AI Panel and Agent Mode).
+ * `AI_BRAIN_SUBSCRIPTION_PROVIDERS` (= `AI_BATCH_SUBSCRIPTION_PROVIDERS`) is
+ * the subset allowed for non-interactive batch jobs (PDF/EPUB document jobs)
+ * and headless CLI commands; Antigravity runs strictly interactively via ACP.
+ */
 export const AI_SUBSCRIPTION_PROVIDERS: readonly AiSubscriptionProviderId[] = [
   'claude-code',
+  'chatgpt',
+  'codex',
+  'antigravity',
+]
+
+/** Subscription providers eligible for batch jobs and headless single-turn calls */
+export const AI_BRAIN_SUBSCRIPTION_PROVIDERS: readonly AiSubscriptionProviderId[] = [
+  'claude-code',
+  'chatgpt',
   'codex',
 ]
 
-/** One boolean per subscription provider; anything that is not `true` reads as not accepted */
-export function sanitizeMeteredAccepted(
-  stored: unknown,
-): Record<AiSubscriptionProviderId, boolean> {
+export const AI_BATCH_SUBSCRIPTION_PROVIDERS = AI_BRAIN_SUBSCRIPTION_PROVIDERS
+
+/** The subscription providers behind a vendor CLI */
+export const AI_SUBSCRIPTION_CLIS: readonly AiSubscriptionCliId[] = [
+  'claude-code',
+  'codex',
+  'antigravity',
+]
+
+/** A subscription provider behind a vendor CLI (found, installed, updated and signed in through the program) */
+export function isSubscriptionCli(id: unknown): id is AiSubscriptionCliId {
+  return AI_SUBSCRIPTION_CLIS.includes(id as AiSubscriptionCliId)
+}
+
+/**
+ * One boolean per vendor CLI; anything that is not `true` reads as not
+ * accepted. The ChatGPT sign-in is to the plan alone and has no metered login
+ * to accept, so it has no entry (and the stored file keeps its shape).
+ */
+export function sanitizeMeteredAccepted(stored: unknown): Record<AiSubscriptionCliId, boolean> {
   const raw = isRecord(stored) ? stored : {}
-  return { 'claude-code': raw['claude-code'] === true, codex: raw.codex === true }
+  return {
+    'claude-code': raw['claude-code'] === true,
+    codex: raw.codex === true,
+    antigravity: raw.antigravity === true,
+  }
+}
+
+/**
+ * The vendor CLIs turned off in this app (decision 0114), or undefined when
+ * none is. Only a literal `true` under a CLI id turns one off: anything else
+ * (absent, `false`, a ChatGPT entry, a string) leaves it on, so a damaged
+ * value never stops a provider the person did not turn off.
+ */
+export function sanitizeSubscriptionOff(
+  stored: unknown,
+): Partial<Record<AiSubscriptionCliId, true>> | undefined {
+  if (!isRecord(stored)) return undefined
+  const off: Partial<Record<AiSubscriptionCliId, true>> = {}
+  for (const id of AI_SUBSCRIPTION_CLIS) if (stored[id] === true) off[id] = true
+  return Object.keys(off).length > 0 ? off : undefined
+}
+
+/**
+ * `next` with the CLIs turned off as `stored` has them. Only the switch on the
+ * Settings card changes them: a window that saves a copy it read earlier
+ * neither turns a CLI back on nor off.
+ */
+export function withStoredSubscriptionOff(next: AiSettings, stored: AiSettings): AiSettings {
+  const { subscriptionOff: _sent, ...settings } = next
+  return stored.subscriptionOff
+    ? { ...settings, subscriptionOff: stored.subscriptionOff }
+    : settings
+}
+
+/** Every top-level field this build reads, with the pre-provider ones it migrates */
+const KNOWN_SETTINGS_FIELDS: Record<keyof AiSettings | keyof LegacyAiSettings, true> = {
+  provider: true,
+  providers: true,
+  customEndpoints: true,
+  customEndpoint: true,
+  ollamaServers: true,
+  media: true,
+  search: true,
+  readUrl: true,
+  maxOutputTokens: true,
+  meteredAccepted: true,
+  subscriptionOff: true,
+  headlessSubscriptionEnabled: true,
+  headlessSubscriptionConsentVersion: true,
+  subscriptionNoticeSeen: true,
+  subscriptionNoticeVersion: true,
+  pdfSendNoticeSeen: true,
+  internetTools: true,
+  apiKey: true,
+  model: true,
+  baseUrl: true,
+}
+
+/** Every field of a provider config this build reads */
+const KNOWN_PROVIDER_FIELDS: Record<keyof AiProviderConfig, true> = {
+  apiKey: true,
+  model: true,
+  baseUrl: true,
+  cliPath: true,
+  models: true,
+  effort: true,
+  modelEfforts: true,
+  connectTimeoutMs: true,
+  vision: true,
+}
+
+/** The fields of `stored` this build does not know and `next` does not carry */
+function unknownFieldsOf(
+  stored: unknown,
+  known: Readonly<Record<string, true>>,
+  next: Record<string, unknown>,
+): Record<string, unknown> {
+  if (!isRecord(stored)) return {}
+  return Object.fromEntries(
+    Object.entries(stored).filter(([key]) => !Object.hasOwn(known, key) && !(key in next)),
+  )
+}
+
+/**
+ * `next` with the fields of the settings file that this build does not know put
+ * back, at the top and in each provider config `next` carries. A newer build or
+ * another program wrote them, and a save here must not erase them. They come
+ * from the file as it is on disk (a sealed value stays sealed) and never from a
+ * renderer, whose payload the IPC guard has already reduced to known fields.
+ * Provider configs under an id this build does not know are still dropped.
+ */
+export function withStoredUnknownFields<T>(next: T, stored: unknown): T {
+  if (!isRecord(next) || !isRecord(stored)) return next
+  const merged: Record<string, unknown> = {
+    ...next,
+    ...unknownFieldsOf(stored, KNOWN_SETTINGS_FIELDS, next),
+  }
+  if (isRecord(next.providers) && isRecord(stored.providers)) {
+    const storedProviders = stored.providers
+    merged.providers = Object.fromEntries(
+      Object.entries(next.providers).map(([id, config]) => [
+        id,
+        isRecord(config)
+          ? { ...config, ...unknownFieldsOf(storedProviders[id], KNOWN_PROVIDER_FIELDS, config) }
+          : config,
+      ]),
+    )
+  }
+  return merged as T
 }
 
 /**
@@ -502,6 +849,44 @@ const RETIRED_MODELS: Partial<Record<AiProviderId, Record<string, string>>> = {
   },
   // 5-Turbo left the Z.ai price card late 2026-08; 5.3 Flash is the cheap tier now
   glm: { 'glm-5-turbo': 'glm-5.3-flash' },
+  // deprecated 2026-10-08; Google routes its requests to 3.8 Flash
+  gemini: { 'gemini-3.7-flash': 'gemini-3.8-flash' },
+  // the free variant OpenRouter withdrew (gone from its list since 2026-11-02);
+  // the next tested free model, so a free connection stays free
+  openrouter: {
+    'nvidia/nemotron-3-super-120b-a12b:free': 'nvidia/nemotron-3-ultra-550b-a55b:free',
+  },
+}
+
+/**
+ * The id a provider's model goes by in this app: a retired id as its
+ * replacement, a vendor's wire id as the name the catalog lists it under,
+ * anything else as given.
+ */
+export function currentModelId(provider: AiProviderId, model: string): string {
+  return RETIRED_MODELS[provider]?.[model] ?? model
+}
+
+/** Ids at most this long are kept from a stored live list; the settings guard bounds a model id the same way */
+const MAX_LISTED_MODEL_LENGTH = 256
+/** entries kept from a stored live list (key-models.ts lists no more) */
+const MAX_LISTED_MODELS = 2000
+
+/**
+ * A stored live model list as the pickers may read it: strings only, trimmed,
+ * bounded, without duplicates; undefined when nothing is left. The file is
+ * hand-editable, so anything else in the field is dropped rather than shown.
+ */
+export function listedModelsOf(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined
+  const seen = new Set<string>()
+  for (const entry of value) {
+    if (typeof entry !== 'string') continue
+    const id = entry.trim()
+    if (id && id.length <= MAX_LISTED_MODEL_LENGTH) seen.add(id)
+    if (seen.size >= MAX_LISTED_MODELS) break
+  }
+  return seen.size > 0 ? [...seen] : undefined
 }
 
 /**
@@ -549,17 +934,28 @@ function mergeProviderConfigs(
   return merged
 }
 
-/** pasted keys/URLs/model ids often carry stray whitespace, which turns into a 401 with a valid key */
+/**
+ * Each provider config with only the fields this build knows, typed as it types
+ * them: a field a newer build added stays in the file (withStoredUnknownFields)
+ * but never reaches a renderer, whose IPC schema rejects it. Pasted keys, URLs
+ * and model ids often carry stray whitespace, which turns into a 401 with a
+ * valid key, so they are trimmed.
+ */
 function trimConfigs(providers: Record<string, unknown>): AiSettings['providers'] {
   const trimmed: Record<string, unknown> = {}
   for (const [id, config] of Object.entries(providers)) {
     if (!isRecord(config)) continue
+    const models = listedModelsOf(config.models)
+    // a level this build does not know, from a newer build or a hand edit, is never listed
+    const modelEfforts = aiModelEffortsOf(config.modelEfforts)
     trimmed[id] = {
-      ...config,
+      ...(typeof config.effort === 'string' ? { effort: config.effort } : {}),
       apiKey: str(config.apiKey),
       model: str(config.model),
       ...(config.baseUrl !== undefined ? { baseUrl: str(config.baseUrl) } : {}),
       ...(config.cliPath !== undefined ? { cliPath: str(config.cliPath) } : {}),
+      ...(models ? { models } : {}),
+      ...(modelEfforts ? { modelEfforts } : {}),
     }
   }
   return trimmed as AiSettings['providers']
@@ -586,6 +982,9 @@ export function resolveAiSettings(stored: unknown, defaults: AiSettings): AiSett
   const settings = (isRecord(stored) ? openAiSecrets(stored) : {}) as Partial<AiSettings> &
     LegacyAiSettings
   const readUrl = readUrlSettingsOf(settings.readUrl ?? defaults.readUrl)
+  const subscriptionOff = sanitizeSubscriptionOff(
+    settings.subscriptionOff ?? defaults.subscriptionOff,
+  )
   const storedProviders = isRecord(settings.providers) ? settings.providers : undefined
   if (!storedProviders) {
     if (settings.apiKey) {
@@ -595,7 +994,12 @@ export function resolveAiSettings(stored: unknown, defaults: AiSettings): AiSett
         baseUrl: str(settings.baseUrl) || 'https://api.openai.com/v1',
       }
     }
-    return resolveCustomEndpoints(readUrl ? { ...defaults, readUrl } : defaults)
+    // a CLI turned off stays off even here: losing it would start a program the person stopped
+    return resolveCustomEndpoints({
+      ...defaults,
+      ...(readUrl ? { readUrl } : {}),
+      ...(subscriptionOff ? { subscriptionOff } : {}),
+    })
   }
   return resolveCustomEndpoints({
     provider: settings.provider ?? defaults.provider,
@@ -613,6 +1017,7 @@ export function resolveAiSettings(stored: unknown, defaults: AiSettings): AiSett
     media: resolveAiMediaSettings(settings.media ?? defaults.media),
     search: resolveAiSearchSettings(settings.search ?? defaults.search),
     meteredAccepted: sanitizeMeteredAccepted(settings.meteredAccepted ?? defaults.meteredAccepted),
+    ...(subscriptionOff ? { subscriptionOff } : {}),
     headlessSubscriptionEnabled: headlessSubscriptionOn({
       headlessSubscriptionEnabled:
         settings.headlessSubscriptionEnabled ?? defaults.headlessSubscriptionEnabled,
@@ -624,6 +1029,16 @@ export function resolveAiSettings(stored: unknown, defaults: AiSettings): AiSett
     ),
     subscriptionNoticeSeen:
       (settings.subscriptionNoticeSeen ?? defaults.subscriptionNoticeSeen) === true,
+    subscriptionNoticeVersion: subscriptionNoticeVersionOf(
+      settings.subscriptionNoticeVersion,
+      settings.subscriptionNoticeSeen ?? defaults.subscriptionNoticeSeen,
+    ),
+    pdfSendNoticeSeen:
+      typeof settings.pdfSendNoticeSeen === 'number' &&
+      Number.isInteger(settings.pdfSendNoticeSeen) &&
+      settings.pdfSendNoticeSeen > 0
+        ? settings.pdfSendNoticeSeen
+        : 0,
     ...((settings.internetTools ?? defaults.internetTools) === false
       ? { internetTools: false }
       : {}),

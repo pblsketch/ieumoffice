@@ -6,6 +6,7 @@
  * command in the editor. No AI, no network, and the source bytes are only read.
  */
 import { PDFDocument } from 'pdf-lib'
+import { headlessModuleFor } from '@genoffice/electron-utils'
 import {
   applySaveRequest,
   extractPagesBytes,
@@ -13,17 +14,37 @@ import {
   mergePdfBytes,
   setPageSizeBytes,
   splitPagesBytes,
-  splitPdfBytes,
 } from '../../../../pdf/src/main/save-pdf'
-import { imagesToPdfBytes, readImageInfo } from '../../../../pdf/src/main/images-to-pdf'
+import { executeSplitPlan, readPdfBookmarks } from '../../../../pdf/src/main/split-pdf'
+import {
+  MAX_SPLIT_MAX_BYTES,
+  MIN_SPLIT_MAX_BYTES,
+  formatSplitRangeList,
+  parseSplitRangeList,
+  sanitizeSplitName,
+  type SplitBookmarkEntry,
+  type SplitOutputOptions,
+  type SplitPlanRequest,
+} from '../../../../pdf/src/shared/split-plan'
+import {
+  imagesToPdfBytes,
+  isSupportedWebImageBytes,
+  readImageInfo,
+} from '../../../../pdf/src/main/images-to-pdf'
 import { duplexMergeBytes } from '../../../../pdf/src/main/print-prep'
 import { overlayPdfBytes } from '../../../../pdf/src/main/overlay'
 import { stripAnnotsBytes } from '../../../../pdf/src/main/annot-strip'
 import {
   COMPRESS_LEVELS,
+  COMPRESS_MODES,
   compressPdfBytes,
+  compressPdfV2Bytes,
+  type CompressMode,
   type ImageRecoder,
 } from '../../../../pdf/src/main/compress'
+import { interleavePdfBytes } from '../../../../pdf/src/main/interleave'
+import { mergePdfV2Bytes } from '../../../../pdf/src/main/merge-v2'
+import { organizePdfBytes, type OrganizePageSpec } from '../../../../pdf/src/main/organize-pages'
 import { readPdfText, type PdfPageText } from '../../../../pdf/src/main/read-text'
 import { parsePageRange } from '../../../../pdf/src/renderer/convert/page-range'
 import type { StructureJob } from '../pdf-structure/protocol'
@@ -33,7 +54,11 @@ import {
   PDF_TOOL_MARGINS,
   PDF_TOOL_PAPERS,
   PDF_TOOL_SHEET_PAGES,
+  type PdfConvertFormat,
+  type PdfImageOptimize,
+  type PdfImageOrientation,
   type PdfInputProblem,
+  type PdfPickedFileKind,
   type PdfToolAccept,
   type PdfToolAnnotKind,
   type PdfToolId,
@@ -62,9 +87,72 @@ export function isPdfToolId(value: unknown): value is PdfToolId {
 /** Points of space around a picture for each margin choice (imagesToPdf) */
 const MARGIN_POINTS: Record<PdfToolMargin, number> = { none: 0, small: 18, large: 36 }
 
-/** Merge, imagesToPdf and duplex take several files; every other tool takes one */
+/** Batch-capable tools (spec 3.1): single-file tools that can also process a folder of files; `split` is excluded */
+const BATCH_TOOL_SET: ReadonlySet<PdfToolId> = new Set<PdfToolId>([
+  'reverse',
+  'rotate',
+  'nup',
+  'pageSize',
+  'splitPages',
+  'overlay',
+  'stripAnnots',
+  'ocr',
+  'docsToPdf',
+  'pdfToImages',
+  'convertFromPdf',
+  'toText',
+  'compress',
+  'encrypt',
+  'decrypt',
+  'repair',
+])
+
+/** Tools eligible as a tool-chaining target (spec 3.1): `split`, `imagesToPdf`, `docsToPdf`, `decrypt` are excluded */
+const CHAIN_TARGET_SET: ReadonlySet<PdfToolId> = new Set<PdfToolId>([
+  'organize',
+  'merge',
+  'interleave',
+  'extract',
+  'reverse',
+  'rotate',
+  'blankPages',
+  'duplex',
+  'nup',
+  'pageSize',
+  'splitPages',
+  'overlay',
+  'stripAnnots',
+  'ocr',
+  'pdfToImages',
+  'convertFromPdf',
+  'toText',
+  'compress',
+  'encrypt',
+  'repair',
+])
+
+export function isBatchTool(tool: PdfToolId): boolean {
+  return BATCH_TOOL_SET.has(tool)
+}
+
+export function isChainTarget(tool: PdfToolId): boolean {
+  return CHAIN_TARGET_SET.has(tool)
+}
+
+/** Whether a tool input requirement accepts an actual picked file kind (spec 3.2) */
+export function acceptsFileKind(toolKind: PdfToolInputKind, fileKind: PdfPickedFileKind): boolean {
+  return toolKind === 'mixed' ? true : toolKind === fileKind
+}
+
+/** Multi-input tools plus batch-capable tools accept picking several files (`split` stays false) */
 export function toolTakesMany(tool: PdfToolId): boolean {
-  return tool === 'merge' || tool === 'imagesToPdf' || tool === 'duplex'
+  return (
+    tool === 'merge' ||
+    tool === 'imagesToPdf' ||
+    tool === 'duplex' ||
+    tool === 'docsToPdf' ||
+    isBatchTool(tool)
+  )
 }
 
 /** The fewest files a tool runs on: merge needs two */
@@ -77,39 +165,90 @@ export function toolAccepts(tool: PdfToolId): PdfToolAccept {
   return tool === 'decrypt' ? 'encrypted' : tool === 'repair' ? 'damaged' : 'pdf'
 }
 
-/** Tools that run in the PDF job process (qpdf, PDFium repair) rather than here */
-export function toolRunsAsJob(tool: PdfToolId): tool is 'encrypt' | 'decrypt' | 'repair' {
-  return tool === 'encrypt' || tool === 'decrypt' || tool === 'repair'
+export type JobPdfToolId =
+  'encrypt' | 'decrypt' | 'repair' | 'ocr' | 'pdfToImages' | 'convertFromPdf'
+
+/** Tools that run in the PDF job process rather than in-process pdf-lib */
+export function toolRunsAsJob(tool: PdfToolId): tool is JobPdfToolId {
+  return (
+    tool === 'encrypt' ||
+    tool === 'decrypt' ||
+    tool === 'repair' ||
+    tool === 'ocr' ||
+    tool === 'pdfToImages' ||
+    tool === 'convertFromPdf'
+  )
 }
 
 /** the longest password AES-256 PDF encryption keeps (127 bytes of UTF-8) */
 export const MAX_PASSWORD_BYTES = 127
 
-/** imagesToPdf takes pictures; every other tool takes PDFs */
+/** Input kind accepted by each tool (spec 3.1) */
 export function toolInputKind(tool: PdfToolId): PdfToolInputKind {
-  return tool === 'imagesToPdf' ? 'image' : 'pdf'
+  if (tool === 'imagesToPdf') return 'image'
+  if (tool === 'docsToPdf') return 'document'
+  if (tool === 'merge') return 'mixed'
+  return 'pdf'
 }
 
 /** The kind of file a tool writes */
-export function toolOutputExtension(tool: PdfToolId): 'pdf' | 'txt' {
-  return tool === 'toText' ? 'txt' : 'pdf'
+export function toolOutputExtension(
+  tool: PdfToolId,
+  options?: PdfToolOptions,
+): 'pdf' | 'txt' | 'zip' | PdfConvertFormat {
+  if (tool === 'toText') return 'txt'
+  if (tool === 'convertFromPdf') return options?.targetFormat ?? 'docx'
+  if (tool === 'pdfToImages') return options?.imageOutMode === 'zip' ? 'zip' : 'pdf'
+  return 'pdf'
 }
 
 /**
  * A tool ran but has nothing to write: a PDF without any text layer (toText),
- * or none of the chosen kinds of annotation (stripAnnots)
+ * none of the chosen kinds of annotation (stripAnnots), not smaller (compress),
+ * no pages recognized by OCR, or no embedded images.
  */
 export class PdfToolRefusal extends Error {
-  constructor(readonly reason: 'no-text' | 'no-annots' | 'not-smaller') {
+  constructor(
+    readonly reason:
+      | 'no-text'
+      | 'no-annots'
+      | 'not-smaller'
+      | 'no-ocr-changes'
+      | 'no-embedded-images'
+      | 'no-bookmarks',
+  ) {
     super(reason)
   }
 }
 
+/** Read document bookmarks (/Outlines) from PDF bytes */
+export async function readBookmarksBytes(bytes: Uint8Array): Promise<SplitBookmarkEntry[]> {
+  return readPdfBookmarks(bytes)
+}
+
 export type InspectResult = { ok: true; pages: number } | { ok: false; problem: PdfInputProblem }
 
-/** A picked picture counts as one page, or is not a JPEG or PNG */
-export function inspectImage(bytes: Uint8Array): InspectResult {
-  return readImageInfo(bytes) ? { ok: true, pages: 1 } : { ok: false, problem: 'not-image' }
+/**
+ * A picked picture counts as one page: JPEG/PNG via `readImageInfo`, or
+ * WebP/BMP/GIF via magic bytes (optionally verified by Chromium `extraCheck`).
+ */
+export function inspectImage(
+  bytes: Uint8Array,
+  extraCheck?: (bytes: Uint8Array) => boolean,
+): InspectResult {
+  if (readImageInfo(bytes)) return { ok: true, pages: 1 }
+  if (isSupportedWebImageBytes(bytes) && (!extraCheck || extraCheck(bytes))) {
+    return { ok: true, pages: 1 }
+  }
+  return { ok: false, problem: 'not-image' }
+}
+
+/** A picked non-PDF document supported by headless PDF export (rejects `.odp` etc.) */
+export function inspectDocument(filePath: string, sizeBytes: number): InspectResult {
+  if (sizeBytes > MAX_TOOL_INPUT_BYTES) return { ok: false, problem: 'too-large' }
+  return headlessModuleFor(filePath)
+    ? { ok: true, pages: 0 }
+    : { ok: false, problem: 'unsupported-document' }
 }
 
 /** Page count of a password-protected PDF (the page tree itself is not encrypted); 0 if unknown */
@@ -148,7 +287,15 @@ export type CheckedOptions =
         | 'password-empty'
         | 'password-same'
         | 'password-long'
+        | 'invalid-target-size'
+        | 'invalid-size'
     }
+
+const CONVERT_FORMATS: readonly PdfConvertFormat[] = ['docx', 'xlsx', 'pptx', 'hwpx', 'md', 'epub']
+const IMAGE_ORIENTATIONS: readonly PdfImageOrientation[] = ['auto', 'portrait', 'landscape']
+const IMAGE_OPTIMIZES: readonly PdfImageOptimize[] = ['original', 'balanced', 'compact']
+const IMAGE_DPIS = [150, 200, 300] as const
+const IMAGE_QUALITIES = ['high', 'medium', 'small'] as const
 
 /** Annotation kinds stripAnnots removes when the window sends none (links stay) */
 export const DEFAULT_ANNOT_KINDS: PdfToolAnnotKind[] = PDF_TOOL_ANNOT_KINDS.filter(
@@ -173,8 +320,79 @@ export function checkOptions(
 ): CheckedOptions {
   const o = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
   switch (tool) {
-    case 'split':
-      return { ok: true, options: { chunkSize: intIn(o.chunkSize, 1, pageCount) ?? 1 } }
+    case 'split': {
+      if (o.splitMode === undefined) {
+        return { ok: true, options: { chunkSize: intIn(o.chunkSize, 1, pageCount) ?? 1 } }
+      }
+      const mode =
+        o.splitMode === 'ranges' ||
+        o.splitMode === 'fixed' ||
+        o.splitMode === 'bookmarks' ||
+        o.splitMode === 'maxSize'
+          ? o.splitMode
+          : 'fixed'
+      const splitPattern =
+        o.splitPattern === 'range' || o.splitPattern === 'bookmark' ? o.splitPattern : 'numbered'
+      const splitPrefix = typeof o.splitPrefix === 'string' ? o.splitPrefix.trim() : ''
+      const splitCreateSubfolder = o.splitCreateSubfolder === true
+      const base: PdfToolOptions = {
+        splitMode: mode,
+        splitPattern,
+        splitCreateSubfolder,
+        ...(splitPrefix ? { splitPrefix } : {}),
+      }
+      if (mode === 'ranges') {
+        const parsed = parseSplitRangeList(
+          typeof o.splitRanges === 'string' ? o.splitRanges : '',
+          pageCount,
+        )
+        if (!parsed.ok) return { ok: false, error: 'range' }
+        return {
+          ok: true,
+          options: {
+            ...base,
+            splitRanges: formatSplitRangeList(parsed.ranges),
+            splitMergeRanges: o.splitMergeRanges === true,
+          },
+        }
+      }
+      if (mode === 'fixed') {
+        const splitFixedKind = o.splitFixedKind === 'fileCount' ? 'fileCount' : 'pagesPerFile'
+        const rawVal = o.splitFixedValue ?? o.chunkSize
+        return {
+          ok: true,
+          options: {
+            ...base,
+            splitFixedKind,
+            splitFixedValue: intIn(rawVal, 1, pageCount) ?? 1,
+          },
+        }
+      }
+      if (mode === 'bookmarks') {
+        return {
+          ok: true,
+          options: {
+            ...base,
+            splitBookmarkLevel: o.splitBookmarkLevel === 2 ? 2 : 1,
+            splitIncludeLeading: o.splitIncludeLeading !== false,
+          },
+        }
+      }
+      const maxBytes =
+        typeof o.splitMaxBytes === 'number' && Number.isFinite(o.splitMaxBytes)
+          ? Math.round(o.splitMaxBytes)
+          : 0
+      if (maxBytes < MIN_SPLIT_MAX_BYTES || maxBytes > MAX_SPLIT_MAX_BYTES) {
+        return { ok: false, error: 'invalid-size' }
+      }
+      return {
+        ok: true,
+        options: {
+          ...base,
+          splitMaxBytes: maxBytes,
+        },
+      }
+    }
     case 'extract': {
       const range = parsePageRange(typeof o.pages === 'string' ? o.pages : '', pageCount)
       return range.ok
@@ -225,15 +443,40 @@ export function checkOptions(
       if (!password) return { ok: false, error: 'password-empty' }
       return { ok: true, options: { password } }
     }
-    case 'compress':
-      return {
-        ok: true,
-        options: {
-          compressLevel: (COMPRESS_LEVELS as readonly unknown[]).includes(o.compressLevel)
-            ? (o.compressLevel as 'light' | 'medium' | 'strong')
-            : 'medium',
-        },
+    case 'compress': {
+      const legacyLevel = (COMPRESS_LEVELS as readonly unknown[]).includes(o.compressLevel)
+        ? (o.compressLevel as 'light' | 'medium' | 'strong')
+        : 'medium'
+      const hasV2 =
+        o.compressMode !== undefined ||
+        o.targetSizeMb !== undefined ||
+        o.grayscaleImages !== undefined ||
+        o.linearize !== undefined ||
+        o.stripMetadata !== undefined
+      if (!hasV2) {
+        return { ok: true, options: { compressLevel: legacyLevel } }
       }
+      const mode: CompressMode = (COMPRESS_MODES as readonly unknown[]).includes(o.compressMode)
+        ? (o.compressMode as CompressMode)
+        : legacyLevel
+      let targetSizeMb: number | undefined
+      if (mode === 'target') {
+        const rawMb = typeof o.targetSizeMb === 'number' ? o.targetSizeMb : Number(o.targetSizeMb)
+        if (!Number.isFinite(rawMb) || rawMb <= 0 || rawMb > 10_000) {
+          return { ok: false, error: 'invalid-target-size' }
+        }
+        targetSizeMb = rawMb
+      }
+      const out: PdfToolOptions = {
+        compressLevel: mode === 'light' || mode === 'strong' ? mode : 'medium',
+        compressMode: mode,
+        ...(targetSizeMb !== undefined ? { targetSizeMb } : {}),
+        grayscaleImages: mode === 'lossless' ? false : o.grayscaleImages === true,
+        linearize: o.linearize === true,
+        stripMetadata: o.stripMetadata === true,
+      }
+      return { ok: true, options: out }
+    }
     case 'blankPages': {
       const raw = typeof o.removePages === 'string' ? o.removePages : ''
       const pages = [...new Set(raw.split(',').map((p) => Number(p.trim())))]
@@ -278,30 +521,212 @@ export function checkOptions(
             : 1,
         },
       }
-    case 'imagesToPdf':
+    case 'imagesToPdf': {
+      const base: PdfToolOptions = {
+        imagePaper:
+          o.imagePaper === 'image' || (PDF_TOOL_PAPERS as readonly unknown[]).includes(o.imagePaper)
+            ? (o.imagePaper as PdfToolPaper | 'image')
+            : 'A4',
+        margin: (PDF_TOOL_MARGINS as readonly unknown[]).includes(o.margin)
+          ? (o.margin as PdfToolMargin)
+          : 'small',
+      }
+      if (o.imageOrientation !== undefined) {
+        base.imageOrientation = (IMAGE_ORIENTATIONS as readonly unknown[]).includes(
+          o.imageOrientation,
+        )
+          ? (o.imageOrientation as PdfImageOrientation)
+          : 'auto'
+      }
+      if (o.imageOptimize !== undefined) {
+        base.imageOptimize = (IMAGE_OPTIMIZES as readonly unknown[]).includes(o.imageOptimize)
+          ? (o.imageOptimize as PdfImageOptimize)
+          : 'original'
+      }
+      if (
+        o.itemRotations &&
+        typeof o.itemRotations === 'object' &&
+        !Array.isArray(o.itemRotations)
+      ) {
+        const clean: Record<string, 0 | 90 | 180 | 270> = {}
+        for (const [k, v] of Object.entries(o.itemRotations as Record<string, unknown>)) {
+          if (v === 0 || v === 90 || v === 180 || v === 270) clean[k] = v
+        }
+        base.itemRotations = clean
+      }
+      return { ok: true, options: base }
+    }
+    case 'merge': {
+      const out: PdfToolOptions = {}
+      if (o.addBookmarks !== undefined) out.addBookmarks = o.addBookmarks !== false
+      if (o.unifyPaper !== undefined) {
+        out.unifyPaper =
+          o.unifyPaper === 'keep' || (PDF_TOOL_PAPERS as readonly unknown[]).includes(o.unifyPaper)
+            ? (o.unifyPaper as 'keep' | PdfToolPaper)
+            : 'keep'
+      }
+      if (o.mergeRanges && typeof o.mergeRanges === 'object' && !Array.isArray(o.mergeRanges)) {
+        const clean: Record<string, string> = {}
+        for (const [k, v] of Object.entries(o.mergeRanges as Record<string, unknown>)) {
+          if (typeof v === 'string' && v.trim()) clean[k] = v.trim()
+        }
+        out.mergeRanges = clean
+      }
+      return { ok: true, options: out }
+    }
+    case 'interleave':
+      return { ok: true, options: { reverseEven: o.reverseEven !== false } }
+    case 'ocr': {
+      const text = typeof o.applyPages === 'string' ? o.applyPages.trim() : ''
+      const range = text ? parsePageRange(text, pageCount) : null
+      if (range && !range.ok) return { ok: false, error: 'range' }
       return {
         ok: true,
         options: {
-          imagePaper:
-            o.imagePaper === 'image' ||
-            (PDF_TOOL_PAPERS as readonly unknown[]).includes(o.imagePaper)
-              ? (o.imagePaper as PdfToolPaper | 'image')
-              : 'A4',
-          margin: (PDF_TOOL_MARGINS as readonly unknown[]).includes(o.margin)
-            ? (o.margin as PdfToolMargin)
-            : 'small',
+          applyPages: range?.ok ? range.pages.join(',') : '',
+          reocrExisting: o.reocrExisting === true,
         },
       }
+    }
+    case 'pdfToImages': {
+      const text = typeof o.applyPages === 'string' ? o.applyPages.trim() : ''
+      const range = text ? parsePageRange(text, pageCount) : null
+      if (range && !range.ok) return { ok: false, error: 'range' }
+      return {
+        ok: true,
+        options: {
+          pdfToImagesMode: o.pdfToImagesMode === 'embedded' ? 'embedded' : 'pages',
+          imageFormat: o.imageFormat === 'png' ? 'png' : 'jpg',
+          imageDpi: (IMAGE_DPIS as readonly unknown[]).includes(o.imageDpi)
+            ? (o.imageDpi as 150 | 200 | 300)
+            : 200,
+          imageQuality: (IMAGE_QUALITIES as readonly unknown[]).includes(o.imageQuality)
+            ? (o.imageQuality as 'high' | 'medium' | 'small')
+            : 'medium',
+          imageOutMode: o.imageOutMode === 'folder' ? 'folder' : 'zip',
+          applyPages: range?.ok ? range.pages.join(',') : '',
+        },
+      }
+    }
+    case 'convertFromPdf': {
+      const text = typeof o.applyPages === 'string' ? o.applyPages.trim() : ''
+      const range = text ? parsePageRange(text, pageCount) : null
+      if (range && !range.ok) return { ok: false, error: 'range' }
+      const targetFormat: PdfConvertFormat = (CONVERT_FORMATS as readonly unknown[]).includes(
+        o.targetFormat,
+      )
+        ? (o.targetFormat as PdfConvertFormat)
+        : 'docx'
+      return {
+        ok: true,
+        options: {
+          targetFormat,
+          applyPages: range?.ok ? range.pages.join(',') : '',
+          ...(typeof o.epubTitle === 'string'
+            ? { epubTitle: o.epubTitle.trim().slice(0, 200) }
+            : {}),
+          ...(typeof o.epubAuthor === 'string'
+            ? { epubAuthor: o.epubAuthor.trim().slice(0, 200) }
+            : {}),
+          epubCover: o.epubCover !== false,
+          epubPageBreaks: o.epubPageBreaks === true,
+        },
+      }
+    }
+    case 'docsToPdf':
+      return {
+        ok: true,
+        options: {
+          docsOutputMode: o.docsOutputMode === 'merge' ? 'merge' : 'each',
+          addBookmarks: o.addBookmarks !== false,
+        },
+      }
+    case 'organize':
+      return { ok: true, options: {} }
     default:
       return { ok: true, options: {} }
   }
 }
 
-/** What a long tool needs from the window: Chromium's picture code, progress, a stop */
+/** What a long or multi-source tool needs from the window */
 export interface RunDeps {
   recode?: ImageRecoder
   onProgress?: (done: number, total: number) => void
   signal?: AbortSignal
+  /** merge v2: display filenames aligned with `inputs` */
+  sourceNames?: string[]
+  /** merge v2 / imagesToPdf: inputIds aligned with `inputs` */
+  inputIds?: string[]
+  /** organize: map of sourceId -> PDF bytes and the ordered page plan */
+  sourceMap?: ReadonlyMap<string, Uint8Array>
+  organizePlan?: readonly OrganizePageSpec[]
+}
+
+/** Build a SplitPlanRequest from checked PdfToolOptions */
+export function splitPlanFromOptions(options: PdfToolOptions, pageCount: number): SplitPlanRequest {
+  if (!options.splitMode) {
+    return { mode: 'fixed', kind: 'pagesPerFile', value: options.chunkSize ?? 1 }
+  }
+  switch (options.splitMode) {
+    case 'ranges': {
+      const parsed = parseSplitRangeList(options.splitRanges ?? '', pageCount)
+      return {
+        mode: 'ranges',
+        ranges: parsed.ok ? parsed.ranges : [],
+        mergeRanges: options.splitMergeRanges === true,
+      }
+    }
+    case 'fixed':
+      return {
+        mode: 'fixed',
+        kind: options.splitFixedKind === 'fileCount' ? 'fileCount' : 'pagesPerFile',
+        value: options.splitFixedValue ?? options.chunkSize ?? 1,
+      }
+    case 'bookmarks':
+      return {
+        mode: 'bookmarks',
+        level: options.splitBookmarkLevel === 2 ? 2 : 1,
+        includeLeadingPages: options.splitIncludeLeading !== false,
+      }
+    case 'maxSize':
+      return { mode: 'maxSize', maxBytes: options.splitMaxBytes ?? 0 }
+  }
+}
+
+/** Run the split tool and return output bytes paired with computed filenames and warnings */
+export async function runSplitPdfTool(
+  first: Uint8Array,
+  sourceName: string,
+  options: PdfToolOptions,
+  deps: RunDeps = {},
+): Promise<{ parts: Uint8Array[]; names: string[]; oversizedPages: number[] }> {
+  const doc = await PDFDocument.load(first, { updateMetadata: false })
+  const plan = splitPlanFromOptions(options, doc.getPageCount())
+  const output: SplitOutputOptions = {
+    ...(options.splitPrefix ? { prefix: options.splitPrefix } : {}),
+    ...(options.splitPattern ? { pattern: options.splitPattern } : {}),
+    ...(options.splitCreateSubfolder !== undefined
+      ? { createSubfolder: options.splitCreateSubfolder }
+      : {}),
+  }
+  try {
+    const result = await executeSplitPlan(first, plan, {
+      sourceName,
+      output,
+      ...(deps.onProgress ? { onProgress: deps.onProgress } : {}),
+      ...(deps.signal ? { signal: deps.signal } : {}),
+    })
+    return {
+      parts: result.parts.map((p) => p.bytes),
+      names: result.parts.map((p) => p.name),
+      oversizedPages: result.oversizedPages,
+    }
+  } catch (err) {
+    if (err instanceof Error && err.message === 'split: no-bookmarks') {
+      throw new PdfToolRefusal('no-bookmarks')
+    }
+    throw err
+  }
 }
 
 /** Run `tool` on `inputs` (already checked); one file, or one per part for split */
@@ -311,13 +736,61 @@ export async function runPdfTool(
   options: PdfToolOptions,
   deps: RunDeps = {},
 ): Promise<Uint8Array[]> {
+  if (tool === 'organize') {
+    if (!deps.sourceMap || !deps.organizePlan || deps.organizePlan.length === 0) {
+      throw new Error('empty-organize')
+    }
+    return [await organizePdfBytes(deps.sourceMap, deps.organizePlan)]
+  }
   const [first, ...rest] = inputs
   if (!first) throw new Error('no input')
   switch (tool) {
-    case 'merge':
-      return [(await mergePdfBytes(first, rest)).merged]
+    case 'merge': {
+      const wantsV2 =
+        options.addBookmarks !== undefined ||
+        (options.unifyPaper !== undefined && options.unifyPaper !== 'keep') ||
+        (options.mergeRanges !== undefined && Object.keys(options.mergeRanges).length > 0)
+      if (!wantsV2) {
+        return [(await mergePdfBytes(first, rest)).merged]
+      }
+      const mergeInputs = await Promise.all(
+        inputs.map(async (bytes, idx) => {
+          const id = deps.inputIds?.[idx]
+          const rangeText = id ? options.mergeRanges?.[id]?.trim() : ''
+          let pages: number[] | undefined
+          if (rangeText) {
+            const count = (await PDFDocument.load(bytes, { updateMetadata: false })).getPageCount()
+            const parsed = parsePageRange(rangeText, count)
+            if (!parsed.ok) throw new Error('range')
+            pages = parsed.pages.map((p) => p - 1)
+          }
+          return {
+            bytes,
+            name: deps.sourceNames?.[idx] ?? `document-${idx + 1}.pdf`,
+            ...(pages ? { pages } : {}),
+          }
+        }),
+      )
+      const paper =
+        options.unifyPaper && options.unifyPaper !== 'keep'
+          ? PAPER_POINTS[options.unifyPaper]
+          : null
+      const merged = await mergePdfV2Bytes(mergeInputs, {
+        addBookmarks: options.addBookmarks !== false,
+        unifyPaper: paper,
+      })
+      return [merged.bytes]
+    }
+    case 'interleave': {
+      const even = inputs[1]
+      if (!even) throw new Error('need even')
+      return [
+        (await interleavePdfBytes(first, even, { reverseEven: options.reverseEven !== false }))
+          .bytes,
+      ]
+    }
     case 'split':
-      return splitPdfBytes(first, options.chunkSize ?? 1)
+      return (await runSplitPdfTool(first, 'document.pdf', options, deps)).parts
     case 'extract': {
       const pages = (options.pages ?? '').split(',').map((p) => Number(p) - 1)
       return [await extractPagesBytes(first, pages)]
@@ -360,10 +833,16 @@ export async function runPdfTool(
       return [await splitPagesBytes(first, options.perPage ?? 2)]
     case 'imagesToPdf': {
       const paper = options.imagePaper ?? 'A4'
+      const rotations =
+        options.itemRotations && deps.inputIds
+          ? deps.inputIds.map((id) => options.itemRotations?.[id] ?? 0)
+          : undefined
       return [
         await imagesToPdfBytes(inputs, {
           paper: paper === 'image' ? null : PAPER_POINTS[paper],
           marginPt: MARGIN_POINTS[options.margin ?? 'small'],
+          ...(options.imageOrientation ? { orientation: options.imageOrientation } : {}),
+          ...(rotations ? { rotations } : {}),
         }),
       ]
     }
@@ -377,7 +856,7 @@ export async function runPdfTool(
         ? options.applyPages.split(',').map((p) => Number(p) - 1)
         : null
       return [
-        await overlayPdfBytes(first, background, {
+        await overlayPdfBytes(first!, background, {
           behind: options.layer !== 'front',
           backgroundPage: (options.backgroundPage ?? 1) - 1,
           pages,
@@ -387,22 +866,57 @@ export async function runPdfTool(
     case 'encrypt':
     case 'decrypt':
     case 'repair':
-      // the window runs these in the PDF job process (jobFor)
+    case 'ocr':
+    case 'pdfToImages':
+    case 'convertFromPdf':
+    case 'docsToPdf':
+      // the window runs these in the PDF job process or headless runner
       throw new Error(`${tool} runs as a job`)
     case 'compress': {
-      if (!deps.recode) throw new Error('no picture code')
-      const made = await compressPdfBytes(first, options.compressLevel ?? 'medium', deps.recode, {
-        ...(deps.onProgress ? { onProgress: deps.onProgress } : {}),
-        ...(deps.signal ? { signal: deps.signal } : {}),
-      })
-      // a file that did not get smaller is not worth a copy
-      if (made.bytes.length >= first.length) throw new PdfToolRefusal('not-smaller')
+      const mode: CompressMode = options.compressMode ?? options.compressLevel ?? 'medium'
+      if (mode !== 'lossless' && !deps.recode) throw new Error('no picture code')
+      const useV2 =
+        options.compressMode !== undefined ||
+        options.grayscaleImages === true ||
+        options.stripMetadata === true ||
+        options.targetSizeMb !== undefined
+      if (!useV2) {
+        const made = await compressPdfBytes(
+          first!,
+          options.compressLevel ?? 'medium',
+          deps.recode!,
+          {
+            ...(deps.onProgress ? { onProgress: deps.onProgress } : {}),
+            ...(deps.signal ? { signal: deps.signal } : {}),
+          },
+        )
+        // a file that did not get smaller is not worth a copy
+        if (made.bytes.length >= first!.length) throw new PdfToolRefusal('not-smaller')
+        return [made.bytes]
+      }
+      const made = await compressPdfV2Bytes(
+        first!,
+        {
+          mode,
+          ...(options.targetSizeMb !== undefined
+            ? { targetBytes: Math.round(options.targetSizeMb * 1024 * 1024) }
+            : {}),
+          grayscaleImages: options.grayscaleImages === true,
+          stripMetadata: options.stripMetadata === true,
+        },
+        deps.recode ?? (async () => null),
+        {
+          ...(deps.onProgress ? { onProgress: deps.onProgress } : {}),
+          ...(deps.signal ? { signal: deps.signal } : {}),
+        },
+      )
+      if (made.bytes.length >= first!.length) throw new PdfToolRefusal('not-smaller')
       return [made.bytes]
     }
     case 'blankPages': {
       // the editor's own page removal on save, which keeps bookmarks and forms
       const deletedPages = (options.removePages ?? '').split(',').map((p) => Number(p) - 1)
-      const applied = await applySaveRequest(first, {
+      const applied = await applySaveRequest(first!, {
         path: '',
         markups: [],
         drawings: [],
@@ -416,7 +930,7 @@ export async function runPdfTool(
       const pages = options.applyPages
         ? options.applyPages.split(',').map((p) => Number(p) - 1)
         : null
-      const stripped = await stripAnnotsBytes(first, {
+      const stripped = await stripAnnotsBytes(first!, {
         kinds: options.annotKinds ?? DEFAULT_ANNOT_KINDS,
         pages,
       })
@@ -424,7 +938,7 @@ export async function runPdfTool(
       return [stripped.bytes]
     }
     case 'toText': {
-      const doc = await readPdfText(first)
+      const doc = await readPdfText(first!)
       if (!doc.pages.some((page) => page.text.trim() !== '')) throw new PdfToolRefusal('no-text')
       return [new TextEncoder().encode(pagesToText(doc.pages))]
     }
@@ -444,16 +958,50 @@ export function outputNames(
   count: number,
   options: PdfToolOptions,
 ): string[] {
+  if (tool === 'imagesToPdf') {
+    const imgBase = sourceName.replace(/\.(jpe?g|png|webp|bmp|gif)$/i, '') || 'document'
+    return [`${imgBase}.pdf`]
+  }
+  if (tool === 'docsToPdf') {
+    const docBase = sourceName.replace(/\.(drawio\.(svg|png)|[a-z0-9]{1,10})$/i, '') || 'document'
+    return options.docsOutputMode === 'merge' ? [`${docBase}-merged.pdf`] : [`${docBase}.pdf`]
+  }
+  if (tool === 'merge') {
+    const mixBase = sourceName.replace(/\.(drawio\.(svg|png)|[a-z0-9]{1,10})$/i, '') || 'document'
+    return [`${mixBase}-merged.pdf`]
+  }
   const base = sourceName.replace(/\.(pdf|jpe?g|png)$/i, '') || 'document'
-  if (tool === 'split') return Array.from({ length: count }, (_, i) => `${base}-${i + 1}.pdf`)
-  if (tool === 'imagesToPdf') return [`${base}.pdf`]
+  if (tool === 'split') {
+    const stem = options.splitPrefix ? sanitizeSplitName(options.splitPrefix, base, 60) : base
+    const padWidth = count >= 10 ? String(count).length : 1
+    return Array.from(
+      { length: count },
+      (_, i) => `${stem}-${String(i + 1).padStart(padWidth, '0')}.pdf`,
+    )
+  }
+  if (tool === 'pdfToImages') {
+    return options.imageOutMode === 'folder' ? [base] : [`${base}-images.zip`]
+  }
+  if (tool === 'convertFromPdf') {
+    const ext = options.targetFormat ?? 'docx'
+    return [`${base}.${ext}`]
+  }
   if (tool === 'toText') return [`${base}.txt`]
-  const suffix: Record<Exclude<PdfToolId, 'split' | 'imagesToPdf' | 'toText'>, string> = {
+  const suffix: Record<
+    Exclude<
+      PdfToolId,
+      'split' | 'imagesToPdf' | 'docsToPdf' | 'pdfToImages' | 'convertFromPdf' | 'toText'
+    >,
+    string
+  > = {
+    organize: 'organized',
     merge: 'merged',
+    interleave: 'interleaved',
     duplex: 'duplex',
     overlay: 'background',
     stripAnnots: 'clean',
     blankPages: 'no-blank',
+    ocr: 'ocr',
     compress: 'smaller',
     encrypt: 'locked',
     decrypt: 'unlocked',
@@ -504,13 +1052,28 @@ export function foundBlankPagesOf(value: unknown): FoundBlankPages | null {
 
 /** The PDF job process's work for a tool that runs there, on the file at `path` */
 export function jobFor(
-  tool: 'encrypt' | 'decrypt' | 'repair',
+  tool: 'encrypt' | 'decrypt' | 'repair' | 'ocr',
   path: string,
   options: PdfToolOptions,
+  password?: string,
 ): StructureJob {
-  const source = { pdfPath: path }
+  const pages =
+    tool === 'ocr' && options.applyPages
+      ? options.applyPages
+          .split(',')
+          .map((p) => Number(p))
+          .filter((p) => Number.isInteger(p) && p >= 1)
+      : undefined
+  const source = {
+    pdfPath: path,
+    ...(password !== undefined ? { password } : {}),
+    ...(pages && pages.length > 0 ? { pages } : {}),
+  }
   if (tool === 'repair') return { op: 'repair', source }
   if (tool === 'decrypt') return { op: 'decrypt', source, password: options.password ?? '' }
+  if (tool === 'ocr') {
+    return { op: 'ocrPdf', source, reocrExisting: options.reocrExisting === true }
+  }
   return {
     op: 'encrypt',
     source,

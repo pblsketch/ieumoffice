@@ -17,9 +17,12 @@ import {
   useDismissablePopover,
   useRibbonCollapse,
   Dropdown,
+  QuickPrintButton,
   THEME_COLORS,
   THEME_COLOR_SHADES,
   STANDARD_COLORS,
+  canPickScreenColor,
+  pickScreenColor,
 } from '@genoffice/ui'
 import { getRecentColors, pushRecentColor } from '../recent-colors'
 import { ICON_COLORS } from '../insert-presets'
@@ -55,6 +58,8 @@ import {
   IconSave,
   IconSetupShow,
   IconSparkle,
+  IconAnimPainter,
+  IconMergeShapes,
   IconUndo,
   IconFitWindow,
   IconZoom100,
@@ -125,6 +130,13 @@ import { RibbonHomeTab } from './RibbonHomeTab'
 import { RibbonInsertTab } from './RibbonInsertTab'
 import { ShapeGalleryContent } from './ShapeGalleryPopover'
 import { autoContextTabForElement, contextTabForElement, type ContextTab } from './context-tabs'
+import {
+  defaultNewSlideSize,
+  isPortrait,
+  matchSlideSizePreset,
+  presetSize,
+  saveDefaultNewSlideSize,
+} from '../slide-size'
 
 const IS_MAC = navigator.platform.toLowerCase().includes('mac')
 /** shell tab mode: the tab strip above owns traffic lights / caption buttons */
@@ -957,6 +969,19 @@ function ShapeFillMenu({
             }}
           />
         </label>
+        {canPickScreenColor() && (
+          <button
+            type="button"
+            className="rbf-row"
+            onClick={() => {
+              void pickScreenColor().then((hex) => {
+                if (hex) pickHex(hex)
+              })
+            }}
+          >
+            {t('ribbonEyedropper')}
+          </button>
+        )}
         {onPickImage && (
           <button
             type="button"
@@ -1111,12 +1136,19 @@ export function Ribbon({
   onSaveAs,
   onExportPdf,
   onPrint,
+  onQuickPrint,
+  listPrinters,
+  quickPrintPrefStore,
+  getPrintPageCount,
+  onQuickPrintNotice,
   onExportImages,
+  onExportImagesJpg,
   onFormat,
   zoom,
   onZoom,
   showThumbs,
   onToggleThumbs,
+  aiOn,
   aiOpen,
   onToggleAi,
   onAiPreset,
@@ -1161,7 +1193,8 @@ export function Ribbon({
   onSetLayout,
   onResetLayout,
   onSlideSize,
-  slideSizeKey,
+  getSlideSize,
+  onCustomSlideSize,
   onParagraphFormat,
   onInsertTable,
   transition,
@@ -1177,6 +1210,9 @@ export function Ribbon({
   onAnimTiming,
   animPaneOpen,
   onToggleAnimPane,
+  animPainterMode,
+  onAnimPainterClick,
+  onAnimPainterDoubleClick,
   animCount,
   onAnimPreview,
   onSlideShow,
@@ -1248,13 +1284,22 @@ export function Ribbon({
   onEditTableStyle,
   tableStyleFlags,
   tableActiveCell,
+  tableActiveCells,
   onEditChart,
   onOpenChartDataDialog,
   onArrange,
   onFlip,
   canDistribute,
+  canMatchSize,
+  onMergeShapes,
+  canMergeShapes,
+  onChangeCase,
+  onHighlight,
+  onLetterSpacing,
+  selectionPaneOpen,
+  onToggleSelectionPane,
 }: Props) {
-  const { t } = useI18n()
+  const { t, lang } = useI18n()
   const contextTab = contextTabForElement(contextElementType ?? null)
   const autoContextTab = autoContextTabForElement(contextElementType ?? null)
 
@@ -1267,6 +1312,7 @@ export function Ribbon({
   const [paraOpen, setParaOpen] = useState(false)
   const [layoutPickOpen, setLayoutPickOpen] = useState(false)
   const [slideSizeOpen, setSlideSizeOpen] = useState(false)
+  const [deckSize, setDeckSize] = useState<{ cx: number; cy: number } | null>(null)
   const [transparencyOpen, setTransparencyOpen] = useState(false)
   const [pictureBorderOpen, setPictureBorderOpen] = useState(false)
   const [changeShapeOpen, setChangeShapeOpen] = useState(false)
@@ -1313,6 +1359,10 @@ export function Ribbon({
   const [collapseOpen, setCollapseOpen] = useState<string | null>(null)
   const [translateOpen, setTranslateOpen] = useState(false)
   const [arrangeOpen, setArrangeOpen] = useState(false)
+  const [caseOpen, setCaseOpen] = useState(false)
+  const [highlightOpen, setHighlightOpen] = useState(false)
+  const [spacingOpen, setSpacingOpen] = useState(false)
+  const [mergeOpen, setMergeOpen] = useState(false)
   const [slideShowOpen, setSlideShowOpen] = useState(false)
   const [slideShowFromStart, setSlideShowFromStart] = useState(false)
   // Insert tab dropdown galleries (at most one open at a time)
@@ -1355,6 +1405,10 @@ export function Ribbon({
     if (!keep.includes('layout')) setLayoutOpen(false)
     if (!keep.includes('translate')) setTranslateOpen(false)
     if (!keep.includes('arrange')) setArrangeOpen(false)
+    if (!keep.includes('case')) setCaseOpen(false)
+    if (!keep.includes('highlight')) setHighlightOpen(false)
+    if (!keep.includes('spacing')) setSpacingOpen(false)
+    if (!keep.includes('merge')) setMergeOpen(false)
     if (!keep.includes('insert')) setInsertDrop(null)
     if (!keep.includes('chart')) setChartDrop(null)
     if (!keep.includes('collapse')) setCollapseOpen(null)
@@ -1375,6 +1429,10 @@ export function Ribbon({
     layoutOpen ||
     chartDrop != null ||
     arrangeOpen ||
+    caseOpen ||
+    highlightOpen ||
+    spacingOpen ||
+    mergeOpen ||
     slideShowOpen ||
     paraOpen ||
     pictureBorderOpen ||
@@ -1617,9 +1675,16 @@ export function Ribbon({
   }
 
   const tabCtx: RibbonTabCtx = {
+    aiOn,
     aiOpen,
     brushMode,
     canDistribute,
+    canMatchSize,
+    onChangeCase,
+    onHighlight,
+    onLetterSpacing,
+    selectionPaneOpen,
+    onToggleSelectionPane,
     canPaste,
     closePanels,
     curBulletChar,
@@ -1686,6 +1751,9 @@ export function Ribbon({
     slideCount,
     zoom,
     arrangeOpen,
+    caseOpen,
+    highlightOpen,
+    spacingOpen,
     collapseOpen,
     collapsedGroups,
     colorOpen,
@@ -1706,6 +1774,9 @@ export function Ribbon({
     onCustomTextColor,
     paraOpen,
     setArrangeOpen,
+    setCaseOpen,
+    setHighlightOpen,
+    setSpacingOpen,
     setCollapseOpen,
     setColorOpen,
     setFontOpen,
@@ -1808,6 +1879,15 @@ export function Ribbon({
                 >
                   {t('ribbonFileExportImages')}
                 </button>
+                <button
+                  disabled={!hasDoc}
+                  onClick={() => {
+                    setFileOpen(false)
+                    onExportImagesJpg()
+                  }}
+                >
+                  {t('ribbonFileExportImagesJpg')}
+                </button>
               </div>
             )}
           </div>
@@ -1853,6 +1933,18 @@ export function Ribbon({
         >
           <IconRedo size={16} />
         </button>
+        {onQuickPrint && (
+          <QuickPrintButton
+            lang={lang}
+            disabled={!hasDoc}
+            listPrinters={listPrinters}
+            prefStore={quickPrintPrefStore}
+            getPageCount={getPrintPageCount}
+            onOpenDialog={onPrint}
+            onQuickPrint={onQuickPrint}
+            onNoPrinter={onQuickPrintNotice}
+          />
+        )}
         <label
           className={`autosave-toggle ${autoSave ? 'on' : ''}`}
           data-tip={t('ribbonAutoSaveTip')}
@@ -2121,7 +2213,10 @@ export function Ribbon({
                     e.stopPropagation()
                     closeSiblingPanels(e, closePanels, 'slideSize')
                   }}
-                  onClick={() => setSlideSizeOpen((v) => !v)}
+                  onClick={() => {
+                    if (!slideSizeOpen) void getSlideSize().then(setDeckSize)
+                    setSlideSizeOpen((v) => !v)
+                  }}
                   data-tip={t('ribbonSlideSizeTip')}
                 >
                   <span className="rb-big-icon">
@@ -2134,21 +2229,72 @@ export function Ribbon({
                   <div className="rb-drop rb-menu" onMouseDown={(e) => e.stopPropagation()}>
                     {(
                       [
-                        ['16:9', t('ribbonSlideSize169'), 12192000, 6858000],
-                        ['4:3', t('ribbonSlideSize43'), 9144000, 6858000],
+                        ['16:9', t('ribbonSlideSize169')],
+                        ['4:3', t('ribbonSlideSize43')],
+                        ['A4', t('ribbonSlideSizeA4')],
+                        ['A3', t('ribbonSlideSizeA3')],
                       ] as const
-                    ).map(([key, label, cx, cy]) => (
+                    ).map(([key, label]) => (
                       <button
                         key={key}
-                        className={slideSizeKey === key ? 'on' : ''}
+                        className={
+                          deckSize && matchSlideSizePreset(deckSize) === key ? 'active' : ''
+                        }
                         onClick={() => {
                           setSlideSizeOpen(false)
+                          // a preset keeps the deck's orientation
+                          const { cx, cy } = presetSize(key, !!deckSize && isPortrait(deckSize))
                           onSlideSize(cx, cy)
                         }}
                       >
                         {label}
                       </button>
                     ))}
+                    <div className="rb-menu-sep" />
+                    {(
+                      [
+                        [false, t('ribbonSlideSizeLandscape')],
+                        [true, t('ribbonSlideSizePortrait')],
+                      ] as const
+                    ).map(([portrait, label]) => (
+                      <button
+                        key={label}
+                        className={deckSize && isPortrait(deckSize) === portrait ? 'active' : ''}
+                        disabled={!deckSize}
+                        onClick={() => {
+                          setSlideSizeOpen(false)
+                          if (deckSize && isPortrait(deckSize) !== portrait)
+                            onSlideSize(deckSize.cy, deckSize.cx)
+                        }}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                    <div className="rb-menu-sep" />
+                    <button
+                      onClick={() => {
+                        setSlideSizeOpen(false)
+                        onCustomSlideSize()
+                      }}
+                    >
+                      {t('ribbonSlideSizeCustom')}
+                    </button>
+                    <button
+                      className={
+                        deckSize &&
+                        defaultNewSlideSize()?.cx === deckSize.cx &&
+                        defaultNewSlideSize()?.cy === deckSize.cy
+                          ? 'active'
+                          : ''
+                      }
+                      disabled={!deckSize}
+                      onClick={() => {
+                        setSlideSizeOpen(false)
+                        if (deckSize) saveDefaultNewSlideSize(deckSize)
+                      }}
+                    >
+                      {t('ribbonSlideSizeUseForNew')}
+                    </button>
                   </div>
                 )}
               </div>
@@ -2342,6 +2488,29 @@ export function Ribbon({
                 </span>
                 <span>{t('ribbonAnimPane')}</span>
               </button>
+              {onAnimPainterClick && (
+                <button
+                  className={`rb-big ${animPainterMode ? 'active' : ''}`}
+                  disabled={!hasDoc || !hasSelection}
+                  data-tip={
+                    animPainterMode === 'continuous'
+                      ? t('ribbonAnimPainterTipContinuous')
+                      : animPainterMode === 'once'
+                        ? t('ribbonAnimPainterTipOnce')
+                        : t('ribbonAnimPainterTip')
+                  }
+                  onClick={onAnimPainterClick}
+                  onDoubleClick={(e) => {
+                    e.preventDefault()
+                    onAnimPainterDoubleClick?.()
+                  }}
+                >
+                  <span className="rb-big-icon">
+                    <IconAnimPainter size={BIG} />
+                  </span>
+                  <span>{t('ribbonAnimPainter')}</span>
+                </button>
+              )}
               <button
                 className={`rb-big ${animByParagraph ? 'active' : ''}`}
                 disabled={!hasDoc}
@@ -2504,61 +2673,66 @@ export function Ribbon({
           </>
         ) : tab === 'review' ? (
           <>
-            <Group label={t('ribbonGroupProofing')}>
-              <button
-                className="rb-big"
-                disabled={!hasDoc}
-                data-tip={`${t('ribbonSpellCheckTip')} — ${t('ribbonAiCreditNote')}`}
-                onClick={() => {
-                  if (confirmAiRewrite()) onAiPreset(t('ribbonSpellCheckPrompt'))
-                }}
-              >
-                <span className="rb-big-icon">
-                  <span className="ai-feature-icon" aria-hidden="true">
-                    <img src={iconSpelling} width={22} height={22} alt="" />
-                  </span>
-                </span>
-                <span>{t('ribbonSpellCheck')}</span>
-              </button>
-              <div className="rb-drop-wrap">
-                <button
-                  className={`rb-big ${translateOpen ? 'active' : ''}`}
-                  disabled={!hasDoc}
-                  data-tip={`${t('ribbonTranslateTip')} — ${t('ribbonAiCreditNote')}`}
-                  onMouseDown={(e) => {
-                    e.stopPropagation()
-                    closeSiblingPanels(e, closePanels, 'translate')
-                  }}
-                  onClick={() => setTranslateOpen((v) => !v)}
-                >
-                  <span className="rb-big-icon">
-                    <span className="ai-feature-icon" aria-hidden="true">
-                      <img src={iconTranslate} width={22} height={22} alt="" />
+            {/* both proofing tools are AI runs: gone while AI is turned off */}
+            {aiOn && (
+              <>
+                <Group label={t('ribbonGroupProofing')}>
+                  <button
+                    className="rb-big"
+                    disabled={!hasDoc}
+                    data-tip={`${t('ribbonSpellCheckTip')} — ${t('ribbonAiCreditNote')}`}
+                    onClick={() => {
+                      if (confirmAiRewrite()) onAiPreset(t('ribbonSpellCheckPrompt'))
+                    }}
+                  >
+                    <span className="rb-big-icon">
+                      <span className="ai-feature-icon" aria-hidden="true">
+                        <img src={iconSpelling} width={22} height={22} alt="" />
+                      </span>
                     </span>
-                    <RbCaret />
-                  </span>
-                  <span>{t('ribbonTranslate')}</span>
-                </button>
-                {translateOpen && (
-                  <div className="rb-drop rb-menu" onMouseDown={(e) => e.stopPropagation()}>
-                    {TRANSLATE_TARGETS.map((lang) => (
-                      <button
-                        key={lang}
-                        onClick={() => {
-                          setTranslateOpen(false)
-                          if (confirmAiRewrite()) {
-                            onAiPreset(t('ribbonTranslatePrompt', { lang: t(lang) }))
-                          }
-                        }}
-                      >
-                        {t(lang)}
-                      </button>
-                    ))}
+                    <span>{t('ribbonSpellCheck')}</span>
+                  </button>
+                  <div className="rb-drop-wrap">
+                    <button
+                      className={`rb-big ${translateOpen ? 'active' : ''}`}
+                      disabled={!hasDoc}
+                      data-tip={`${t('ribbonTranslateTip')} — ${t('ribbonAiCreditNote')}`}
+                      onMouseDown={(e) => {
+                        e.stopPropagation()
+                        closeSiblingPanels(e, closePanels, 'translate')
+                      }}
+                      onClick={() => setTranslateOpen((v) => !v)}
+                    >
+                      <span className="rb-big-icon">
+                        <span className="ai-feature-icon" aria-hidden="true">
+                          <img src={iconTranslate} width={22} height={22} alt="" />
+                        </span>
+                        <RbCaret />
+                      </span>
+                      <span>{t('ribbonTranslate')}</span>
+                    </button>
+                    {translateOpen && (
+                      <div className="rb-drop rb-menu" onMouseDown={(e) => e.stopPropagation()}>
+                        {TRANSLATE_TARGETS.map((lang) => (
+                          <button
+                            key={lang}
+                            onClick={() => {
+                              setTranslateOpen(false)
+                              if (confirmAiRewrite()) {
+                                onAiPreset(t('ribbonTranslatePrompt', { lang: t(lang) }))
+                              }
+                            }}
+                          >
+                            {t(lang)}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
-            </Group>
-            <div className="ribbon-sep" />
+                </Group>
+                <div className="ribbon-sep" />
+              </>
+            )}
             <Group label={t('ribbonGroupComments')}>
               <button
                 className="rb-big"
@@ -2752,88 +2926,108 @@ export function Ribbon({
               />
             </Group>
             <div className="ribbon-sep" />
-            <Group label={tableActiveCell ? t('ribbonGroupShadingCell') : t('ribbonGroupShading')}>
-              <div className="rb-table-shading">
-                {TABLE_SHADING_COLORS.map((c) => (
-                  <button
-                    key={c}
-                    className="rb-color-swatch"
-                    style={{ background: c }}
-                    data-tip={c}
-                    aria-label={c}
-                    disabled={!onEditTableStyle}
-                    // preventDefault keeps a cell text-edit session alive so shading targets that cell
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={() =>
-                      onEditTableStyle?.({
-                        shadingColor: c,
-                        ...(tableActiveCell ? { cells: [tableActiveCell] } : {}),
-                      })
-                    }
-                  />
-                ))}
-                <button
-                  className="rb-color-swatch rb-color-none"
-                  data-tip={t('ribbonNoShading')}
-                  aria-label={t('ribbonNoShading')}
-                  disabled={!onEditTableStyle}
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() =>
-                    onEditTableStyle?.({
-                      shadingColor: 'none',
-                      ...(tableActiveCell ? { cells: [tableActiveCell] } : {}),
-                    })
-                  }
-                >
-                  <IconNoneX size={12} />
-                </button>
-              </div>
-            </Group>
-            <div className="ribbon-sep" />
-            <Group label={t('ribbonGroupBorders')}>
-              <div className="rb-table-border-row">
-                <button
-                  className="rb-icon"
-                  data-tip={t('ribbonAllBordersTip')}
-                  aria-label={t('ribbonAllBordersTip')}
-                  disabled={!onEditTableStyle}
-                  onClick={() =>
-                    onEditTableStyle?.({
-                      borderPreset: 'all',
-                      borderColor: '#000000',
-                      borderWidthPt: 1,
-                    })
-                  }
-                >
-                  ⊞
-                </button>
-                <button
-                  className="rb-icon"
-                  data-tip={t('ribbonClearBordersTip')}
-                  aria-label={t('ribbonClearBordersTip')}
-                  disabled={!onEditTableStyle}
-                  onClick={() => onEditTableStyle?.({ borderPreset: 'none' })}
-                >
-                  ⊟
-                </button>
-              </div>
-              <div className="rb-table-border-row">
-                <span className="rb-label">{t('ribbonBorderColorLabel')}</span>
-                <input
-                  type="color"
-                  defaultValue="#000000"
-                  className="rb-color-input"
-                  data-tip={t('ribbonBorderColorTip')}
-                  onPointerDown={(e) => armColorInput(e.currentTarget)}
-                  onChange={(e) => onEditTableStyle?.({ borderColor: e.target.value })}
-                />
-                <span className="rb-label">{t('ribbonBorderWeightLabel')}</span>
-                <BorderWeightDropdown
-                  tip={t('ribbonBorderWeightTip')}
-                  onPick={(pt) => onEditTableStyle?.({ borderWidthPt: pt })}
-                />
-              </div>
-            </Group>
+            {(() => {
+              const targetCells =
+                tableActiveCells && tableActiveCells.length > 0
+                  ? tableActiveCells
+                  : tableActiveCell
+                    ? [tableActiveCell]
+                    : null
+              const cellScope = targetCells ? { cells: targetCells } : {}
+              return (
+                <>
+                  <Group
+                    label={targetCells ? t('ribbonGroupShadingCell') : t('ribbonGroupShading')}
+                  >
+                    <div className="rb-table-shading">
+                      {TABLE_SHADING_COLORS.map((c) => (
+                        <button
+                          key={c}
+                          className="rb-color-swatch"
+                          style={{ background: c }}
+                          data-tip={c}
+                          aria-label={c}
+                          disabled={!onEditTableStyle}
+                          // preventDefault keeps a cell text-edit session alive so shading targets that cell
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() =>
+                            onEditTableStyle?.({
+                              shadingColor: c,
+                              ...cellScope,
+                            })
+                          }
+                        />
+                      ))}
+                      <button
+                        className="rb-color-swatch rb-color-none"
+                        data-tip={t('ribbonNoShading')}
+                        aria-label={t('ribbonNoShading')}
+                        disabled={!onEditTableStyle}
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() =>
+                          onEditTableStyle?.({
+                            shadingColor: 'none',
+                            ...cellScope,
+                          })
+                        }
+                      >
+                        <IconNoneX size={12} />
+                      </button>
+                    </div>
+                  </Group>
+                  <div className="ribbon-sep" />
+                  <Group label={t('ribbonGroupBorders')}>
+                    <div className="rb-table-border-row">
+                      <button
+                        className="rb-icon"
+                        data-tip={t('ribbonAllBordersTip')}
+                        aria-label={t('ribbonAllBordersTip')}
+                        disabled={!onEditTableStyle}
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() =>
+                          onEditTableStyle?.({
+                            borderPreset: 'all',
+                            borderColor: '#000000',
+                            borderWidthPt: 1,
+                            ...cellScope,
+                          })
+                        }
+                      >
+                        ⊞
+                      </button>
+                      <button
+                        className="rb-icon"
+                        data-tip={t('ribbonClearBordersTip')}
+                        aria-label={t('ribbonClearBordersTip')}
+                        disabled={!onEditTableStyle}
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => onEditTableStyle?.({ borderPreset: 'none', ...cellScope })}
+                      >
+                        ⊟
+                      </button>
+                    </div>
+                    <div className="rb-table-border-row">
+                      <span className="rb-label">{t('ribbonBorderColorLabel')}</span>
+                      <input
+                        type="color"
+                        defaultValue="#000000"
+                        className="rb-color-input"
+                        data-tip={t('ribbonBorderColorTip')}
+                        onPointerDown={(e) => armColorInput(e.currentTarget)}
+                        onChange={(e) =>
+                          onEditTableStyle?.({ borderColor: e.target.value, ...cellScope })
+                        }
+                      />
+                      <span className="rb-label">{t('ribbonBorderWeightLabel')}</span>
+                      <BorderWeightDropdown
+                        tip={t('ribbonBorderWeightTip')}
+                        onPick={(pt) => onEditTableStyle?.({ borderWidthPt: pt, ...cellScope })}
+                      />
+                    </div>
+                  </Group>
+                </>
+              )
+            })()}
           </>
         ) : tab === 'chartDesign' ? (
           <>
@@ -3291,6 +3485,51 @@ export function Ribbon({
                   </div>
                 )}
               </div>
+              {onMergeShapes && (
+                <div className="rb-drop-wrap">
+                  <button
+                    className={`rb-big ${mergeOpen ? 'active' : ''}`}
+                    disabled={!canMergeShapes}
+                    data-tip={
+                      canMergeShapes ? t('ribbonMergeShapesTip') : t('ribbonMergeShapesHint')
+                    }
+                    onMouseDown={(e) => {
+                      e.stopPropagation()
+                      closeSiblingPanels(e, closePanels, 'merge')
+                    }}
+                    onClick={() => setMergeOpen((v) => !v)}
+                  >
+                    <span className="rb-big-icon">
+                      <IconMergeShapes size={BIG} />
+                      <RbCaret />
+                    </span>
+                    <span>{t('ribbonMergeShapes')}</span>
+                  </button>
+                  {mergeOpen && (
+                    <div className="rb-drop rb-menu" onMouseDown={(e) => e.stopPropagation()}>
+                      {(
+                        [
+                          ['union', t('ribbonMergeUnion')],
+                          ['combine', t('ribbonMergeCombine')],
+                          ['fragment', t('ribbonMergeFragment')],
+                          ['intersect', t('ribbonMergeIntersect')],
+                          ['subtract', t('ribbonMergeSubtract')],
+                        ] as const
+                      ).map(([mode, label]) => (
+                        <button
+                          key={mode}
+                          onClick={() => {
+                            setMergeOpen(false)
+                            onMergeShapes(mode)
+                          }}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </Group>
             <div className="ribbon-sep" />
             <Group label={t('ribbonGroupShapeStyle')}>

@@ -45,6 +45,14 @@ export const initialSnapshot: WorkbookSnapshot = {
 }
 
 export const FORMULA_MODE_MAX_CELLS = 50_000
+/// Formula mode's open-time preload installs style-only blanks too (a border
+/// grid drawn past the data), so they get their own looser ceiling instead of
+/// counting against the value cap: a 400-row, 51-column bordered book with
+/// formatting rules and drop-downs drawn to row 1000 (51k stored, 6.6k values)
+/// streamed and lagged 3x on arrow keys and typing. Measured at a 4x CPU
+/// throttle: 255k stored cells add ~1.8 s of main-thread work at open; 1M
+/// stored cells add ~4.5 s and stall scrolling for seconds while it runs.
+export const FORMULA_MODE_MAX_STORED_CELLS = 200_000
 export const SET_RANGE_VALUES_MUTATION = 'sheet.mutation.set-range-values'
 // Command (not mutation) id — the gate where user-typed / facade-set values
 // can still be cancelled before they reach the model and the formula engine.

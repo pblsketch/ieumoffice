@@ -48,7 +48,7 @@ function textPreview(node: ShapeRenderNode): string {
 function collectEntries(nodes: RenderNode[]): AuditEntry[] {
   const out: AuditEntry[] = []
   for (const n of nodes) {
-    if (n.decoration) continue
+    if (n.decoration || !n.box) continue
     const { x, y, w, h } = n.box
     let hasText = false
     let preview = ''
@@ -159,6 +159,9 @@ export type AuditCode =
   | 'text_overflow_width'
   | 'overlap'
   | 'picture_distorted'
+  | 'footer_rail_overflow'
+  | 'cjk_fake_italic'
+  | 'hero_off_center'
 
 export interface PictureSize {
   w: number
@@ -168,6 +171,12 @@ export interface PictureSize {
 export interface AuditOptions {
   /** Natural pixel size of a top-level picture's bitmap by node source id; undefined skips the distortion check. */
   pictureSize?: (sourceId: string) => PictureSize | undefined
+  /** Optional extended visual quality checks (footer rail, CJK fake italic, hero vertical center). */
+  extendedQuality?: boolean | undefined
+  /** Tunable footer rail threshold as fraction of slide height (default 0.893). */
+  footerRailRatio?: number | undefined
+  /** Set true on cover/hero slides to evaluate vertical centering balance. */
+  isCoverOrHero?: boolean | undefined
 }
 
 export interface AuditBox {
@@ -433,6 +442,77 @@ export function auditSlideFindings(
       if (findings.length >= budgetFor(0)) break
     }
     if (findings.length >= budgetFor(0)) break
+  }
+
+  // 4. Optional extended visual quality checks (footer rail, CJK synthetic italic, hero vertical centering)
+  if (opts.extendedQuality) {
+    const railY = H * (opts.footerRailRatio ?? 0.893)
+    const cjkRe = /[\uAC00-\uD7AF\u3040-\u30FF\u4E00-\u9FFF]/gu
+    let heroTop = Infinity
+    let heroBottom = -Infinity
+
+    for (const n of slide.nodes) {
+      if (n.decoration) continue
+      const { x, y, w, h } = n.box
+      const isBg = w * h >= W * H * BACKGROUND_AREA_RATIO
+      const isSmallFooter = y >= railY && h <= H * 0.12
+
+      if (!isBg && !isSmallFooter && y + h > railY) {
+        findings.push({
+          code: 'footer_rail_overflow',
+          level: 'error',
+          el: idOf(n.sourceId),
+          message: `Footer rail overflow: ${idOf(n.sourceId)} reaches y=${Math.round(y + h)}px past bottom rail (${Math.round(railY)}px)`,
+          box: { x, y, w, h },
+        })
+      }
+
+      if (n.type === 'shape' || n.type === 'text') {
+        const sn = n as ShapeRenderNode
+        let hasCjkItalic = false
+        for (const ln of sn.text?.lines ?? []) {
+          for (const run of ln.runs) {
+            if (!run.italic) continue
+            const stripped = run.text.replace(/\s+/g, '')
+            if (!stripped) continue
+            const cjkCount = (stripped.match(cjkRe) ?? []).length
+            if (cjkCount / stripped.length >= 0.4) {
+              hasCjkItalic = true
+              break
+            }
+          }
+          if (hasCjkItalic) break
+        }
+        if (hasCjkItalic) {
+          findings.push({
+            code: 'cjk_fake_italic',
+            level: 'error',
+            el: idOf(n.sourceId),
+            message: `CJK fake italic: ${idOf(n.sourceId)} applies italic styling to CJK text; use bold or accent color instead`,
+            box: { x, y, w, h },
+          })
+        }
+      }
+
+      if (!isBg && !isSmallFooter) {
+        heroTop = Math.min(heroTop, y)
+        heroBottom = Math.max(heroBottom, y + h)
+      }
+    }
+
+    if (opts.isCoverOrHero && Number.isFinite(heroTop) && Number.isFinite(heroBottom)) {
+      const centerY = (heroTop + heroBottom) / 2
+      if (centerY < H * 0.34) {
+        findings.push({
+          code: 'hero_off_center',
+          level: 'warning',
+          el: entries[0] ? idOf(entries[0].id) : 'slide',
+          message:
+            'Hero off-center: cover slide content sits too high; vertically balance the title block',
+          box: { x: 0, y: heroTop, w: W, h: heroBottom - heroTop },
+        })
+      }
+    }
   }
 
   return findings.slice(0, MAX_ISSUES)

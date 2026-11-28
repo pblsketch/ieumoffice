@@ -93,7 +93,11 @@ describe('op catalogs', () => {
     const json = await run(['guide', 'docs', '--json'])
     expect(json.code).toBe(0)
     const detail = json.json().detail
-    expect(detail.groups.map((g: { name: string }) => g.name)).toEqual(['block', 'content'])
+    expect(detail.groups.map((g: { name: string }) => g.name)).toEqual([
+      'block',
+      'content',
+      'content-controls',
+    ])
     const byName = new Map(detail.ops.map((e: { op: string }) => [e.op, e]))
     expect(byName.get('findReplace')).toMatchObject({ group: 'block', target: 'optional' })
     expect((byName.get('findReplace') as { keys: string[] }).keys).toContain('replace')
@@ -102,6 +106,8 @@ describe('op catalogs', () => {
       group: 'content',
       signature: '{kind: header|footer, text, view?: default|first|even}',
     })
+    expect(byName.get('wrap_content_control')).toMatchObject({ group: 'content-controls' })
+    expect(byName.get('unwrap_content_control')).toMatchObject({ group: 'content-controls' })
     expect(
       (byName.get('insert_content') as { schema: any }).schema.properties.afterBlockIndex
         .description,
@@ -119,7 +125,15 @@ describe('op catalogs', () => {
     const fp = await run(['guide', '--fingerprint', '--json'])
     expect(fp.code).toBe(0)
     const { fingerprints } = fp.json().detail
-    expect(Object.keys(fingerprints)).toEqual(['slides', 'docs', 'sheets'])
+    expect(Object.keys(fingerprints)).toEqual([
+      'slides',
+      'docs',
+      'sheets',
+      'hwp',
+      'diagram',
+      'map',
+      'whiteboard',
+    ])
     for (const v of Object.values(fingerprints)) expect(v).toMatch(/^[0-9a-f]{12}$/)
     const typo = await run(['guide', 'sheet', '--fingerprint', '--json'])
     expect(typo.code).toBe(1)

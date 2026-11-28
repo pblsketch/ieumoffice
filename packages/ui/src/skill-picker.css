@@ -54,6 +54,17 @@
   white-space: nowrap;
 }
 
+/* the name beside a title the person gave: small and secondary */
+.ai-skill-picker .ai-skill-picker-name {
+  flex-shrink: 1;
+  min-width: 0;
+  font-size: 0.9em;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .ai-skill-picker .ai-skill-picker-source {
   flex-shrink: 0;
   color: var(--text-tertiary);
@@ -80,6 +91,12 @@
 .ai-skill-picker .ai-skill-picker-manage {
   border-top: 1px solid var(--border-subtle);
   color: var(--text-secondary);
+}
+
+.ai-skill-picker .ai-skill-picker-empty {
+  padding: 8px 10px;
+  color: var(--text-tertiary);
+  font-size: var(--text-caption);
 }
 
 /* chips in the composer, where attachments sit */
@@ -135,7 +152,7 @@
 
 .ai-skill-chip-list .ai-skill-chip.is-missing .ai-skill-chip-title {
   text-decoration: line-through;
-  color: var(--text-secondary);
+  color: var(--text-primary);
 }
 
 .ai-skill-chip-list .ai-skill-chip-missing {
@@ -169,4 +186,45 @@
 
 .ai-skill-chips .ai-skill-chip-note.is-error {
   color: var(--danger);
+}
+
+.ai-skill-picker .ai-skill-picker-craft {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.ai-skill-picker .ai-skill-picker-example {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  padding: 4px 6px;
+  border-radius: var(--radius-6);
+  background: var(--surface-subtle);
+  color: var(--text-secondary);
+}
+
+.ai-skill-picker .ai-skill-picker-example-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ai-skill-picker .ai-skill-picker-example-btn {
+  flex-shrink: 0;
+  padding: 2px 6px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-6);
+  background: var(--surface);
+  color: var(--text-primary);
+  font: inherit;
+  cursor: pointer;
+}
+
+.ai-skill-picker .ai-skill-picker-example-btn:hover {
+  background: var(--bg-hover);
 }

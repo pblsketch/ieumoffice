@@ -16,6 +16,7 @@ export const pl = {
   cvTargetNone: 'Jeszcze nie wybrano',
   cvTargetChoose: 'Wybierz…',
   cvCover: 'Użyj pierwszej strony jako okładki',
+  cvPageBreaks: 'Rozpoczynaj każdą oryginalną stronę na nowym ekranie',
   cvBookTitle: 'Tytuł',
   cvBookAuthor: 'Autor',
   cvBookLanguage: 'Język',
@@ -65,6 +66,9 @@ export const pl = {
   cvErrFailed: 'Konwersja nie powiodła się.',
   cvPageImageAlt: 'Strona {page}',
   imgExportWholePages: 'Całe strony',
+  imgExportCurrentPage: 'Tylko bieżąca strona',
+  imgExportCurrentPageTip: 'Eksportuj oglądaną stronę jako jeden plik PNG',
+  imgExportCurrentPageJpgTip: 'Eksportuj oglądaną stronę jako jeden plik JPG',
   imgExportEmbedded: 'Tylko obrazy na stronach',
   imgExportEmbeddedTip:
     'Zapisz obrazy umieszczone na stronach jako pliki PNG w oryginalnej rozdzielczości',

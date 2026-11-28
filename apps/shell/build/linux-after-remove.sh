@@ -7,6 +7,16 @@ case "$1" in
   0|remove|purge) ;;
   *) exit 0 ;;
 esac
+# fpm already removed our MIME file; rebuild the database so the icons we
+# overrode come back without a relogin.
+command -v update-mime-database >/dev/null 2>&1 && update-mime-database /usr/share/mime >/dev/null 2>&1 || true
+profile="/etc/apparmor.d/ieumoffice"
+if [ -f "$profile" ]; then
+  if apparmor_status --enabled >/dev/null 2>&1 && ! { [ -x /usr/bin/ischroot ] && /usr/bin/ischroot; } && command -v apparmor_parser >/dev/null 2>&1; then
+    apparmor_parser --remove "$profile" >/dev/null 2>&1 || true
+  fi
+  rm -f "$profile"
+fi
 link="/usr/bin/ieumoffice"
 # same ownership rule as the post-install: only a link into our install dir is ours
 if [ -L "$link" ]; then
@@ -14,4 +24,10 @@ if [ -L "$link" ]; then
     /opt/PosidOffice/*) rm -f "$link" ;;
   esac
 fi
+# Drop the KDE "Create New" templates the post-install step installed. Only
+# our exact file names are removed, so the directory and every other app's
+# templates stay (genoffice#2384).
+for name in "PosidOffice Document.docx" "PosidOffice Spreadsheet.xlsx" "PosidOffice Presentation.pptx"; do
+  rm -f "/usr/share/templates/$name"
+done
 exit 0

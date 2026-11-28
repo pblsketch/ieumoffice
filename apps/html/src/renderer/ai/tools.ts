@@ -1,8 +1,11 @@
 import type { AgentSkill, AgentToolCall, AgentToolDef, ToolExecution } from '@genoffice/agent-core'
 import { t } from '../i18n/locale'
 import type { ElementEntry, ParseMap } from '../document/parse-map'
-import type { HtmlOp, OpError } from '../document/ops'
+import { compileOps, type HtmlOp, type OpError } from '../document/ops'
+import { applyPatches } from '../document/patch'
 import { lineOf } from '../document/match'
+import { insertOp } from '../document/insert-presets'
+import type { ImageSearchResult } from '../../shared/ipc'
 import { buildProjection, type RedactionProjection } from './redact'
 import { redactGuardForOps } from './redact-guard'
 import {
@@ -42,8 +45,6 @@ export interface HtmlDocAccess {
     label: string,
   ): { ok: true; ranges: Array<[number, number]> } | { ok: false; errors: OpError[] }
   replaceAll(html: string, label: string): void
-  /** questionnaire card; resolves with the user's answers or cancelled when skipped */
-  askClarification?(questions: ClarifyQuestion[]): Promise<{ answers: string; cancelled?: boolean }>
   /** brief drafting as its own streamed request (see brief-writer.ts); resolves with the raw JSON object */
   planBrief?(spec: BriefPlanSpec, signal?: AbortSignal): Promise<BriefPlanResult>
   /** brief card; resolves with the confirmed (possibly edited) brief, a request for another one, or cancelled */
@@ -58,20 +59,13 @@ export interface HtmlDocAccess {
   ): Promise<{ ok: true; src: string } | { ok: false; error: string }>
   /** names of the attachments the model can reference; lets refs to names with spaces or parentheses match whole */
   listAttachmentNames?(): string[]
+  /** exact names of the image files in this chat, for the prompt */
+  listImageAttachmentNames?(): string[]
   /** lay the current text out on the paper it prints on and measure the pages; null when the preview cannot answer */
   measurePages?(): Promise<{ setup: PageSetup; measure: PageMeasure } | null>
 }
 
 export type PlanMode = 'new' | 'redesign' | 'restyle' | 'extract'
-
-export interface ClarifyQuestion {
-  id: string
-  label: string
-  description?: string
-  /** ≤5 options; the card appends "decide for me" and a free-text "other" itself */
-  options: string[]
-  multi?: boolean
-}
 
 export type BriefDecision =
   { kind: 'confirmed'; brief: Brief } | { kind: 'redo'; note: string } | { kind: 'cancelled' }
@@ -338,33 +332,6 @@ export const AGENT_TOOLS: AgentToolDef[] = [
     },
   },
   {
-    name: 'ask_clarification',
-    description:
-      '[Before creating a new page] Show a questionnaire card so the user makes the key choices (audience, scenario, tone, focus, length). Ask 2–4 questions that are real trade-offs for THIS topic, ≤5 options each; the card adds "decide for me" and a free-text option itself. Skip it when the request already answers these. Wait for the answers, then call plan_page. Do not repeat the questions in your reply.',
-    inputSchema: {
-      type: 'object',
-      required: ['questions'],
-      properties: {
-        questions: {
-          type: 'array',
-          minItems: 1,
-          maxItems: 4,
-          items: {
-            type: 'object',
-            required: ['id', 'label', 'options'],
-            properties: {
-              id: { type: 'string' },
-              label: { type: 'string' },
-              description: { type: 'string' },
-              options: { type: 'array', items: { type: 'string' }, maxItems: 5 },
-              multi: { type: 'boolean' },
-            },
-          },
-        },
-      },
-    },
-  },
-  {
     name: 'plan_page',
     description:
       '[Always before generating a new page or a full redesign, and when the user asks to restyle or "extract the brief" of an existing page] The system drafts the brief from this conversation (it reads the questionnaire answers, web_search findings, attachments and the page) and shows it to the user as style tiles with editable fields; pass only the mode and short notes. With mode "new" or "redesign" the confirmed brief is written into a page by the system right away (you do not write HTML yourself). Do not describe the brief in your reply.',
@@ -412,12 +379,51 @@ export const AGENT_TOOLS: AgentToolDef[] = [
       },
     },
   },
+  {
+    name: 'image_search',
+    description:
+      'Search the web for images. Returns a list of image URLs with titles and sizes; after picking one, place it with apply_ops (an <img> whose src is the imageUrl). For illustration/diagram-style art that search cannot find, or when the user asks you to generate/draw a picture, use generate_image instead.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'image search keywords (English works better)' },
+        maxResults: { type: 'integer', description: 'maximum number of results, default 8' },
+      },
+      required: ['query'],
+    },
+  },
+  {
+    name: 'generate_image',
+    description:
+      'Generate an illustration with AI from a text prompt and insert it into the page (after the selected element, else at the end of <body>). For illustration/diagram-style art that image_search cannot find, or when the user asks to generate/draw a picture.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        prompt: {
+          type: 'string',
+          description: 'detailed English description of the image to generate',
+        },
+        aspectRatio: {
+          type: 'string',
+          description: 'e.g. "1:1", "16:9", "4:3"; omit for the default',
+        },
+        model: {
+          type: 'string',
+          description:
+            'image model name, only when the user named a model; the app uses it if the current image route offers it, otherwise it answers with the models it can use',
+        },
+        alt: { type: 'string', description: 'alt text describing the image' },
+      },
+      required: ['prompt'],
+    },
+  },
 ]
 
 const STALE_MESSAGE =
   'The document changed since you last looked at it (the user edited it). Call get_outline or read_source again and re-plan before editing.'
 
 const ATTACHMENT_SCHEME = 'attachment://'
+const FILE_IMAGE_URL_RE = /file:\/\/[^\s"'<>()]+?\.(?:png|jpe?g|gif|webp)/gi
 /** fallback token shape when no known attachment name follows the scheme */
 const ATTACHMENT_REF_RE = /^[^\s"'<>()]+/
 /** a known name only matches when the reference ends right after it */
@@ -505,6 +511,150 @@ export function findTruncatedDataUrl(ops: HtmlOp[]): number {
   })
 }
 
+/** `<!doctype` and the start tags that exist once per document */
+const DOCUMENT_MARKERS: ReadonlyArray<readonly [string, RegExp]> = [
+  ['<!doctype>', /<!doctype/gi],
+  ['<html>', /<html(?=[\s/>])/gi],
+  ['<head>', /<head(?=[\s/>])/gi],
+  ['<body>', /<body(?=[\s/>])/gi],
+]
+
+function countMatches(text: string, re: RegExp): number {
+  return text.match(re)?.length ?? 0
+}
+
+function lineCount(text: string): number {
+  return countMatches(text, /\n/g) + 1
+}
+
+/**
+ * A partial edit that carries a whole document (`<!doctype html>…</html>` as
+ * the new content of a <style> or <title>) does not replace the page: the
+ * parser drops the second skeleton and the reader gets the page twice. The
+ * payload of an op may hold a doctype or an html/head/body start tag only as
+ * often as the text it replaces already did — `<body>` → `<body class>` in a
+ * str_replace, a replace_element of the body itself, a cleanup that removes a
+ * duplicate copy. Returns the first offending op and marker, or null.
+ */
+export function findWholeDocumentOp(
+  ops: HtmlOp[],
+  text: string,
+  map: ParseMap,
+): { index: number; marker: string } | null {
+  for (let index = 0; index < ops.length; index++) {
+    const op = ops[index]!
+    let payload: unknown
+    let replaced = ''
+    if (op.op === 'str_replace') {
+      payload = op.new
+      replaced = typeof op.old === 'string' ? op.old : ''
+    } else if (op.op === 'replace_element' || op.op === 'set_inner_html') {
+      payload = op.html
+      const e = typeof op.sid === 'number' ? map.bySid.get(op.sid) : undefined
+      if (e) {
+        const [from, to] = op.op === 'replace_element' ? e.range : e.inner
+        replaced = text.slice(from, to)
+      }
+    } else if (op.op === 'insert_html') {
+      payload = op.html
+    } else continue
+    if (typeof payload !== 'string') continue
+    for (const [marker, re] of DOCUMENT_MARKERS) {
+      if (countMatches(payload, re) > countMatches(replaced, re)) return { index, marker }
+    }
+  }
+  return null
+}
+
+/** the markers a batch result may not hold more of than the text before it */
+function addedDocumentMarkers(before: string, after: string): string | null {
+  for (const [marker, re] of DOCUMENT_MARKERS.slice(0, 2)) {
+    const was = countMatches(before, re)
+    const now = countMatches(after, re)
+    if (now > was) return `${marker} (${was} → ${now})`
+  }
+  return null
+}
+
+const WHOLE_DOCUMENT_ADVICE =
+  'apply_ops edits part of the page and must not carry a whole document. To rewrite the whole page, call plan_page with mode "redesign". To rewrite one section, use replace_element on that section\'s sid with only that section\'s HTML (get_outline lists the sids).'
+
+function hasCachedFileImageRef(op: HtmlOp): boolean {
+  const fields = op as unknown as Record<string, unknown>
+  const hasFile = (v: unknown) => {
+    if (typeof v !== 'string' || !v.includes('file://')) return false
+    FILE_IMAGE_URL_RE.lastIndex = 0
+    return FILE_IMAGE_URL_RE.test(v)
+  }
+  return (
+    hasFile(fields.html) ||
+    hasFile(fields.new) ||
+    hasFile(fields.value) ||
+    (op.op === 'set_style' && Object.values(op.styles).some(hasFile))
+  )
+}
+
+/**
+ * Expand `file://` URLs pointing into the app's validated local image store
+ * (from MCP / Obsidian / Notion / Canva / generated images) into saved `assets/`
+ * paths or inline `data:` URLs so the preview and saved HTML never contain raw
+ * `file://` srcs. Any `file://` URL outside the app's image store is refused by
+ * `htmlApi.fetchImage` -> `readGeneratedImage` and reported as an error.
+ */
+export async function expandCachedFileImageRefs(
+  ops: HtmlOp[],
+  persist: (
+    url: string,
+  ) => Promise<{ src: string; where: 'assets' | 'inline' | 'remote' }> = persistImageSrc,
+): Promise<{ ops: HtmlOp[]; errors: string[] }> {
+  const srcByUrl = new Map<string, string>()
+  const errors: string[] = []
+  const collect = (value: unknown): void => {
+    if (typeof value !== 'string' || !value.includes('file://')) return
+    FILE_IMAGE_URL_RE.lastIndex = 0
+    for (const m of value.matchAll(FILE_IMAGE_URL_RE)) {
+      if (m[0]) srcByUrl.set(m[0], '')
+    }
+  }
+  for (const op of ops) {
+    const fields = op as unknown as Record<string, unknown>
+    collect(fields.html)
+    collect(fields.new)
+    collect(fields.value)
+    if (op.op === 'set_style') for (const v of Object.values(op.styles)) collect(v)
+  }
+  if (srcByUrl.size === 0) return { ops, errors }
+  for (const url of srcByUrl.keys()) {
+    const landed = await persist(url)
+    if (landed.where === 'remote') {
+      errors.push(`${url}: could not load cached image`)
+    } else {
+      srcByUrl.set(url, landed.src)
+    }
+  }
+  if (errors.length > 0) return { ops, errors }
+  const expand = (value: unknown): unknown => {
+    if (typeof value !== 'string' || !value.includes('file://')) return value
+    return value.replace(FILE_IMAGE_URL_RE, (match) => srcByUrl.get(match) ?? match)
+  }
+  const expanded = ops.map((op) => {
+    const fields = op as unknown as Record<string, unknown>
+    const next: Record<string, unknown> = {
+      ...fields,
+      ...('html' in fields ? { html: expand(fields.html) } : {}),
+      ...('new' in fields ? { new: expand(fields.new) } : {}),
+      ...('value' in fields ? { value: expand(fields.value) } : {}),
+    }
+    if (op.op === 'set_style') {
+      next.styles = Object.fromEntries(
+        Object.entries(op.styles).map(([k, v]) => [k, expand(v) as string | null]),
+      )
+    }
+    return next as unknown as HtmlOp
+  })
+  return { ops: expanded, errors }
+}
+
 /**
  * Replace `attachment://` references in op payload strings with real srcs so
  * the model never streams file bytes through tool arguments (a gateway drops
@@ -566,6 +716,86 @@ export async function expandAttachmentRefs(
   return { ops: expanded, errors }
 }
 
+/** attribute-value escaping for tool-authored markup (same set insert-presets escapes) */
+function escAttr(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;')
+}
+
+/** magic-byte sniff: the fetch handler's content-type mapping defaults unknown
+ *  types to jpeg, which would store webp/svg bytes under a lying extension */
+function sniffImageExt(base64: string): 'png' | 'jpg' | 'gif' | null {
+  let head: string
+  try {
+    head = atob(base64.slice(0, 12))
+  } catch {
+    return null
+  }
+  if (head.startsWith('\x89PNG')) return 'png'
+  if (head.startsWith('GIF8')) return 'gif'
+  if (head.charCodeAt(0) === 0xff && head.charCodeAt(1) === 0xd8) return 'jpg'
+  return null
+}
+
+/**
+ * Where an AI-sourced image lands in the document — the same chain the
+ * attachment:// expansion uses: assets/ next to a saved document, an inline
+ * data URL when the document has no saved location yet, the hot-linked URL
+ * itself when the host refused the download (the preview loads remote images).
+ */
+async function persistImageSrc(
+  url: string,
+): Promise<{ src: string; where: 'assets' | 'inline' | 'remote' }> {
+  try {
+    const fetched = await window.htmlApi.fetchImage(url)
+    if (fetched) {
+      const ext = sniffImageExt(fetched.base64)
+      if (ext) {
+        const rel = await window.htmlApi.saveImage({ base64: fetched.base64, ext })
+        if (rel) return { src: rel, where: 'assets' }
+      }
+      return { src: `data:${fetched.mime};base64,${fetched.base64}`, where: 'inline' }
+    }
+  } catch {
+    // fall through to the hot-linked URL
+  }
+  return { src: url, where: 'remote' }
+}
+
+/**
+ * image_search (read-only): the same main-process image search as
+ * docs/sheets/slides (Serper etc. with DuckDuckGo fallback). A backend failure
+ * must not read as an empty gallery — the model would fabricate image choices.
+ */
+async function executeImageSearch(call: AgentToolCall): Promise<ToolExecution> {
+  const summary = t('aiToolImageSearch')
+  const query = String(call.input.query ?? '').trim()
+  if (!query) return { output: 'query must not be empty', isError: true, summary }
+  const r: ImageSearchResult = await window.htmlApi.imageSearch(
+    query,
+    Number(call.input.maxResults) || 8,
+  )
+  if (r.method === 'error') {
+    return {
+      output: `image search failed (service error, not an empty result — you may retry): ${r.error ?? 'unknown error'}`,
+      isError: true,
+      summary,
+    }
+  }
+  const lines = r.images.map(
+    (im, i) =>
+      `${i + 1}. ${im.title || '(untitled)'} [${im.width ?? '?'}x${im.height ?? '?'}]\n   ${im.imageUrl}`,
+  )
+  return {
+    output: lines.join('\n') || '(no images)',
+    mutated: false,
+    summary: t('aiToolImageSearchDone', { query, count: r.images.length }),
+  }
+}
+
+/** hidden from the tool list while no image provider is reachable (see createHtmlSkill) */
+export const IMAGE_GEN_OFF_NOTE =
+  '\n\nNote: generate_image is currently unavailable (no image provider: no Codex subscription connected and no image API key in Settings). Do not call or promise it; use image_search for imagery. If the user uses a ChatGPT plan: making images needs the Codex program signed in with the same ChatGPT account (Settings > AI > Codex); the direct ChatGPT connection in the app cannot make images because OpenAI does not allow it. Tell the user this when they ask for an image.'
+
 export function createHtmlSkillCore(access: HtmlDocAccess): {
   buildContext(): string
   executeTool(call: AgentToolCall, signal?: AbortSignal): ToolExecution | Promise<ToolExecution>
@@ -604,10 +834,24 @@ export function createHtmlSkillCore(access: HtmlDocAccess): {
         isError: true,
         summary: t('aiToolWritePageFailed'),
       }
-    access.replaceAll(result.html, 'generate')
+    let finalHtml = result.html
+    if (finalHtml.includes('file://')) {
+      FILE_IMAGE_URL_RE.lastIndex = 0
+      const urls = new Set<string>()
+      for (const m of finalHtml.matchAll(FILE_IMAGE_URL_RE)) {
+        if (m[0]) urls.add(m[0])
+      }
+      for (const url of urls) {
+        const landed = await persistImageSrc(url)
+        if (landed.where !== 'remote') {
+          finalHtml = finalHtml.split(url).join(landed.src)
+        }
+      }
+    }
+    access.replaceAll(finalHtml, 'generate')
     markSeen()
-    const lines = result.html.split('\n').length
-    const sections = [...result.html.matchAll(/data-section="([^"]+)"/g)].map((m) => m[1])
+    const lines = finalHtml.split('\n').length
+    const sections = [...finalHtml.matchAll(/data-section="([^"]+)"/g)].map((m) => m[1])
     const note = result.truncated
       ? ' The stream ended early, so the page is INCOMPLETE (the user chose to keep it): the tail is missing. Say so and offer to finish the missing sections with apply_ops.'
       : ''
@@ -638,6 +882,67 @@ export function createHtmlSkillCore(access: HtmlDocAccess): {
     access.replaceAll(injectBrief(access.getText(), brief), 'pin brief')
     markSeen()
     return true
+  }
+
+  /** generate_image: one AI illustration, landed like the attachment pipeline does (see persistImageSrc) */
+  const generateImage = async (call: AgentToolCall): Promise<ToolExecution> => {
+    const summary = t('aiToolGenImage')
+    const prompt = String(call.input.prompt ?? '').trim()
+    if (!prompt) return { output: 'prompt must not be empty', isError: true, summary }
+    const aspectRatio = String(call.input.aspectRatio ?? '').trim()
+    const model = String(call.input.model ?? '').trim()
+    const generated = await window.htmlApi.aiGenerateImage({
+      prompt,
+      ...(aspectRatio ? { aspectRatio } : {}),
+      ...(model ? { model } : {}),
+    })
+    // never write after the user hit stop (generation may resolve long after the abort)
+    if (currentSignal?.aborted)
+      return { output: 'stopped by the user; the image was not inserted', isError: true, summary }
+    if (!generated.url)
+      return { output: generated.error ?? 'image generation failed', isError: true, summary }
+    const { src, where } = await persistImageSrc(generated.url)
+    if (currentSignal?.aborted)
+      return { output: 'stopped by the user; the image was not inserted', isError: true, summary }
+    // the generation + download can take long: user edits made meanwhile must
+    // keep the freshness baseline stale, so only our own insertion marks it seen
+    if (stale()) return { output: STALE_MESSAGE, isError: true, summary }
+    const alt = String(call.input.alt ?? '').trim()
+    const img = `<img src="${escAttr(src)}"${alt ? ` alt="${escAttr(alt)}"` : ''} style="max-width: 100%;">`
+    const selectedSid = access.getSelectedSid()
+    const op = insertOp(
+      access.getMap(),
+      selectedSid !== null ? access.getMap().bySid.get(selectedSid) : undefined,
+      img,
+    )
+    if (!op)
+      return {
+        output: 'the document has no element to anchor an image to',
+        isError: true,
+        summary,
+      }
+    const result = access.applyOps([op], 'generate_image')
+    if (!result.ok)
+      return {
+        output: result.errors.map((e) => `${e.kind.toUpperCase()}: ${e.message}`).join('\n'),
+        isError: true,
+        summary,
+      }
+    markSeen()
+    const at = lineOf(access.getText(), result.ranges[0]![0])
+    const landed =
+      where === 'assets'
+        ? `saved as ${src}`
+        : where === 'inline'
+          ? 'inlined as a data URL because the document has no saved location yet'
+          : `hot-linked (${src}); the host may expire it`
+    return {
+      output:
+        `Inserted the image at L${at} (${landed}). Document is now version ${access.getVersion()}.` +
+        (generated.note ? `\nNote: ${generated.note}` : ''),
+      mutated: true,
+      summary: t('aiToolGenImageDone'),
+    }
   }
 
   return {
@@ -791,11 +1096,33 @@ export function createHtmlSkillCore(access: HtmlDocAccess): {
               summary: t('aiToolApplyOpsFailed'),
             }
           }
+          const wholeDocument = findWholeDocumentOp(ops as HtmlOp[], text, map)
+          if (wholeDocument) {
+            return {
+              output: `0 of ${ops.length} ops applied — op ${wholeDocument.index + 1} puts a whole document into a partial edit (its new HTML holds more ${wholeDocument.marker} than the text it replaces), which would append a second copy of the page. ${WHOLE_DOCUMENT_ADVICE}`,
+              isError: true,
+              summary: t('aiToolApplyOpsFailed'),
+            }
+          }
           const label =
             typeof call.input.summary === 'string' && call.input.summary
               ? call.input.summary
               : `apply_ops (${ops.length})`
           const finish = (finalOps: HtmlOp[]): ToolExecution => {
+            const before = access.getText()
+            // compileOps and applyPatches only read their inputs, so the batch can be
+            // tried on a copy first; a result with a second doctype or <html> is a
+            // duplicated page no matter which op put it there
+            const trial = compileOps(before, access.getMap(), finalOps)
+            if (trial.errors.length === 0) {
+              const added = addedDocumentMarkers(before, applyPatches(before, trial.patches))
+              if (added)
+                return {
+                  output: `0 of ${ops.length} ops applied — the batch would raise the number of ${added} in the document, a copy of the page. ${WHOLE_DOCUMENT_ADVICE}`,
+                  isError: true,
+                  summary: t('aiToolApplyOpsFailed'),
+                }
+            }
             const result = access.applyOps(finalOps, label)
             if (!result.ok) {
               const lines = result.errors.map(
@@ -821,69 +1148,47 @@ export function createHtmlSkillCore(access: HtmlDocAccess): {
                 ? `\nWARNING: the edit introduced ${health} new HTML parse recoveries (unbalanced tags?). Check the preview.`
                 : ''
             return {
-              output: `Applied ${ops.length} op(s) at ${where.join(', ')}. Document is now version ${access.getVersion()}.${warn}`,
+              output: `Applied ${ops.length} op(s) at ${where.join(', ')}. Document is now version ${access.getVersion()}; it went from ${lineCount(before)} to ${lineCount(after)} lines.${warn}`,
               mutated: true,
               summary: t('aiToolApplyOps', { n: ops.length }),
             }
           }
-          if (access.resolveAttachmentSrc && ops.some((op) => hasAttachmentRef(op))) {
-            return expandAttachmentRefs(
-              ops as HtmlOp[],
-              access.resolveAttachmentSrc,
-              access.listAttachmentNames?.() ?? [],
-            ).then((expanded) => {
-              if (expanded.errors.length > 0)
-                return {
-                  output: `0 of ${ops.length} ops applied — unresolved attachment reference(s):\n${expanded.errors.join('\n')}`,
-                  isError: true,
-                  summary: t('aiToolApplyOpsFailed'),
-                }
+          const needsAttach =
+            Boolean(access.resolveAttachmentSrc) && ops.some((op) => hasAttachmentRef(op))
+          const needsFileImg = ops.some((op) => hasCachedFileImageRef(op))
+          if (needsAttach || needsFileImg) {
+            return (async (): Promise<ToolExecution> => {
+              let working = ops as HtmlOp[]
+              if (needsAttach && access.resolveAttachmentSrc) {
+                const expanded = await expandAttachmentRefs(
+                  working,
+                  access.resolveAttachmentSrc,
+                  access.listAttachmentNames?.() ?? [],
+                )
+                if (expanded.errors.length > 0)
+                  return {
+                    output: `0 of ${ops.length} ops applied — unresolved attachment reference(s):\n${expanded.errors.join('\n')}`,
+                    isError: true,
+                    summary: t('aiToolApplyOpsFailed'),
+                  }
+                working = expanded.ops
+              }
+              if (working.some((op) => hasCachedFileImageRef(op))) {
+                const expanded = await expandCachedFileImageRefs(working)
+                if (expanded.errors.length > 0)
+                  return {
+                    output: `0 of ${ops.length} ops applied — unresolved cached image reference(s):\n${expanded.errors.join('\n')}`,
+                    isError: true,
+                    summary: t('aiToolApplyOpsFailed'),
+                  }
+                working = expanded.ops
+              }
               // the user may have typed while the image was read and saved over IPC
               if (stale()) return staleResult()
-              return finish(expanded.ops)
-            })
+              return finish(working)
+            })()
           }
           return finish(ops as HtmlOp[])
-        }
-        case 'ask_clarification': {
-          if (!access.askClarification)
-            return {
-              output:
-                'questionnaire cards are not available here; decide sensible defaults and continue',
-              isError: true,
-              summary: t('aiToolClarify'),
-            }
-          const raw = Array.isArray(call.input.questions) ? call.input.questions : []
-          const questions: ClarifyQuestion[] = raw
-            .map((q: Record<string, unknown>, i: number) => ({
-              id: String(q.id ?? `q${i + 1}`),
-              label: String(q.label ?? '').trim(),
-              description: q.description ? String(q.description) : undefined,
-              options: Array.isArray(q.options)
-                ? q.options.map((o: unknown) => String(o)).slice(0, 5)
-                : [],
-              multi: !!q.multi,
-            }))
-            .filter((q) => q.label && q.options.length > 0)
-            .slice(0, 4)
-          if (questions.length === 0)
-            return {
-              output: 'questions must be non-empty and every question needs options',
-              isError: true,
-              summary: t('aiToolClarify'),
-            }
-          return access.askClarification(questions).then((r) =>
-            r.cancelled
-              ? {
-                  output:
-                    'The user skipped the questionnaire. Decide the core hook and style yourself, then call plan_page.',
-                  summary: t('aiToolClarifySkipped'),
-                }
-              : {
-                  output: `User answers:\n${r.answers}\nNow call plan_page with a brief that follows these choices.`,
-                  summary: t('aiToolClarify'),
-                },
-          )
         }
         case 'plan_page': {
           const { planBrief, confirmBrief } = access
@@ -1001,6 +1306,10 @@ export function createHtmlSkillCore(access: HtmlDocAccess): {
             '',
           )
         }
+        case 'image_search':
+          return executeImageSearch(call)
+        case 'generate_image':
+          return generateImage(call)
         default:
           return { output: `Unknown tool: ${call.name}`, isError: true, summary: call.name }
       }
@@ -1012,14 +1321,22 @@ export function createHtmlSkillCore(access: HtmlDocAccess): {
 export function createHtmlSkill(
   access: HtmlDocAccess,
   systemPrompt: string | { readonly systemPrompt: string },
+  /** live predicate (the main process says image generation can run); false hides generate_image */
+  imageGenAvailable?: () => boolean,
 ): AgentSkill {
   const core = createHtmlSkillCore(access)
   return {
     id: 'html',
     get systemPrompt() {
-      return typeof systemPrompt === 'string' ? systemPrompt : systemPrompt.systemPrompt
+      const base = typeof systemPrompt === 'string' ? systemPrompt : systemPrompt.systemPrompt
+      return imageGenAvailable?.() === false ? `${base}${IMAGE_GEN_OFF_NOTE}` : base
     },
-    tools: AGENT_TOOLS,
+    // live like the prompt: the loop re-reads the tool list before every request
+    get tools() {
+      return imageGenAvailable?.() === false
+        ? AGENT_TOOLS.filter((tl) => tl.name !== 'generate_image')
+        : AGENT_TOOLS
+    },
     buildContext: () => core.buildContext(),
     executeTool: (call, signal) => core.executeTool(call, signal),
   }

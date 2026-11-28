@@ -6,6 +6,7 @@
  */
 import { deleteSelectedVertex } from './edit-points-actions'
 import type { FontSizeStep } from '@genoffice/pptx-ops/font-size'
+import { shortcutLetterOf } from '@genoffice/ui'
 import type { ActionCtx, EditingState } from './action-context'
 import type { EditTransformMultiOp } from '../shared/ipc'
 import { FIT_WIDTH, NUDGE_STEP_PX } from './app-constants'
@@ -19,6 +20,14 @@ import { flushActiveEdit } from './file-actions'
 import { shouldRouteHistoryToDeck } from './undo-routing'
 import { rangeSelection } from '../shared/slide-selection'
 import { nextPreset, prevPreset } from './zoom-steps'
+import { repeatLast } from './repeat-action'
+import * as tableActions from './table-actions'
+import {
+  adjacentTableCell,
+  makeTableCellSelection,
+  selectAllTableCells,
+  type CellNavDir,
+} from './table-selection'
 
 /** Whether focus is in a text input (input/textarea/contentEditable) — these cases use native undo/delete */
 function inTextField(): boolean {
@@ -90,6 +99,7 @@ export function handleGlobalKeydown(
 ): void {
   if (ctx.slideShow || ctx.presenter) return // In show/presenter view: navigation keys are handled by those views
   const mod = e.metaKey || e.ctrlKey
+  const letter = shortcutLetterOf(e)
   const inField = inTextField()
   const { editing, selectedIds, slide } = ctx
   // F5 show from start / ⇧F5 from current slide
@@ -121,8 +131,7 @@ export function handleGlobalKeydown(
   if (
     mod &&
     !e.altKey &&
-    ((!mac && !e.shiftKey && (e.key === 'm' || e.key === 'M')) ||
-      (mac && e.metaKey && e.shiftKey && (e.key === 'n' || e.key === 'N')))
+    ((!mac && !e.shiftKey && letter === 'm') || (mac && e.metaKey && e.shiftKey && letter === 'n'))
   ) {
     if (e.defaultPrevented || ctx.viewMode === 'reading' || ctx.masterItems || ctx.cropTarget)
       return
@@ -133,35 +142,50 @@ export function handleGlobalKeydown(
     return
   }
   // Undo/redo (menu accelerators normally intercept; fallback for shell/menuless scenarios)
-  if (mod && !e.altKey && (e.key === 'z' || e.key === 'Z')) {
+  if (mod && !e.altKey && letter === 'z') {
     if (editing || (inField && !shouldRouteHistoryToDeck(e.target as HTMLElement))) return
     e.preventDefault()
     void (e.shiftKey ? ctx.redo() : ctx.undo())
     return
   }
-  if (mod && !e.altKey && (e.key === 'y' || e.key === 'Y')) {
+  if (mod && !e.altKey && letter === 'y') {
     if (editing || (inField && !shouldRouteHistoryToDeck(e.target as HTMLElement))) return
     e.preventDefault()
     void ctx.redo()
     return
   }
+  // F4 repeats the last repeatable action (PowerPoint); inside the text editor it hits
+  // the current selection, in other fields the key is left alone
+  if (e.key === 'F4' && !mod && !e.altKey && !e.shiftKey) {
+    if (e.defaultPrevented || (inField && !inEditorOverlay())) return
+    if (ctx.viewMode === 'reading' || ctx.masterItems || ctx.cropTarget) return
+    if (repeatLast(ctx)) e.preventDefault()
+    return
+  }
+  // Alt+F10 shows/hides the selection pane (PowerPoint)
+  if (e.key === 'F10' && e.altKey && !mod && !e.shiftKey) {
+    if (ctx.viewMode === 'reading' || ctx.masterItems) return
+    e.preventDefault()
+    ctx.toggleSelectionPane()
+    return
+  }
   // ⌘F find/replace
-  if (mod && !e.altKey && (e.key === 'f' || e.key === 'F')) {
-    if (editing) return
+  if (mod && !e.altKey && letter === 'f') {
+    if (editing || ctx.editingCell) return
     e.preventDefault()
     ctx.setFindOpen(true)
     return
   }
   // ⌘K: annotate the selection with an AI edit
-  if (mod && !e.altKey && !e.shiftKey && (e.key === 'k' || e.key === 'K')) {
-    if (editing || inField || selectedIds.length === 0) return
+  if (mod && !e.altKey && !e.shiftKey && letter === 'k') {
+    if (editing || ctx.editingCell || inField || selectedIds.length === 0) return
     e.preventDefault()
     ctx.openAskPopover()
     return
   }
   // ⌘P print
-  if (mod && !e.altKey && !e.shiftKey && (e.key === 'p' || e.key === 'P')) {
-    if (editing || inField) return
+  if (mod && !e.altKey && !e.shiftKey && letter === 'p') {
+    if (editing || ctx.editingCell || inField) return
     e.preventDefault()
     ctx.setPrintDlgOpen(true)
     return
@@ -180,8 +204,7 @@ export function handleGlobalKeydown(
   ) {
     const inEditor = !!(editing || ctx.editingCell) && inEditorOverlay()
     if (inEditor || (!inField && selectedIds.length > 0)) {
-      const lower = e.key.toLowerCase()
-      const align = e.shiftKey ? undefined : ALIGN_KEYS[lower]
+      const align = !e.shiftKey && letter ? ALIGN_KEYS[letter] : undefined
       if (align) {
         e.preventDefault()
         styleActions.onAlign(ctx, align)
@@ -193,7 +216,7 @@ export function handleGlobalKeydown(
         styleActions.onFontSizeStep(ctx, step)
         return
       }
-      const toggle = e.shiftKey ? undefined : TOGGLE_KEYS[lower]
+      const toggle = !e.shiftKey && letter ? TOGGLE_KEYS[letter] : undefined
       if (toggle && !inEditor) {
         e.preventDefault()
         styleActions.onTextToggle(ctx, toggle)
@@ -220,7 +243,7 @@ export function handleGlobalKeydown(
   if (editing || inField) return
   // ⌘C/⌘X with text dragged in plain DOM (e.g. AI panel, focus on body): let the
   // native copy run instead of hijacking it for the slide/element clipboard
-  if (mod && !e.altKey && !e.shiftKey && ['c', 'C', 'x', 'X'].includes(e.key)) {
+  if (mod && !e.altKey && !e.shiftKey && (letter === 'c' || letter === 'x')) {
     const sel = window.getSelection()
     if (sel && !sel.isCollapsed) return
   }
@@ -239,6 +262,13 @@ export function handleGlobalKeydown(
     ctx.setStatus('')
     return
   }
+  // Esc: disarm the animation painter
+  if (e.key === 'Escape' && ctx.animPainter) {
+    e.preventDefault()
+    ctx.setAnimPainter(null)
+    ctx.setStatus('')
+    return
+  }
   if (e.key === 'Escape' && ctx.editPointsTarget) {
     e.preventDefault()
     ctx.setEditPointsTarget(null)
@@ -251,7 +281,7 @@ export function handleGlobalKeydown(
     return
   }
   // Element clipboard (text editing uses the native clipboard, not intercepted)
-  if (mod && !e.altKey && (e.key === 'v' || e.key === 'V')) {
+  if (mod && !e.altKey && letter === 'v') {
     if (e.shiftKey) {
       // ⌘⇧V: paste format
       e.preventDefault()
@@ -260,6 +290,12 @@ export function handleGlobalKeydown(
     }
     e.preventDefault()
     void clipboardActions.pasteClipboard(ctx)
+    return
+  }
+  // Esc exits multi-cell table selection back to whole-table selection (PowerPoint)
+  if (e.key === 'Escape' && ctx.tableSelection) {
+    e.preventDefault()
+    ctx.setTableSelection?.(null)
     return
   }
   // Esc exits in-group editing, back to whole-group selection
@@ -275,7 +311,85 @@ export function handleGlobalKeydown(
     ctx.setSelectedIds([])
     return
   }
-  // Typing / Enter / F2 directly on a selected text shape enters editing
+  // Multi-cell table selection shortcuts (PowerPoint): arrow/Shift+arrow navigation, Tab, Ctrl+A,
+  // Delete/Backspace clears cell text, typing/Enter/F2 edits the anchor cell.
+  if (ctx.tableSelection && ctx.tableSelection.cells.length > 0 && slide) {
+    const tsel = ctx.tableSelection
+    const tbl = slide.nodes.find((n) => n.sourceId === tsel.sourceId)
+    if (tbl?.type === 'table') {
+      if (mod && !e.altKey && letter === 'a') {
+        e.preventDefault()
+        const all = selectAllTableCells(tbl)
+        if (all) ctx.setTableSelection?.(all)
+        return
+      }
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        e.preventDefault()
+        void tableActions.clearSelectedTableCells(ctx)
+        return
+      }
+      const arrowDir: CellNavDir | null =
+        e.key === 'ArrowLeft'
+          ? 'left'
+          : e.key === 'ArrowRight'
+            ? 'right'
+            : e.key === 'ArrowUp'
+              ? 'up'
+              : e.key === 'ArrowDown'
+                ? 'down'
+                : null
+      if (arrowDir && !mod && !e.altKey) {
+        e.preventDefault()
+        const next = adjacentTableCell(tbl, tsel.focus, arrowDir)
+        if (e.shiftKey) {
+          if (next) ctx.setTableSelection?.(makeTableCellSelection(tbl, tsel.anchor, next))
+        } else {
+          const target = next ?? tsel.focus
+          ctx.setTableSelection?.(null)
+          ctx.setEditingCell({
+            sourceId: tbl.sourceId,
+            row: target.row,
+            col: target.col,
+            caret: { place: arrowDir === 'left' || arrowDir === 'up' ? 'end' : 'start' },
+            session: tableActions.nextCellSession(),
+          })
+        }
+        return
+      }
+      if (e.key === 'Tab' && !mod && !e.altKey) {
+        e.preventDefault()
+        const sorted = [...tbl.cells].sort((a, b) => a.row - b.row || a.col - b.col)
+        const idx = sorted.findIndex((c) => c.row === tsel.focus.row && c.col === tsel.focus.col)
+        const next = sorted[idx + (e.shiftKey ? -1 : 1)] ?? sorted[idx] ?? sorted[0]
+        if (next) {
+          ctx.setTableSelection?.(null)
+          ctx.setEditingCell({
+            sourceId: tbl.sourceId,
+            row: next.row,
+            col: next.col,
+            selectAll: true,
+            session: tableActions.nextCellSession(),
+          })
+        }
+        return
+      }
+      const entry = editEntry(e, ctx)
+      if (entry) {
+        e.preventDefault()
+        const start = tsel.anchor
+        ctx.setTableSelection?.(null)
+        ctx.setEditingCell({
+          sourceId: tbl.sourceId,
+          row: start.row,
+          col: start.col,
+          ...entry,
+          session: tableActions.nextCellSession(),
+        })
+        return
+      }
+    }
+  }
+  // Typing / Enter / F2 directly on a selected text shape or table enters editing
   if (selectedIds.length === 1 && document.activeElement === document.body) {
     const entry = editEntry(e, ctx)
     const ctx0 = entry && ctx.findNodeCtx(selectedIds[0]!)
@@ -286,6 +400,19 @@ export function handleGlobalKeydown(
         sourceId: n0.sourceId,
         ...entry,
         ...(ctx0.groupId ? { groupId: ctx0.groupId } : {}),
+      })
+      return
+    }
+    if (entry && n0 && n0.type === 'table' && !ctx0?.groupId && n0.cells.length > 0) {
+      e.preventDefault()
+      const first = [...n0.cells].sort((a, b) => a.row - b.row || a.col - b.col)[0]!
+      ctx.setTableSelection?.(null)
+      ctx.setEditingCell({
+        sourceId: n0.sourceId,
+        row: first.row,
+        col: first.col,
+        ...entry,
+        session: tableActions.nextCellSession(),
       })
       return
     }
@@ -313,7 +440,7 @@ export function handleGlobalKeydown(
   }
   // ⌘A: every slide with the rail/sorter focused (PowerPoint), otherwise every
   // element on the page (excluding decoration layer/placeholder chips/full-page backgrounds)
-  if (mod && !e.altKey && (e.key === 'a' || e.key === 'A')) {
+  if (mod && !e.altKey && letter === 'a') {
     e.preventDefault()
     if (slideRailHasFocus() && ctx.slides.length > 0) {
       ctx.setSelectedSlides(rangeSelection(0, ctx.slides.length - 1))
@@ -389,16 +516,16 @@ export function handleGlobalKeydown(
       void slideActions.deleteSlides(ctx, ctx.selectedSlides)
       return
     }
-    if (mod && !e.altKey && !e.shiftKey && (e.key === 'c' || e.key === 'C')) {
+    if (mod && !e.altKey && !e.shiftKey && letter === 'c') {
       e.preventDefault()
       void clipboardActions.copySlides(ctx, ctx.selectedSlides)
-    } else if (mod && !e.altKey && !e.shiftKey && (e.key === 'x' || e.key === 'X')) {
+    } else if (mod && !e.altKey && !e.shiftKey && letter === 'x') {
       e.preventDefault()
       void slideActions.cutSlides(ctx, ctx.selectedSlides)
     }
     return
   }
-  if (mod && !e.altKey && (e.key === 'c' || e.key === 'C')) {
+  if (mod && !e.altKey && letter === 'c') {
     if (e.shiftKey) {
       // ⌘⇧C: copy format
       e.preventDefault()
@@ -409,19 +536,19 @@ export function handleGlobalKeydown(
     void clipboardActions.copySelected(ctx)
     return
   }
-  if (mod && !e.altKey && (e.key === 'x' || e.key === 'X')) {
+  if (mod && !e.altKey && letter === 'x') {
     e.preventDefault()
     void clipboardActions.cutSelected(ctx)
     return
   }
   // ⌘D duplicate in place
-  if (mod && !e.altKey && (e.key === 'd' || e.key === 'D')) {
+  if (mod && !e.altKey && letter === 'd') {
     e.preventDefault()
     void clipboardActions.duplicateSelected(ctx, selectedIds)
     return
   }
   // ⌘G group / ⌘⇧G ungroup
-  if (mod && !e.altKey && (e.key === 'g' || e.key === 'G')) {
+  if (mod && !e.altKey && letter === 'g') {
     e.preventDefault()
     if (e.shiftKey) void arrangeActions.ungroupSelected(ctx)
     else void arrangeActions.groupSelected(ctx)

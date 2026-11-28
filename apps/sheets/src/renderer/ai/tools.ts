@@ -243,6 +243,12 @@ export interface SheetsSkillDeps {
     operations: readonly WorkbookOperation[],
     summary: string,
   ): { ok: true; plan: ChangePlan; applied?: Promise<ApplyOutcome> } | { ok: false; error: string }
+  /**
+   * The path of an image file attached to this chat, by the exact name the attachment
+   * chip shows. Only the panel resolves names, so an `add_image` op carrying `attachment`
+   * can never name a file the user did not attach.
+   */
+  attachmentPathOf?(name: string): string | null
   /** AI create_document: write a new standalone file (xlsx/csv from a
    * worksheet; docx/pdf/md from content) into the default save folder and
    * open it in a new tab (ai/create-document.ts). */
@@ -806,6 +812,40 @@ function formatPlanSummary(plan: ChangePlan): string {
   return parts.join(' | ') || '(no changes)'
 }
 
+/**
+ * Fill `path` on an `add_image` op that names a chat attachment. The model gives the exact
+ * attachment name; the panel's list is the only place a name becomes a path. Runs before
+ * schema validation so the operation shape stays one (`path` is always present downstream)
+ * and the attachment flag rides along for the byte reader.
+ */
+export function resolveAttachmentImageOps(
+  rawOps: readonly unknown[],
+  pathOf: ((name: string) => string | null) | undefined,
+): { operations: unknown[]; error?: string } {
+  const operations: unknown[] = []
+  for (const raw of rawOps) {
+    if (!raw || typeof raw !== 'object' || (raw as { op?: unknown }).op !== 'add_image') {
+      operations.push(raw)
+      continue
+    }
+    const op = raw as Record<string, unknown>
+    const attachment = typeof op.attachment === 'string' ? op.attachment.trim() : ''
+    if (!attachment) {
+      operations.push(raw)
+      continue
+    }
+    const path = pathOf?.(attachment) ?? null
+    if (!path) {
+      return {
+        operations: [],
+        error: `The image attachment "${attachment}" is not attached to this chat. Attach the image first, or pass a direct https image URL as path.`,
+      }
+    }
+    operations.push({ ...op, path, attachment })
+  }
+  return { operations }
+}
+
 export function executeWorkbookTool(
   call: AgentToolCall,
   deps: SheetsSkillDeps,
@@ -1279,9 +1319,14 @@ export function executeWorkbookTool(
       if (typeof summaryInput !== 'string' || !summaryInput.trim()) {
         return fail(t('aiToolPropose'), 'summary must not be empty')
       }
-      const parsedOps = z.array(workbookOperationSchema).safeParse(rawOps)
+      const attached = resolveAttachmentImageOps(rawOps, deps.attachmentPathOf)
+      if (attached.error) return fail(t('aiToolPropose'), attached.error)
+      const parsedOps = z.array(workbookOperationSchema).safeParse(attached.operations)
       if (!parsedOps.success) {
-        return fail(t('aiToolPropose'), describeOperationErrors(rawOps, parsedOps.error))
+        return fail(
+          t('aiToolPropose'),
+          describeOperationErrors(attached.operations, parsedOps.error),
+        )
       }
       const operations: WorkbookOperation[] = parsedOps.data
       const outcome = deps.proposeOperations(operations, summaryInput.trim())

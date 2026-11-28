@@ -1857,6 +1857,29 @@ describe('computeSectionedSlicesF2 — table row-level page breaks', () => {
     expect(out2.rowFills).toEqual([{ blockTop: 0, row: 1, targetPx: 430 }])
   })
 
+  it('a vMerge group crossing the page turns between its rows and charges them (genoffice#2114)', () => {
+    // page 200px: header 20, the group's head row 30, then three 30px
+    // vMerge-continue rows carrying their own measured heights (the live DOM
+    // measures every tr; only the parity model folds them into the head). The
+    // pages must end on real row tops — charging nothing for the continuations
+    // let the page boundary drift past the row after the group, and the gap
+    // builder, finding no matching row top, anchored a full-height band inside
+    // a cell of the merged row.
+    const rows: TableRowBox[] = [
+      { height: 20, isHeader: true },
+      { height: 30 },
+      { height: 30, vMergeContinue: true },
+      { height: 30, vMergeContinue: true },
+      { height: 30, vMergeContinue: true },
+      { height: 100 },
+    ]
+    const b = makeTableBlock(0, rows)
+    const slices = computeSectionedSlicesF2([b], [{ contentHeight: 200, forceBreak: false }], 240)
+    expect(slices.length).toBe(2)
+    // page 1 ends on the group's last row: 20 + 30 + 3x30 = 140
+    expect(slices[0].end).toBe(140)
+  })
+
   it('split row without a declared height reports no fill', () => {
     const rows: TableRowBox[] = [{ height: 80 }, { height: 160, cutYs: [80], contentBottom: 160 }]
     const b = makeTableBlock(0, rows)
@@ -4819,7 +4842,11 @@ describe('computeSectionedSlicesF2 — multi-cell rows split per cell (Word row 
     expect(first.rowFills![0].targetPx).toBeCloseTo(310.2)
     expect(first.rowFills![0].extraPx).toBeCloseTo(9.8)
     const attrs = rowFillAttrs(first.rowFills![0].targetPx, first.rowFills![0].extraPx)
-    expect(attrs).toEqual({ style: 'height:310px', 'data-split-extra': '9.6' })
+    expect(attrs).toEqual({
+      style: 'height:310px',
+      'data-row-fill': '1',
+      'data-split-extra': '9.6',
+    })
     const again = plan({ height: 310, contentBottom: 300.4, cells, splitExtra: 9.6 })
     expect(again.rowFills![0].targetPx).toBeCloseTo(310.2)
     expect(again.rowFills![0].extraPx).toBeCloseTo(9.8)
@@ -5627,6 +5654,18 @@ describe('page-bottom fit: the last line needs only its single-spacing extent (l
     el.style.setProperty('--doc-line-mult', '1.5')
     document.body.appendChild(el)
     try {
+      expect(lineLeadPx(el)).toBeCloseTo(10, 5)
+      // typed line grid (18pt = 24px pitch at 1.5x = 36px): half of the
+      // centered 12px extra sits below the cell and does not force a break
+      el.style.lineHeight = '36px'
+      el.style.setProperty('--doc-grid-pitch', '18pt')
+      expect(lineLeadPx(el)).toBeCloseTo(6, 5)
+      // taller snapped single cell (e.g. 2 cells = 48px > 1.5 * 24px): no multiple extra
+      el.style.lineHeight = '48px'
+      expect(lineLeadPx(el)).toBe(0)
+      // off-grid opt-out (0.0001px) restores the non-grid auto-multiple rule
+      el.style.lineHeight = '30px'
+      el.style.setProperty('--doc-grid-pitch', '0.0001px')
       expect(lineLeadPx(el)).toBeCloseTo(10, 5)
       el.classList.add('doc-lh-fixed')
       expect(lineLeadPx(el)).toBe(0)

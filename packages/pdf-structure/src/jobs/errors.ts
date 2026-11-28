@@ -5,14 +5,16 @@
  * fields of an error stream chunk (`errorCode`, `errorResetsAt`). This module
  * reads either shape structurally, so the engine needs neither package.
  */
-import type { JobKind, JobProgress } from '../store/store'
+import type { JobKind, JobProgress, TranslationMode } from '../store/store'
 
 /**
  * Kinds that end the job at once: nothing more is sent and calls in flight
  * are aborted. Mirrors packages/ui AI_BLOCKED_RUN_KINDS (the connection
  * cannot go on), plus two kinds a retry cannot fix either: 'credits' (a key
  * provider out of credit) and 'headless-limit' (no longer raised, kept so an
- * older runner cannot make the job spin on it).
+ * older runner cannot make the job spin on it). 'context-limit' is the person
+ * declining a prompt close to the model's window: asking again for the next
+ * batch would ignore that answer.
  */
 export const JOB_STOP_KINDS: readonly string[] = [
   'rate-limit',
@@ -24,6 +26,8 @@ export const JOB_STOP_KINDS: readonly string[] = [
   'not-connected',
   'credits',
   'headless-limit',
+  'context-limit',
+  'off-in-app',
 ]
 
 export function isJobStopKind(kind: string | undefined): boolean {
@@ -79,6 +83,8 @@ export interface RunningDocumentJob {
   lang?: string
   /** the run of a 'highlight' job */
   runId?: string
+  /** 'easy' for an easy explanation's job; absent for every plain one */
+  mode?: Extract<TranslationMode, 'easy'>
   /** items (pages or blocks) done / total, including those done before this run */
   progress: JobProgress
 }

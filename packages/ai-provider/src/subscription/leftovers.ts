@@ -7,21 +7,27 @@
  * program file, and a start time that matches the moment this app started it.
  * A pid that was reused, by anything at all, fails that check. A Claude or
  * Codex the user runs on their own was never recorded and is never looked at.
+ * The same holds for the MCP servers the person approved for the app to start
+ * (`USER_MCP_CHILD_KIND`): only the one this app started is ended.
  */
 import { spawn, type ChildProcess, type SpawnOptions } from 'node:child_process'
 import { readFile, readdir, readlink, realpath, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { AI_SUBSCRIPTION_PROVIDERS } from '../providers'
+import type { AiSubscriptionProviderId } from '../types'
 import {
   SUBSCRIPTION_LEFTOVER_FILE_PREFIX,
   SUBSCRIPTION_OWNER_STARTED_AT,
+  USER_MCP_CHILD_KIND,
   killProcessTree,
   sharedSubscriptionChildRegistry,
   windowsSystemDir,
   windowsSystemTool,
   type LeftoverChildRecord,
   type LeftoverRecord,
+  type TrackedChildKind,
 } from './process'
+import { cleanupTrackedTempDirs, setSubscriptionTempRecordDir } from './temp-dirs'
 
 /** What the system says about a live process */
 export interface ProcessInfo {
@@ -62,6 +68,14 @@ function validPid(pid: unknown): pid is number {
   return typeof pid === 'number' && Number.isInteger(pid) && pid > 0
 }
 
+/** A record line of any other kind is not this app's to end */
+function isTrackedChildKind(kind: unknown): kind is TrackedChildKind {
+  return (
+    kind === USER_MCP_CHILD_KIND ||
+    AI_SUBSCRIPTION_PROVIDERS.includes(kind as AiSubscriptionProviderId)
+  )
+}
+
 function parseRecord(text: string): LeftoverRecord | null {
   let value: unknown
   try {
@@ -83,7 +97,7 @@ function parseRecord(text: string): LeftoverRecord | null {
       !child.command ||
       typeof child.startedAt !== 'number' ||
       !Number.isFinite(child.startedAt) ||
-      !AI_SUBSCRIPTION_PROVIDERS.includes(child.provider!)
+      !isTrackedChildKind(child.provider)
     ) {
       continue
     }
@@ -207,9 +221,12 @@ export async function initSubscriptionChildTracking(
   dir: string,
   deps: LeftoverCleanupDeps = {},
 ): Promise<LeftoverCleanupResult> {
+  setSubscriptionTempRecordDir(dir)
   const result = await cleanupLeftoverSubscriptionChildren(dir, deps).catch(
     (): LeftoverCleanupResult => ({ killed: [], skipped: [] }),
   )
+  // the same forced exit may have left the bridges' temporary folders behind
+  await cleanupTrackedTempDirs(dir).catch(() => 0)
   sharedSubscriptionChildRegistry().recordIn(dir)
   return result
 }

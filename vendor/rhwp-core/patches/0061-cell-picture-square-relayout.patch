@@ -1,0 +1,399 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: pblsketch <239486537+pblsketch@users.noreply.github.com>
+Date: Sat, 28 Nov 2026 00:27:11 +0900
+Subject: [PATCH] fix(cell): relay cell lines when a cell picture turns from
+ inline to Square wrap
+
+Port of IeumOffice patch 0055 (0.9.0-ieum.32) onto rhwp v0.9.1 + patches 0001..0060.
+
+- Reflow the host cell paragraph via layout_container_picture_band when setCellPicturePropertiesByPath changes treatAsChar, placement, or size.
+- Default cell pictures released from treatAsChar to HorzRelTo::Column with restrictInPage (flow_with_text) enabled, leaving cellSz untouched so sync_tac_host_rows can adjust the host row.
+- Include cell_first_para_float_lead in cell paragraph height and first-line vertical offset when the first line is pushed below a paragraph-relative Square/Tight/Through object.
+- Anchor floating objects in v0.9.1 cell_flow_objects_bottom_height / calc_cell_flow_objects_bottom_height at flow_start + before.flow_before instead of before.occupied_before() so the float lead is not counted twice below the object itself.
+---
+ .../commands/object_ops/table.rs              | 185 +++++++++++++++++-
+ src/renderer/cell_paragraph_spacing.rs        |   6 +
+ src/renderer/height_measurer.rs               |   4 +-
+ src/renderer/layout/table_layout.rs           |  28 ++-
+ src/renderer/mod.rs                           |  54 +++++
+ 5 files changed, 264 insertions(+), 13 deletions(-)
+
+diff --git a/src/document_core/commands/object_ops/table.rs b/src/document_core/commands/object_ops/table.rs
+index cacb243be..524a67555 100644
+--- a/src/document_core/commands/object_ops/table.rs
++++ b/src/document_core/commands/object_ops/table.rs
+@@ -235,6 +235,130 @@ impl DocumentCore {
+             .saturating_add(padding_top.max(0) as u32)
+             .saturating_add(padding_bottom.max(0) as u32)
+     }
++    /// [ieum 0061] 칸 안 그림의 글자처럼 취급·배치·크기를 바꾼 뒤 그 칸 문단의 줄을 다시 짠다.
++    ///
++    /// 글자처럼 취급을 끄면 그림이 차지하던 줄(그림 높이의 줄과 그 앞뒤로 갈린 글)이 남아
++    /// 있었다. 한/글은 줄을 처음부터 다시 짜고, 어울림 그림은 옆에 남은 폭이 모자라면 줄을
++    /// 그림 아래로 내린다. 칸 문단은 열 때와 같은 칸 밴드 소유자(`layout_container_picture_band`)
++    /// 가 그 줄을 낸다. 밴드를 만들 수 없는 배치면 글만 칸 폭으로 다시 짠다.
++    fn reflow_cell_picture_host(
++        &mut self,
++        section_idx: usize,
++        parent_para_idx: usize,
++        path: &[(usize, usize, usize)],
++    ) {
++        let Some(&(_, _, host)) = path.last() else {
++            return;
++        };
++        let Some((cell_width, pad_left, pad_right)) =
++            self.resolve_innermost_cell_metrics(section_idx, parent_para_idx, path)
++        else {
++            return;
++        };
++        // 앞서 밴드로 깎인 뒤 문단은 밴드가 줄면 칸 폭 줄로 돌아가야 한다.
++        let band_successors: Vec<usize> =
++            match self.get_cell_paragraphs_mut_by_path(section_idx, parent_para_idx, path) {
++                Ok(paras) => (host + 1..paras.len())
++                    .take_while(|&index| paras[index].layout_float_band)
++                    .collect(),
++                Err(_) => return,
++            };
++        for index in std::iter::once(host).chain(band_successors) {
++            if let Ok(paras) =
++                self.get_cell_paragraphs_mut_by_path(section_idx, parent_para_idx, path)
++            {
++                if let Some(paragraph) = paras.get_mut(index) {
++                    paragraph.invalidate_layout_inputs();
++                }
++            }
++            self.reflow_cell_paragraph_by_path(section_idx, parent_para_idx, path, index);
++        }
++
++        // 문단 시작 자리부터 정한다. 칸 첫 문단은 칸 위에서, 뒤 문단은 앞 문단 끝에서 시작한다.
++        // 다시 짠 줄은 옛 첫 줄의 자리(그림 아래로 내린 줄이면 그 아래)를 물려받는다.
++        if host == 0 {
++            if let Ok(paras) =
++                self.get_cell_paragraphs_mut_by_path(section_idx, parent_para_idx, path)
++            {
++                if let Some(paragraph) = paras.first_mut() {
++                    let shift = paragraph
++                        .line_segs
++                        .first()
++                        .map_or(0, |seg| seg.vertical_pos);
++                    for seg in &mut paragraph.line_segs {
++                        seg.vertical_pos -= shift;
++                    }
++                }
++            }
++        }
++        self.recalculate_cell_paragraph_vpos_by_path(
++            section_idx,
++            parent_para_idx,
++            path,
++            host,
++            None,
++        );
++
++        let styles = self.resolve_render_styles();
++        let dpi = self.dpi;
++        // `reflow_cell_paragraph_by_path` 와 같은 칸 내용 폭(px)이다.
++        let width = (crate::renderer::hwpunit_to_px(cell_width, dpi)
++            - crate::renderer::hwpunit_to_px(pad_left as i32, dpi)
++            - crate::renderer::hwpunit_to_px(pad_right as i32, dpi))
++        .max(0.0);
++        let mut band_end = None;
++        if let Ok(paras) = self.get_cell_paragraphs_mut_by_path(section_idx, parent_para_idx, path)
++        {
++            let start = paras
++                .get(host)
++                .and_then(|paragraph| paragraph.line_segs.first())
++                .map_or(0, |seg| seg.vertical_pos);
++            let band = paras
++                .get(host)
++                .filter(|paragraph| {
++                    paragraph
++                        .controls
++                        .iter()
++                        .any(crate::renderer::composer::control_owns_body_band)
++                })
++                .and_then(|_| {
++                    crate::renderer::composer::layout_container_picture_band(
++                        paras, host, width, &styles, dpi, false,
++                    )
++                })
++                .filter(|band| band.paragraph_range.start == host);
++            if let Some(band) = band {
++                band_end = Some(band.paragraph_range.end);
++                // 밴드 줄의 세로 자리는 밴드 문단 시작에서 잰 값이다. 그림 아래로 내린 첫 줄은
++                // 문단 시작보다 아래에 있으므로, 문단마다 첫 줄을 시작으로 삼는 칸 사다리에
++                // 다시 태우지 않는다.
++                for (paragraph, (mut rows, spaces)) in paras[band.paragraph_range.clone()]
++                    .iter_mut()
++                    .zip(band.line_segs.into_iter().zip(band.space_metrics))
++                {
++                    for row in &mut rows {
++                        row.vertical_pos += start;
++                    }
++                    paragraph.publish_float_band_rows(rows, spaces);
++                }
++            }
++        }
++        if let Some(end) = band_end {
++            self.recalculate_cell_paragraph_vpos_by_path(
++                section_idx,
++                parent_para_idx,
++                path,
++                end,
++                None,
++            );
++        }
++        self.mark_cell_control_dirty(section_idx, parent_para_idx, path[0].0);
++        // 칸 글을 고친 편집과 같이, 표의 저장 행 높이(글자처럼 취급 그림 줄로 커진 값)를
++        // 믿지 않고 다시 잰다.
++        let _ =
++            self.mark_table_text_reflowed_after_cell_edit(section_idx, parent_para_idx, path[0].0);
++    }
++
+     fn sync_direct_owner_cell_for_picture(
+         section: &mut crate::model::document::Section,
+         parent_para_idx: usize,
+@@ -1743,7 +1867,7 @@ impl DocumentCore {
+         inner_control_idx: usize,
+         props_json: &str,
+     ) -> Result<String, HwpError> {
+-        use crate::document_core::helpers::{json_bool, json_i32};
++        use crate::document_core::helpers::{json_bool, json_i32, json_str};
+ 
+         let path = Self::parse_cell_path_json(cell_path_json)?;
+         let restrict_change = json_bool(props_json, "restrictInPage");
+@@ -1752,7 +1876,7 @@ impl DocumentCore {
+             restrict_enabled_by_this_call || json_i32(props_json, "horzOffset").is_some();
+         let clamp_vert =
+             restrict_enabled_by_this_call || json_i32(props_json, "vertOffset").is_some();
+-        let caption_changed = {
++        let (caption_changed, flow_changed, released_beside_text) = {
+             let section = self.document.sections.get_mut(section_idx).ok_or_else(|| {
+                 HwpError::RenderError(format!("구역 인덱스 {} 범위 초과", section_idx))
+             })?;
+@@ -1772,8 +1896,35 @@ impl DocumentCore {
+                 }
+             };
+             let had_caption = pic.caption.is_some();
++            // [ieum 0061] 글자처럼 취급·배치·크기가 바뀌면 칸 문단의 줄도 달라진다.
++            let flow_before = super::picture::picture_band_geometry(&pic.common);
++            let was_tac = pic.common.treat_as_char;
+             let caption_created = Self::apply_picture_props_inner(pic, props_json);
+-            caption_created || (had_caption && pic.caption.is_none())
++            let released = was_tac && !pic.common.treat_as_char;
++            if released {
++                // 한/글은 칸 안의 글자처럼 취급 그림을 풀면 가로 기준을 단(칸)으로, 「쪽 영역
++                // 안으로 제한」을 켠 채로 둔다. 본문 기본값인 가로 문단 기준이 남으면 한/글이
++                // 그 그림을 칸이 아니라 바깥 본문 문단 왼끝에 그린다.
++                if json_str(props_json, "horzRelTo").is_none() {
++                    pic.common.horz_rel_to = crate::model::shape::HorzRelTo::Column;
++                }
++                if json_bool(props_json, "restrictInPage").is_none() {
++                    pic.common.flow_with_text = true;
++                    pic.common.attr |= 1 << 13;
++                }
++                crate::serializer::control::sync_anchor_bits(&mut pic.common);
++            }
++            (
++                caption_created || (had_caption && pic.caption.is_none()),
++                flow_before != super::picture::picture_band_geometry(&pic.common),
++                released
++                    && matches!(
++                        pic.common.text_wrap,
++                        crate::model::shape::TextWrap::Square
++                            | crate::model::shape::TextWrap::Tight
++                            | crate::model::shape::TextWrap::Through
++                    ),
++            )
+         };
+         if caption_changed {
+             crate::parser::assign_auto_numbers(&mut self.document);
+@@ -1787,14 +1938,28 @@ impl DocumentCore {
+             clamp_horz,
+             clamp_vert,
+         )?;
+-        Self::sync_direct_owner_cell_for_picture(
+-            section,
+-            parent_para_idx,
+-            &path,
+-            inner_control_idx,
+-        )?;
++        // 글자처럼 취급을 풀어 글 옆에 놓인 그림은 칸 높이(cellSz)를 바꾸지 않는다 — 한/글도
++        // 그대로 둔다. 행은 줄을 다시 짠 내용으로 자라고, 표가 놓인 본문 줄은 쪽 나누기가 잰
++        // 높이로 맞춘다(`sync_tac_host_rows`). 여기서 칸·표 높이를 먼저 바꾸면 그 맞추기가
++        // 옛 줄을 알아보지 못해 표 줄이 옛 높이로 남는다.
++        if !released_beside_text {
++            Self::sync_direct_owner_cell_for_picture(
++                section,
++                parent_para_idx,
++                &path,
++                inner_control_idx,
++            )?;
++        }
+         section.raw_stream = None;
+-        self.recompose_section_at_batch_end(section_idx, &[parent_para_idx]);
++        if flow_changed {
++            // 칸 글 편집처럼 표를 품은 문단만 다시 재게 둔다. 구역 전체를 다시 짜면 쪽 나누기가
++            // 높이가 바뀐 표를 가리지 못해 표가 놓인 본문 줄을 맞추지 않는다.
++            self.reflow_cell_picture_host(section_idx, parent_para_idx, &path);
++            self.recompose_paragraph(section_idx, parent_para_idx);
++            self.mark_section_dirty(section_idx);
++        } else {
++            self.recompose_section_at_batch_end(section_idx, &[parent_para_idx]);
++        }
+         self.paginate_if_needed();
+         self.invalidate_page_tree_cache();
+         let outer_table_ctrl = path.first().unwrap().0;
+diff --git a/src/renderer/cell_paragraph_spacing.rs b/src/renderer/cell_paragraph_spacing.rs
+index c7239109c..3eb2446da 100644
+--- a/src/renderer/cell_paragraph_spacing.rs
++++ b/src/renderer/cell_paragraph_spacing.rs
+@@ -64,6 +64,12 @@ pub(crate) fn paragraph_before(
+     } else {
+         0.0
+     };
++    // [ieum 0061] 어울림 개체 아래로 내려간 첫 줄의 띠 — 저장 줄이든 밴드가 낸 줄이든 같다.
++    let stored_lead = if para_index == 0 {
++        stored_lead.max(super::cell_first_para_float_lead(para, dpi))
++    } else {
++        stored_lead
++    };
+     CellParagraphBefore {
+         flow_before,
+         stored_lead,
+diff --git a/src/renderer/height_measurer.rs b/src/renderer/height_measurer.rs
+index 9e2186444..33e6a1458 100644
+--- a/src/renderer/height_measurer.rs
++++ b/src/renderer/height_measurer.rs
+@@ -2351,7 +2351,9 @@ impl HeightMeasurer {
+                     .map_or(0.0, |s| s.spacing_before),
+                 self.dpi,
+             );
+-            let para_top = flow_start + before.occupied_before();
++            // [ieum 0061] 문단 기준 개체는 문단의 흐름 원점(앞 간격 뒤)에 놓이고, 그 개체
++            // 자체가 첫 줄을 아래로 민 띠(`stored_lead`) 아래에 놓이지 않는다.
++            let para_top = flow_start + before.flow_before;
+             flow_start += heights[pi];
+             // 글자처럼 취급한 개체 하나만 든 글자 없는 문단은 그 개체가 곧 줄이다.
+             // 공백·여러 개체가 섞인 줄은 줄 구성이 따로 정하므로 세지 않는다.
+diff --git a/src/renderer/layout/table_layout.rs b/src/renderer/layout/table_layout.rs
+index 982d5745b..69e3a3d4c 100644
+--- a/src/renderer/layout/table_layout.rs
++++ b/src/renderer/layout/table_layout.rs
+@@ -3717,7 +3717,9 @@ impl LayoutEngine {
+                     .map_or(0.0, |s| s.spacing_before),
+                 self.dpi,
+             );
+-            let para_top = flow_start + before.occupied_before();
++            // [ieum 0061] 문단 기준 개체는 문단의 흐름 원점(앞 간격 뒤)에 놓이고, 그 개체
++            // 자체가 첫 줄을 아래로 민 띠(`stored_lead`) 아래에 놓이지 않는다.
++            let para_top = flow_start + before.flow_before;
+             flow_start += heights[pi];
+             // 글자처럼 취급한 개체 하나만 든 글자 없는 문단은 그 개체가 곧 줄이다.
+             // 공백·여러 개체가 섞인 줄은 줄 구성이 따로 정하므로 세지 않는다.
+@@ -8261,6 +8263,25 @@ impl LayoutEngine {
+             } else {
+                 0.0
+             };
++            // [ieum 0061] 첫 줄이 이 문단의 어울림 개체 아래로 내려갔으면 글줄만 그만큼 내린다.
++            // 개체의 기준(문단 위)은 그대로다. 내용 높이(`paragraph_before`)가 같은 띠를 품는다.
++            // 그 띠가 저장 첫 줄 자리 전체이므로 위의 앞 간격 규칙은 함께 쓰지 않는다.
++            let first_para_float_lead_px = if cp_idx == 0
++                && start_line == 0
++                && !use_top_vpos_anchor
++                && !trust_stored_cell_flow
++                && !snap_anchored_with_spacing_before
++                && (para_y - text_y_start).abs() < 1e-9
++            {
++                crate::renderer::cell_first_para_float_lead(para, self.dpi)
++            } else {
++                0.0
++            };
++            let first_para_lead_px = if first_para_float_lead_px > 0.0 {
++                0.0
++            } else {
++                first_para_lead_px
++            };
+             let allow_first_para_lead = first_para_lead_px > 0.0;
+             // 저장 앵커가 정한 자리도 쌓인 그림 아래 글줄 위치보다 위일 수는 없다.
+             // 쌓인 그림 때문에 실제로 내려간 문단만 고친다(다른 문단의 앵커는 그대로).
+@@ -8415,7 +8436,10 @@ impl LayoutEngine {
+                     composed_for_layout,
+                     styles,
+                     &inner_area,
+-                    picture_closing_line.map_or(para_y, |(origin, _)| inner_area.y + origin),
++                    picture_closing_line
++                        .map_or(para_y + first_para_float_lead_px, |(origin, _)| {
++                            inner_area.y + origin
++                        }),
+                     start_line,
+                     end_line,
+                     section_index,
+diff --git a/src/renderer/mod.rs b/src/renderer/mod.rs
+index 2bb7e0f94..64ade761b 100644
+--- a/src/renderer/mod.rs
++++ b/src/renderer/mod.rs
+@@ -1999,6 +1999,60 @@ pub(crate) fn cell_first_para_stored_lead(
+     spacing_before_px.min(vpos)
+ }
+ 
++/// [ieum 0061] 셀 첫 문단의 첫 줄이 그 문단의 어울림 개체 **아래로 내려간** 높이(px).
++///
++/// 옆에 글이 들어갈 폭이 없으면 한/글은 첫 줄을 개체 아래에 둔다 — 좁은 서명 칸의 도장:
++/// 그림 높이 3675HU, 저장 첫 줄 vertpos 3675, "(서명)"이 도장 아래 한 줄. 문단 원점은 칸
++/// 위이고 첫 줄만 그만큼 아래다. 그 띠는 셀 높이에 들어가고 글줄도 그만큼 내려가야 한다.
++/// 첫 줄 자리가 문단 기준 어울림 개체의 아래끝(오프셋+높이+위아래 바깥 여백)과 같을 때만
++/// 그 값을 낸다(어울림 밴드가 줄을 내리는 자리가 정확히 그 끝이다). 그 밖에는 0.
++/// 글 없이 개체만 든 문단은 빈 그림 문단의 띠 경로가 높이를 이미 맡으므로 여기서 더하지
++/// 않는다(더하면 그 띠를 두 번 세어 칸 안 그림이 가운데에서 밀려난다).
++pub(crate) fn cell_first_para_float_lead(
++    para: &crate::model::paragraph::Paragraph,
++    dpi: f64,
++) -> f64 {
++    use crate::model::control::Control;
++    use crate::model::shape::{TextWrap, VertRelTo};
++    let Some(first) = para.line_segs.first() else {
++        return 0.0;
++    };
++    if first.vertical_pos <= 0 || para.text.trim().is_empty() {
++        return 0.0;
++    }
++    let float_bottom = para
++        .controls
++        .iter()
++        .filter_map(|control| {
++            let common = match control {
++                Control::Picture(picture) => &picture.common,
++                Control::Shape(shape) => shape.common(),
++                _ => return None,
++            };
++            let offset = common.vertical_offset as i32;
++            (!common.treat_as_char
++                && matches!(
++                    common.text_wrap,
++                    TextWrap::Square | TextWrap::Tight | TextWrap::Through
++                )
++                && common.vert_rel_to == VertRelTo::Para
++                && offset >= 0)
++                .then(|| {
++                    offset
++                        .saturating_add(common.height.min(i32::MAX as u32) as i32)
++                        .saturating_add(i32::from(common.margin.top))
++                        .saturating_add(i32::from(common.margin.bottom))
++                })
++        })
++        .max();
++    match float_bottom {
++        Some(bottom) if (first.vertical_pos - bottom).abs() <= 8 => {
++            hwpunit_to_px(first.vertical_pos, dpi)
++        }
++        _ => 0.0,
++    }
++}
++
+ /// 셀 안의 단일 단 정의는 글자·개체를 그리거나 세로 흐름을 전진하지 않는다.
+ /// 원본 셀의 단 정의와 필드/링크 표식은 본문 글줄에 별도 상자를 추가하지 않는다.
+ /// 필드 결과는 문단 텍스트가 소유하며, 원본 제어 주소는 그대로 보존한다.
+-- 
+2.52.0.windows.1
+

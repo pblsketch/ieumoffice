@@ -12,6 +12,7 @@ import {
   textEditPreviewContent,
   textEditPreviewParts,
   textEraseKey,
+  textInsertPreviewContent,
   textInsertPreviewStyle,
 } from './text-edit-preview'
 import type { LocalTextEdit, LocalTextInsert } from './text-edit-preview'
@@ -207,31 +208,35 @@ export function ThumbPendingOverlay({
           onSelect={noop}
         />
       )}
-      {textInserts.map((insert) => (
-        <div
-          key={insert.id}
-          className="pdf-textinsert-preview"
-          style={textInsertPreviewStyle(insert, geom, 1)}
-        >
-          {insert.input.text}
-        </div>
-      ))}
-      {textEdits.map((te) => {
-        const { style, coverStyle } = textEditPreviewParts(
-          te,
-          geom,
-          1,
-          !!erasedText?.has(textEraseKey(te.input)),
-        )
-        return (
-          <Fragment key={te.id}>
-            {coverStyle && <div className="pdf-textedit-cover" style={coverStyle} />}
-            <div className="pdf-textedit-preview" style={style}>
-              {textEditPreviewContent(te, 1)}
-            </div>
-          </Fragment>
-        )
-      })}
+      {textInserts
+        .filter((insert) => !insert.input.invisible)
+        .map((insert) => (
+          <div
+            key={insert.id}
+            className="pdf-textinsert-preview"
+            style={textInsertPreviewStyle(insert, geom, 1)}
+          >
+            {textInsertPreviewContent(insert, 1)}
+          </div>
+        ))}
+      {textEdits
+        .filter((te) => !te.scanLayer)
+        .map((te) => {
+          const { style, coverStyle } = textEditPreviewParts(
+            te,
+            geom,
+            1,
+            !!erasedText?.has(textEraseKey(te.input)),
+          )
+          return (
+            <Fragment key={te.id}>
+              {coverStyle && <div className="pdf-textedit-cover" style={coverStyle} />}
+              <div className="pdf-textedit-preview" style={style}>
+                {textEditPreviewContent(te, 1)}
+              </div>
+            </Fragment>
+          )
+        })}
     </div>
   )
 }

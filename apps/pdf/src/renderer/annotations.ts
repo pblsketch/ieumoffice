@@ -1,4 +1,9 @@
 import type { MarkupInput, MarkupType } from '../shared/ipc'
+import { geomDispSize, normRot, pdfToView, viewToPdf } from '../shared/page-geom'
+import type { PageGeom } from '../shared/page-geom'
+
+export { geomDispSize, pdfToView, viewToPdf }
+export type { PageGeom }
 
 export interface LocalMarkup extends MarkupInput {
   id: string
@@ -7,6 +12,8 @@ export interface LocalMarkup extends MarkupInput {
 export const MARKUP_COLORS: Record<MarkupType, [number, number, number]> = {
   highlight: [1, 0.87, 0.35],
   underline: [0.17, 0.4, 1],
+  // the palette green, so the markup menu finds the current swatch
+  squiggly: [0.486, 0.702, 0.259],
   strikeout: [0.86, 0.22, 0.18],
 }
 
@@ -21,70 +28,6 @@ export const MARKUP_PALETTE: readonly { hex: string; color: [number, number, num
   { hex: '#FB8C00', color: [0.984, 0.549, 0] },
   { hex: '#DB382E', color: [0.86, 0.22, 0.18] },
 ]
-
-/** Page geometry: unrotated PDF page size + total display rotation (base /Rotate + unsaved delta) */
-export interface PageGeom {
-  pw: number
-  ph: number
-  rot: number
-  /** CropBox lower-left in PDF user space. */
-  x0?: number
-  y0?: number
-  /** PDF /UserUnit; layout coordinates use this multiplier while PDF APIs use raw units. */
-  userUnit?: number
-}
-
-const normRot = (r: number) => ((r % 360) + 360) % 360
-
-/** Display size (scale=1; width/height swap with rotation) */
-export function geomDispSize(g: PageGeom): { width: number; height: number } {
-  return normRot(g.rot) % 180 === 0 ? { width: g.pw, height: g.ph } : { width: g.ph, height: g.pw }
-}
-
-/** Display coords (origin at page top-left, y down, scale=1) → PDF user space (y up) */
-export function viewToPdf(g: PageGeom, vx: number, vy: number): [number, number] {
-  const x0 = g.x0 ?? 0
-  const y0 = g.y0 ?? 0
-  const unit = g.userUnit ?? 1
-  const pw = g.pw / unit
-  const ph = g.ph / unit
-  vx /= unit
-  vy /= unit
-  switch (normRot(g.rot)) {
-    case 90:
-      return [x0 + vy, y0 + vx]
-    case 180:
-      return [x0 + pw - vx, y0 + vy]
-    case 270:
-      return [x0 + pw - vy, y0 + ph - vx]
-    default:
-      return [x0 + vx, y0 + ph - vy]
-  }
-}
-
-/** PDF user space → display coords (scale=1) */
-export function pdfToView(g: PageGeom, x: number, y: number): [number, number] {
-  x -= g.x0 ?? 0
-  y -= g.y0 ?? 0
-  const unit = g.userUnit ?? 1
-  const pw = g.pw / unit
-  const ph = g.ph / unit
-  let result: [number, number]
-  switch (normRot(g.rot)) {
-    case 90:
-      result = [y, x]
-      break
-    case 180:
-      result = [pw - x, y]
-      break
-    case 270:
-      result = [ph - y, pw - x]
-      break
-    default:
-      result = [x, ph - y]
-  }
-  return [result[0] * unit, result[1] * unit]
-}
 
 /** PDF-space rect [x1,y1,x2,y2] → displayed pixel box (scaled) */
 export function pdfRectToCss(

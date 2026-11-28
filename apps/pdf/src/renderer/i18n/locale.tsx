@@ -31,6 +31,7 @@ const AI_LANG_DIRECTIVES: Record<Lang, string> = {
   hi: '\n\nउपयोगकर्ता के संदेश की भाषा में ही उत्तर दें; यदि भाषा निर्धारित न हो सके, तो हिंदी में उत्तर दें।',
   'zh-TW': '\n\n用與使用者訊息相同的語言回覆；無法判斷使用者訊息的語言時，用繁體中文回覆。',
   vi: '\n\nTrả lời bằng ngôn ngữ của tin nhắn người dùng; nếu không xác định được, hãy trả lời bằng tiếng Việt.',
+  tr: '\n\nYanıtı kullanıcının iletisinin dilinde ver; dil belirlenemiyorsa Türkçe yanıtla.',
 }
 
 export function aiLangDirective(lang: Lang): string {
@@ -41,6 +42,11 @@ const LocaleContext = createContext<Lang>('zh')
 
 /** Module-level current language: for code outliving render closures (AgentLoop events etc.), kept in sync with the Provider */
 let moduleLang: Lang = 'zh'
+
+/** the language as of the last Provider render, for non-React modules (the AI transport's dialog) */
+export function getLang(): Lang {
+  return moduleLang
+}
 
 export function t(key: StringKey, params?: Params): string {
   return translate(moduleLang, key, params)

@@ -20,6 +20,9 @@ import {
   setElementTextBodyProps,
   type TextBodyPropsPatch,
   setElementEffects,
+  setElementHidden,
+  setElementName,
+  materializeSlide,
   type EffectsPatch,
   setElementRedaction,
   setPictureOpacity,
@@ -183,8 +186,7 @@ register({
     const { slide, el } = resolveElement(ctx, op)
     const p1 = op.p1 as { x: number; y: number }
     const p2 = op.p2 as { x: number; y: number }
-    // Resolve anchors before any mutation: per_op isolation does not roll back
-    // a failed apply, so a late throw would leave the connector moved
+    // Resolve anchors before any mutation, so a late throw has nothing to undo
     const start = toRef(
       slide,
       'start',
@@ -667,5 +669,45 @@ register({
       throw new GuidedError(`op "setImageFill": element "${id}" does not support a picture fill.`)
     }
     return { op, after: { mediaPath: used } }
+  },
+})
+
+// ── Selection Pane: show/hide and rename (the element's own <p:cNvPr>) ──
+register({
+  name: 'setElementHidden',
+  validate(op, ctx) {
+    if (typeof op.hidden !== 'boolean') {
+      throw new GuidedError('op "setElementHidden" needs "hidden": true to hide, false to show.')
+    }
+    resolveElement(ctx, op)
+  },
+  apply(op, ctx): OpRecord {
+    const { index, slide, el } = resolveElement(ctx, op)
+    if (!setElementHidden(slide, el.id, op.hidden === true)) {
+      throw new GuidedError(`op "setElementHidden": element "${el.id}" has no shape properties.`)
+    }
+    // A hidden element parses as a silent passthrough: reparse so the model matches
+    materializeSlide(ctx.opened, index)
+    return { op, after: { hidden: op.hidden } }
+  },
+})
+
+register({
+  name: 'renameElement',
+  validate(op, ctx) {
+    if (typeof op.name !== 'string' || !op.name.trim() || op.name.length > 255) {
+      throw new GuidedError(
+        'op "renameElement" needs "name": a non-empty string up to 255 characters.',
+      )
+    }
+    resolveElement(ctx, op)
+  },
+  apply(op, ctx): OpRecord {
+    const { slide, el } = resolveElement(ctx, op)
+    const before = el.name
+    if (!setElementName(slide, el.id, String(op.name))) {
+      throw new GuidedError(`op "renameElement": element "${el.id}" has no shape properties.`)
+    }
+    return { op, before: { name: before }, after: { name: op.name } }
   },
 })

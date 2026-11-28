@@ -1,4 +1,3 @@
-import { readFileSync } from 'node:fs'
 import { basename, dirname } from 'node:path'
 import { flagBool, flagString } from '../args'
 import {
@@ -11,7 +10,7 @@ import {
   saveDeck,
 } from '../formats/pptx'
 import { previewChars } from '../preview'
-import { readInput, resolveInput, resolveOutput, writeOutput } from '../fs'
+import { readInput, readTextFile, resolveInput, resolveOutput, stripBom, writeOutput } from '../fs'
 import { outputDirectory, parseScale, renderToPngs } from '../formats/render'
 import {
   auditDeckBytes,
@@ -194,7 +193,8 @@ async function read(
 function unitsFlag(args: Parameters<CommandDef['run']>[0]): ReadUnit {
   const value = flagString(args, 'units')
   if (value === undefined) return 'emu'
-  if (!isReadUnit(value)) {
+  const unit = value.toLowerCase()
+  if (!isReadUnit(unit)) {
     throw new CliError(
       EXIT.usage,
       `--units must be one of ${READ_UNITS.join(', ')}, got "${value}"`,
@@ -202,7 +202,7 @@ function unitsFlag(args: Parameters<CommandDef['run']>[0]): ReadUnit {
       { reason: 'invalid_argument' },
     )
   }
-  return value
+  return unit
 }
 
 function unitsNote(unit: ReadUnit): string {
@@ -310,7 +310,7 @@ async function check(
   ctx: CommandContext,
 ): Promise<CommandResult> {
   const path = resolveInput(file, ctx)
-  const text = readFileSync(path, 'utf-8')
+  const text = stripBom(readTextFile(path))
   const dir = dirname(path)
   if (looksLikeOutline(text)) {
     const r = parseOutline(text)
@@ -438,7 +438,7 @@ async function replace(
   const r = await replaceSlideFromSpec(
     opened,
     index,
-    readFileSync(specPath, 'utf-8'),
+    stripBom(readTextFile(specPath)),
     specPath,
     ctx,
     stage,

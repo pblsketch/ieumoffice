@@ -46,12 +46,20 @@ vi.mock('@genoffice/ai-search', async () => ({
   generateImageTool: (...args: unknown[]) => generateImageTool(...args),
   analyzeMediaTool: (...args: unknown[]) => analyzeMediaTool(...args),
   documentMediaRoots: () => [],
+  // the Codex image generator is registered when the AI IPC is: this test is only
+  // about cancellation, so a stub generator and a no-op registration are enough
+  createCodexImageGenerator: () => ({ generate: async () => null, models: async () => null }),
+  registerCodexImageGenerator: () => {},
 }))
 
 // no status check either: registering the subscription channels would look for the CLIs
 vi.mock('@genoffice/ai-provider/subscription', () => ({
   ensureSubscriptionIpc: () => ({}),
   sharedSubscriptionStatuses: () => ({}),
+  // docs-main gates these with the AI switch (editor choice); never called here
+  detectSubscriptionLogin: async () => ({}),
+  listSubscriptionModels: async () => [],
+  subscriptionStatusErrorText: () => '',
 }))
 vi.mock('@genoffice/ai-provider/codex-app-server', () => ({
   shutdownCodexAppServers: () => {},

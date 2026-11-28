@@ -16,6 +16,7 @@ const localAlias = {
   ),
   '@genoffice/docx-engine': resolve(__dirname, '../../packages/docx-engine/src/index.ts'),
   '@genoffice/odt-engine': resolve(__dirname, '../../packages/odt-engine/src/index.ts'),
+  '@genoffice/docx2hwp': resolve(__dirname, '../../packages/docx2hwp/src/index.ts'),
 }
 
 export default defineConfig({
@@ -29,11 +30,16 @@ export default defineConfig({
       externalizeDepsPlugin({
         exclude: [
           '@genoffice/docx-engine',
+          // the Hangul export's converter, run in its worker thread
+          '@genoffice/docx2hwp',
           '@genoffice/electron-utils',
+          '@genoffice/print-layout',
           '@genoffice/font-metrics',
           '@genoffice/odt-engine',
           // the template font list the media scheme serves from
           '@genoffice/ui',
+          // the mail merge's CSV and workbook readers
+          '@genoffice/xlsx-gateway',
         ],
       }),
     ],
@@ -47,6 +53,11 @@ export default defineConfig({
   renderer: {
     plugins: [react()],
     resolve: { alias: localAlias },
+    build: {
+      // electron-vite disables minification by default; minifying the large
+      // Docs renderer bundle cuts parse/eval overhead on every new tab open.
+      minify: 'esbuild',
+    },
     server: {
       // Overridable so multiple genoffice dev instances can coexist (default 5173).
       port: Number(process.env.DOCS_DEV_PORT) || 5173,

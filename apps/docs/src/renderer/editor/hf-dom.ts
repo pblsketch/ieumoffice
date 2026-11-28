@@ -1,5 +1,6 @@
 import {
   PAGE_MARK,
+  SECTION_PAGES_MARK,
   TOTAL_PAGES_MARK,
   type HeaderFooter,
   type HfCellParaProps,
@@ -23,6 +24,7 @@ import { setDkBackground, setDkBackgroundImage, setDkBorder, setDkColor } from '
 import { INLINE_RULE_CLASS, inlineRuleDecls } from './inline-rule'
 import { hfParasOf } from './hf-text'
 import { borderMergeFlags, type ParaBorderAttrs } from './para-border-merge'
+import { pictureFilterValue } from './picture-effects'
 
 /**
  * Plain-DOM header/footer rendering for the canvas page gaps (M4 always-on
@@ -703,6 +705,11 @@ export function hfUsesLegacyHash(value: HeaderFooter): boolean {
   return !value.paras?.some(paraHasPageMark)
 }
 
+/** Word's page-number gallery: the area's content becomes a single paragraph holding the PAGE field */
+export function hfPageNumberOnly(align: 'left' | 'center' | 'right'): HeaderFooter {
+  return { text: PAGE_MARK, pageNumber: true, paras: [{ align, runs: [{ text: PAGE_MARK }] }] }
+}
+
 export function hfHasPageField(value: HeaderFooter | null | undefined): boolean {
   return Boolean(
     value &&
@@ -1033,6 +1040,23 @@ export function hfWashoutFilter(w: NonNullable<HfImage['washout']>): string {
   return `brightness(${r(1 / (1 - b))}) invert(1) brightness(${r(g * (1 - b))}) invert(1)`
 }
 
+/** Combined CSS filter + opacity of a header/footer image (VML washout + DrawingML blip effects/alpha). */
+export function hfImageEffectsStyle(img: Pick<HfImage, 'washout' | 'effects'>): {
+  filter?: string
+  opacity?: string
+} {
+  const filters: string[] = []
+  if (img.washout) filters.push(hfWashoutFilter(img.washout))
+  const fxFilter = pictureFilterValue(img.effects)
+  if (fxFilter) filters.push(fxFilter)
+  const out: { filter?: string; opacity?: string } = {}
+  if (filters.length > 0) out.filter = filters.join(' ')
+  if (img.effects?.alpha !== undefined && img.effects.alpha >= 0 && img.effects.alpha < 1) {
+    out.opacity = String(Math.round(img.effects.alpha * 1000) / 1000)
+  }
+  return out
+}
+
 /** CSS transform of a floating header/footer shape: anchor translate, then the VML rotation about the box center */
 export function hfFloatTransform(
   img: Pick<HfImage, 'rotationDeg'>,
@@ -1123,11 +1147,14 @@ function hfImgNode(img: {
   widthPx?: number
   heightPx?: number
   crop?: HfImage['crop']
+  washout?: HfImage['washout']
+  effects?: HfImage['effects']
 }): HTMLElement {
   const im = document.createElement('img')
   im.src = img.dataUrl
   im.alt = ''
   im.draggable = false
+  const fx = hfImageEffectsStyle(img)
   const c = img.crop
   if (c && img.widthPx && img.heightPx) {
     const span = (a: number, b: number) => Math.max(0.01, 1 - a - b)
@@ -1141,6 +1168,8 @@ function hfImgNode(img: {
     im.style.cssText =
       `position:absolute;left:${(-c.l * sw).toFixed(1)}px;top:${(-c.t * sh).toFixed(1)}px;` +
       `width:${sw.toFixed(1)}px;height:${sh.toFixed(1)}px;max-width:none`
+    if (fx.filter) im.style.filter = fx.filter
+    if (fx.opacity) im.style.opacity = fx.opacity
     // the window anchors the absolute img even when the caller's class does
     // not position the wrapper itself
     win.style.position = 'relative'
@@ -1149,6 +1178,8 @@ function hfImgNode(img: {
   }
   if (img.widthPx) im.style.width = `${img.widthPx}px`
   if (img.heightPx) im.style.height = `${img.heightPx}px`
+  if (fx.filter) im.style.filter = fx.filter
+  if (fx.opacity) im.style.opacity = fx.opacity
   return im
 }
 
@@ -1158,7 +1189,12 @@ export function makeHfFloatImgEl(img: HfImage, box: HfFloatBox, host: 'gap' | 'l
     el = document.createElement('span')
     el.innerHTML = wordArtSvgMarkup(img)
   } else {
-    el = hfImgNode(img)
+    el = hfImgNode({
+      dataUrl: img.dataUrl,
+      widthPx: img.widthPx,
+      heightPx: img.heightPx,
+      crop: img.crop,
+    })
   }
   el.className = 'page-hf-float-img'
   if (!img.behind) el.style.zIndex = '1'
@@ -1180,7 +1216,9 @@ export function makeHfFloatImgEl(img: HfImage, box: HfFloatBox, host: 'gap' | 'l
   if (transform) el.style.transform = transform
   if (img.widthPx) el.style.width = `${img.widthPx}px`
   if (img.heightPx) el.style.height = `${img.heightPx}px`
-  if (img.washout) el.style.filter = hfWashoutFilter(img.washout)
+  const fx = hfImageEffectsStyle(img)
+  if (fx.filter) el.style.filter = fx.filter
+  if (fx.opacity) el.style.opacity = fx.opacity
   return el
 }
 
@@ -1314,6 +1352,9 @@ export function hfAnchoredImgStyle(img: HfImage, geom?: HfStripGeom): Record<str
   if (img.widthPx) style.width = `${img.widthPx}px`
   if (img.heightPx) style.height = `${img.heightPx}px`
   if (img.behind) style.zIndex = '-1'
+  const fx = hfImageEffectsStyle(img)
+  if (fx.filter) style.filter = fx.filter
+  if (fx.opacity) style.opacity = fx.opacity
   return style
 }
 
@@ -1338,14 +1379,17 @@ export function makeGapHfEl(opts: {
   pageNo: number | string
   /** total page count shown for the NUMPAGES marker */
   pageTotal: number
+  /** page count of the page's section shown for the SECTIONPAGES marker (absent: pageTotal) */
+  sectionPages?: number
   /** page geometry: floating textboxes render at their anchor position (absent: stacked) */
   geom?: HfStripGeom
 }): HTMLElement {
-  const { kind, value, images, pageNo, pageTotal, geom } = opts
+  const { kind, value, images, pageNo, pageTotal, sectionPages, geom } = opts
   const legacyHash = hfUsesLegacyHash(value)
   const display = (text: string) => {
     const substituted = text
       .replaceAll(TOTAL_PAGES_MARK, String(pageTotal))
+      .replaceAll(SECTION_PAGES_MARK, String(sectionPages ?? pageTotal))
       .replaceAll(PAGE_MARK, String(pageNo))
     return legacyHash ? substituted.replace('#', String(pageNo)) : substituted
   }

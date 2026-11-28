@@ -1,6 +1,36 @@
 import type { zh } from './zh'
 
 export const es = {
+  mathInsert: 'Insertar ecuación',
+  mathEdit: 'Editar ecuación',
+  mathHelp: 'Escriba visualmente o edite LaTeX. El HTML guarda el código para editarlo después.',
+  mathVisualInput: 'Entrada visual de ecuaciones',
+  mathSource: 'Código LaTeX',
+  mathDisplay: 'Mostrar en una línea aparte',
+  mathPreview: 'Vista previa',
+  mathUnsupported:
+    'No se puede representar esta expresión. Se guardará el código para corregirlo después.',
+  mathTooLong: 'Use como máximo {n} caracteres.',
+  mathStale:
+    'El documento cambió. Copie el borrador, cierre esta ventana y vuelva a abrir la ecuación.',
+  mathShortcut: '⌘+Intro para aplicar',
+  mathApply: 'Aplicar ecuación',
+  mathKeyboard: 'Teclado matemático',
+  mathFraction: 'Fracción',
+  mathRoot: 'Raíz cuadrada',
+  mathNthRoot: 'Raíz n-ésima',
+  mathPower: 'Potencia',
+  mathSubscript: 'Subíndice',
+  mathSum: 'Suma',
+  mathProduct: 'Producto',
+  mathIntegral: 'Integral',
+  mathLimit: 'Límite',
+  mathMatrix: 'Matriz',
+  mathVector: 'Vector',
+  mathCases: 'Sistema',
+  mathPiecewise: 'Función por tramos',
+  mathBinomial: 'Coeficiente binomial',
+
   redactMenuLabel: 'Ocultar la selección a la IA',
   redactDialogDesc:
     'Las palabras siguen en el documento y en el archivo; el modelo solo ve el marcador. Ponle un nombre para que sepa qué representa.',
@@ -17,6 +47,11 @@ export const es = {
   saveFailedStatus: 'Error al guardar',
   exportFailed: 'Error al exportar',
   printFailed: 'Error al imprimir: {error}',
+  printRangeEmpty:
+    'Este documento tiene {count} páginas. Escribe números de página dentro de ese intervalo.',
+  printPagesFailed: 'No se pudieron contar las páginas que se van a imprimir: {error}',
+  printLayoutSaved: 'Se guardó el resultado organizado como PDF.',
+  printLayoutSaveFailed: 'No se pudo guardar el PDF: {error}',
   exportHtmlSkipped: 'Exportado, pero {count} recurso(s) no se pudieron incrustar (p. ej. {first})',
   viewPreview: 'Vista previa',
   viewSplit: 'Dividido',
@@ -52,7 +87,7 @@ export const es = {
   previewNeedsSave:
     'Las imágenes y estilos relativos se mostrarán en la vista previa al guardar el archivo',
   inspectHint:
-    'Haz clic en un elemento de la vista previa para seleccionarlo; doble clic para editar el texto',
+    'Haz clic en un elemento de la vista previa para seleccionarlo; doble clic para editar el texto; Mayús+clic o {alt}+arrastrar para seleccionar varios',
   nodeDynamic:
     'Este elemento fue creado por el script de la página y no existe en el código; edítalo desde el código o con IA',
   nodeDynamicShort: 'generado por script',
@@ -102,6 +137,7 @@ export const es = {
   alignLeft: 'Alinear a la izquierda',
   alignCenter: 'Centrar',
   alignRight: 'Alinear a la derecha',
+  alignJustify: 'Justificar',
   fontSizeDec: 'Reducir tamaño de fuente',
   fontSizeInc: 'Aumentar tamaño de fuente',
   typography: 'Tipografía',

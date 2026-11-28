@@ -17,7 +17,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, createRef, type RefObject } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
-import type { AiSettings } from '@genoffice/ai-provider'
+import { defaultAiSettings, resolveCustomEndpoints, type AiSettings } from '@genoffice/ai-provider'
 import type { Lang } from '@genoffice/i18n'
 import type { EpubApi } from '../src/shared/ipc'
 import { LocaleProvider, useI18n } from '../src/renderer/i18n/locale'
@@ -61,6 +61,7 @@ afterEach(async () => {
   for (const b of backends.splice(0)) b.dispose()
   window.localStorage.clear()
   engineFault.launch = null
+  vi.restoreAllMocks()
 })
 
 const SMALL_BOOK: ChapterSource[] = [
@@ -292,6 +293,9 @@ describe('the confirmation', () => {
     expect(Number(q(m.el, '[data-calls]')!.dataset.calls)).toBeGreaterThan(0)
     expect(q(m.el, '[data-route="ready"]')!.dataset.provider).toBe('claude-code')
     expect(q(m.el, '[data-same-language]')).not.toBeNull()
+    expect(q(m.el, '[data-rights]')!.textContent).toBe(
+      'Translate only documents you have the rights to.',
+    )
     expect(q(m.el, '[data-paid]')).toBeNull()
     expect(q(m.el, '[data-action="start"]')!.textContent).toBe('Start')
     expect(b.aiStream).not.toHaveBeenCalled()
@@ -319,6 +323,7 @@ describe('the confirmation', () => {
     await openWindow(m)
     await toConfirm(m)
     expect(q(m.el, '[data-paid]')?.textContent).toContain('요금이 부과됩니다')
+    expect(q(m.el, '[data-rights]')?.textContent).toBe('권리를 가진 문서만 번역하세요.')
     expect(q(m.el, '[data-same-language]')).toBeNull()
   })
 
@@ -551,7 +556,7 @@ describe('resuming and starting over', () => {
     const m = await mount(b)
     await until(() => !!q(m.el, '[data-strip="resume"]'), 'the offer')
     expect(q(m.el, '[data-strip="resume"]')!.textContent).toContain(
-      'Unfinished translation (Korean) 25% — continue?',
+      'Unfinished translation (Korean) 25%. Continue?',
     )
     await click(q(m.el, '[data-action="resume-job"]'))
     await until(() => !!q(m.el, '[data-units]'), 'the window')
@@ -592,5 +597,49 @@ describe('resuming and starting over', () => {
     await click(q(m.el, '[data-action="restart-yes"]'))
     await until(() => !!q(m.el, '[data-action="close-report"]'), 'the second report')
     expect(b.calls.flat().length).toBe(first * 2)
+  })
+})
+
+/** a local model with a tiny window: every batch of a long book needs a confirmation */
+function localSettings(tools = true): AiSettings {
+  const settings = defaultAiSettings()
+  settings.provider = 'custom'
+  settings.customEndpoint = 'loc'
+  settings.customEndpoints = [
+    {
+      id: 'loc',
+      name: 'Ollama',
+      baseUrl: 'http://127.0.0.1:11434/v1',
+      apiKey: '',
+      model: 'qwen3:8b',
+      kind: 'local',
+      modelProfiles: { 'qwen3:8b': { contextLength: 100, tools } },
+    },
+  ]
+  return resolveCustomEndpoints(settings)
+}
+
+describe('the context gate on a book translation', () => {
+  it('asks once for a book of several batches', async () => {
+    const b = await backend(LONG_BOOK, { settings: localSettings() })
+    const m = await mount(b)
+    await openWindow(m)
+    await toConfirm(m)
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    await startAndFinish(m)
+    expect(b.calls.length).toBeGreaterThan(1)
+    expect(confirm).toHaveBeenCalledTimes(1)
+  })
+
+  it('a declined book sends no model call and stops the job', async () => {
+    const b = await backend(LONG_BOOK, { settings: localSettings() })
+    const m = await mount(b)
+    await openWindow(m)
+    await toConfirm(m)
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    await click(q(m.el, '[data-action="start"]'))
+    await until(() => !!q(m.el, '[data-job-state="stopped"]'), 'the stop')
+    expect(confirm).toHaveBeenCalledTimes(1)
+    expect(b.aiStream).not.toHaveBeenCalled()
   })
 })

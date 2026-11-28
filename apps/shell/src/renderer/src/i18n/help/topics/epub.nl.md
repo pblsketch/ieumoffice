@@ -12,13 +12,22 @@ De e-boekeditor opent EPUB-boeken (`.epub`) in een tabblad. Je leest het boek, v
 
 ## Lezen
 
-- Het deelvenster **Inhoud** links toont de inhoudsopgave van het boek. Klik op een item om erheen te gaan. Een boek zonder inhoudsopgave krijgt een lijst van zijn hoofdstukken.
+- Het deelvenster **Inhoud** links toont de inhoudsopgave van het boek. Klik op een item om erheen te gaan. Een boek zonder inhoudsopgave krijgt een lijst van zijn hoofdstukken. Sleep de binnenrand van het deelvenster om de breedte te wijzigen; dubbelklik op de rand om terug te gaan naar de oorspronkelijke breedte. Het zoekvenster gebruikt dezelfde breedte.
 - Elk hoofdstuk scrolt omhoog en omlaag. Scrol verder voorbij het einde van een hoofdstuk om naar het volgende te gaan, of voorbij het begin om terug te gaan. De statusregel laat zien in welk hoofdstuk je bent.
 - Het tabblad **Beeld** wijzigt de tekstgrootte en regelafstand en zet **Donkere weergave** aan en uit. Deze instellingen veranderen alleen het scherm, nooit het boek, en gelden voor alle boeken.
 - De plek waar je bent gestopt met lezen, wordt per bestand onthouden, in de gegevensmap van de app en niet in het boek.
 - **Zoeken in boek** (Ctrl+F) doorzoekt alle hoofdstukken. Klik op een resultaat om erheen te gaan.
 - Een koppeling in het boek brengt je naar die plek. Web- en e-mailkoppelingen openen in je standaardbrowser; andere adressen worden niet geopend.
 - Scripts in het boek zelf worden nooit uitgevoerd en er wordt niets van internet geladen. Geluid en video worden niet afgespeeld.
+
+## Voorbeeld
+
+- Klik op het tabblad **Start** of **Beeld** op **Voorbeeld** om het boek in pagina’s te zien, zoals een e-reader het toont. Het voorbeeld opent op de plek waar je aan het lezen bent.
+- Kies in de balk bovenaan het scherm (**E-reader**, **Telefoon**, **Tablet** of **Aan venster aanpassen**), liggend, de tekstgrootte en de achtergrond (wit, sepia of donker). Een breed scherm dat liggend staat, toont twee pagina’s naast elkaar. Deze instellingen veranderen alleen het voorbeeld, nooit het boek.
+- Blader met de pijltoetsen, Page Up en Page Down, de spatiebalk, het muiswiel of de knoppen aan beide kanten. Na de laatste pagina van een hoofdstuk ga je verder met het volgende hoofdstuk. De inhoudsopgave en links in het boek brengen het voorbeeld naar die plek.
+- In het voorbeeld kun je geen tekst bewerken. Als de AI het boek wijzigt of je een wijziging ongedaan maakt, volgt het voorbeeld.
+- Klik op **Voorbeeld sluiten** of druk op Esc om verder te bewerken op de plek die het voorbeeld liet zien.
+- Paginagrenzen verschillen een beetje per winkel-app en apparaat, dus zie het voorbeeld als een goede benadering.
 
 ## Tekst bewerken
 
@@ -38,7 +47,7 @@ De e-boekeditor opent EPUB-boeken (`.epub`) in een tabblad. Je leest het boek, v
 ## AI-paneel
 
 - Stel vragen over het boek, laat een hoofdstuk samenvatten of laat de tekst ervan verbeteren of herschrijven. De AI leest de inhoudsopgave en hoofdstukken van het boek en zoekt er tekst in.
-- Wijzigingen van de AI verschijnen meteen, en één keer ongedaan maken (Ctrl+Z) draait alles terug wat de AI in die beurt heeft veranderd. De AI kan tekst vet of cursief maken, maar geen afbeeldingen, tabellen of hoofdstukken toevoegen.
+- Wijzigingen van de AI verschijnen meteen, de gewijzigde blokken worden geel gemarkeerd, en **Deze wijzigingen ongedaan maken** op de kaart onder het antwoord draait alles terug wat de AI in die beurt heeft veranderd (zolang het boek daarna niet is bewerkt). De AI kan tekst vet of cursief maken, maar geen afbeeldingen, tabellen of hoofdstukken toevoegen.
 - De tekst van het boek is materiaal voor de AI, geen opdracht.
 - Vraag "Vertaal dit boek naar het Frans" en de AI opent het vertaalvenster met die taal al ingevuld. Er wordt niets verzonden tot je op **Starten** klikt.
 - EPUB-boeken kun je ook als bijlage toevoegen in het AI-paneel van de andere editors, kiezen met `@` en vinden met het zoeken naar bestanden op Start.
@@ -58,11 +67,12 @@ De e-boekeditor opent EPUB-boeken (`.epub`) in een tabblad. Je leest het boek, v
 - Wat al vertaald is, wordt bewaard. Als je stopt, kies je **Exporteren wat tot nu toe vertaald is** (de rest blijft in de oorspronkelijke taal) of **Later verdergaan**. Open je een boek met een onafgemaakte vertaling, dan biedt GenOffice aan om ermee verder te gaan. **Opnieuw vertalen vanaf het begin** verwijdert eerst de bewaarde vertaling voor die taal.
 - Bewaarde vertalingen tellen mee onder Instellingen ▸ Algemeen ▸ **Opgeslagen AI-resultaten**, samen met die van pdf-documenten, en **Alles verwijderen** wist ook deze.
 - Dezelfde vertaling kun je ook starten met de [terminalopdrachten](help://cli) als `ieumoffice epub translate`.
+- Kies bij **Soort** voor **Eenvoudige taal** om het boek in eenvoudige woorden in de gekozen taal te herschrijven. De resultaten zijn een **Boek in eenvoudige taal** en **Origineel, gevolgd door eenvoudige taal**; hun titel vermeldt in die taal dat het een versie in eenvoudige taal is, en hun bestandsnaam vermeldt dat in de taal van de interface, zodat die verschilt van die van een vertaling. De taal is eerst die van de interface en mag ook die van het boek zijn. De eenvoudige versie wordt los van vertalingen bewaard, verdergaan wordt er apart voor aangeboden, en de terminalopdrachten maken haar niet.
 
 ## Nog niet ondersteund
 
 - Hoofdstukken toevoegen, verwijderen of de volgorde ervan wijzigen; de titel, auteur of omslag wijzigen; afbeeldingen of tabellen invoegen; een alinea omzetten in een kop of een lijst.
 - Boeken met vaste opmaak bewerken of vertalen, en boeken met kopieerbeveiliging openen.
-- Bladeren zoals in een gedrukt boek, en een nieuw, leeg boek maken.
+- Een nieuw, leeg boek maken.
 - Het origineel en de vertaling naast elkaar vergelijken in de editor. Open in plaats daarvan het tweetalige boek, en verbeter het vertaalde boek zoals elk ander boek.
 - Delen van een boek verbergen voor de AI.

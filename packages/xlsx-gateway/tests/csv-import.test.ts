@@ -222,3 +222,38 @@ describe('isNumericCell', () => {
     expect(isNumericCell(' 123')).toBe(false)
   })
 })
+
+describe('decodeCsvBuffer: Korean code page 949 detected from the bytes', () => {
+  // "품목,금액\n라떼,5000\n" as Korean Excel saves CSV: code page 949, no BOM
+  const CP949 = new Uint8Array([
+    199, 176, 184, 241, 44, 177, 221, 190, 215, 10, 182, 243, 182, 188, 44, 53, 48, 48, 48, 10,
+  ])
+  // a Japanese header row and a katakana row (name, price 500) saved as Shift_JIS
+  const SJIS = new Uint8Array([
+    149, 105, 150, 188, 44, 137, 191, 138, 105, 10, 131, 82, 129, 91, 131, 113, 129, 91, 44, 53, 48,
+    48, 10,
+  ])
+  // a Simplified Chinese header row and a data row (name, price 500) saved as GBK
+  const GBK = new Uint8Array([
+    198, 183, 195, 251, 44, 188, 219, 184, 241, 10, 191, 167, 183, 200, 44, 53, 48, 48, 10,
+  ])
+
+  it('reads Korean without any locale hint', () => {
+    expect(decodeCsvBuffer(CP949)).toBe('품목,금액\n라떼,5000\n')
+    expect(decodeCsvBuffer(CP949, 'euc-kr')).toBe('품목,금액\n라떼,5000\n')
+  })
+
+  it('keeps Japanese and Chinese files as they were', () => {
+    // without a hint these bytes were never Korean; they must not become Korean now
+    expect(decodeCsvBuffer(SJIS)).not.toMatch(/[\uac00-\ud7a3]/)
+    expect(decodeCsvBuffer(SJIS, 'shift_jis')).toBe('品名,価格\nコーヒー,500\n')
+    expect(decodeCsvBuffer(GBK)).toBe('品名,价格\n咖啡,500\n')
+    expect(decodeCsvBuffer(GBK, 'gb18030')).toBe('品名,价格\n咖啡,500\n')
+  })
+
+  it('leaves UTF-8 alone', () => {
+    const utf8 = new TextEncoder().encode('품목,금액\n라떼,5000\n')
+    expect(decodeCsvBuffer(utf8)).toBe('품목,금액\n라떼,5000\n')
+    expect(decodeCsvBuffer(utf8, 'gb18030')).toBe('품목,금액\n라떼,5000\n')
+  })
+})

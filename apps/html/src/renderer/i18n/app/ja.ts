@@ -1,6 +1,34 @@
 import type { zh } from './zh'
 
 export const ja = {
+  mathInsert: '数式を挿入',
+  mathEdit: '数式を編集',
+  mathHelp: '数式を直接入力するかLaTeXで編集します。HTMLにソースが保存され、再編集できます。',
+  mathVisualInput: '数式の直接入力',
+  mathSource: 'LaTeXソース',
+  mathDisplay: '独立した行に表示',
+  mathPreview: 'プレビュー',
+  mathUnsupported: '表示できない数式です。後で修正できるようソースを保存します。',
+  mathTooLong: '{n}文字以内で入力してください。',
+  mathStale: '文書が変更されました。入力内容をコピーし、この画面を閉じて数式を開き直してください。',
+  mathShortcut: '⌘+Enterで適用',
+  mathApply: '数式を適用',
+  mathKeyboard: '数式キーボード',
+  mathFraction: '分数',
+  mathRoot: '平方根',
+  mathNthRoot: 'n乗根',
+  mathPower: '累乗',
+  mathSubscript: '下付き文字',
+  mathSum: '和',
+  mathProduct: '積',
+  mathIntegral: '積分',
+  mathLimit: '極限',
+  mathMatrix: '行列',
+  mathVector: 'ベクトル',
+  mathCases: '連立式',
+  mathPiecewise: '区分関数',
+  mathBinomial: '二項係数',
+
   redactMenuLabel: '選択範囲をAIから隠す',
   redactDialogDesc:
     '文章はドキュメントとファイルに残り、AI には下のマーカーしか見えません。名前をつけると、何を表すかAIが理解できます。',
@@ -17,6 +45,10 @@ export const ja = {
   saveFailedStatus: '保存に失敗しました',
   exportFailed: 'エクスポートに失敗しました',
   printFailed: '印刷に失敗しました: {error}',
+  printRangeEmpty: 'この文書は {count} ページです。その中のページ番号を入力してください。',
+  printPagesFailed: '印刷するページを数えられませんでした: {error}',
+  printLayoutSaved: '配置した結果を PDF として保存しました。',
+  printLayoutSaveFailed: 'PDF を保存できませんでした: {error}',
   exportHtmlSkipped:
     'エクスポートしましたが、{count} 個のアセットを埋め込めませんでした（例: {first}）',
   viewPreview: 'プレビュー',
@@ -51,7 +83,8 @@ export const ja = {
   slideThumbs: 'スライド一覧',
   slideThumbGo: 'スライド {n} に移動',
   previewNeedsSave: 'ファイルを保存すると、相対パスの画像とスタイルがプレビューに表示されます',
-  inspectHint: 'プレビューの要素をクリックして選択、ダブルクリックでテキスト編集',
+  inspectHint:
+    'プレビューの要素をクリックして選択、ダブルクリックでテキスト編集、Shift+クリックか{alt}+ドラッグで複数選択',
   nodeDynamic:
     'この要素はページのスクリプトが生成したものでソースに存在しません。ソースまたは AI で編集してください',
   nodeDynamicShort: 'スクリプト生成',
@@ -101,6 +134,7 @@ export const ja = {
   alignLeft: '左揃え',
   alignCenter: '中央揃え',
   alignRight: '右揃え',
+  alignJustify: '両端揃え',
   fontSizeDec: 'フォントサイズを縮小',
   fontSizeInc: 'フォントサイズを拡大',
   typography: 'タイポグラフィ',

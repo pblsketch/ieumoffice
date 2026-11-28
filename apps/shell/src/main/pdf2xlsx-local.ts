@@ -6,7 +6,6 @@
  * carries the package inline.
  */
 import { readFileSync } from 'node:fs'
-import { convertPdfToXlsx } from '../../../../packages/pdf2docx/src'
 import type { ConvertXlsxResult } from '../../../../packages/pdf2docx/src'
 import { convertWithPasswordRetry, ensurePdfium } from './pdf2docx-local'
 
@@ -18,7 +17,10 @@ export async function convertPdfFileToXlsxLocal(
   onProgress?: (page: number, total: number) => void,
   password?: string,
 ): Promise<ConvertXlsxResult> {
-  const pdfium = await ensurePdfium()
+  const [pdfium, { convertPdfToXlsx }] = await Promise.all([
+    ensurePdfium(),
+    import('../../../../packages/pdf2docx/src'),
+  ])
   const bytes = readFileSync(pdfPath)
   const pdf = new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength)
   return convertPdfToXlsx(pdf, {

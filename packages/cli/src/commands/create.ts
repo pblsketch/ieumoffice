@@ -1,7 +1,14 @@
 import { existsSync, readFileSync, statSync } from 'node:fs'
 import { basename, dirname, extname, isAbsolute, join, resolve } from 'node:path'
 import { flagBool, flagString } from '../args'
-import { assertAllowed, resolveInput, resolveOutput, writeOutput } from '../fs'
+import {
+  assertAllowed,
+  readTextFile,
+  resolveInput,
+  resolveOutput,
+  stripBom,
+  writeOutput,
+} from '../fs'
 import { applyOps, blankDeck, inlineLocalFiles, parseOps, saveDeck } from '../formats/pptx'
 import {
   auditDeckBytes,
@@ -22,6 +29,7 @@ import {
 } from '../formats/xlsx'
 import { exportViaApp } from '../formats/app-export'
 import { blankDocument, closeDocument, fillFromHtml, saveDocument } from '../formats/docx'
+import { decodeHtmlBytes } from '../formats/html-text'
 import { markdownToDocx } from '../formats/markdown'
 import { runWorkbookDsl } from '../formats/xlsx-dsl'
 import { columnLabel } from '@genoffice/xlsx-gateway/domain/cell-address'
@@ -31,22 +39,23 @@ import type { CommandContext, CommandDef } from '../registry'
 import type { TxnResult } from '@genoffice/pptx-ops'
 import { CliError, EXIT, type CommandResult } from '../result'
 import { txnFailure, txnDetail } from './txn'
+import { hwpOpsOf, hwpOutputFormat, runHwpBatch } from './hwp'
 
 /** Document types that can be built here. */
-const TYPES = ['pptx', 'xlsx', 'docx', 'pdf'] as const
+const TYPES = ['pptx', 'xlsx', 'docx', 'pdf', 'hwp', 'hwpx', 'drawio', 'whiteboard'] as const
 
 export const createCommand: CommandDef = {
   name: 'create',
   summary: 'Create a new document from structured content.',
   usage:
-    'create --type <pptx|xlsx|docx|pdf> (--ops <file|-> | --spec <file|dir|-> [--outline <file>] | --from <file>) --out <path> [--force]',
+    'create --type <pptx|xlsx|docx|pdf|hwp|hwpx|drawio|whiteboard> (--ops <file|-> | --template <JSON|@file|-> | --spec <file|dir|-> [--outline <file>] | --from <file> | --mermaid <file|->) --out <path> [--force]',
   options: [
     { name: 'type', value: 'type', description: `document type: ${TYPES.join(', ')}` },
     {
       name: 'ops',
       value: 'file',
       description:
-        'pptx: JSON array of ops (or {"ops":[...]}) applied one by one to a blank one-slide deck (later ops can target slides added earlier); "-" reads stdin. See `ieumoffice guide slides`.',
+        'pptx: JSON array of ops (or {"ops":[...]}) applied one by one to a blank one-slide deck (later ops can target slides added earlier); hwp / hwpx: the `hwp apply` ops run on a blank A4 document (see `ieumoffice guide hwp`); drawio: the `diagram apply` ops run on a new one-page diagram, also inline JSON or @<file> (see `ieumoffice guide diagram`); "-" reads stdin. See `ieumoffice guide slides`.',
     },
     {
       name: 'spec',
@@ -76,6 +85,24 @@ export const createCommand: CommandDef = {
       value: ', or .',
       description:
         'xlsx --from .csv: the decimal separator the file uses (default "."); with "," a "." is read as a thousands separator',
+    },
+    {
+      name: 'mermaid',
+      value: 'file|-',
+      description:
+        'drawio: Mermaid source drawn by draw.io on the new diagram before any --ops (needs the app); "-" reads stdin',
+    },
+    {
+      name: 'template',
+      value: 'JSON|@file|-',
+      description:
+        'whiteboard: declarative layout JSON (TemplateDocument v1) applied before any --ops; "-" reads stdin',
+    },
+    {
+      name: 'bibliography',
+      value: 'path',
+      description:
+        'hwp / hwpx: bibliography JSON file to use instead of the app library (hwp-bibliography.json)',
     },
     { name: 'out', value: 'path', description: 'output file (required)' },
     { name: 'force', description: 'overwrite an existing output file' },
@@ -113,6 +140,21 @@ export const createCommand: CommandDef = {
         { reason: 'invalid_argument' },
       )
     }
+    if (type !== 'drawio' && args.flags['mermaid'] !== undefined) {
+      throw new CliError(EXIT.usage, '--mermaid goes with --type drawio', undefined, {
+        reason: 'invalid_argument',
+      })
+    }
+    if (type !== 'whiteboard' && args.flags['template'] !== undefined) {
+      throw new CliError(EXIT.usage, '--template goes with --type whiteboard', undefined, {
+        reason: 'invalid_argument',
+      })
+    }
+    if (type !== 'hwp' && type !== 'hwpx' && args.flags['bibliography'] !== undefined) {
+      throw new CliError(EXIT.usage, '--bibliography goes with --type hwp or hwpx', undefined, {
+        reason: 'invalid_argument',
+      })
+    }
     const output = resolveOutput(flagString(args, 'out'), ctx, {
       force: flagBool(args, 'force'),
       fresh: true,
@@ -130,6 +172,22 @@ export const createCommand: CommandDef = {
         outputPath: output,
         detail: { via: 'ieumoffice --headless-export', summary: r.summary },
       }
+    }
+    if (type === 'hwp' || type === 'hwpx') return createHwp(type, args, ctx, output)
+    if (type === 'drawio') {
+      const diagram = await import('../formats/diagram')
+      // the name decides the format; check it before reading any input
+      diagram.diagramFormatOf(output)
+      const ops = args.flags['ops'] !== undefined ? diagram.diagramOpsOf(args, ctx) : undefined
+      const mermaid = diagram.mermaidTextOf(args, ctx)
+      return diagram.createDrawio(output, ops, mermaid, ctx, writeOutput)
+    }
+    if (type === 'whiteboard') {
+      const wb = await import('../formats/whiteboard')
+      wb.assertWhiteboardCliPath(output)
+      const ops = args.flags['ops'] !== undefined ? wb.whiteboardOpsOf(args, ctx) : undefined
+      const template = wb.whiteboardTemplateOf(args, ctx)
+      return wb.createWhiteboard(output, ops, template, ctx, writeOutput)
     }
     if (type === 'docx') {
       const r = await createDocx(args, ctx)
@@ -190,6 +248,44 @@ export const createCommand: CommandDef = {
   },
 }
 
+/** A new Hangul document: the `hwp apply` ops on the engine's blank document, as a new HWP tab starts. */
+async function createHwp(
+  type: 'hwp' | 'hwpx',
+  args: Parameters<CommandDef['run']>[0],
+  ctx: CommandContext,
+  output: string,
+): Promise<CommandResult> {
+  if (hwpOutputFormat(output) !== type) {
+    throw new CliError(
+      EXIT.usage,
+      `--out must end in .${type} for --type ${type}: ${output}`,
+      undefined,
+      {
+        reason: 'invalid_argument',
+      },
+    )
+  }
+  const bibFlag = args.flags.bibliography
+  if (bibFlag === true) {
+    throw new CliError(EXIT.usage, 'missing --bibliography <path>', undefined, {
+      reason: 'missing_argument',
+    })
+  }
+  const bibliographyPath = typeof bibFlag === 'string' ? resolveInput(bibFlag, ctx) : undefined
+  const ops = hwpOpsOf(args, ctx)
+  const { blankHwpForEdit, closeHwpSession } = await import('../formats/hwp-edit')
+  const session = await blankHwpForEdit(
+    ctx.env,
+    bibliographyPath ? { bibliographyPath } : undefined,
+  )
+  try {
+    const result = await runHwpBatch(session, ops, args, { output, format: type })
+    return { ...result, summary: `created ${basename(output)}` }
+  } finally {
+    closeHwpSession(session)
+  }
+}
+
 async function createPptx(
   args: Parameters<CommandDef['run']>[0],
   ctx: CommandContext,
@@ -247,7 +343,7 @@ async function createPptxFromSpec(
       reason: 'invalid_argument',
     })
   const source = spec === '-' ? 'stdin' : resolveInput(spec, ctx)
-  const text = spec === '-' ? readFileSync(0, 'utf-8') : readFileSync(source, 'utf-8')
+  const text = stripBom(spec === '-' ? readFileSync(0, 'utf-8') : readTextFile(source))
   const built = await buildDeckFromSpec(
     text,
     source,
@@ -285,6 +381,25 @@ async function createXlsx(
     })
   }
   const tables = readTables(source, basename(source, extname(source)), { decimal })
+  // Validate every name before the first write, including --force and later worksheets.
+  for (const [index, table] of tables.entries()) {
+    for (const character of table.name) {
+      const code = character.codePointAt(0)!
+      const invalid =
+        (code < 0x20 && code !== 0x09 && code !== 0x0a && code !== 0x0d) ||
+        (code >= 0xd800 && code <= 0xdfff) ||
+        code === 0xfffe ||
+        code === 0xffff
+      if (invalid) {
+        throw new CliError(
+          EXIT.usage,
+          `${source}: sheets[${index}].name contains a character that cannot be represented in XML 1.0: ${JSON.stringify(table.name)}`,
+          undefined,
+          { reason: 'invalid_argument' },
+        )
+      }
+    }
+  }
   const [first, ...rest] = tables
   if (!first)
     throw new CliError(EXIT.usage, `${from}: no sheets`, undefined, { reason: 'invalid_argument' })
@@ -306,12 +421,19 @@ async function createXlsx(
       renames: dsl.renames,
       gateway: dsl.gateway,
     })
-    r = { ...r, warning: r.warning ?? w.warning, formulaError: r.formulaError ?? w.formulaError }
+    r = {
+      ...r,
+      warning: r.warning ?? w.warning,
+      formulaError: r.formulaError ?? w.formulaError,
+      dependentsWarning: r.dependentsWarning ?? w.dependentsWarning,
+    }
     for (const note of w.notes ?? []) ctx.warn(note)
   }
 
   if (r.warning) ctx.warn({ code: 'formulas_not_cached', message: r.warning })
   if (r.formulaError) ctx.warn({ code: 'formula_errors', message: r.formulaError })
+  if (r.dependentsWarning)
+    ctx.warn({ code: 'dependents_not_recalculated', message: r.dependentsWarning })
   return {
     sheets: tables.length,
     cells: r.cells,
@@ -342,7 +464,7 @@ function readTables(
   }
   let parsed: unknown
   try {
-    parsed = JSON.parse(readFileSync(source, 'utf-8'))
+    parsed = JSON.parse(stripBom(readTextFile(source)))
   } catch (err) {
     throw new CliError(
       EXIT.usage,
@@ -380,18 +502,17 @@ async function createDocx(
       reason: 'missing_argument',
     })
   const source = resolveInput(from, ctx)
-  const text = readFileSync(source, 'utf-8')
   const ext = extname(source).toLowerCase()
   if (ext === '.md' || ext === '.markdown') {
     return {
-      bytes: await markdownToDocx(text, { file: source, ctx }),
+      bytes: await markdownToDocx(stripBom(readTextFile(source)), { file: source, ctx }),
       detail: { source: 'markdown' },
     }
   }
   if (ext === '.html' || ext === '.htm') {
     const doc = await blankDocument()
     try {
-      const blocks = fillFromHtml(doc, text)
+      const blocks = fillFromHtml(doc, decodeHtmlBytes(readFileSync(source)))
       return { bytes: await saveDocument(doc), detail: { source: 'html', blocks } }
     } finally {
       closeDocument(doc)

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   FORMULA_MODE_MAX_CELLS,
+  FORMULA_MODE_MAX_STORED_CELLS,
   FULL_LOAD_MAX_CELLS,
   FULL_LOAD_MAX_GRID_CELLS,
   FULL_LOAD_MAX_STORED_CELLS,
@@ -80,6 +81,53 @@ describe('load decisions', () => {
         ]),
       ),
     ).toBe(false)
+  })
+
+  it('style-only blanks past the value cap still open in formula mode', () => {
+    // 400 x 51 data with borders, rules and drop-downs drawn to row 1000
+    const bordered = workbookCellCounts([
+      {
+        rowCount: 1_000,
+        columnCount: 51,
+        storedCellCount: 51_000,
+        valueCellCount: 6_624,
+        valueRowCount: 403,
+        valueColumnCount: 51,
+      },
+    ])
+    expect(bordered.storedCells).toBeGreaterThan(FORMULA_MODE_MAX_CELLS)
+    expect(opensInFormulaMode(bordered)).toBe(true)
+    const tooManyValues = workbookCellCounts([
+      {
+        rowCount: 1_000,
+        columnCount: 60,
+        storedCellCount: 60_000,
+        valueCellCount: FORMULA_MODE_MAX_CELLS + 1,
+      },
+    ])
+    expect(opensInFormulaMode(tooManyValues)).toBe(false)
+  })
+
+  it('a preload past the stored ceiling streams even with few values', () => {
+    const atCeiling = workbookCellCounts([
+      {
+        rowCount: 4_000,
+        columnCount: 51,
+        storedCellCount: FORMULA_MODE_MAX_STORED_CELLS,
+        valueCellCount: 6_624,
+      },
+    ])
+    expect(opensInFormulaMode(atCeiling)).toBe(true)
+    const pastCeiling = workbookCellCounts([
+      {
+        rowCount: 20_000,
+        columnCount: 51,
+        storedCellCount: FORMULA_MODE_MAX_STORED_CELLS + 1,
+        valueCellCount: 6_624,
+      },
+    ])
+    expect(fitsFullLoad(pastCeiling)).toBe(true)
+    expect(opensInFormulaMode(pastCeiling)).toBe(false)
   })
 
   it('a dense sheet past the cap is too large even with a small box', () => {

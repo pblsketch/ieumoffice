@@ -8,6 +8,7 @@ Home is GenOffice's start page: a navigation sidebar on the left, file lists and
 - **Starred**: files you starred. Hover a file row and click the star to add or remove it. The ⋯ menu's **Move to group** sorts starred files into named groups; the Starred view filters by them.
 - **User Guide**: opens this manual.
 - **Ask AI**: the knowledge-base panel — ask questions and get answers cited from your starred files (see below).
+- **Projects**: the folders (projects) the AI can work with. Create a project or use an existing folder, and open one to manage its instructions, memory, files and chats. See [Projects](help://projects).
 - **Folders**: directories you add to the sidebar with **Add folder…**, or drag in from the file manager. Each becomes a root you can open, create subfolders in, rename and remove; one that goes offline shows as unavailable and can be taken off the list. **New folder** makes another one.
 - **The row at the bottom**: shows whether AI is connected — **Connect AI**, or the name of the connected subscription — and opens Settings.
 
@@ -43,9 +44,11 @@ The cards above the lists create a new document in one step. Clicking a card cre
 
 The new file lands in the folder currently selected in the sidebar; with no selection it goes to the default folder.
 
+To hide cards or change their order, use **New documents on Home** under Settings → General. A type you turn off only leaves the cards and the New menus; files of that type still open as before. On Home, ⌘N/Ctrl+N creates the first type still shown. Turning an editor off under Settings → Editors and AI is different: its cards and menu entries go as well, and opening its files asks first.
+
 What each card does:
 
-- **AI Docs** (.docx): a blank text document in the Docs editor. The file is only written to disk on **first save**; new documents open with the AI panel expanded (turn that off under Settings → "Open the AI panel in new documents").
+- **AI Docs** (.docx): a blank text document in the Docs editor. The file is only written to disk on **first save**; new documents open with the AI panel expanded (choose Off or Collapsed under Settings → "AI panel" if you would rather not).
 - **AI Sheets** (.xlsx): a blank spreadsheet in the Sheets editor. Until you save, no file exists on disk — the name is reserved for the first save; after the first AI generation the file can also be renamed automatically from its content.
 - **AI Slides** (.pptx): a blank presentation in the Slides editor.
 - **AI Markdown** (.md): a blank Markdown document in the Markdown editor.
@@ -60,5 +63,6 @@ What each card does:
 - Star files first (any type the app reads); the panel header counts the corpus, and an empty knowledge base tells you to go star something.
 - Answers cite the files they came from; click a citation to open the file in its editor.
 - Needs a connected AI; see [Subscription connection](help://subscription). The conversation lives in memory only — closing the app ends it.
+- Pick a project below the input and the folder's files are searched and read as well, and the chat is kept in that folder so you can carry on in another editor. Without a project, the chat lives in memory only, as above.
 - Search runs on the local file index, like Home search; files that have disappeared quietly drop out of the corpus.
 - Groups organise the Starred list only — the knowledge base always spans every starred file.

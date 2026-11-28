@@ -1,4 +1,4 @@
-import { OUTBOUND_TOOLS, isOutboundCall } from './outbound'
+import { isOutboundCall, isOutboundToolName } from './outbound'
 import type { AgentSkill } from './skill'
 import type { AgentMessage, AgentToolCall, ToolExecution } from './types'
 
@@ -6,8 +6,9 @@ import type { AgentMessage, AgentToolCall, ToolExecution } from './types'
  * The person's say over what leaves the PC through the AI's tools (decision 0062).
  *
  * Two rules on top of every editor's composed skill:
- * - "Let AI use internet tools" off: the outbound tools leave the tool list
- *   and any call that would still reach off the PC is refused.
+ * - "Let AI use internet tools" off: the outbound tools and every user MCP
+ *   server's tool leave the tool list and any call that would still reach
+ *   off the PC is refused.
  * - An address the AI wants to fetch must already stand, character for
  *   character, in the conversation: in the person's messages or in a tool
  *   result (search results, a page or file it read). Anything else is put to
@@ -56,15 +57,51 @@ export function fetchedAddresses(input: unknown): string[] {
 }
 
 /**
+ * Tools whose results vouch for no address (project folders, spec 5.5): the
+ * files of a project folder are the folder's own text, not something the
+ * person brought into the conversation, so an address that stands only in
+ * what these tools returned is still put to the person before it is fetched.
+ * Keep in sync with PROJECT_TOOL_NAMES in @genoffice/project-store (this
+ * package does not depend on it).
+ */
+export const UNVOUCHED_RESULT_TOOLS: ReadonlySet<string> = new Set([
+  'project_list_files',
+  'project_search',
+  'project_read',
+  'project_remember',
+])
+
+export interface AddressConversationOptions {
+  /** Extra tools (such as built-in local-only connectors) whose results never vouch for URLs */
+  isUnvouchedTool?: (name: string) => boolean
+}
+
+export interface GuardOutboundOptions {
+  /** Built-in local-only connector tools that stay on this PC even when internet tools are off */
+  isLocalOnlyTool?: (name: string) => boolean
+}
+
+/**
  * Whether the address already stands in text the AI did not write: the
  * person's messages and tool results. The AI's own replies do not count, or
- * it could vouch for an address by writing it first.
+ * it could vouch for an address by writing it first; neither do the results
+ * of `UNVOUCHED_RESULT_TOOLS` or tools matched by `isUnvouchedTool`.
  */
-export function addressInConversation(address: string, history: readonly AgentMessage[]): boolean {
+export function addressInConversation(
+  address: string,
+  history: readonly AgentMessage[],
+  options?: AddressConversationOptions,
+): boolean {
   return history.some((m) =>
     m.role === 'user'
       ? m.text.includes(address)
-      : m.role === 'tool' && m.results.some((r) => r.output.includes(address)),
+      : m.role === 'tool' &&
+        m.results.some(
+          (r) =>
+            !UNVOUCHED_RESULT_TOOLS.has(r.name) &&
+            !options?.isUnvouchedTool?.(r.name) &&
+            r.output.includes(address),
+        ),
   )
 }
 
@@ -85,9 +122,11 @@ export function guardOutbound(
   skill: AgentSkill,
   bridge: OutboundBridgeLike | null,
   messages: () => readonly AgentMessage[],
+  options?: GuardOutboundOptions,
 ): AgentSkill {
   if (!bridge) return skill
   const main = bridge
+  const isLocalOnlyTool = options?.isLocalOnlyTool
   // off until the main process answers: the first request must not reach out before it is known
   let on = false
   void main.internetToolsEnabled().then(
@@ -110,14 +149,21 @@ export function guardOutbound(
     get systemPrompt() {
       return skill.systemPrompt
     },
+    get toolsOffSystemPrompt() {
+      return skill.toolsOffSystemPrompt
+    },
     get tools() {
-      return on ? skill.tools : skill.tools.filter((t) => !OUTBOUND_TOOLS.has(t.name))
+      return on
+        ? skill.tools
+        : skill.tools.filter((t) => !isOutboundToolName(t.name, isLocalOnlyTool))
     },
     buildContext: () => skill.buildContext?.() ?? '',
     executeTool: (call, signal) => {
       const addresses = fetchedAddresses(call.input)
       // calls that stay on the PC run exactly as before, synchronously if they were
-      if (!isOutboundCall(call) && addresses.length === 0) return skill.executeTool(call, signal)
+      if (!isOutboundCall(call, isLocalOnlyTool) && addresses.length === 0) {
+        return skill.executeTool(call, signal)
+      }
       return checked(call, addresses, signal)
     },
     ...(skill.verifyResponse ? { verifyResponse: skill.verifyResponse.bind(skill) } : {}),
@@ -136,7 +182,15 @@ export function guardOutbound(
       allowed = new Set()
       allowedFor = history[0]
     }
-    const unknown = addresses.filter((a) => !allowed.has(a) && !addressInConversation(a, history))
+    const unknown = addresses.filter(
+      (a) =>
+        !allowed.has(a) &&
+        !addressInConversation(
+          a,
+          history,
+          isLocalOnlyTool ? { isUnvouchedTool: isLocalOnlyTool } : undefined,
+        ),
+    )
     if (unknown.length > 0) {
       const yes = await main.confirmAddresses(call.name, unknown).catch(() => false)
       if (yes !== true) return refuse(call, ADDRESS_DECLINED)

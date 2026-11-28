@@ -13,6 +13,7 @@ import { fileURLToPath } from 'node:url'
 import { BrowserWindow, app, dialog, ipcMain, utilityProcess, webContents } from 'electron'
 import type { IpcMainInvokeEvent, WebContents } from 'electron'
 import { showOpenDialogWithMemory, showSaveDialogWithMemory } from '@genoffice/electron-utils'
+import { rhwpWasmPath } from '@genoffice/file-parse'
 import { PDF_CHANNELS } from '../../../pdf/src/shared/ipc'
 import type { PdfStructureProgress } from '../../../pdf/src/shared/ipc'
 import { pdfPathGranted } from '../../../pdf/src/main/pdf-main'
@@ -46,6 +47,7 @@ function processSetup(): ProcessSetup {
     userDataDir: app.getPath('userData'),
     hbSubsetWasmPath: hbSubsetWasmPath(),
     qpdfWasmPath: qpdfWasmPath(),
+    rhwpWasmPath: rhwpWasmPath(),
   }
 }
 
@@ -103,6 +105,22 @@ export function cancelWindowJob(owner: number, jobId: string): boolean {
   return runner?.cancel(owner, jobId) ?? false
 }
 
+/**
+ * Grant a Markdown / EPUB target the shell's own save dialog picked (PDF Save
+ * As › Markdown / EPUB) to a pdf view, so its conversion dialog may write
+ * there. The path never comes from the renderer. False = no structure handlers
+ * yet, or the source/target failed the same checks a dialog-picked target passes.
+ */
+export function grantPdfStructureTarget(
+  contents: WebContents,
+  sourcePath: string,
+  outPath: string,
+  kind: 'md' | 'epub',
+): boolean {
+  if (!handlers || contents.isDestroyed()) return false
+  return handlers.grantTarget(contents.id, sourcePath, outPath, kind)
+}
+
 export function registerPdfStructureIpc(): void {
   if (handlers) return
   const jobRunner = new StructureJobRunner(spawnJobProcess, processSetup)
@@ -158,11 +176,11 @@ export function registerPdfStructureIpc(): void {
   ipcMain.handle(PDF_CHANNELS.storeAiReadPages, (e, docHash) =>
     h.storeAiReadPages(e.sender.id, docHash),
   )
-  ipcMain.handle(PDF_CHANNELS.storeTranslations, (e, docHash) =>
-    h.storeTranslations(e.sender.id, docHash),
+  ipcMain.handle(PDF_CHANNELS.storeTranslations, (e, docHash, mode) =>
+    h.storeTranslations(e.sender.id, docHash, mode),
   )
-  ipcMain.handle(PDF_CHANNELS.storeTranslation, (e, docHash, lang) =>
-    h.storeTranslation(e.sender.id, docHash, lang),
+  ipcMain.handle(PDF_CHANNELS.storeTranslation, (e, docHash, lang, mode) =>
+    h.storeTranslation(e.sender.id, docHash, lang, mode),
   )
   ipcMain.handle(PDF_CHANNELS.storeUnfinishedJobs, (e, docHash) =>
     h.storeUnfinishedJobs(e.sender.id, docHash),
@@ -191,8 +209,8 @@ export function registerPdfStructureIpc(): void {
   ipcMain.handle(PDF_CHANNELS.storePageFingerprints, (e, req) =>
     h.storePageFingerprints(context(e), req),
   )
-  ipcMain.handle(PDF_CHANNELS.storeTranslationRecency, (e, docHash) =>
-    h.storeTranslationRecency(e.sender.id, docHash),
+  ipcMain.handle(PDF_CHANNELS.storeTranslationRecency, (e, docHash, mode) =>
+    h.storeTranslationRecency(e.sender.id, docHash, mode),
   )
 
   // no job process outlives the app: will-quit for a normal quit, 'exit'

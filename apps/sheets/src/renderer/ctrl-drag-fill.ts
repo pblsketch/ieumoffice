@@ -21,7 +21,9 @@ import {
   type IAutoFillLocation,
 } from '@univerjs/sheets'
 
-import type { UniverRuntime } from './univer-state'
+import { indexedFormulaText } from './formula-view'
+import { formulaKeepsCache } from './univer-sync'
+import type { LazyWorkbookState, UniverRuntime } from './univer-state'
 
 export function invertedFillType(
   source: IAutoFillLocation['source'],
@@ -39,7 +41,10 @@ export function invertedFillType(
   return numeric ? AUTO_FILL_APPLY_TYPE.SERIES : AUTO_FILL_APPLY_TYPE.COPY
 }
 
-export function installCtrlDragFill(runtime: UniverRuntime): { dispose(): void } {
+export function installCtrlDragFill(
+  runtime: UniverRuntime,
+  lazyWorkbookRef?: { readonly current: LazyWorkbookState | null },
+): { dispose(): void } {
   // the fill handle's pointerup dispatches the auto-fill command; a capture
   // listener sees the same event first
   let modifier = false
@@ -62,7 +67,17 @@ export function installCtrlDragFill(runtime: UniverRuntime): { dispose(): void }
         .getUnit<Workbook>(location.unitId, UniverInstanceType.UNIVER_SHEET)
         ?.getSheetBySheetId(location.subUnitId)
       if (!sheet) return undefined
-      return invertedFillType(location.source, (row, column) => sheet.getCellRaw(row, column))
+      return invertedFillType(location.source, (row, column) => {
+        const raw = sheet.getCellRaw(row, column)
+        if (raw?.f || raw?.si) return raw
+        const indexed = indexedFormulaText(
+          lazyWorkbookRef?.current ?? null,
+          location.subUnitId,
+          row,
+          column,
+        )
+        return indexed && !formulaKeepsCache(indexed) ? { ...(raw ?? {}), f: indexed } : raw
+      })
     },
   })
   return {

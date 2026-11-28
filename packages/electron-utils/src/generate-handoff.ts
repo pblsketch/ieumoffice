@@ -29,8 +29,14 @@
  */
 import { resolve } from 'node:path'
 import type { HandoffEditor } from './handoff-editors'
+import { sharedPathGrants } from './path-grants'
 
-export { HANDOFF_EDITORS, isHandoffEditor, type HandoffEditor } from './handoff-editors'
+export {
+  HANDOFF_EDITORS,
+  handoffEditorTakesAttachments,
+  isHandoffEditor,
+  type HandoffEditor,
+} from './handoff-editors'
 
 /** the editor of each document extension a template may have (spec 5.7) */
 const EDITOR_BY_EXTENSION: Readonly<Record<string, HandoffEditor>> = {
@@ -49,6 +55,7 @@ const EDITOR_BY_EXTENSION: Readonly<Record<string, HandoffEditor>> = {
   html: 'html',
   htm: 'html',
   xmind: 'mindmap',
+  whiteboard: 'whiteboard',
   hwp: 'hwp',
   hwpx: 'hwp',
 }
@@ -62,7 +69,7 @@ export function handoffEditorForFile(fileName: string): HandoffEditor | undefine
 }
 
 /** the editors the generate window's "make" opens */
-export type GenerateHandoffTarget = 'slides' | 'html' | 'mindmap'
+export type GenerateHandoffTarget = 'slides' | 'html' | 'mindmap' | 'whiteboard'
 
 /**
  * What a new tab takes, once (8.5). The receiving editor attaches the
@@ -83,6 +90,8 @@ export interface GenerateHandoff {
   defaultText: boolean
   /** when "make" was pressed, ms since epoch */
   createdAt: number
+  /** optional slides-only toggle (default off): keep slide text brief and put details in speaker notes */
+  speakerNotesSeparate?: boolean
 }
 
 /** one "a run started with handed-over material" record */
@@ -104,7 +113,7 @@ export interface GenerateRunStarted {
 
 /** the conversions without AI (8.6): one source of a fixed type to one new document */
 export type GenerateConvertKind =
-  'mindmap-to-markdown' | 'mindmap-to-slides' | 'markdown-to-mindmap'
+  'mindmap-to-markdown' | 'mindmap-to-slides' | 'markdown-to-mindmap' | 'whiteboard-to-markdown'
 
 /** the editor a conversion's result opens in, as a new unsaved tab */
 export type GenerateConvertTarget = 'markdown' | 'slides' | 'mindmap'
@@ -170,6 +179,18 @@ export interface SkillHandoff {
   text: string
   chips: HandoffSkillChip[]
   preview?: SkillHandoffPreview | undefined
+  /**
+   * The asking tab's saved document (its path), attached by the receiving
+   * panel through its own attachment route before it sends. Only a saved
+   * document without unsaved changes is ever put here.
+   */
+  attach?: string[] | undefined
+  /**
+   * The app's own words to the model about this hand-off (what the new
+   * document already holds), sent with the request and not shown as the
+   * person's. Never text a model wrote.
+   */
+  note?: string | undefined
   /** ms since epoch */
   createdAt: number
 }
@@ -240,6 +261,12 @@ export function takeGenerateHandoff(
   if (!handoff || handoff.target !== target) return null
   s.queued.delete(webContentsId)
   s.taken.set(webContentsId, handoff)
+  if (handoff.materials.length > 0) {
+    sharedPathGrants().grant(
+      webContentsId,
+      handoff.materials.map((m) => m.path),
+    )
+  }
   return handoff
 }
 
@@ -283,6 +310,9 @@ export function takeSkillHandoff(
   const handoff = slots.get(webContentsId)
   if (!handoff || handoff.target !== target) return null
   slots.delete(webContentsId)
+  if (handoff.attach && handoff.attach.length > 0) {
+    sharedPathGrants().grant(webContentsId, handoff.attach)
+  }
   return handoff
 }
 

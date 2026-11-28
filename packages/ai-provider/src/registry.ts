@@ -1,21 +1,34 @@
 import { ANTHROPIC_BASE_URL } from './protocols/anthropic'
 import { GEMINI_BASE_URL } from './protocols/gemini'
 import { AI_PROVIDERS, DEEPSEEK_V41_FLASH } from './providers'
+import { ollamaEffortPresetOf } from './custom-endpoints'
 import type {
-  AiModelEffort,
   AiProviderConfig,
   AiProviderId,
   AiProviderMeta,
   AiProviderSelection,
+  OllamaEffortPreset,
 } from './types'
 
-/** Wire protocols every provider maps onto, including the Codex app-server and Claude Code CLI bridges. */
+/** Wire protocols every provider maps onto, including the subscription bridges. */
 export type AiProtocol =
-  'anthropic' | 'gemini' | 'openai-compatible' | 'codex-app-server' | 'claude-code-cli'
+  | 'anthropic'
+  | 'gemini'
+  | 'openai-compatible'
+  | 'openai-responses'
+  | 'codex-app-server'
+  | 'claude-code-cli'
+  | 'chatgpt-responses'
+  | 'antigravity-acp'
 
 export interface ProviderCapabilities {
-  /** How the provider authenticates: user key, or the Codex / Claude Code CLI's existing login. */
-  auth: 'api-key' | 'codex-chatgpt' | 'claude-subscription'
+  /** How the provider authenticates: user key, a local subscription CLI, or the app's own ChatGPT sign-in. */
+  auth:
+    | 'api-key'
+    | 'codex-chatgpt'
+    | 'claude-subscription'
+    | 'chatgpt-plan'
+    | 'antigravity-subscription'
   /** chat models accept image input (declarative; for custom endpoints it is assumed, not known) */
   vision: boolean
 }
@@ -31,8 +44,8 @@ export interface ResolvedEndpoint {
   bodyExtras?: Record<string, unknown>
   /** id to put on the wire when the vendor spells the configured model differently */
   model?: string
-  /** reasoning/context effort preset (low, medium, high) */
-  effort?: AiModelEffort
+  /** PosidOffice: the Ollama context/sampling preset (low, medium, high) */
+  effort?: OllamaEffortPreset
 }
 
 export interface ProviderAdapter {
@@ -41,6 +54,8 @@ export interface ProviderAdapter {
   /** pick the wire protocol and base URL for one request (may depend on the configured model) */
   resolveEndpoint(config: AiProviderConfig): ResolvedEndpoint
 }
+
+const OPENAI_BASE_URL = 'https://api.openai.com/v1'
 
 function metaOf(id: AiProviderId): AiProviderMeta {
   return AI_PROVIDERS.find((m) => m.id === id)!
@@ -55,10 +70,11 @@ function metaOf(id: AiProviderId): AiProviderMeta {
  * only accept the default. Google's Gemini 3 docs strongly recommend keeping
  * the default temperature of 1.0 for the whole Gemini 3 family, since lower
  * values may cause looping or degraded reasoning, so our hard-coded 0.3
- * must not be sent there either.
+ * must not be sent there either. Gemini 4 is a reasoning model of the same
+ * line and gets the same treatment: leaving the field out never fails.
  */
 export function modelHasFixedSampling(model: string): boolean {
-  return /(^|\/)(kimi-k3([^\w]|$)|gpt-[5-9]([^\w]|$)|gemini-3([^\w]|$)|o1(-mini|-preview)?([^\w]|$)|o3(-mini)?([^\w]|$)|o4-mini([^\w]|$))/i.test(
+  return /(^|\/)(kimi-k3([^\w]|$)|gpt-[5-9]([^\w]|$)|gemini-[3-9]([^\w]|$)|o1(-mini|-preview)?([^\w]|$)|o3(-mini)?([^\w]|$)|o4-mini([^\w]|$))/i.test(
     model,
   )
 }
@@ -80,6 +96,10 @@ export function modelLacksVision(model: string): boolean {
   // GLM and MiniMax providers keep their own behaviour. Its Kimi, Qwen and
   // GLM-5.3-Flash ids do take images and fall through.
   if (/^(?:zai-org\/glm-5\.3|minimaxai\/minimax-m(?:3|2\.5))$/i.test(model)) return true
+  // Runcrate serves these text-only (GET api.runcrate.ai/v1/models gives them
+  // input_modalities ["text"]; zai-org/GLM-5.3 is covered above). Its DeepSeek
+  // V4.1 Flash, GLM-5.3-Flash and Kimi K2.6 ids take images and fall through.
+  if (/^(?:qwen\/qwen3\.8-flash|openai\/gpt-oss-120b)$/i.test(model)) return true
   return (
     /(^|\/)deep-?seek-v4-(?:pro(?:$|-)|flash(?!-vision))/i.test(model) ||
     /(^|\/)(?:ling-(?:3\.0-flash(?!-vl)|3\.0-tiny|2\.6-1t|2\.6-flash)|ring-2\.6-1t|longcat-2\.0(?:$|-))/i.test(
@@ -174,8 +194,9 @@ function opencodeEndpoint(
     // a stored base URL replaces the gateway root; the documented `/v1` API base is tolerated
     const base = stripTrailingV1(normalizeBaseUrl(config.baseUrl, root))
     const model = config.model ?? ''
-    const omit =
-      model !== '' && (modelHasFixedSampling(model) || model.toLowerCase().startsWith('kimi-'))
+    // Kimi fixes sampling whether the gateway spells the id bare (kimi-k3) or
+    // lab-prefixed (moonshotai/Kimi-K3), as Command Code does
+    const omit = model !== '' && (modelHasFixedSampling(model) || /(^|\/)kimi-/i.test(model))
     const sampling = omit ? { omitTemperature: true as const } : {}
     if (routes.anthropic.test(model)) return { protocol: 'anthropic', baseUrl: base, ...sampling }
     if (routes.gemini?.test(model)) {
@@ -186,6 +207,18 @@ function opencodeEndpoint(
 }
 
 /** a stored baseUrl overrides the default endpoint (regional mirrors, e.g. api.moonshot.cn vs .ai) */
+/**
+ * GPT-5.4+ and GPT-6 call tools only through the Responses API: Chat
+ * Completions answers "Function tools with reasoning_effort are not supported
+ * ... use /v1/responses or set reasoning_effort to 'none'" (live-verified
+ * 2026-10-27), and Astra / 6.1 Sol refuse `none` outright. Older ids and the
+ * o-series stay on Chat Completions, which is also what every other vendor
+ * speaks.
+ */
+export function modelUsesResponsesApi(model: string): boolean {
+  return /^gpt-(5\.[4-9]|6(\.\d+)?)(-|$)/i.test(model)
+}
+
 function fixedEndpoint(
   protocol: AiProtocol,
   baseUrl: string,
@@ -215,11 +248,25 @@ export const AI_PROVIDER_ADAPTERS: Record<AiProviderId, ProviderAdapter> = {
       return { protocol: 'claude-code-cli', baseUrl: '' }
     },
   },
+  chatgpt: {
+    meta: metaOf('chatgpt'),
+    capabilities: { auth: 'chatgpt-plan', vision: true },
+    resolveEndpoint() {
+      return { protocol: 'chatgpt-responses', baseUrl: '' }
+    },
+  },
   codex: {
     meta: metaOf('codex'),
     capabilities: { auth: 'codex-chatgpt', vision: true },
     resolveEndpoint() {
       return { protocol: 'codex-app-server', baseUrl: '' }
+    },
+  },
+  antigravity: {
+    meta: metaOf('antigravity'),
+    capabilities: { auth: 'antigravity-subscription', vision: true },
+    resolveEndpoint() {
+      return { protocol: 'antigravity-acp', baseUrl: '' }
     },
   },
   anthropic: {
@@ -247,11 +294,17 @@ export const AI_PROVIDER_ADAPTERS: Record<AiProviderId, ProviderAdapter> = {
   openai: {
     meta: metaOf('openai'),
     capabilities: { auth: 'api-key', vision: true },
-    // every current OpenAI model accepts the renamed field, so it is safe endpoint-wide;
-    // other openai-compatible vendors still expect `max_tokens`
-    resolveEndpoint: fixedEndpoint('openai-compatible', 'https://api.openai.com/v1', {
-      useMaxCompletionTokens: true,
-    }),
+    resolveEndpoint(config) {
+      const baseUrl = config.baseUrl
+        ? normalizeBaseUrl(config.baseUrl, OPENAI_BASE_URL)
+        : OPENAI_BASE_URL
+      if (modelUsesResponsesApi(config.model)) return { protocol: 'openai-responses', baseUrl }
+      // every current OpenAI model accepts the renamed field, so it is safe endpoint-wide;
+      // other openai-compatible vendors still expect `max_tokens`
+      return fixedEndpoint('openai-compatible', OPENAI_BASE_URL, { useMaxCompletionTokens: true })(
+        config,
+      )
+    },
   },
   kimi: {
     meta: metaOf('kimi'),
@@ -332,6 +385,12 @@ export const AI_PROVIDER_ADAPTERS: Record<AiProviderId, ProviderAdapter> = {
     capabilities: { auth: 'api-key', vision: false },
     resolveEndpoint: fixedEndpoint('openai-compatible', 'https://api.upstage.ai/v1'),
   },
+  exaone: {
+    meta: metaOf('exaone'),
+    // K-EXAONE 2.5 is text-only: an image part answers invalid_request_error
+    capabilities: { auth: 'api-key', vision: false },
+    resolveEndpoint: fixedEndpoint('openai-compatible', 'https://api.exaone.ai/v1'),
+  },
   openrouter: {
     meta: metaOf('openrouter'),
     capabilities: { auth: 'api-key', vision: true },
@@ -361,6 +420,30 @@ export const AI_PROVIDER_ADAPTERS: Record<AiProviderId, ProviderAdapter> = {
     // one chat-completions endpoint for every lab; the namespaced model id picks it
     resolveEndpoint: fixedEndpoint('openai-compatible', 'https://api.atlascloud.ai/v1'),
   },
+  runcrate: {
+    meta: metaOf('runcrate'),
+    capabilities: { auth: 'api-key', vision: true },
+    // one chat-completions endpoint for every lab; the namespaced model id picks it
+    resolveEndpoint: fixedEndpoint('openai-compatible', 'https://api.runcrate.ai/v1'),
+  },
+  cloudgpu: {
+    meta: metaOf('cloudgpu'),
+    capabilities: { auth: 'api-key', vision: true },
+    // one chat-completions endpoint for every model; the bare model id picks it
+    resolveEndpoint: fixedEndpoint('openai-compatible', 'https://cloudgpu.app/v1'),
+  },
+  siliconflow: {
+    meta: metaOf('siliconflow'),
+    capabilities: { auth: 'api-key', vision: true },
+    // one chat-completions endpoint for every model; the namespaced id picks it
+    resolveEndpoint: fixedEndpoint('openai-compatible', 'https://api.siliconflow.cn/v1'),
+  },
+  ppio: {
+    meta: metaOf('ppio'),
+    capabilities: { auth: 'api-key', vision: true },
+    // the official SDK base_url is https://api.ppio.com/openai; chat rides /v1
+    resolveEndpoint: fixedEndpoint('openai-compatible', 'https://api.ppio.com/openai/v1'),
+  },
   'opencode-zen': {
     meta: metaOf('opencode-zen'),
     capabilities: { auth: 'api-key', vision: true },
@@ -380,16 +463,26 @@ export const AI_PROVIDER_ADAPTERS: Record<AiProviderId, ProviderAdapter> = {
       anthropic: /^(minimax-|qwen3\.8-flash$)/,
     }),
   },
+  commandcode: {
+    meta: metaOf('commandcode'),
+    capabilities: { auth: 'api-key', vision: true },
+    // Claude ids answer only on /v1/messages (docs: they 400 on
+    // chat-completions); everything else is chat-completions at /provider/v1
+    resolveEndpoint: opencodeEndpoint('https://api.commandcode.ai/provider', {
+      anthropic: /^claude-/,
+    }),
+  },
   custom: {
     meta: metaOf('custom'),
     capabilities: { auth: 'api-key', vision: true },
     resolveEndpoint(config) {
       if (!config.baseUrl) throw new Error('A custom provider requires a Base URL')
+      const effort = ollamaEffortPresetOf(config.effort)
       return {
         protocol: 'openai-compatible',
         baseUrl: normalizeBaseUrl(config.baseUrl, ''),
         ...(modelHasFixedSampling(config.model) ? { omitTemperature: true } : {}),
-        ...(config.effort ? { effort: config.effort } : {}),
+        ...(effort ? { effort } : {}),
       }
     },
   },

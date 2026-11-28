@@ -4,7 +4,7 @@ The agent takes one folder you choose as a project and runs Claude Code or Codex
 
 ## Before you start
 
-- A Claude subscription or a ChatGPT subscription connected under **Settings ▸ AI**. The "Subscription connection" topic explains how.
+- The Claude Code or Codex program connected under **Settings ▸ AI** (signed in with a Claude subscription or a ChatGPT plan). ChatGPT connected directly in the app is not used by the agent. The "Subscription connection" topic explains how.
 - A folder with your material in it. A whole drive, your whole home folder, and folders of sign-in or app data cannot be chosen.
 
 ## Starting a session

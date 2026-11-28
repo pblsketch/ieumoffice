@@ -211,7 +211,9 @@ describe('AiPanel under the subscription contract', () => {
     await click(container, '.ai-sub-prompt [data-action="login"]')
     expect(bridge.subscription.login).toHaveBeenCalledWith('claude-code')
     await click(container, '.ai-sub-prompt [data-action="guide-back"]')
-    await click(container, '.ai-sub-prompt [data-path="codex"]')
+    // the Codex program is a way within the one ChatGPT answer
+    await click(container, '.ai-sub-prompt [data-path="chatgpt"]')
+    await click(container, '.ai-sub-prompt [data-action="guide-alternate"]')
     await click(container, '.ai-sub-prompt [data-action="install"]')
     expect(bridge.subscription.install).toHaveBeenCalledWith('codex')
   })
@@ -503,6 +505,7 @@ describe('AiPanel under the subscription contract', () => {
     const request = withoutHandler.requests[0]!
     expect(request.tools.map((tool) => tool.name)).not.toContain('generate_image')
     expect(request.system).toContain('generate_image is currently unavailable')
+    expect(request.system).toContain('Codex program signed in with the same ChatGPT account')
   })
 
   it('names the product, not the upstream project, in the system prompt', async () => {
@@ -512,7 +515,7 @@ describe('AiPanel under the subscription contract', () => {
     })
     const container = await mountPanel()
     await sendMessage(container, 'hello')
-    expect(bridge.requests[0]!.system).toContain('IeumOffice Markdown')
+    expect(bridge.requests[0]!.system).toContain('PosidOffice Markdown')
     expect(bridge.requests[0]!.system).not.toContain('GenOffice')
   })
 })

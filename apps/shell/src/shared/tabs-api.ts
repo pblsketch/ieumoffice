@@ -11,6 +11,8 @@ export type TabKind =
   | 'mindmap'
   | 'hwp'
   | 'epub'
+  | 'diagram'
+  | 'whiteboard'
   | 'help'
 
 /** a tab that holds a document — every kind except the Home screen and the in-app manual */

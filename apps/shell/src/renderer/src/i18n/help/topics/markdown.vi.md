@@ -8,6 +8,7 @@ Trình soạn Markdown mở .md / .markdown — và .txt / .json, thẳng vào c
 - **Lưu**: trung thành từng byte — BOM, CRLF và việc có dấu xuống dòng ở cuối hay không đều được giữ; lưu mà không sửa gì sẽ không ghi lại tệp.
 - **Tìm và thay thế**: ctrl+F tìm trong mã nguồn; Thay thế tất cả ghi lại vào tệp.
 - **AI**: các nút mẫu cho phép trợ lý viết lại, mở rộng hoặc dịch tài liệu. Vùng chọn có thể ẩn khỏi AI (xem chương bảng AI).
+- **Mở liên kết**: khi chỉnh sửa, Ctrl+nhấp vào liên kết (⌘ trên Mac) sẽ mở liên kết trong trình duyệt; nhấp thường đặt con trỏ vào văn bản liên kết để chỉnh sửa. Ở chế độ trình chiếu (F5), nhấp thường sẽ mở liên kết.
 
 ## Thanh công cụ
 
@@ -36,6 +37,7 @@ Trình đơn Tệp, tất cả đều cục bộ và đều hỏi lưu kết qu�
 
 - **Xuất dưới dạng Word…** và **Xuất dưới dạng PDF…** ghi ra tệp .docx hoặc .pdf thật.
 - **Xuất dưới dạng ODT…** ghi một tệp .odt (văn bản OpenDocument) qua cùng phép chuyển đổi với xuất Word; nếu có gì thay đổi hoặc bị bỏ trong quá trình đó, bạn sẽ thấy danh sách và xác nhận trước.
+- **Xuất dưới dạng tài liệu HWP…** ghi một tài liệu HWP (.hwp hoặc .hwpx) bằng cùng phép chuyển đổi; tiêu đề, danh sách và bảng được đưa vào tài liệu HWP đúng dạng của chúng, và bảng dài sẽ tiếp tục ở trang sau. Nếu có phần không chuyển được, bạn sẽ thấy danh sách và xác nhận trước.
 - **Xuất dưới dạng hình ảnh…** ghi một tệp PNG cho mỗi trang vào thư mục bạn chọn.
 - **Chuyển đổi và mở trong Docs** chuyển sang .docx rồi mở trong thẻ Docs tích hợp ngay trong ứng dụng này — đây không phải chuyển giao cho thứ gì trên đám mây, và bản đã chuyển đổi nằm trong một thư mục bộ nhớ đệm được dọn dẹp sau khoảng một tuần.
 
@@ -43,6 +45,7 @@ Trình đơn Tệp, tất cả đều cục bộ và đều hỏi lưu kết qu�
 
 Trên dải ruy-bâng có công tắc **Mã nguồn** (được bản địa hóa cùng ứng dụng). Bật lên, trình soạn thảo được thay bằng Markdown thô: đúng văn bản mà một lần lưu sẽ ghi ra, không làm đẹp, không chuẩn hóa gì bên dưới bạn.
 
+- **Bàn phím**: Ctrl+E (⌘E trên Mac) chuyển đổi giữa chế độ xem mã nguồn và màn hình chỉnh sửa đã kết xuất. Nhấn F5 để đọc toàn màn hình.
 - **Soạn thảo trung thành từng byte.** Lưu từ chế độ mã nguồn tạo ra đúng những byte mà lưu từ trình soạn thảo tạo ra — BOM, CRLF và việc có dấu xuống dòng ở cuối đều được giữ nguyên.
 - **Đây vẫn là cùng một tài liệu.** Chuyển qua lại tùy ý; mã nguồn chính là văn bản của trình soạn thảo, không phải một bản sao phải điều hợp.
 - **Thanh định dạng không dùng được** khi chế độ xem này đang mở, vì phần lớn các nút đó chèn những cấu trúc riêng của trình soạn thảo mà chỉ có ý nghĩa ở phần đã kết xuất. Nó trở lại khi bạn đóng chế độ xem.

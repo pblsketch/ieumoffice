@@ -840,6 +840,52 @@ describe('executeWorkbookTool: propose_operations', () => {
     )
   })
 
+  it('resolves an attached image name to a path before proposing', () => {
+    const proposeOperations = vi.fn().mockReturnValue({ ok: true, plan: EMPTY_PLAN })
+    const result = execSync(
+      call('propose_operations', {
+        operations: [
+          { op: 'add_image', sheetId: 'sheet-1', attachment: 'chart.png', anchorCell: 'B2' },
+        ],
+        summary: 'Add chart image',
+      }),
+      fakeDeps({
+        proposeOperations,
+        attachmentPathOf: (name) => (name === 'chart.png' ? 'C:/tmp/chart.png' : null),
+      }),
+    )
+    expect(result.isError).toBeFalsy()
+    expect(proposeOperations).toHaveBeenCalledWith(
+      [
+        expect.objectContaining({
+          op: 'add_image',
+          path: 'C:/tmp/chart.png',
+          attachment: 'chart.png',
+        }),
+      ],
+      'Add chart image',
+    )
+  })
+
+  it('refuses an attached image name the chat does not have', () => {
+    const proposeOperations = vi.fn()
+    const result = execSync(
+      call('propose_operations', {
+        operations: [
+          { op: 'add_image', sheetId: 'sheet-1', attachment: 'missing.png', anchorCell: 'B2' },
+        ],
+        summary: 'Add image',
+      }),
+      fakeDeps({
+        proposeOperations,
+        attachmentPathOf: () => null,
+      }),
+    )
+    expect(result.isError).toBe(true)
+    expect(result.output).toContain('missing.png')
+    expect(proposeOperations).not.toHaveBeenCalled()
+  })
+
   it('forwards validated operations and reports auto-applied success', () => {
     const proposeOperations = vi.fn().mockReturnValue({ ok: true, plan: EMPTY_PLAN })
     const result = execSync(

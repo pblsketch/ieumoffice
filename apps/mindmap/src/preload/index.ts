@@ -1,18 +1,35 @@
 import type { AiPanelPrefs } from '@genoffice/ui'
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import { driveAiBridge } from '@genoffice/electron-utils/drive-ai-bridge'
+import { generateEditorBridge } from '@genoffice/electron-utils/generate-editor-bridge'
+import { mcpToolsBridge } from '@genoffice/electron-utils/mcp-tools-bridge'
 import { outboundBridge } from '@genoffice/electron-utils/outbound-bridge'
+import { ACP_TOOL_BRIDGE_KEY } from '@genoffice/electron-utils/acp-tool-channels'
+import { acpToolBridge } from '@genoffice/electron-utils/acp-tool-bridge'
 import { userSkillsBridge } from '@genoffice/electron-utils/user-skills-bridge'
+import {
+  PROJECT_FOLDER_BRIDGE_KEY,
+  projectFolderBridge,
+} from '@genoffice/electron-utils/project-folder-bridge'
 import { USER_SKILLS_BRIDGE_KEY } from '@genoffice/electron-utils/user-skills-channels'
 import { docAttachBridge } from '@genoffice/electron-utils/doc-attach-bridge'
+import { createPrintLayoutBridge } from '@genoffice/electron-utils/print-layout-bridge'
 import { DOC_ATTACH_BRIDGE_KEY } from '@genoffice/electron-utils/doc-attach-channels'
+import { connectorAttachBridge } from '@genoffice/electron-utils/connector-attach-bridge'
+import { CONNECTOR_ATTACH_BRIDGE_KEY } from '@genoffice/electron-utils/connector-attach-channels'
 import { SPLIT_PANE_BRIDGE_KEY, splitPaneBridge } from '@genoffice/electron-utils/split-pane-bridge'
+import { APP_CHOICE_BRIDGE_KEY, appChoiceBridge } from '@genoffice/electron-utils/app-choice-bridge'
 import type { Lang } from '@genoffice/i18n'
 import type { AiStreamChunk } from '@genoffice/ai-provider'
 import { SUBSCRIPTION_IPC_CHANNELS } from '@genoffice/ai-provider/browser'
 import type { ProjectApi } from '@genoffice/project-store'
 import { installDropOpenBridge } from '@genoffice/electron-utils/drop-open'
-import { AI_CHANNELS, APP_CHANNELS, MINDMAP_CHANNELS } from '../shared/ipc'
+import {
+  AI_CHANNELS,
+  APP_CHANNELS,
+  MINDMAP_CHANNELS,
+  MINDMAP_PRINT_LAYOUT_PREFIX,
+} from '../shared/ipc'
 import type {
   AutoSaveDefault,
   ExportFormat,
@@ -23,6 +40,7 @@ import type {
   MindmapHandoffApi,
   MindmapMakeFromApi,
   MindmapMenuCommand,
+  MindmapPrintJob,
   MindmapQueryApi,
   MindmapRecoveryApi,
   MindmapSeedApi,
@@ -32,6 +50,7 @@ import type {
 import {
   SUBSCRIPTION_CONNECT_HELP_CHANNEL,
   SUBSCRIPTION_INSTALL_HELP_CHANNEL,
+  SUBSCRIPTION_USAGE_CHANNEL,
   subscriptionLaunchResultOf,
   subscriptionMeteredResultOf,
   subscriptionStatusMapOf,
@@ -54,6 +73,7 @@ const core: MindmapCoreApi = {
   consumePending: () => ipcRenderer.invoke(MINDMAP_CHANNELS.consumePending),
   openFile: (path) => ipcRenderer.invoke(MINDMAP_CHANNELS.openFile, path),
   save: (request) => ipcRenderer.invoke(MINDMAP_CHANNELS.save, request),
+  saveIntoProject: (request) => ipcRenderer.invoke(MINDMAP_CHANNELS.saveIntoProject, request),
   setDirty: (dirty) => ipcRenderer.send(MINDMAP_CHANNELS.dirtyChanged, dirty),
   onSaveRequest: (handler) => listen<[SaveMode]>(MINDMAP_CHANNELS.saveRequest, handler),
   sendSaveRequestAck: (ok) => ipcRenderer.send(MINDMAP_CHANNELS.saveRequestAck, ok),
@@ -61,6 +81,7 @@ const core: MindmapCoreApi = {
   sendCloseSaveResult: (ok) => ipcRenderer.send(MINDMAP_CHANNELS.closeSaveResult, ok),
   onFileRenamed: (handler) => listen<[string]>(MINDMAP_CHANNELS.fileRenamed, handler),
   openLink: (url) => ipcRenderer.invoke(MINDMAP_CHANNELS.openLink, url),
+  readLinkPreview: (url) => ipcRenderer.invoke(MINDMAP_CHANNELS.readLinkPreview, url),
   onMenuCommand: (handler) => listen<[MindmapMenuCommand]>(MINDMAP_CHANNELS.menuCommand, handler),
   getLanguage: () => ipcRenderer.invoke(APP_CHANNELS.getLanguage),
   onLanguageChanged: (handler) => listen<[Lang]>(APP_CHANNELS.languageChanged, handler),
@@ -78,9 +99,11 @@ const exporting: MindmapExportApi = {
   onExportRequest: (handler) => listen<[ExportFormat]>(MINDMAP_CHANNELS.exportRequest, handler),
   onPrintRequest: (handler) => listen<[]>(MINDMAP_CHANNELS.printRequest, handler),
   exportPng: (request) => ipcRenderer.invoke(MINDMAP_CHANNELS.exportPng, request),
+  exportSvg: (request) => ipcRenderer.invoke(MINDMAP_CHANNELS.exportSvg, request),
   exportPdf: (request) => ipcRenderer.invoke(MINDMAP_CHANNELS.exportPdf, request),
   exportMarkdown: (request) => ipcRenderer.invoke(MINDMAP_CHANNELS.exportMarkdown, request),
   print: (request) => ipcRenderer.invoke(MINDMAP_CHANNELS.print, request),
+  printLayout: createPrintLayoutBridge<MindmapPrintJob>(ipcRenderer, MINDMAP_PRINT_LAYOUT_PREFIX),
 }
 
 // ---- the AI panel's bridge: the panel and the attachment handlers are T12's ----
@@ -98,9 +121,12 @@ const subscription: MindmapSubscriptionApi = {
         providers ? { providers } : undefined,
       ),
     ),
-  login: async (provider) =>
+  login: async (provider, mode) =>
     subscriptionLaunchResultOf(
-      await ipcRenderer.invoke(SUBSCRIPTION_IPC_CHANNELS.login, { provider }),
+      await ipcRenderer.invoke(
+        SUBSCRIPTION_IPC_CHANNELS.login,
+        mode ? { provider, mode } : { provider },
+      ),
     ),
   install: async (provider) =>
     subscriptionLaunchResultOf(
@@ -121,6 +147,10 @@ const subscription: MindmapSubscriptionApi = {
   onChanged: (handler) =>
     listen<[unknown]>(SUBSCRIPTION_IPC_CHANNELS.changed, (statuses) =>
       handler(subscriptionStatusMapOf(statuses)),
+    ),
+  onUsage: (handler) =>
+    listen<[unknown]>(SUBSCRIPTION_USAGE_CHANNEL, (usage) =>
+      handler(Array.isArray(usage) ? usage : []),
     ),
   openInstallHelp: async (provider) => {
     await ipcRenderer.invoke(SUBSCRIPTION_INSTALL_HELP_CHANNEL, provider)
@@ -157,6 +187,9 @@ const ai: MindmapAiApi = {
   readUrl: (url, offset) => ipcRenderer.invoke(AI_CHANNELS.readUrl, url, offset),
   imageSearch: (query, maxResults) =>
     ipcRenderer.invoke(AI_CHANNELS.imageSearch, query, maxResults),
+  generateImage: (op) => ipcRenderer.invoke(MINDMAP_CHANNELS.aiGenerateImage, op),
+  fetchImage: (url) => ipcRenderer.invoke(MINDMAP_CHANNELS.fetchImage, url),
+  aiToolCapabilities: () => ipcRenderer.invoke(AI_CHANNELS.toolCapabilities),
 }
 
 // ---- questions from the in-app MCP server: the renderer answers; T13 asks from the main process ----
@@ -216,16 +249,29 @@ const projectApi: Pick<ProjectApi, 'resolveChat' | 'appendChat' | 'loadChat' | '
 }
 
 contextBridge.exposeInMainWorld('mindmapApi', api)
+// Whether AI is on (Settings › Editors and AI): this screen only reads and follows it
+const appChoice = appChoiceBridge()
+contextBridge.exposeInMainWorld(APP_CHOICE_BRIDGE_KEY, {
+  get: appChoice.get,
+  onChange: appChoice.onChange,
+})
 // Google Drive for this editor's AI: search and read only (decision 0033)
 contextBridge.exposeInMainWorld('aiOfficeDriveAi', driveAiBridge())
 contextBridge.exposeInMainWorld('aiOfficeOutbound', outboundBridge())
+contextBridge.exposeInMainWorld(ACP_TOOL_BRIDGE_KEY, acpToolBridge())
+// the person's MCP servers for this editor's AI: list and call approved tools (the shell checks each)
+contextBridge.exposeInMainWorld('aiOfficeMcpTools', mcpToolsBridge())
 // the person's skills: the AI panel's `/` list and skill reads, skill cards (shell main checks each)
 contextBridge.exposeInMainWorld(USER_SKILLS_BRIDGE_KEY, userSkillsBridge())
 // The shell's document picker, for this editor's AI attach button
 contextBridge.exposeInMainWorld(DOC_ATTACH_BRIDGE_KEY, docAttachBridge())
+contextBridge.exposeInMainWorld(CONNECTOR_ATTACH_BRIDGE_KEY, connectorAttachBridge())
 // The shell's split panes: this view's pane role, and its way to ask for focus
 contextBridge.exposeInMainWorld(SPLIT_PANE_BRIDGE_KEY, splitPaneBridge(ipcRenderer))
 contextBridge.exposeInMainWorld('projectApi', projectApi)
+// project folders (decision 0088): main identifies this window, the bridge forwards ids only
+contextBridge.exposeInMainWorld(PROJECT_FOLDER_BRIDGE_KEY, projectFolderBridge(ipcRenderer))
 
+contextBridge.exposeInMainWorld('aiOfficeGenerateEditor', generateEditorBridge())
 // open documents dragged from the OS onto this tab as a new shell tab
 installDropOpenBridge()

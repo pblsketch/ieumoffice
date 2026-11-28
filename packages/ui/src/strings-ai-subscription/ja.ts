@@ -18,12 +18,16 @@ export const ja = {
   cardErrNeedsUpdatePath: 'このアプリが実行するファイル:',
   cardErrNeedsUpdateWindows:
     'WSL（Ubuntu）や別のフォルダーにある {provider} を更新しても、このファイルは変わりません。Windows PowerShell で {command} を実行してください。',
+  claudeDesktopNote:
+    'Claude デスクトップアプリは、このアプリが実行する Claude Code ではありません。Claude Code はターミナルで使う別のプログラムなので、デスクトップアプリをインストールまたは更新しても変わりません。',
   cardErrTimeout:
     '{provider} のプログラムから時間内に応答がありませんでした。しばらくしてから、もう一度確認してください。',
   cardErrFailed: '{provider} の確認中に問題が発生しました。もう一度確認してください。',
   actionInstall: 'インストール',
   actionLogin: 'ログイン',
   actionLoginWindow: 'ブラウザーが開きませんか？',
+  actionLoginWithCode: 'ブラウザにコードが表示されましたか？',
+  actionLoginBrowser: 'ブラウザでやり直す',
   actionRecheck: '再確認',
   actionAcceptMetered: 'それでも使用',
   actionInstallHelp: '公式のインストール手順',
@@ -42,17 +46,19 @@ export const ja = {
     'API キーまたは従量課金のアカウントでログインしているか、ログイン方法を確認できませんでした。「それでも使用」を選ぶと AI がこの接続で動作し、リクエストのたびにそのアカウントへ課金されます。',
   connectTitle: 'AI を接続して始めましょう',
   connectBody:
-    'お持ちの Claude または Codex のサブスクリプションで AI を利用します。API キーは不要です。',
+    'すでにお持ちの Claude、ChatGPT、または Google Antigravity のサブスクリプションで AI が動きます。API キーは不要です。',
   connectProviderTitle: '{provider} の接続は現在使用できません',
   connectKeyBody:
     '{provider} の設定がまだ完了していません。設定で完了するか、別の AI を選んでください。',
   errNotConnected:
-    '接続されている AI がありません。先に Claude または Codex のサブスクリプションか、無料の AI を接続してください。',
+    '接続された AI がありません。Claude・ChatGPT・Codex・Antigravity のサブスクリプション、または無料 AI を先に接続してください。',
   errNotInstalled: 'この PC で {provider} のプログラムが見つかりませんでした。',
   errSignedOut: '{provider} のログインが切れました。もう一度ログインしてから続けてください。',
   errRateLimit: '{provider} のサブスクリプションの上限に達しました。',
   errRateLimitReset:
     '{provider} のサブスクリプションの上限に達しました。{time} にリセットされます。',
+  errChatGptAppLimit:
+    'このアプリが使える ChatGPT の利用量を使い切りました。プラン全体の上限か、このアプリ用に設定した上限の可能性があります。ChatGPT の「設定 → 利用状況」で確認してください。',
   errUnsafeTools:
     '{provider} のプログラムが独自のツールを有効にしたまま起動したため、安全のため実行を停止しました。',
   errMeteredNotAccepted:
@@ -67,6 +73,8 @@ export const ja = {
   errFreeLimit:
     '今日の無料利用分を使い切りました。明日もう一度お試しいただくか、設定で別の AI を選んでください。',
   errFreeLimitReset: '今日の無料利用分を使い切りました。{time} から再び利用できます。',
+  errFreeTierModel:
+    'このモデルには無料枠がないため、無料のキーでは使えません。無料枠で使えるモデル（Flash など）を選ぶか、提供元のコンソールで課金を有効にしてください。',
   continueWith: '{provider} で続行',
   continueMeteredNote:
     '{provider} の接続はサブスクリプションではありません。続行すると使った分だけ料金が発生します。',
@@ -75,7 +83,7 @@ export const ja = {
   usageWindowSevenDay: '7 日間の上限',
   noticeTitle: 'サブスクリプションで AI を使う前に',
   noticeSend:
-    '文書の内容と会話は、ご自身のアカウントで Anthropic または OpenAI に送信されます。リクエストごとに「AI に任せる」にしたスキルの名前・タイトル・説明も送られ、使うスキルの内容と、AI が読んだスキルのファイルも一緒に送信されます。',
+    '文書の内容と会話は、ご自身のアカウントで Anthropic、OpenAI、または Google に送信されます。リクエストごとに「AI に任せる」にしたスキルの名前・タイトル・説明も送られ、使うスキルの内容と、AI が読んだスキルのファイルも一緒に送信されます。',
   noticeTraining:
     'その内容が AI の学習に使われるかどうかは、その会社でのご自身のアカウント設定によって決まります。',
   noticeCodexHistory:
@@ -114,12 +122,14 @@ export const ja = {
   stepLogin: 'ログイン',
   stepReady: '接続完了',
   installReturnNote:
-    'そのウィンドウでインストールが終わったら、この画面に戻ってください。アプリが自動でもう一度確認します。',
+    'ダウンロード中の数分間、そのウィンドウには何も表示されないことがあります。閉じずにお待ちください。インストールが終わったら、この画面に戻ってください。アプリが自動でもう一度確認します。',
   loginHowNote:
     '押すとブラウザーが開きます。{vendor} のアカウントでログインして「許可」を押すと、自動で接続されます。',
   signingInStalledNote:
     'ブラウザーにログイン画面が開かなかった場合は、下のボタンでログインウィンドウを開いてください。ブラウザーでログインしている途中なら、ボタンは押さずにそのまま最後まで進めてください。ボタンを押すと、進めていたログインは止まり、最初からやり直しになります。',
   actionLoginWindowOpen: 'ログインウィンドウを開く',
+  loginUnfinishedNote:
+    'ログインが完了していません。ブラウザにコードが表示された場合は、ログインウィンドウに貼り付ける必要があります。ウィンドウを開き、その案内に沿ってやり直してください。前に表示されたコードは使えません。',
   loginWindowTitle: '{provider} ログイン',
   loginWindowIntro:
     'このウィンドウは {provider} のプログラムのログインウィンドウです。この下に続く英語の文章は、{provider} のプログラムが表示する案内です。',
@@ -142,4 +152,50 @@ export const ja = {
   actionCopyInfo: 'サポート用の情報をコピー',
   copyInfoDone: 'コピーしました',
   actionConnectHelp: '手順を画面で見る（韓国語のページ）',
+  guidePathChatGptBody:
+    'ChatGPT のアカウントでログインし、そのプランの範囲で使います。インストールは不要です。無料プランで使える量はわずかです。',
+  guideUseCodex: 'この PC で Codex プログラムをすでに使っていますか？Codex で接続',
+  guideUseDirect: 'Codex を使わず、アプリで直接接続',
+  chatgptLoginNote:
+    'ブラウザーで ChatGPT のログイン画面が開きます。ログインして、このアプリが ChatGPT のプランを使うことを許可すると、自動で接続されます。',
+  chatgptLoginUnfinishedNote:
+    'ログインが完了していません。もう一度押すと最初からやり直します。接続するには、ChatGPT のプランの使用を許可する必要があります。',
+  chatgptLoginNoPlanNote:
+    'ChatGPT へのログインはできましたが、このアプリがプランを使う許可を得られませんでした。もう一度押し、許可の画面でプランの使用を許可してください。許可したのにこうなる場合は、このアカウント（会社や学校が管理するアカウントなど）やプランでは OpenAI がこの使い方を提供していない可能性があります。その場合は Codex プログラムで接続できます。',
+  chatgptLoginDeniedNote:
+    'ブラウザーではログインしましたが、OpenAI がこの接続を受け付けなかったか、返ってきた応答を確認できませんでした。この PC の日付と時刻が正しいか確かめてから、もう一度押して最初からやり直してください。',
+  chatgptLoginNetworkNote:
+    'OpenAI に接続できなかったか、ブラウザーを開けなかったため、ログインを完了できませんでした。インターネット接続（社内ネットワーク、VPN、プロキシを含む）を確認してから、もう一度押してください。',
+  chatgptLoginWorkspacePolicyNote:
+    'この ChatGPT アカウントは会社や学校が管理するワークスペースに属しているため、OpenAI はこのアプリでワークスペースの ChatGPT プランを使うことを許可していません。ワークスペースの管理者がこのアプリを許可する設定はないため、もう一度ログインしても結果は同じです。個人の ChatGPT アカウント(Go、Plus、Pro)でログインするか、Codex カードから接続してください。',
+  chatgptLoginNotAllowedNote:
+    'このアプリに ChatGPT のプランの使用を許可しなかったか、ブラウザーがログイン失敗として戻ってきました。もう一度押してログインし、許可の画面で許可してください。',
+  chatgptSigningInNote:
+    '開いたブラウザーで ChatGPT のアカウントにログインし、このアプリがプランを使うことを許可してください。終わると自動で接続されます。',
+  chatgptPlanNote:
+    'このアプリの AI は ChatGPT のプランの範囲で動きます。接続を解除しても切れるのはこのアプリだけで、この PC のほかのプログラムはログインしたままです。',
+  actionContinueWithChatGpt: 'ChatGPT で続行',
+  actionManageUsage: '使用量を管理',
+  browserPageDoneBody: 'このタブを閉じてアプリに戻ってください。',
+  browserPageFailedTitle: '接続できませんでした',
+  browserPageFailedBody: 'アプリに戻ってもう一度お試しください。',
+  cardOff: 'このアプリではオフ',
+  offNote:
+    'このアプリは {provider} のプログラムを実行せず、状態の確認もしません。この PC の {provider} のサインインと、ターミナルでの利用はそのままです。',
+  offElsewhereNote: '設定 → AI で再び使えるようにできます。',
+  offSwitchNote:
+    '「このアプリでは使わない」は、この PC の {provider} のサインインをそのままにして、このアプリでだけ止めます。ログアウトは PC 全体に適用されます。',
+  actionTurnOff: 'このアプリでは使わない',
+  actionTurnOn: '再び使う',
+  connectOffTitle: '{provider} はこのアプリではオフになっています',
+  connectOffBody:
+    '設定 → AI の {provider} のカードで「再び使う」を押すか、別の AI を選んでください。',
+  errOffInApp:
+    '{provider} はこのアプリでオフになっているため、実行しませんでした。設定 → AI で再び使えるようにできます。',
+  guideBadgeOff: 'オフ',
+  guidePathAntigravityTitle: 'Google Antigravity を使っています',
+  guidePathAntigravityBody:
+    'Google アカウントで Google の Antigravity プログラムにサインインし、Google AI プランを使います。',
+  antigravityCardNote:
+    'AI パネルとエージェントモードで公式の Antigravity CLI ACP プロトコルにより動作します。利用可能なモデル、データ利用設定、超過クレジット設定は Antigravity の設定に従います。',
 } satisfies Record<keyof typeof zh, string>

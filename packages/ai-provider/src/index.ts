@@ -1,13 +1,16 @@
 export type {
+  AiCustomEndpoint,
   AiChatRequest,
   AiChatResponse,
+  AiLocalModelProfile,
+  AiLocalValueSource,
   AiMediaProviderConfig,
   AiMediaProviderId,
   AiMediaProviderMeta,
   AiMediaSettings,
   AiAnalysisProtocol,
   AiImageProtocol,
-  AiModelEffort,
+  OllamaEffortPreset,
   AiSearchProviderId,
   AiSearchProviderMeta,
   AiSearchSettings,
@@ -27,6 +30,10 @@ export type {
   AiProviderSelection,
   AiReadUrlSettings,
   AiRunErrorKind,
+  AiSubscriptionCliId,
+  AiSubscriptionLoginFailure,
+  AiSubscriptionLoginFailureReason,
+  AiSubscriptionLoginFailureStep,
   AiSubscriptionLoginMethod,
   AiSubscriptionSigningIn,
   AiSubscriptionModel,
@@ -39,14 +46,22 @@ export type {
   AiVideoAnalysisProviderSelection,
 } from './types'
 export {
+  AI_BATCH_SUBSCRIPTION_PROVIDERS,
+  AI_BRAIN_SUBSCRIPTION_PROVIDERS,
   AI_SUBSCRIPTION_PROVIDERS,
   isKeyProviderConfigured,
   isSubscriptionProvider,
   providerSelectionOf,
   selectAiProvider,
   subscriptionConnection,
+  subscriptionOffIn,
+  subscriptionStateOf,
 } from './provider-selection'
-export type { AiNotConnectedReason, AiProviderChoice } from './provider-selection'
+export type {
+  AiNotConnectedReason,
+  AiProviderChoice,
+  SelectAiProviderOptions,
+} from './provider-selection'
 export {
   DEFAULT_AI_ANALYSIS_PROVIDER,
   DEFAULT_AI_IMAGE_PROVIDER,
@@ -75,6 +90,24 @@ export {
   setCodexImageGenerationAvailable,
 } from './image-backend'
 export type { AiImageBackend, AiImageBackendContext } from './image-backend'
+export {
+  CODEX_IMAGE_MAX_BYTES,
+  CODEX_IMAGE_MIN_VERSION,
+  CODEX_IMAGE_TIMEOUT_MS,
+  generateCodexImage,
+  listCodexModels,
+} from './codex-image'
+export type { CodexImageCall, CodexImageOutcome, CodexImageReference } from './codex-image'
+export {
+  AI_EFFORTS,
+  CLAUDE_EFFORTS,
+  aiEffortOf,
+  aiEffortsOf,
+  aiModelEffortOf,
+  aiModelEffortsOf,
+} from './effort'
+export type { AiEffort, AiModelEffort } from './effort'
+export { keyEffortBody, keyModelEffort, keyProviderEffort, takesKeyEffort } from './key-effort'
 export { subscriptionConnectHelpUrl } from './connect-help'
 export type { SubscriptionConnectHelpPath } from './connect-help'
 export {
@@ -86,10 +119,13 @@ export {
   checkingSubscriptionStatus,
   checkingSubscriptionStatuses,
   isSubscriptionProviderId,
+  offSubscriptionStatus,
   subscriptionLaunchResultOf,
   subscriptionMeteredResultOf,
+  subscriptionOffResultOf,
   subscriptionNeedsUpdate,
   subscriptionStatusErrorKind,
+  subscriptionLoginFailureOf,
   subscriptionStatusMapOf,
 } from './subscription/contract'
 export type {
@@ -99,6 +135,8 @@ export type {
   SubscriptionLaunchResult,
   SubscriptionMeteredRequest,
   SubscriptionMeteredResult,
+  SubscriptionOffRequest,
+  SubscriptionOffResult,
   SubscriptionProviderRequest,
   SubscriptionRecheckRequest,
   SubscriptionStatusErrorKind,
@@ -107,8 +145,10 @@ export type {
 export { AiRunError, aiStreamErrorFields } from './run-error'
 export {
   AI_PROVIDERS,
+  AI_SUBSCRIPTION_NOTICE_VERSION,
   DEFAULT_MAX_OUTPUT_TOKENS,
   HEADLESS_SUBSCRIPTION_CONSENT_VERSION,
+  LEGACY_NOTICE_VERSION_FOR_MIGRATION,
   MAX_MAX_OUTPUT_TOKENS,
   MIN_MAX_OUTPUT_TOKENS,
   clampMaxOutputTokens,
@@ -116,9 +156,14 @@ export {
   headlessSubscriptionOn,
   maxOutputTokensOf,
   resolveAiSettings,
+  subscriptionNoticeVersionOf,
+  withMigratedSubscriptionNoticeVersion,
+  withStoredSubscriptionOff,
+  withStoredUnknownFields,
 } from './providers'
 export {
   OLLAMA_EFFORT_PRESETS,
+  ollamaEffortPresetOf,
   activeCustomEndpoint,
   customEndpointLabel,
   newCustomEndpointId,
@@ -129,6 +174,69 @@ export {
   selectCustomEndpoint,
   upsertCustomEndpoint,
 } from './custom-endpoints'
+export type { RemoveCustomEndpointOptions } from './custom-endpoints'
+export {
+  DEFAULT_LOCAL_CONTEXT_TOKENS,
+  DEFAULT_LOCAL_TIMEOUT_MS,
+  MAX_LOCAL_CONTEXT_TOKENS,
+  MAX_LOCAL_MODEL_ID_LENGTH,
+  MAX_LOCAL_MODEL_PROFILES,
+  MAX_LOCAL_NOTES_LENGTH,
+  MAX_LOCAL_TIMEOUT_MS,
+  MIN_LOCAL_TIMEOUT_MS,
+  localContextLimit,
+  localContextTokensOf,
+  localEndpointFieldsOf,
+  localEndpointTimeoutMs,
+  localModelCapabilities,
+  localModelProfileOf,
+  localModelProfilesOf,
+  localTimeoutMsOf,
+  localValueSourceOf,
+  mergeLocalModelProfile,
+} from './local-profile'
+export type {
+  AiLocalContextLimit,
+  AiLocalEndpointFields,
+  AiLocalModelCapabilities,
+} from './local-profile'
+export { inspectLocalModel, listLocalModels } from './local-models'
+export type {
+  AiLocalDiscoveryErrorCode,
+  AiLocalDiscoveryRequest,
+  AiLocalDiscoveryResult,
+  AiLocalInspection,
+  AiLocalInspectionRequest,
+  AiLocalInspectionResult,
+  AiLocalModelSummary,
+  AiLocalRequestOptions,
+  AiLocalServerKind,
+} from './local-models'
+export { testLocalModel } from './local-test'
+export type {
+  AiLocalCheck,
+  AiLocalCheckCode,
+  AiLocalCheckStatus,
+  AiLocalTestInput,
+  AiLocalTestOptions,
+  AiLocalTestResult,
+} from './local-test'
+export {
+  cancelLocalTestForIpc,
+  inspectLocalModelForIpc,
+  listLocalModelsForIpc,
+  parseLocalDiscoveryInput,
+  parseLocalInspectionInput,
+  parseLocalTestInput,
+  testLocalModelForIpc,
+} from './local-ipc'
+export type {
+  AiLocalDiscoveryIpcInput,
+  AiLocalInspectionIpcInput,
+  AiLocalTestIpcInput,
+  AiLocalTestIpcOptions,
+  AiLocalTestOwner,
+} from './local-ipc'
 export {
   AI_MEDIA_PROVIDERS,
   GEMINI_MEDIA_BASE_URL,
@@ -175,13 +283,20 @@ export type {
 export { sanitizeAiSettings, sanitizeCliPath, validCliPath } from './ai-settings-guard'
 export { chatForProvider } from './chat'
 export { setAiUserAgent, setRescueFetch } from './fetch'
-export { isAiNetworkError } from './network-error'
+export { classifyAiNetworkError, isAiNetworkError } from './network-error'
+export type { AiNetworkErrorKind } from './network-error'
 export { isAiOverloadedError } from './overload-error'
-export { freeLimitOf } from './free-ai'
+export { freeLimitOf, isOpenRouterFreeModel } from './free-ai'
 export type { FreeAiConnectResult, FreeAiProviderId, FreeAiQuota } from './free-ai'
 export { parseOutputCapRejection } from './output-cap'
 export { AiCreditsError, sseLines, streamForProvider } from './stream'
-export type { StreamCallbacks } from './stream'
+export type { StreamCallbacks, StreamForProviderOptions } from './stream'
+export {
+  PANEL_MCP_SERVER_NAME,
+  closeAllAntigravityPanelSessions,
+  matchPanelMcpTool,
+  streamAntigravityPanel,
+} from './antigravity-panel'
 export {
   AI_CHAT_RESPONSE_TIMEOUT_MS,
   AI_CONNECT_TIMEOUT_MS,

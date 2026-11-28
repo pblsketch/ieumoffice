@@ -35,6 +35,7 @@ import {
   sectionColGeom,
   sectionFirstPages,
   sectionGeoms,
+  sectionPageCounts,
   outerTableRows,
   sectionVertical,
   verticalBlockShift,
@@ -69,11 +70,11 @@ import { noteMarkText } from '../note-format'
 import { useI18n } from '../i18n/locale'
 import {
   hfFloatPagePos,
+  hfImageEffectsStyle,
   hfImageHangsOnPara,
   hfFloatTransform,
   hfReservedHeightPx,
   hfStripGeom,
-  hfWashoutFilter,
   wordArtSvgMarkup,
 } from '../editor/hf-dom'
 import { HeaderFooterArea } from './HeaderFooterArea'
@@ -802,13 +803,15 @@ function FloatHfImg({
   img: HfImage
   pos: ReturnType<typeof hfFloatPagePos>
 }): React.JSX.Element {
+  const fx = hfImageEffectsStyle(img)
   const base: React.CSSProperties = {
     left: pos.x,
     top: pos.y,
     transform: hfFloatTransform(img, pos),
     ...(img.widthPx ? { width: img.widthPx } : {}),
     ...(img.heightPx ? { height: img.heightPx } : {}),
-    ...(img.washout ? { filter: hfWashoutFilter(img.washout) } : {}),
+    ...(fx.filter ? { filter: fx.filter } : {}),
+    ...(fx.opacity ? { opacity: Number(fx.opacity) } : {}),
     ...(img.behind ? {} : { zIndex: 1 }),
   }
   if (img.wordArt) {
@@ -1397,6 +1400,7 @@ export function PaginationPreview({
     [slices, secs],
   )
   const firsts = useMemo(() => sectionFirstPages(slices), [slices])
+  const sectionPages = useMemo(() => sectionPageCounts(slices), [slices])
 
   // line positions of endnote entries in virtual coordinates (matching appendEndnotesBlock's line boxes)
   const endnoteRows = useMemo(() => {
@@ -1576,6 +1580,7 @@ export function PaginationPreview({
                   '--pv-ml': `${mL}px`,
                   '--pv-mt': `${mTop}px`,
                   '--pv-mt-page': `${twipsToPx(s.marginTop)}px`,
+                  '--doc-margin-bottom': `${mBottom}px`,
                 } as React.CSSProperties
               }
             >
@@ -1690,6 +1695,7 @@ export function PaginationPreview({
                     onCommit={() => {}}
                     pageNo={pageNoText}
                     pageTotal={slices.length}
+                    sectionPages={sectionPages[i]}
                     boxGeom={hfStripGeom(s)}
                   />
                 )}
@@ -2034,6 +2040,7 @@ export function PaginationPreview({
                     onCommit={() => {}}
                     pageNo={pageNoText}
                     pageTotal={slices.length}
+                    sectionPages={sectionPages[i]}
                     boxGeom={hfStripGeom(s)}
                   />
                 )}

@@ -103,8 +103,10 @@ export const id = {
   appChartNoRepoint: 'Bagan ini tidak mendukung penetapan ulang rentang datanya.',
   appKeepOneSeries: 'Pertahankan setidaknya satu seri.',
   appNoCategoriesToSwitch: 'Tidak ada kategori untuk ditukar.',
-  appComboNoSelectData: 'Mengubah sumber data bagan kombinasi belum didukung.',
+  appSelectDataUnsupported: 'Mengubah sumber data jenis bagan ini belum didukung.',
   appSeriesName: 'Nama Seri',
+  appSeriesType: 'Jenis seri',
+  appSecondaryAxis: 'Sumbu sekunder',
   appValuesRange: 'Rentang Nilai',
   appCategoriesRange: 'Rentang Kategori',
   appKeepUnchanged: 'Biarkan tidak berubah',
@@ -185,6 +187,12 @@ export const id = {
   appInvalidGroupField: 'Bidang pengelompokan tidak valid.',
   appInvalidPageField: 'Bidang filter laporan tidak valid.',
   appPivotPageItemMissing: 'Item filter laporan "{item}" bukan anggota bidang "{label}".',
+  appInvalidPivotBaseField:
+    'Bidang dasar "Tampilkan nilai sebagai" harus berada di baris atau kolom.',
+  appPivotBaseFieldMissing:
+    'Mode "Tampilkan nilai sebagai" pada bidang nilai memerlukan bidang dasar.',
+  appPivotBaseFieldNotAxis: 'Bidang dasar "{label}" harus berada di baris atau kolom tabel pivot.',
+  appPivotBaseItemMissing: 'Item dasar "{item}" bukan anggota bidang "{label}".',
   appInvalidLabelFilterField: 'Bidang filter label tidak valid.',
   appInvalidValueFieldIndex: 'Indeks bidang nilai {index} tidak valid.',
   appInvalidValueField: 'Bidang nilai tidak valid.',
@@ -319,7 +327,7 @@ export const id = {
   appPivotSheetNoMove: 'Lembar ini berisi PivotTable — memindahkan rentang belum didukung.',
   appMergeOverTable:
     'Pilihan tumpang tindih dengan tabel Excel — menggabungkan sel di dalam tabel belum didukung.',
-  appTableFilterNoEdit: 'Filter lembar ini milik tabel Excel — pengeditannya belum dapat disimpan.',
+  appFilterToggleFailed: 'Filter tidak diterapkan — pilih dulu rentang yang berisi data Anda.',
   appAutofillStreaming: 'IsiOtomatis ke area yang masih dimuat secara streaming belum diizinkan.',
   appDvNeedsIndexed:
     'Mengedit validasi data memerlukan lembar ini terindeks penuh dahulu — coba lagi sebentar lagi.',
@@ -368,6 +376,9 @@ export const id = {
   appTableNameInFile: 'Nama tabel "{name}" sudah digunakan oleh tabel di dalam file.',
   appTableOverlapsSession:
     'Rentang tumpang-tindih dengan tabel "{name}" yang dibuat pada sesi ini.',
+  appTableOverlapsFile: 'Rentang tumpang tindih dengan tabel "{name}" di file.',
+  appTableAlreadyInTable:
+    'Pilihan sudah berada di tabel "{name}" — ubah gayanya dari Desain Tabel.',
   appTablesNeedFile: 'Buka file XLSX dahulu — tabel ditulis ke file.',
   appTableSelectRange: 'Pilih rentang data dahulu — header di baris pertamanya.',
   appTableCreated: 'Tabel dibuat — simpan dengan ⌘S.',
@@ -451,6 +462,7 @@ export const id = {
   appGridlinesHidden: 'Garis kisi disembunyikan.',
   appGridlinesShown: 'Garis kisi ditampilkan.',
   appShowingFormulas: 'Menampilkan rumus — alihkan lagi untuk melihat nilai.',
+  appShowingFormulasActive: 'Menampilkan rumus',
   appShowingValues: 'Menampilkan nilai hasil hitungan.',
   appTraceNoFormula: 'Lacak Presedan: sel aktif tidak memiliki rumus.',
   appTraceNoRefs: 'Lacak Presedan: rumus ini tidak memiliki referensi sel.',
@@ -544,6 +556,9 @@ export const id = {
     'Ekspor CSV memerlukan buku kerja termuat penuh — tunggu pemuatan selesai.',
   appCsvExportTooLarge: 'Lembar terlalu besar untuk diekspor sebagai CSV.',
   appCsvExportCanceled: 'Ekspor CSV dibatalkan.',
+  appOdsExported: '{path} diekspor.',
+  appOdsExportCanceled: 'Ekspor ODS dibatalkan.',
+  appOdsExportFailed: 'Ekspor ODS gagal.',
   appCsvExported: '{path} diekspor.',
   appCsvExportedActiveOnly:
     'File CSV hanya memuat satu lembar — lembar aktif “{name}” diekspor ke {path}.',
@@ -560,8 +575,6 @@ export const id = {
   appSaveFailed: 'Tidak dapat menyimpan buku kerja.',
   appCfRuleUnsaveable:
     'Aturan pemformatan bersyarat ini tidak dapat disimpan ke xlsx — gunakan jenis aturan lain.',
-  appSaveErrX14Dv:
-    'Sheet ini memiliki validasi data yang diperluas (x14); mengedit aturan validasinya belum didukung.',
   appSaveErrMultiSelectList:
     'Validasi daftar pilihan ganda tidak dapat disimpan ke xlsx — hapus aturan tersebut sebelum menyimpan.',
   appSaveErrX14Cf:
@@ -582,6 +595,10 @@ export const id = {
     'Stylesheet buku kerja ini tidak memiliki struktur dasar, jadi perubahan gaya tidak dapat disimpan.',
   appSaveErrPackageGuard:
     'Menyimpan akan mengubah struktur paket buku kerja — dibatalkan untuk melindungi file.',
+  appSaveErrSheetNotFound:
+    'Lembar yang dirujuk penyimpanan ini tidak ditemukan di buku kerja — penyimpanan dihentikan dan file tetap seperti semula.',
+  appSaveErrSheetNameReused:
+    'Lembar baru memakai nama lama dari lembar yang diganti namanya, jadi tidak dapat disimpan. Beri lembar baru nama lain untuk sementara, simpan, lalu ganti namanya. File tetap seperti semula.',
   appSaveErrChartUnsupported:
     'Jenis bagan ini tidak mendukung pengeditan tersebut; penyimpanan dibatalkan — urungkan perubahan bagan itu.',
   appSaveErrMoveOverlap:
@@ -691,6 +708,13 @@ export const id = {
   appSaveAs: 'Simpan Sebagai',
   appUndo: 'Urungkan',
   appRedo: 'Ulangi',
+  appQuickAccessCustomize: 'Sesuaikan Bilah Alat Akses Cepat',
+  appQuickAccessHint:
+    'Tekan Alt dan angka untuk menjalankan tombol pada posisi itu, dihitung dari kiri.',
+  appQuickAccessMoveEarlier: 'Pindahkan ke depan',
+  appQuickAccessMoveLater: 'Pindahkan ke belakang',
+  appQuickAccessReset: 'Kembalikan ke default',
+  appQuickAccessFull: 'Bilah alat memuat paling banyak 10 tombol.',
   appUnsavedEditOne: '● {count} pengeditan belum disimpan',
   appUnsavedEditMany: '● {count} pengeditan belum disimpan',
   appSavedState: 'Tersimpan',
@@ -720,7 +744,6 @@ export const id = {
   appLinkPlaceholder: 'mis. https://example.com atau Sheet1!A1',
   appRemoveLink: 'Hapus Tautan',
   appNotAvailableYet: 'Belum tersedia',
-  appComingSoon: 'Segera hadir',
   appGroupChartLayouts: 'Tata letak bagan',
   appAddChartElement: 'Tambahkan Elemen Bagan',
   appAddChartElementTitle: 'Judul, label data, legenda',
@@ -1154,6 +1177,8 @@ export const id = {
   appRefreshAll: 'Refresh Semua',
   appWorkbookNoPivot: 'Tidak ada PivotTable di buku kerja ini.',
   appRefreshAllTitle: 'Segarkan semua PivotTable',
+  appQueriesConnections: 'Kueri & Koneksi',
+  appQueriesConnectionsTitle: 'Tampilkan kueri dan koneksi data buku kerja',
   appErrorCheckingDetail: 'Pindai nilai kesalahan di lembar',
   appErrorsFound: '{count} kesalahan — di {cell}: {value}',
   appCheckingErrors: 'Memindai kesalahan di seluruh lembar…',
@@ -1188,6 +1213,7 @@ export const id = {
   appGroupForecast: 'Prakiraan',
   appWhatIfAnalysis: 'Analisis Bagaimana-Jika',
   appGoalSeek: 'Pencarian Tujuan',
+  appDataTable: 'Tabel Data',
   appWhatIfTitle: 'Cari input untuk nilai target',
   appGoalSeekNeedsFormula: 'Sel target harus berisi rumus.',
   appGoalSeekByCellNotNumber: 'Sel yang diubah harus berisi angka atau kosong.',
@@ -1449,6 +1475,16 @@ export const id = {
     'Tabel ini tidak memiliki nama di dalam file dan tidak dapat diubah di sini.',
   appTableRowsNotLoaded: 'Baris tabel masih dimuat — coba lagi sebentar lagi.',
   appTableTotalLabel: 'Total',
+  appNotePicturesPaneTitle: 'Gambar catatan',
+  appNotePicturesClose: 'Tutup',
+  appNotePicturesNone: 'Tidak ada catatan di buku kerja ini yang menampilkan gambar.',
+  appNotePictureUnavailable: 'Gambar ini tidak dapat ditampilkan.',
+  appNotePicturesToggle: 'Gambar catatan',
+  appNoteInsertPicture: 'Sisipkan gambar',
+  appNotePictureInserted:
+    'Gambar ditambahkan ke catatan di {cell}. Simpan untuk menulisnya ke file.',
+  appNotePictureRemoved: 'Gambar dihapus dari catatan di {cell}.',
+  appNotePictureRemove: 'Hapus gambar',
   appCommentsPaneTitle: 'Komentar',
   appThreadReply: 'Balas',
   appThreadReplyPlaceholder: 'Balas…',
@@ -1517,4 +1553,33 @@ export const id = {
   appVisualFlipV: 'Balik Vertikal',
   appVisualFlipH: 'Balik Horizontal',
   appCtxPasteVisual: 'Tempel Gambar atau Bentuk',
+
+  // ── Spelling check (F7 / Review ▸ Proofing) ──
+  appSpellTitle: 'Ejaan',
+  appSpellBtnDetail: 'Periksa teks lembar (F7)',
+  appSpellToggle: 'Periksa ejaan',
+  appSpellToggleTip:
+    'Mengaktifkan pemeriksaan ejaan (F7 dan tombol Tinjau); saat nonaktif, kotak komentar tidak lagi menampilkan garis bergelombang',
+  appSpellOn: 'Pemeriksaan ejaan diaktifkan.',
+  appSpellOff: 'Pemeriksaan ejaan nonaktif. Aktifkan di Tinjau ▸ Pemeriksaan.',
+  appSpellRecheck: 'Periksa ulang',
+  appSpellNone: 'Tidak ditemukan kesalahan ejaan yang dicurigai.',
+  appSpellFindings: '{count} kesalahan yang dicurigai. Klik baris untuk menemukannya.',
+  appSpellTruncated: 'Terlalu banyak sel teks; hanya bagian awal yang diperiksa.',
+  appSpellColWord: 'Dicurigai',
+  appSpellIgnore: 'Abaikan',
+  appSpellIgnoreAll: 'Abaikan semua',
+  appSpellLearn: 'Tambahkan ke kamus',
+  appSpellNoSuggestions: 'Tidak ada saran',
+  appSpellIgnoredAll: '"{word}" tidak akan ditandai lagi pada sesi ini.',
+  appSpellLearned: '"{word}" ditambahkan ke kamus.',
+  appSpellChanged: '{address} diperbaiki.',
+  appSpellChangeFailed: 'Gagal memperbaiki {address}.',
+  appSpellUnavailable: 'Pemeriksaan ejaan tidak tersedia di jendela ini.',
+  appSpellReplaceAll: 'Ganti semua dengan "{suggestion}"',
+  appSpellChangedAll: '{count} sel dengan "{word}" telah diperbaiki.',
+
+  // ── ODS import ──
+  appOdsImportNotice: 'ODS dibuka sebagai salinan xlsx. Menyimpan akan menulis file xlsx.',
+  appOdsFormulasDropped: 'Pada {count} rumus, hanya nilainya yang dipertahankan.',
 } satisfies Record<keyof typeof zh, string>

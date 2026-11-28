@@ -1,0 +1,374 @@
+From 1e533f8e7ad107390c944105a3af8dbd4b165989 Mon Sep 17 00:00:00 2001
+From: IeumOffice <dev@ieumoffice.local>
+Date: Fri, 27 Nov 2026 15:23:36 +0900
+Subject: [PATCH] fix(layout): exclude owner column from body-wide Para float
+ reservation
+
+In a multi-column layout, a body-wide TopAndBottom floating table or shape
+with VertRelTo::Para belongs to its anchor column and is laid out in flow
+at the anchor paragraph. Previously calculate_body_wide_shape_reserved
+applied its reserved bottom to every column including the owner column,
+pre-pushing the owner column y_offset before laying out the anchor
+paragraph so the table shifted down by its own height and overlapped both
+following paragraphs in column 0 and column 1.
+
+Track the owner column index for VertRelTo::Para reservations and filter
+it out when laying out that column, compute body-wide table geometry with
+absolute_table_vertical_geometry so outer top/bottom margins are included,
+and include column-0 first-paragraph VertRelTo::Para head objects in
+page_head_bottom so the column separator starts below the head table.
+---
+ src/renderer/layout.rs                      |   8 +-
+ src/renderer/layout/shape_layout.rs         |  72 +++++---
+ tests/cases/body_wide_para_float_columns.rs | 190 ++++++++++++++++++++
+ 3 files changed, 242 insertions(+), 28 deletions(-)
+ create mode 100644 tests/cases/body_wide_para_float_columns.rs
+
+diff --git a/src/renderer/layout.rs b/src/renderer/layout.rs
+index 3465daa8..f5946775 100644
+--- a/src/renderer/layout.rs
++++ b/src/renderer/layout.rs
+@@ -7328,6 +7328,12 @@ impl LayoutEngine {
+                 *col_area_base
+             };
+ 
++            let col_body_wide_reserved: Vec<(usize, f64)> = body_wide_reserved
++                .iter()
++                .filter(|&&(_, _, para_rel_owner)| para_rel_owner != Some(col_content_idx))
++                .map(|&(pi, bottom_y, _)| (pi, bottom_y))
++                .collect();
++
+             let (col_node, y_offset, body_content_bottom) = self.build_single_column(
+                 tree,
+                 paper_images,
+@@ -7343,7 +7349,7 @@ impl LayoutEngine {
+                 &col_area,
+                 outline_numbering_id,
+                 wrap_around_paras,
+-                &body_wide_reserved,
++                &col_body_wide_reserved,
+             );
+ 
+             // [Task #874 Case 5] solo-single zone (1단 ColumnDef + 1 paragraph) leaving 시
+diff --git a/src/renderer/layout/shape_layout.rs b/src/renderer/layout/shape_layout.rs
+index ba6fe87d..8733ab5b 100644
+--- a/src/renderer/layout/shape_layout.rs
++++ b/src/renderer/layout/shape_layout.rs
+@@ -5711,21 +5711,33 @@ impl LayoutEngine {
+     }
+ 
+     /// 다단 레이아웃에서 body_area 전체에 걸치는 TopAndBottom 개체의 예약 높이 계산.
+-    /// 둘째 값은 그 가운데 쪽 기준으로 본문 맨 위에 매단 개체(세로 기준 쪽, 위 정렬,
+-    /// 오프셋 0)의 예약 끝이다. 한컴은 그런 개체 아래, 단의 글이 시작하는 곳부터 단
+-    /// 구분선을 긋는다.
++    /// 첫째 값의 셋째 원소는 `VertRelTo::Para` 개체를 소유한 `column_contents` 인덱스다.
++    /// 소유 단은 본문 흐름 안에서 그 개체를 직접 배치하므로, 단 시작 `y_offset` 을 미리
++    /// 밀어 두면 문단 기준 개체가 자기 높이만큼 아래로 밀려 뒤 본문과 겹친다.
++    /// 둘째 값은 본문 맨 위에 매단 개체(세로 기준 쪽, 또는 첫 단 첫 문단의 문단 기준,
++    /// 위 정렬, 오프셋 0)의 예약 끝이다. 한컴은 그런 개체 아래, 단의 글이 시작하는 곳부터
++    /// 단 구분선을 긋는다.
+     pub(crate) fn calculate_body_wide_shape_reserved(
+         &self,
+         paragraphs: &[Paragraph],
+         column_contents: &[super::super::pagination::ColumnContent],
+         body_area: &LayoutRect,
+-    ) -> (Vec<(usize, f64)>, Option<f64>) {
++    ) -> (Vec<(usize, f64, Option<usize>)>, Option<f64>) {
+         use crate::model::shape::TextWrap;
+ 
+-        let mut result: Vec<(usize, f64)> = Vec::new();
++        let mut result: Vec<(usize, f64, Option<usize>)> = Vec::new();
+         let mut page_head_bottom: Option<f64> = None;
+ 
+-        for col_content in column_contents {
++        for (col_content_idx, col_content) in column_contents.iter().enumerate() {
++            let first_para_in_col = col_content.items.iter().find_map(|it| match it {
++                super::super::pagination::PageItem::FullParagraph { para_index }
++                | super::super::pagination::PageItem::PartialParagraph { para_index, .. }
++                | super::super::pagination::PageItem::Table { para_index, .. }
++                | super::super::pagination::PageItem::Shape { para_index, .. } => {
++                    Some(*para_index)
++                }
++                _ => None,
++            });
+             for item in &col_content.items {
+                 let (para_index, control_index) = match item {
+                     super::super::pagination::PageItem::Shape {
+@@ -5755,7 +5767,7 @@ impl LayoutEngine {
+                 if let Some(bottom) = crate::renderer::float_placement::stored_square_top_band(
+                     para, ctrl, body_area, self.dpi,
+                 ) {
+-                    result.push((*para_index, bottom));
++                    result.push((*para_index, bottom, None));
+                     continue;
+                 }
+                 if !matches!(common.text_wrap, TextWrap::TopAndBottom) || common.treat_as_char {
+@@ -5767,24 +5779,20 @@ impl LayoutEngine {
+                     continue;
+                 }
+                 let (bottom_y, shape_y) = if let Control::Table(table) = ctrl {
+-                    if matches!(common.vert_rel_to, VertRelTo::Page | VertRelTo::Paper) {
+-                        let (ref_y, ref_h) = if common.vert_rel_to == VertRelTo::Page {
+-                            (body_area.y, body_area.height)
+-                        } else {
+-                            (0.0, self.current_page_height.get())
+-                        };
+-                        let (top, bottom) =
+-                            crate::renderer::float_placement::absolute_table_vertical_geometry(
+-                                table,
+-                                ref_y,
+-                                ref_h,
+-                                hwpunit_to_px(common.height as i32, self.dpi),
+-                                self.dpi,
+-                            );
+-                        (bottom, top)
++                    let (ref_y, ref_h) = if common.vert_rel_to == VertRelTo::Paper {
++                        (0.0, self.current_page_height.get())
+                     } else {
+-                        self.calc_shape_bottom_y(ctrl, common, body_area, body_area)
+-                    }
++                        (body_area.y, body_area.height)
++                    };
++                    let (top, bottom) =
++                        crate::renderer::float_placement::absolute_table_vertical_geometry(
++                            table,
++                            ref_y,
++                            ref_h,
++                            hwpunit_to_px(common.height as i32, self.dpi),
++                            self.dpi,
++                        );
++                    (bottom, top)
+                 } else {
+                     self.calc_shape_bottom_y(ctrl, common, body_area, body_area)
+                 };
+@@ -5797,18 +5805,28 @@ impl LayoutEngine {
+                 if shape_y > threshold_y {
+                     continue;
+                 }
+-                if common.vert_rel_to == VertRelTo::Page
++                let is_page_head = common.vert_rel_to == VertRelTo::Page
++                    || (common.vert_rel_to == VertRelTo::Para
++                        && col_content.column_index == 0
++                        && col_content.zone_y_offset <= 0.0
++                        && first_para_in_col == Some(*para_index));
++                if is_page_head
+                     && matches!(common.vert_align, VertAlign::Top | VertAlign::Inside)
+                     && common.vertical_offset == 0
+                 {
+                     page_head_bottom = Some(page_head_bottom.map_or(bottom_y, |b| b.max(bottom_y)));
+                 }
+-                if let Some(existing) = result.iter_mut().find(|(pi, _)| *pi == *para_index) {
++                let para_rel_owner =
++                    (common.vert_rel_to == VertRelTo::Para).then_some(col_content_idx);
++                if let Some(existing) = result
++                    .iter_mut()
++                    .find(|(pi, _, owner)| *pi == *para_index && *owner == para_rel_owner)
++                {
+                     if bottom_y > existing.1 {
+                         existing.1 = bottom_y;
+                     }
+                 } else {
+-                    result.push((*para_index, bottom_y));
++                    result.push((*para_index, bottom_y, para_rel_owner));
+                 }
+             }
+         }
+diff --git a/tests/cases/body_wide_para_float_columns.rs b/tests/cases/body_wide_para_float_columns.rs
+new file mode 100644
+index 00000000..8cc8ec9a
+--- /dev/null
++++ b/tests/cases/body_wide_para_float_columns.rs
+@@ -0,0 +1,190 @@
++#![cfg(not(target_arch = "wasm32"))]
++//! Body-wide `VertRelTo::Para` + `TopAndBottom` head table in a 2-column section.
++//!
++//! When paragraph 0 in column 0 anchors a floating table spanning the full body
++//! width (`treatAsChar = false`, `textWrap = TopAndBottom`, `vertRelTo = Para`,
++//! `vertAlign = Top`, `vertOffset = 0`), column 0 owns and lays out the table
++//! in flow at the body top, while column 1 and the column separator start below
++//! the table. Previously `calculate_body_wide_shape_reserved` pre-pushed column 0's
++//! `y_offset` past the table before laying it out, pushing the paragraph-relative
++//! table down by its own height so it overlapped both column 0's next paragraph
++//! and column 1, while the column separator cut through the table from `body_top`.
++use rhwp::renderer::render_tree::{RenderNode, RenderNodeType};
++use rhwp::wasm_api::HwpDocument;
++
++const EIGHT_MM_COLUMN_GAP: i16 = 2268;
++const LINES: usize = 60;
++
++fn blank() -> HwpDocument {
++    let mut doc = HwpDocument::create_empty();
++    doc.create_blank_document().unwrap();
++    doc
++}
++
++fn fill_lines(doc: &mut HwpDocument, first_para: usize, lines: usize) {
++    for index in 0..lines {
++        let para = first_para + index;
++        if index > 0 {
++            doc.insert_paragraph_native(0, para).unwrap();
++        }
++        doc.insert_text(
++            0,
++            para as u32,
++            0,
++            &format!("Question {:03} sample body line", index + 1),
++        )
++        .unwrap();
++    }
++}
++
++fn two_columns_with_line(doc: &mut HwpDocument) {
++    doc.set_column_def_native(0, 2, 0, true, EIGHT_MM_COLUMN_GAP)
++        .unwrap();
++    doc.set_column_separator(0, r##"{"type":1,"width":1,"color":"#112233"}"##)
++        .unwrap();
++}
++
++fn json_field<'a>(json: &'a str, key: &str) -> &'a str {
++    let start = json.find(&format!("\"{}\":", key)).unwrap() + key.len() + 3;
++    let rest = &json[start..];
++    let end = rest.find([',', '}']).unwrap();
++    &rest[..end]
++}
++
++struct PageGeometry {
++    body_top: f64,
++    separators: Vec<(f64, f64, f64)>,
++    column_text_tops: Vec<f64>,
++    table_top: Option<f64>,
++    table_bottom: Option<f64>,
++}
++
++fn page_geometry(doc: &HwpDocument, page: u32) -> PageGeometry {
++    fn has_text_run(node: &RenderNode) -> bool {
++        matches!(&node.node_type, RenderNodeType::TextRun(run) if !run.text.trim().is_empty())
++            || node.children.iter().any(has_text_run)
++    }
++    fn first_text_line_top(node: &RenderNode) -> Option<f64> {
++        if matches!(node.node_type, RenderNodeType::TextLine(_)) {
++            return has_text_run(node).then_some(node.bbox.y);
++        }
++        if matches!(node.node_type, RenderNodeType::Table(_)) {
++            return None;
++        }
++        node.children.iter().find_map(first_text_line_top)
++    }
++    fn walk(node: &RenderNode, out: &mut PageGeometry) {
++        match &node.node_type {
++            RenderNodeType::Body { .. } => {
++                out.body_top = node.bbox.y;
++                for child in &node.children {
++                    if let RenderNodeType::Line(line) = &child.node_type {
++                        if (line.x1 - line.x2).abs() < 0.01 {
++                            out.separators.push((line.x1, line.y1, line.y2));
++                        }
++                    }
++                }
++            }
++            RenderNodeType::Column(_) => {
++                if let Some(top) = node.children.iter().find_map(first_text_line_top) {
++                    out.column_text_tops.push(top);
++                }
++            }
++            RenderNodeType::Table(_) => {
++                out.table_top = Some(node.bbox.y);
++                out.table_bottom = Some(node.bbox.y + node.bbox.height);
++                return;
++            }
++            _ => {}
++        }
++        for child in &node.children {
++            walk(child, out);
++        }
++    }
++    let mut out = PageGeometry {
++        body_top: 0.0,
++        separators: Vec::new(),
++        column_text_tops: Vec::new(),
++        table_top: None,
++        table_bottom: None,
++    };
++    walk(&doc.build_page_render_tree(page).unwrap().root, &mut out);
++    out
++}
++
++fn para_head_table(doc: &mut HwpDocument) -> (usize, f64, f64) {
++    let made = doc.create_table_native(0, 0, 0, 3, 6).unwrap();
++    let para: usize = json_field(&made, "paraIdx").parse().unwrap();
++    let control: u32 = json_field(&made, "controlIdx").parse().unwrap();
++    doc.set_table_properties_native(
++        0,
++        para,
++        control as usize,
++        r#"{"treatAsChar":false,"textWrap":"TopAndBottom","vertRelTo":"Para","horzRelTo":"Page","vertAlign":"Top","horzAlign":"Left","vertOffset":0,"horzOffset":0}"#,
++    )
++    .unwrap();
++    let props = doc.get_table_properties(0, para as u32, control).unwrap();
++    let outer_top: f64 = json_field(&props, "outerTop").parse().unwrap();
++    let outer_bottom: f64 = json_field(&props, "outerBottom").parse().unwrap();
++    (
++        para + 1,
++        outer_top * 96.0 / 7200.0,
++        outer_bottom * 96.0 / 7200.0,
++    )
++}
++
++#[test]
++fn para_anchored_body_wide_head_table_stays_at_body_top_without_overlapping_columns() {
++    let mut doc = blank();
++    let (first_line, outer_top, outer_bottom) = para_head_table(&mut doc);
++    fill_lines(&mut doc, first_line, LINES);
++    two_columns_with_line(&mut doc);
++
++    let g = page_geometry(&doc, 0);
++    let table_top = g.table_top.expect("head table drawn");
++    let table_bottom = g.table_bottom.expect("head table drawn");
++    let reserved_bottom = table_bottom + outer_bottom;
++
++    // Owner column must not pre-push the paragraph-relative head table down by its own height.
++    assert!(
++        (table_top - (g.body_top + outer_top)).abs() < 0.01,
++        "head table top {table_top} should sit at body_top {} + outer_top {outer_top}",
++        g.body_top
++    );
++
++    // Both columns' body text must start at the table's reserved bottom (no overlap).
++    assert_eq!(g.column_text_tops.len(), 2, "both columns hold text");
++    for text_top in &g.column_text_tops {
++        assert!(
++            (text_top - reserved_bottom).abs() < 0.01,
++            "column text top {text_top} vs head table reserved bottom {reserved_bottom}"
++        );
++    }
++
++    // Column separator starts below the head table, not at body_top through it.
++    assert_eq!(g.separators.len(), 1);
++    let (_, sep_top, _) = g.separators[0];
++    assert!(
++        (sep_top - reserved_bottom).abs() < 0.01,
++        "separator top {sep_top} should start at head table reserved bottom {reserved_bottom}"
++    );
++}
++
++#[test]
++fn para_anchored_head_table_with_left_column_only_starts_separator_below_table() {
++    let mut doc = blank();
++    let (first_line, outer_top, outer_bottom) = para_head_table(&mut doc);
++    fill_lines(&mut doc, first_line, 4);
++    two_columns_with_line(&mut doc);
++
++    let g = page_geometry(&doc, 0);
++    let table_top = g.table_top.expect("head table drawn");
++    let table_bottom = g.table_bottom.expect("head table drawn");
++    let reserved_bottom = table_bottom + outer_bottom;
++
++    assert!((table_top - (g.body_top + outer_top)).abs() < 0.01);
++    assert_eq!(g.column_text_tops.len(), 1, "only left column holds text");
++    assert!((g.column_text_tops[0] - reserved_bottom).abs() < 0.01);
++    assert_eq!(g.separators.len(), 1);
++    assert!((g.separators[0].1 - reserved_bottom).abs() < 0.01);
++}
+-- 
+2.52.0.windows.1
+

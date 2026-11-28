@@ -216,6 +216,9 @@ export interface TextRun {
   fontSizeImplicit?: boolean
   /** Letter spacing <a:rPr spc> (pt, may be negative; PowerPoint stores 1/100pt) */
   letterSpacing?: number
+  /** letterSpacing was set by an edit: the in-place run patch writes (or removes) spc;
+   * an untouched run keeps its bytes */
+  letterSpacingEdited?: boolean
   /** Kerning threshold <a:rPr kern> (pt): kern pairs apply only at fontSize ≥ this; 0 = never.
    *  Absent = PowerPoint's 12 pt default (probe-measured: 18 pt kerns, 10 pt does not). */
   kern?: number
@@ -255,6 +258,9 @@ export interface TextRun {
   color?: ResolvedColor
   /** Text highlight color <a:rPr><a:highlight> (drawn as a background behind the run) */
   highlight?: ResolvedColor
+  /** highlight was set by an edit: the in-place run patch writes (or removes) <a:highlight>;
+   * an untouched run keeps its bytes (a scheme-colored highlight stays linked) */
+  highlightEdited?: boolean
   /** color is display-only (from schemeClr/inheritance, not an explicit run srgbClr);
    * the patch path won't write srgbClr from it, avoiding baking in theme colors and breaking theme switches */
   colorFollowsTheme?: boolean
@@ -475,6 +481,15 @@ interface ElementBase {
   transform: Transform
   /** Editor dirty flag: when true, save must regenerate OOXML; otherwise originalXml passes through */
   dirty?: boolean
+  /**
+   * Text-moved flag: a traced paragraph/run landed at a different index than its
+   * source (reorder, split or insert), so the in-place run patch would inherit the
+   * attributes of the old run now sitting at that position. Set by setText and
+   * consumed by patchTextElementXml, which rebuilds the txBody instead; it stays
+   * set until the element is reparsed/materialized (a rebuild cannot clear it while
+   * the moved text still occupies a foreign position).
+   */
+  textMoved?: boolean
   /** Geometry dirty flag: when true, save patches <a:xfrm> in place (orthogonal to text patches) */
   dirtyTransform?: boolean
   /** Fill dirty flag: when true, save patches the spPr fill node in place */
@@ -577,7 +592,7 @@ export interface TextElement extends ElementBase {
   /** spPr carried neither a:prstGeom nor a:custGeom (non-placeholder): PowerPoint draws only the text */
   noGeometry?: true
   fill?: Fill
-  /** <p:sp useBgFill="1">: painted with the slide's effective background fill (fill is only a fallback) */
+  /** <p:sp useBgFill="1"> without an spPr fill of its own: painted with the slide's effective background fill */
   useBgFill?: boolean
   /** <a:effectLst><a:fillOverlay>: second fill composited over the base (PowerPoint blends
    *  with the record's blend mode; the renderer approximates every mode as multiply) */

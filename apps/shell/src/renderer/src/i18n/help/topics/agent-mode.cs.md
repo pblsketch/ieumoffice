@@ -4,7 +4,7 @@ Agent vezme jednu složku, kterou zvolíte, jako projekt a spustí v ní Claude 
 
 ## Než začnete
 
-- Předplatné Claude nebo ChatGPT připojené v **Nastavení ▸ AI**. Jak na to, vysvětluje téma „Připojení předplatného“.
+- Program Claude Code nebo Codex připojený v **Nastavení ▸ AI** (přihlášený předplatným Claude nebo tarifem ChatGPT). ChatGPT připojený přímo v aplikaci agent nepoužívá. Jak na to, vysvětluje téma „Připojení předplatného“.
 - Složka s vašimi podklady. Nelze zvolit celý disk, celou domovskou složku ani složky s přihlašovacími nebo aplikačními daty.
 
 ## Zahájení relace

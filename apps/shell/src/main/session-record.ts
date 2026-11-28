@@ -43,6 +43,8 @@ const DOCUMENT_KINDS: readonly DocumentTabKind[] = [
   'mindmap',
   'hwp',
   'epub',
+  'diagram',
+  'whiteboard',
 ]
 
 /** the same shape the recovery store accepts for an untitled copy */
@@ -94,6 +96,11 @@ export interface SessionRecord {
   /** index into `tabs` of the main window's front tab; absent = Home */
   active?: number
   split?: SessionRecordSplit
+  /**
+   * the run ended in "Restart & Install": its tabs, as they were when the quit
+   * began, come back in the next run (decision 0077)
+   */
+  updateRestart?: true
 }
 
 /** a main-window strip tab, as TabManager.sessionTabs reports it */
@@ -271,6 +278,7 @@ export function parseSessionRecord(raw: unknown): SessionRecord | null {
     pastStartup: record.pastStartup === true,
     tabs,
   }
+  if (record.updateRestart === true) parsed.updateRestart = true
   if (typeof record.active === 'number') {
     const active = remap.get(record.active)
     if (active !== undefined && !tabs[active]?.detached) parsed.active = active
@@ -320,8 +328,11 @@ export interface PreviousExitJudgment {
    * - `unresolvedCopies`: the quit completed but left undecided or restore-chosen copies
    * - `corruptRecord`: the record was unreadable; abnormal only when undecided
    *   or restore-chosen copies are left, so the launch list still offers them
+   * - `updateRestart`: the quit completed for "Restart & Install" (or the
+   *   installer reopened the app after an update): counted with the abnormal
+   *   exits so the tabs come back, but never a crash loop
    */
-  reason: 'noRecord' | 'clean' | 'notClean' | 'unresolvedCopies' | 'corruptRecord'
+  reason: 'noRecord' | 'clean' | 'notClean' | 'unresolvedCopies' | 'corruptRecord' | 'updateRestart'
   /**
    * The previous run was itself a restore run and died (never completed its
    * quit) within CRASH_LOOP_WINDOW_MS of its start: preload no tab and do not
@@ -335,11 +346,14 @@ export interface PreviousExitJudgment {
  * Normal exit = a record with the clean mark and no undecided / restore-chosen
  * copy ("later" copies may stay). No record at all is normal too. A record
  * that cannot be read is normal unless such copies are left, in which case
- * the launch list must still offer them.
+ * the launch list must still offer them. A clean exit for an update brings
+ * the tabs back: one marked by "Restart & Install", or any clean exit when the
+ * installer reopened the app (an earlier version's quit carries no mark).
  */
 export function judgePreviousExit(
   previous: SessionRecordReadResult,
   store: Pick<RecoveryStore, 'hasUnresolvedCopies'>,
+  options: { reopenedByInstaller?: boolean } = {},
 ): PreviousExitJudgment {
   if (previous.status === 'missing')
     return { abnormal: false, reason: 'noRecord', crashLoop: false }
@@ -355,6 +369,9 @@ export function judgePreviousExit(
       reason: 'notClean',
       crashLoop: record.restoreRun && !record.pastStartup,
     }
+  }
+  if (record.updateRestart === true || options.reopenedByInstaller === true) {
+    return { abnormal: true, reason: 'updateRestart', crashLoop: false }
   }
   if (store.hasUnresolvedCopies()) {
     return { abnormal: true, reason: 'unresolvedCopies', crashLoop: false }
@@ -379,6 +396,33 @@ export function sessionRestoreLayout(
   return layout
 }
 
+/**
+ * A layout without some of its tabs (by index): the ones the person declined
+ * to restore because their editor is turned off. The front tab and the split
+ * follow the tabs that stay; a split that loses a pane is gone.
+ */
+export function sessionLayoutWithout(
+  layout: SessionSnapshot,
+  drop: ReadonlySet<number>,
+): SessionSnapshot {
+  if (drop.size === 0) return layout
+  const newIndex = new Map<number, number>()
+  const tabs: SessionRecordTab[] = []
+  layout.tabs.forEach((tab, index) => {
+    if (drop.has(index)) return
+    newIndex.set(index, tabs.length)
+    tabs.push(tab)
+  })
+  const next: SessionSnapshot = { tabs }
+  const active = layout.active !== undefined ? newIndex.get(layout.active) : undefined
+  if (active !== undefined) next.active = active
+  const split = layout.split
+  const a = split ? newIndex.get(split.a) : undefined
+  const b = split ? newIndex.get(split.b) : undefined
+  if (split && a !== undefined && b !== undefined) next.split = { ...split, a, b }
+  return next
+}
+
 export interface SessionRecorderOptions {
   /** the app data folder (`app.getPath('userData')`) */
   userDataDir: string
@@ -398,8 +442,10 @@ export interface SessionRecorder {
    * time and whether this run restores tabs. A restore run starts from the
    * previous record's tabs, so a crash before the first tab change still
    * finds them; any other run starts empty. Updates before this are dropped.
+   * `dropTabs` are previous tabs (by index) not restored: an editor turned
+   * off and the person said no, so they are not asked about again.
    */
-  startRun(options: { restoreRun: boolean }): void
+  startRun(options: { restoreRun: boolean; dropTabs?: ReadonlySet<number> }): void
   /** the tabs changed (open, close, reorder, rename, path, front tab, split, detach) */
   update(snapshot: SessionSnapshot): void
   /** write a pending change now */
@@ -410,6 +456,19 @@ export interface SessionRecorder {
    * (Excel quits without asking) still counts as abnormal and rebuilds them.
    */
   markCleanExit(): void
+  /**
+   * "Restart & Install" began its quit (`before-quit`): keep the tabs as they
+   * are now. The windows that close afterwards (a detached window after the
+   * main one) must not empty the list the next run brings back. Taken again
+   * by every such quit; an ordinary quit ignores it.
+   */
+  holdTabsForUpdateRestart(): void
+  /**
+   * The quit for "Restart & Install" completed (`will-quit`): like
+   * markCleanExit, with the tabs held at its start and the update mark, so the
+   * next run brings them back.
+   */
+  markUpdateRestart(): void
   /**
    * The main window finished closing while the app stays in the tray
    * (`shouldKeepQuickLookInTray`): empty the tab list and set the clean mark,
@@ -445,6 +504,8 @@ export function createSessionRecorder(options: SessionRecorderOptions): SessionR
   let startupTimer: ReturnType<typeof setTimeout> | null = null
   /** set once the run ended (quit or OS session end): nothing is written after */
   let ended = false
+  /** the tabs when "Restart & Install" began its quit */
+  let heldForUpdate: SessionSnapshot | null = null
 
   const clearWriteTimer = (): void => {
     if (writeTimer) clearTimeout(writeTimer)
@@ -483,11 +544,14 @@ export function createSessionRecorder(options: SessionRecorderOptions): SessionR
   return {
     previous,
 
-    startRun({ restoreRun }) {
+    startRun({ restoreRun, dropTabs }) {
       if (current || ended) return
       const carried =
         restoreRun && previous.status === 'ok'
-          ? sessionRestoreLayout(previous.record, { crashLoop: false })
+          ? sessionLayoutWithout(
+              sessionRestoreLayout(previous.record, { crashLoop: false }),
+              dropTabs ?? new Set(),
+            )
           : { tabs: [] }
       current = {
         version: 1,
@@ -535,6 +599,29 @@ export function createSessionRecorder(options: SessionRecorderOptions): SessionR
     markCleanExit() {
       if (!current || ended) return
       current = { ...current, cleanExit: true }
+      writeNow()
+      finish()
+    },
+
+    holdTabsForUpdateRestart() {
+      if (!current || ended) return
+      const { tabs, active, split } = current
+      heldForUpdate = {
+        tabs,
+        ...(active !== undefined ? { active } : {}),
+        ...(split ? { split } : {}),
+      }
+    },
+
+    markUpdateRestart() {
+      if (!current || ended) return
+      const { tabs, active, split, ...rest } = current
+      const kept: SessionSnapshot = heldForUpdate ?? {
+        tabs,
+        ...(active !== undefined ? { active } : {}),
+        ...(split ? { split } : {}),
+      }
+      current = { ...rest, ...kept, cleanExit: true, updateRestart: true }
       writeNow()
       finish()
     },
@@ -590,6 +677,16 @@ export function noteSessionChanged(source: SessionSnapshotSource): void {
 /** no-op unless initialized: safe from a `will-quit` a second instance also runs */
 export function markSessionCleanExit(): void {
   activeRecorder?.markCleanExit()
+}
+
+/** no-op unless initialized */
+export function holdSessionTabsForUpdateRestart(): void {
+  activeRecorder?.holdTabsForUpdateRestart()
+}
+
+/** no-op unless initialized: safe from a `will-quit` a second instance also runs */
+export function markSessionUpdateRestart(): void {
+  activeRecorder?.markUpdateRestart()
 }
 
 /** no-op unless initialized */

@@ -16,6 +16,7 @@ export const pt = {
   cvTargetNone: 'Ainda não escolhido',
   cvTargetChoose: 'Escolher…',
   cvCover: 'Usar a primeira página como capa',
+  cvPageBreaks: 'Começar cada página original num novo ecrã',
   cvBookTitle: 'Título',
   cvBookAuthor: 'Autor',
   cvBookLanguage: 'Idioma',
@@ -64,6 +65,9 @@ export const pt = {
   cvErrFailed: 'Não foi possível converter.',
   cvPageImageAlt: 'Página {page}',
   imgExportWholePages: 'Páginas inteiras',
+  imgExportCurrentPage: 'Somente a página atual',
+  imgExportCurrentPageTip: 'Exportar a página que você está vendo como um arquivo PNG',
+  imgExportCurrentPageJpgTip: 'Exportar a página que você está vendo como um arquivo JPG',
   imgExportEmbedded: 'Somente as imagens das páginas',
   imgExportEmbeddedTip:
     'Salvar as imagens inseridas nas páginas como arquivos PNG na resolução original',

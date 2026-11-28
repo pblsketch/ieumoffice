@@ -31,6 +31,7 @@ const AI_LANG_DIRECTIVES: Record<Lang, string> = {
   hi: '\n\nउपयोगकर्ता के संदेश की भाषा में ही उत्तर दें; यदि भाषा निर्धारित न हो सके, तो हिंदी में उत्तर दें।',
   'zh-TW': '\n\n用與使用者訊息相同的語言回覆；無法判斷使用者訊息的語言時，用繁體中文回覆。',
   vi: '\n\nTrả lời bằng ngôn ngữ của tin nhắn người dùng; nếu không xác định được, hãy trả lời bằng tiếng Việt.',
+  tr: '\n\nYanıtı kullanıcının iletisinin dilinde ver; dil belirlenemiyorsa Türkçe yanıtla.',
 }
 
 export function aiLangDirective(lang: Lang): string {
@@ -59,6 +60,10 @@ export function LocaleProvider({ initial, children }: { initial: Lang; children:
     [],
   )
   return <LocaleContext.Provider value={lang}>{children}</LocaleContext.Provider>
+}
+
+export function useLang(): Lang {
+  return useContext(LocaleContext)
 }
 
 export function useI18n(): { lang: Lang; t: TFunc } {

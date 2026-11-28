@@ -1,6 +1,8 @@
 import type { zh } from './zh'
 
 export const vi = {
+  appLegacyPptImported:
+    'Đã mở tệp .ppt dưới dạng bản sao .pptx đã chuyển đổi. Tệp gốc giữ nguyên; khi lưu sẽ ghi ra một tệp .pptx mới. Ghi chú của diễn giả và hiệu ứng động không được chuyển sang.',
   redactMenuLabel: 'Ẩn phần đã chọn khỏi AI',
   redactDialogDesc:
     'Nội dung đã chọn vẫn còn trong tài liệu và tệp; mô hình chỉ thấy placeholder bên dưới. Đặt tên để mô hình biết nó đại diện cho điều gì.',
@@ -172,6 +174,9 @@ export const vi = {
   appPrintLandscape: 'Khổ ngang',
   appPrintFrame: 'Đóng khung trang chiếu',
   appPrintHidden: 'In các trang chiếu ẩn',
+  appPrintRangeSelected: 'Các trang chiếu đã chọn',
+  appPrintLayoutBlocked:
+    'Bản phát tay và trang ghi chú được in một trang trên mỗi tờ. Để sắp xếp trang, hãy chọn Trang chiếu toàn trang.',
   appPrintPageCount: '{n} trang',
   appPrintNoPages: 'Không có trang chiếu nào để in',
   appPrintRendering: 'Đang tạo bản xem trước…',
@@ -181,6 +186,7 @@ export const vi = {
   appCtxSendToBack: 'Đưa xuống dưới cùng',
   appCtxBringForward: 'Đưa lên một lớp',
   appCtxSendBackward: 'Đưa xuống một lớp',
+  appCtxRotate: 'Xoay',
   appCtxRotateLeft90: 'Xoay sang trái 90°',
   appCtxRotateRight90: 'Xoay sang phải 90°',
   appCtxFlipH: 'Lật ngang',
@@ -220,6 +226,8 @@ export const vi = {
   appMasterFillNone: 'Không tô màu',
   appMasterStroke: 'Màu viền…',
   appMasterStrokeNone: 'Không viền',
+  appMasterInsertTextBox: 'Hộp văn bản',
+  appMasterInsertShape: 'Hình dạng',
   appStartOpening: 'Đang mở…',
   appReadingSlideTitle: 'Nhấp để chuyển sang trang chiếu tiếp theo (Esc để thoát Chế độ đọc)',
   appReadingPrev: '‹ Trước',
@@ -256,4 +264,12 @@ export const vi = {
   appStatusSummaryZoomInserted: 'Đã chèn trang chiếu Thu phóng tóm tắt với {count} ô thu nhỏ',
   appSectionSummary: 'Phần tóm tắt',
   appSectionN: 'Phần {n}',
+  appStatusAnimPainterNone: 'Phần tử đã chọn không có hoạt hình',
+  appStatusAnimPainterOnce:
+    'Nhấp vào phần tử cần áp dụng hoạt hình; nhấp đúp vào nút để chuyển sang chế độ liên tục',
+  appStatusAnimPainterContinuous: 'Chế độ sao chép hoạt hình liên tục; nhấn Esc để thoát',
+  appStatusAnimPainted: 'Đã áp dụng hoạt hình',
+  appStatusMergeUnsupported:
+    'Không thể phối hợp các hình dạng này (đường kẻ, hình ảnh, bảng, biểu đồ và một số hình dạng bị loại trừ)',
+  appStatusMergeEmpty: 'Không còn gì sau khi phối hợp (các hình dạng không chồng lên nhau)',
 } satisfies Record<keyof typeof zh, string>

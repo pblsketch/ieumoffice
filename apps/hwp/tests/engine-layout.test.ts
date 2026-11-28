@@ -12,7 +12,21 @@
  * master-page-next-section cases are built on the title-table-then-inline-table
  * reproduction (its body replaced by a few lines) and saved by Hangul 2024: one
  * framed table or rectangle in the header and one in the footer, and a second
- * section that declares no master page.
+ * section that declares no master page. The paper-topbottom-box-stale-ladder
+ * case is built on the same reproduction (its body replaced by a wide
+ * top-and-bottom rectangle, two title lines, an inline table and filler
+ * lines) and saved by Hangul 2024; its stored line positions were then moved
+ * up as if the rectangle were not there, and restarted at the top of a page
+ * where that shorter layout would have ended page 1, as in the reported file.
+ * The para-float-tail-table case is built on the same reproduction (filler
+ * lines on page 1; page 2 opens with a heading that has space before it, then
+ * a filler line and a two-line paragraph whose text ends with a top-and-bottom
+ * table placed 1100 HWPUNIT below the paragraph's last line) and saved by
+ * Hangul 2024. The caption-footnote-flow case is not saved by Hangul: it is
+ * written by a script the way document generators write HWPX (no
+ * linesegarray), with the reported thesis's styles and page setup and only
+ * filler text and a blank picture. caption-footnote-flow-ieum17.hwp is that
+ * file saved as .hwp by engine 0.8.7-ieum.17.
  */
 import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
@@ -30,6 +44,7 @@ beforeAll(async () => {
 
 interface Node {
   type: string
+  text?: string
   pi?: number
   ci?: number
   row?: number
@@ -69,7 +84,12 @@ function boxes(doc: HwpDocument, page: number): Box[] {
 function footnoteAndBody(doc: HwpDocument, page: number) {
   const root = JSON.parse(doc.getPageRenderTree(page)) as Node
   const area = root.children?.find((child) => child.type === 'FootnoteArea')
-  const separator = area?.children?.find((child) => child.type === 'Line')?.bbox?.y
+  // the separator line, or the first note's line where the document's separator has no
+  // colour (`color="none"`, which rhwp devel leaves undrawn)
+  const separator = (
+    area?.children?.find((child) => child.type === 'Line') ??
+    area?.children?.find((child) => child.type === 'TextLine')
+  )?.bbox?.y
   const bottoms: number[] = []
   const walk = (node: Node) => {
     if (node.type === 'TextLine' && node.bbox) bottoms.push(node.bbox.y + node.bbox.h)
@@ -103,7 +123,8 @@ const px = (hwpunit: number) => (hwpunit * 96) / 7200
 describe('vendored rhwp engine', () => {
   it('is the build its manifest records', () => {
     const manifest = JSON.parse(readFileSync(join(CORE, 'package.json'), 'utf8'))
-    expect(manifest.version).toMatch(/^0\.8\.7-ieum\.\d+$/)
+    // a release tag, or a commit on an upstream branch ahead of one (decision 0107)
+    expect(manifest.version).toMatch(/^\d+\.\d+\.\d+-(devel\.)?ieum\.\d+$/)
     const wasm = readFileSync(join(CORE, 'rhwp_bg.wasm'))
     expect(createHash('sha256').update(wasm).digest('hex')).toBe(manifest.rhwp.wasmSha256)
   })
@@ -158,6 +179,62 @@ describe('vendored rhwp engine', () => {
     }
   })
 
+  it('starts what follows a paper-anchored top-and-bottom box below it', () => {
+    // The second paragraph anchors a wide rectangle to the paper with
+    // top-and-bottom wrap, but the file stores its line, and every later one,
+    // as if the rectangle were not there; it also restarts the stored
+    // positions where that layout's page 1 would have ended. Hangul 2024 draws
+    // that paragraph and everything after it below the rectangle, the inline
+    // table too, fills page 1 with 32 filler lines and puts the other 18 on
+    // page 2. Only the text lines used to move down: the table kept its stored
+    // place over the title lines and the lines after it followed it back up.
+    // Once they moved, the stale restart opened a third page.
+    const doc = open('paper-topbottom-box-stale-ladder.hwpx')
+    expect(doc.pageCount()).toBe(2)
+    const root = JSON.parse(doc.getPageRenderTree(0)) as Node
+    const body = area(root, 'Body')!.bbox!
+    const box = root.children!.find((c) => c.type === 'Rect' && c.bbox!.w > body.w / 2)!.bbox!
+    const page = boxes(doc, 0)
+      .filter((b) => b.pi > 0)
+      .sort((a, b) => a.top - b.top)
+    expect(page.some((b) => b.type === 'Table' && b.pi === 4)).toBe(true)
+    for (const b of page) {
+      expect(b.top).toBeGreaterThanOrEqual(box.y + box.h - 0.5)
+      expect(b.bottom).toBeLessThanOrEqual(body.y + body.h + 0.5)
+    }
+    for (let i = 1; i < page.length; i++) {
+      expect(page[i].top).toBeGreaterThanOrEqual(page[i - 1].bottom - 0.5)
+    }
+    const second = boxes(doc, 1).filter((b) => b.type === 'TextLine')
+    expect(second).toHaveLength(18)
+    for (const b of second) expect(b.bottom).toBeLessThanOrEqual(body.y + body.h + 0.5)
+  })
+
+  it('keeps a paragraph-relative table below the host lines it follows', () => {
+    // The table's control follows the text of a two-line paragraph, so Hangul
+    // measures its 1100 offset from the second line and draws it just below
+    // that line. The layout pass placed the table from the paging pass's own
+    // paragraph origin, which here was 7.2px above the drawn one (it had not
+    // yet counted the previous paragraph's 540 line gap), so the table covered
+    // the second line.
+    const doc = open('para-float-tail-table.hwpx')
+    expect(doc.pageCount()).toBe(2)
+    const page = boxes(doc, 1)
+    const table = page.find((b) => b.type === 'Table' && b.pi === 6)!
+    const lines = page.filter((b) => b.type === 'TextLine' && b.pi === 6)
+    expect(table).toBeDefined()
+    expect(lines).toHaveLength(2)
+    const last = lines.reduce((a, b) => (b.top > a.top ? b : a))
+    expect(table.top).toBeGreaterThanOrEqual(last.bottom - 0.5)
+    expect(table.top).toBeCloseTo(last.top + px(1100), 0)
+    // what follows starts below the table: Hangul puts the next line right at its
+    // bottom, with neither the host's space after nor the next space before (patches
+    // 0028 and 0035)
+    const after = page.filter((b) => b.pi > 6).sort((a, b) => a.top - b.top)
+    for (const box of after) expect(box.top).toBeGreaterThanOrEqual(table.bottom - 0.5)
+    expect(after[0].top).toBeCloseTo(table.bottom, 0)
+  })
+
   it('fills a cell zone to the end of the merged cell it ends on', () => {
     // The title table's cell zone covers row 1, cells 0 and 1, and cell 1 spans
     // the last two columns. Hangul paints the zone to the table's right edge;
@@ -196,6 +273,26 @@ describe('vendored rhwp engine', () => {
     expect(picture).toHaveLength(1)
     const lastLine = Math.max(...lines(second).map((b) => b.bottom))
     expect(picture[0].top).toBeGreaterThanOrEqual(lastLine - 0.5)
+  })
+
+  it('lays out header text that shares a paragraph with a floating picture', () => {
+    // Public anonymous reproduction: the importer keeps HEADER01 in the header
+    // model, but the floating-picture branch used to emit only the image.
+    const doc = open('header-picture-and-text.hwpx')
+    const root = JSON.parse(doc.getPageRenderTree(0)) as Node
+    const header = area(root, 'Header')!
+    expect(first(header, 'Image')).toBeDefined()
+    const runs: string[] = []
+    const walk = (node: Node) => {
+      if (node.type === 'TextRun') runs.push(node.text ?? '')
+      for (const child of node.children ?? []) walk(child)
+    }
+    walk(header)
+    expect(runs.join('')).toContain('HEADER01')
+    const svgText = [...doc.renderPageSvg(0).matchAll(/<text[^>]*>([\s\S]*?)<\/text>/g)]
+      .map((match) => match[1])
+      .join('')
+    expect(svgText).toContain('HEADER01')
   })
 
   it('measures paper-anchored header and footer tables from their own frames', () => {
@@ -251,6 +348,192 @@ describe('vendored rhwp engine', () => {
       expect(band).toBeDefined()
       // the band's declared height is 1500, in HWPUNIT
       expect(band!.y).toBeCloseTo(root.bbox!.h - px(4000) - px(1500), 0)
+    }
+  })
+
+  // Generated like the reported thesis: no paragraph, caption or footnote has
+  // a linesegarray, and each note types its number ("1) …") with no autoNum.
+  // A picture's bottom caption and a table's top caption take two lines,
+  // another picture's caption is a title plus a four-line note, two
+  // three-line notes sit near a page end, a paragraph that nearly fills a
+  // page has a ten-line note marked in its first line, and a table near a
+  // page end has a six-line note in a cell. The engine measured the captions
+  // as one line and each note as 400 HWPUNIT, so text ran under the captions
+  // and down into the notes, and it drew each number twice ("1) 1) …").
+  function checkCaptionFootnoteFlow(
+    doc: HwpDocument,
+    options: { allowDeferredCellNote?: boolean } = {},
+  ) {
+    const text = (node: Node): string =>
+      (node.text ?? '') + (node.children ?? []).map(text).join('')
+    const pages = Array.from({ length: doc.pageCount() }, (_, page) => {
+      const root = JSON.parse(doc.getPageRenderTree(page)) as Node
+      const body = area(root, 'Body')!
+      const lines: { pi: number; text: string; box: NonNullable<Node['bbox']> }[] = []
+      const walk = (node: Node) => {
+        if (node.type === 'TextLine') {
+          if (text(node).trim()) lines.push({ pi: node.pi!, text: text(node), box: node.bbox! })
+        } else if (node.type !== 'Table') for (const child of node.children ?? []) walk(child)
+      }
+      walk(body)
+      const notes = area(root, 'FootnoteArea')
+      const separator = notes && first(notes, 'Line')?.bbox?.y
+      const noteText = (notes?.children ?? []).filter((c) => c.type === 'TextLine').map(text)
+      return { body: body.bbox!, lines, separator, noteText }
+    })
+
+    for (const { body, lines, separator, noteText } of pages) {
+      for (const [i, a] of lines.entries()) {
+        expect(a.box.y + a.box.h).toBeLessThanOrEqual(body.y + body.h + 0.5)
+        if (separator !== undefined) expect(a.box.y + a.box.h).toBeLessThanOrEqual(separator + 0.5)
+        for (const b of lines.slice(i + 1)) {
+          const across = Math.min(a.box.x + a.box.w, b.box.x + b.box.w) - Math.max(a.box.x, b.box.x)
+          const down = Math.min(a.box.y + a.box.h, b.box.y + b.box.h) - Math.max(a.box.y, b.box.y)
+          expect(across > 1 && down > 1, `"${a.text}" over "${b.text}"`).toBe(false)
+        }
+      }
+      for (const line of noteText) expect(line.trim()).not.toMatch(/^\d+\)\s*\d+\)/)
+    }
+    // the captions still wrap: two lines for the first picture's caption
+    const captionPage = pages.find((p) => p.lines.some((l) => l.text.startsWith('[그림 1]')))!
+    expect(captionPage.lines.filter((l) => l.pi === 0).length).toBeGreaterThanOrEqual(2)
+
+    // each note is drawn once, on the page that holds its marker; the ten-line
+    // note's marker is in the first line of paragraph 16, the cell note's
+    // table is paragraph 22
+    const notePage = (n: number) => {
+      const found = pages.flatMap((p, i) =>
+        p.noteText.some((l) => l.trim().startsWith(`${n})`)) ? [i] : [],
+      )
+      expect(found).toHaveLength(1)
+      return found[0]
+    }
+    const pageOf = (pi: number) => pages.findIndex((p) => p.lines.some((l) => l.pi === pi))
+    for (const n of [1, 2]) expect(pages[notePage(n)].lines.some((l) => l.pi === 12)).toBe(true)
+    expect(notePage(3)).toBe(pageOf(16))
+    expect(pages[notePage(3)].noteText.length).toBeGreaterThanOrEqual(10)
+    const tablePage = pages.findIndex((_, page) =>
+      boxes(doc, page).some((b) => b.type === 'Table' && b.pi === 22),
+    )
+    if (options.allowDeferredCellNote) {
+      expect([tablePage, tablePage + 1]).toContain(notePage(4))
+    } else {
+      expect(notePage(4)).toBe(tablePage)
+    }
+  }
+
+  it('reserves what multi-line captions and footnotes draw in a file without stored lines', () => {
+    checkCaptionFootnoteFlow(open('caption-footnote-flow.hwpx'))
+  })
+
+  it('keeps the captions and footnotes after saving that file as .hwp and opening it again', () => {
+    // HWP does not lay out empty lines on open, so the saved file must carry
+    // the caption and note lines the engine made.
+    const saved = new HwpDocument(open('caption-footnote-flow.hwpx').exportHwp())
+    checkCaptionFootnoteFlow(saved)
+  })
+
+  it('lays out the caption and note lines of a .hwp the earlier engine saved without them', () => {
+    // caption-footnote-flow-ieum17.hwp is the fixture saved as .hwp by engine
+    // 0.8.7-ieum.17: no caption or note lines, inline picture lines that leave
+    // out the caption, and no /RhwpLineSegTags stream (rhwp v0.9.1 #8939).
+    // Without that stream v0.9.1 honors the file's stored vpos=0 resets, placing
+    // table 22 near the bottom of page 6 so patch 0039 moves its 9-line note to
+    // page 7 instead of overflowing the page.
+    checkCaptionFootnoteFlow(open('caption-footnote-flow-ieum17.hwp'), {
+      allowDeferredCellNote: true,
+    })
+  })
+
+  it('keeps a paragraph-anchored body-wide head table at the body top in a 2-column layout', () => {
+    // Regression test for patch 0060: in a 2-column layout, a body-wide
+    // TopAndBottom table with vertRelTo=Para in column 0 used to push column 0
+    // down before placing the table, shifting the table down by its own height
+    // so it overlapped both following paragraphs and column 2 while the column
+    // separator cut through it.
+    const firstNonEmptyLineTop = (node: Node): number | undefined => {
+      if (node.type === 'TextLine' && node.bbox) {
+        const t = (node.children ?? []).map((c) => c.text ?? '').join('')
+        if (t.trim()) return node.bbox.y
+        return undefined
+      }
+      if (node.type === 'Table') return undefined
+      for (const ch of node.children ?? []) {
+        const found = firstNonEmptyLineTop(ch)
+        if (found !== undefined) return found
+      }
+      return undefined
+    }
+
+    // 1. Anonymized reproduction saved by Hangul 2024 (2 columns, body-wide
+    //    VertRelTo=Para TopAndBottom 3x6 head table with 283 HU outer margins)
+    const fixtureDoc = open('body-wide-para-float-two-columns.hwpx')
+    try {
+      expect(fixtureDoc.pageCount()).toBe(1)
+      const root = JSON.parse(fixtureDoc.getPageRenderTree(0)) as Node
+      const body = area(root, 'Body')!
+      const columns = (body.children ?? []).filter((c) => c.type === 'Column')
+      expect(columns).toHaveLength(2)
+      const table = first(columns[0], 'Table')!.bbox!
+      const reservedBottom = table.y + table.h + px(283)
+      expect(table.y).toBeCloseTo(body.bbox!.y + px(283), 0)
+      expect(firstNonEmptyLineTop(columns[0])).toBeCloseTo(reservedBottom, 0)
+      expect(firstNonEmptyLineTop(columns[1])).toBeCloseTo(reservedBottom, 0)
+    } finally {
+      fixtureDoc.free()
+    }
+
+    // 2. Programmatically created 2-column document with a column separator
+    const doc = HwpDocument.createEmpty()
+    try {
+      doc.createBlankDocument()
+      const made = JSON.parse(doc.createTable(0, 0, 0, 3, 6)) as {
+        paraIdx: number
+        controlIdx: number
+      }
+      doc.setTableProperties(
+        0,
+        made.paraIdx,
+        made.controlIdx,
+        JSON.stringify({
+          treatAsChar: false,
+          textWrap: 'TopAndBottom',
+          vertRelTo: 'Para',
+          horzRelTo: 'Page',
+          vertAlign: 'Top',
+          horzAlign: 'Left',
+          vertOffset: 0,
+          horzOffset: 0,
+        }),
+      )
+      const props = JSON.parse(doc.getTableProperties(0, made.paraIdx, made.controlIdx)) as {
+        outerTop: number
+        outerBottom: number
+      }
+      for (let i = 0; i < 60; i++) {
+        const para = made.paraIdx + 1 + i
+        if (i > 0) doc.insertParagraph(0, para)
+        doc.insertText(0, para, 0, `Question ${String(i + 1).padStart(3, '0')} filler text`)
+      }
+      doc.setColumnDef(0, 2, 0, 1, 2268)
+      doc.setColumnSeparator(0, JSON.stringify({ type: 1, width: 1, color: '#112233' }))
+
+      const root = JSON.parse(doc.getPageRenderTree(0)) as Node
+      const body = area(root, 'Body')!
+      const columns = (body.children ?? []).filter((c) => c.type === 'Column')
+      expect(columns).toHaveLength(2)
+
+      const table = first(columns[0], 'Table')!.bbox!
+      const reservedBottom = table.y + table.h + px(props.outerBottom)
+      expect(table.y).toBeCloseTo(body.bbox!.y + px(props.outerTop), 0)
+      expect(firstNonEmptyLineTop(columns[0])).toBeCloseTo(reservedBottom, 0)
+      expect(firstNonEmptyLineTop(columns[1])).toBeCloseTo(reservedBottom, 0)
+
+      const separator = (body.children ?? []).find((c) => c.type === 'Line')?.bbox
+      expect(separator).toBeDefined()
+      expect(separator!.y).toBeCloseTo(reservedBottom, 0)
+    } finally {
+      doc.free()
     }
   })
 })

@@ -6,16 +6,18 @@ Cada editor tem as suas próprias combinações de teclas, e apenas algumas func
 
 **Quase nada disto é global.** As três teclas de acesso abaixo são-no; tudo o que se segue pertence à aplicação que tiver à frente, e muda quando muda de separador.
 
-| Ação                                                      | macOS | Windows / Linux |
-| --------------------------------------------------------- | ----- | --------------- |
-| Abrir o guia do utilizador — funciona em toda a aplicação | F1    | F1              |
-| Recolher / expandir o friso — todos os editores           | ⌥⌘R   | Ctrl+F1         |
-| Faixa compacta — só Docs                                  | ⌥⌘K   | Ctrl+Alt+K      |
-| Abrir a folha de atalhos de teclado — apenas Word         | ⌘/    | Ctrl+/          |
+| Ação                                                        | macOS | Windows / Linux |
+| ----------------------------------------------------------- | ----- | --------------- |
+| Abrir o guia do utilizador — funciona em toda a aplicação   | F1    | F1              |
+| Recolher / expandir o friso — todos os editores             | ⌥⌘R   | Ctrl+F1         |
+| Faixa compacta — só Docs                                    | ⌥⌘K   | Ctrl+Alt+K      |
+| Abrir a folha de atalhos de teclado — apenas Word           | ⌘/    | Ctrl+/          |
+| Abrir as configurações — todos os separadores exceto o Word | ⌘,    | Ctrl+,          |
 
 - **F1 abre este manual**, não a folha de atalhos. A tecla pertence ao menu da aplicação, por isso funciona igualmente a partir de Word, Sheets, Slides, PDF ou do separador Home.
 - **O interruptor do friso é `Ctrl+F1`, ou `⌥⌘R` no macOS.** Premir `F1` sozinho não faz nada — F1 é o manual, e a tecla do friso deliberadamente não partilha essa combinação. `Ctrl+F1` também é aceite no macOS, mas `⌥⌘R` é a tecla que o Office para Mac usa.
 - **A folha de atalhos de teclado é só do Word** (`⌘/`). Lista exatamente a tabela do Word abaixo. Nenhum outro editor tem uma.
+- **`⌘,` abre as configurações** (`Ctrl+,` no Windows e no Linux), como na maioria das apps para Mac. Num separador do Word a combinação continua a ser subscrito; abra aí as configurações pelo menu da aplicação num Mac, ou por Menu (☰) ▸ Configurações… no Windows e no Linux.
 
 ![A folha de atalhos de teclado do próprio Word: a ação à esquerda, o atalho à direita, agrupados por Ficheiro, Edição, Formatação de texto, Formatação de parágrafo, Inserir, Revisão e ferramentas, Vista](img/word-shortcuts.png)
 
@@ -24,7 +26,7 @@ Cada editor tem as suas próprias combinações de teclas, e apenas algumas func
 
 ## Modo de apresentação
 
-- **Iniciar**: F5 no Word, PDF, Mindmap, HTML e Markdown. Numa folha de cálculo, Ctrl+F5 (desde A1) ou Shift+F5 (a partir da célula ativa).
+- **Iniciar**: F5 no Word, PDF, Mindmap, HTML e Markdown. Numa folha de cálculo, Ctrl+F5 (desde A1) ou Shift+F5 (a partir da célula ativa). Num documento HWP, Ctrl+F5 (aí o F5 seleciona células da tabela).
 - **Outras entradas**: no Word, Ctrl+F5 e Shift+F5 abrem a vista de leitura sem ecrã inteiro; no PDF começam na página atual; no HTML apresentam dentro do separador.
 - **Sair**: Esc ou F5. F11 é o ecrã inteiro da janela e não altera a vista do documento.
 
@@ -278,18 +280,19 @@ O atalho de filtro do Excel, Ctrl+Shift+L, não faz nada no Windows nem no Linux
 
 ### Janela
 
-| Ação                                                         | macOS    | Windows / Linux |
-| ------------------------------------------------------------ | -------- | --------------- |
-| Guardar o livro                                              | ⌘S       | Ctrl+S          |
-| Guardar como                                                 | ⇧⌘S      | Ctrl+Shift+S    |
-| Abrir um livro                                               | ⌘O       | Ctrl+O          |
-| Imprimir                                                     | ⌘P       | Ctrl+P          |
-| Fechar o livro (macOS) / Sair da aplicação (Windows e Linux) | ⌘W       | Ctrl+Q          |
-| Abrir o guia do utilizador                                   | F1       | F1              |
-| Ampliar                                                      | ⌘=       | Ctrl+=          |
-| Zoom com a roda do rato                                      | ⌘ + roda | Ctrl + roda     |
-| Mostrar ou ocultar as fórmulas nas células                   | ⌘`       | Ctrl+`          |
-| Expandir ou recolher a barra de fórmulas                     | ⌘⇧U      | Ctrl+Shift+U    |
+| Ação                                                                                  | macOS    | Windows / Linux |
+| ------------------------------------------------------------------------------------- | -------- | --------------- |
+| Guardar o livro                                                                       | ⌘S       | Ctrl+S          |
+| Guardar como                                                                          | ⇧⌘S      | Ctrl+Shift+S    |
+| Abrir um livro                                                                        | ⌘O       | Ctrl+O          |
+| Imprimir                                                                              | ⌘P       | Ctrl+P          |
+| Fechar o livro (macOS) / Sair da aplicação (Windows e Linux)                          | ⌘W       | Ctrl+Q          |
+| Abrir o guia do utilizador                                                            | F1       | F1              |
+| Ampliar                                                                               | ⌘=       | Ctrl+=          |
+| Zoom com a roda do rato                                                               | ⌘ + roda | Ctrl + roda     |
+| Mostrar ou ocultar as fórmulas nas células                                            | ⌘`       | Ctrl+`          |
+| Expandir ou recolher a barra de fórmulas                                              | ⌘⇧U      | Ctrl+Shift+U    |
+| Executar um botão da Barra de Ferramentas de Acesso Rápido pela posição (1.º ao 10.º) |          | Alt+1 … Alt+0   |
 
 ## Slides
 
@@ -312,20 +315,24 @@ Fechar um separador é o único sítio onde as duas plataformas se separam por c
 
 ### Edição
 
-| Ação                                                    | macOS  | Windows / Linux |
-| ------------------------------------------------------- | ------ | --------------- |
-| Novo diapositivo                                        | ⇧⌘N    | Ctrl+M          |
-| Localizar (não enquanto edita texto numa forma)         | ⌘F     | Ctrl+F          |
-| Anotar a seleção com IA (com formas selecionadas)       | ⌘K     | Ctrl+K          |
-| Ampliar                                                 | ⌘=     | Ctrl+=          |
-| Reduzir                                                 | ⌘-     | Ctrl+-          |
-| Tamanho real (100 %)                                    | ⌘0     | Ctrl+0          |
-| Selecionar tudo                                         | ⌘A     | Ctrl+A          |
-| Percorrer a seleção de formas para a frente / para trás | ⇥ / ⇧⇥ | Tab / Shift+Tab |
+| Ação                                                                             | macOS  | Windows / Linux |
+| -------------------------------------------------------------------------------- | ------ | --------------- |
+| Novo diapositivo                                                                 | ⇧⌘N    | Ctrl+M          |
+| Localizar (não enquanto edita texto numa forma)                                  | ⌘F     | Ctrl+F          |
+| Anotar a seleção com IA (com formas selecionadas)                                | ⌘K     | Ctrl+K          |
+| Ampliar                                                                          | ⌘=     | Ctrl+=          |
+| Reduzir                                                                          | ⌘-     | Ctrl+-          |
+| Tamanho real (100 %)                                                             | ⌘0     | Ctrl+0          |
+| Selecionar tudo                                                                  | ⌘A     | Ctrl+A          |
+| Percorrer a seleção de formas para a frente / para trás                          | ⇥ / ⇧⇥ | Tab / Shift+Tab |
+| Repetir a última ação (formatação, preenchimento, linha, alinhamento, duplicar…) | F4     | F4              |
+| Mostrar/ocultar o Painel de Seleção                                              | ⌥F10   | Alt+F10         |
 
 O novo diapositivo é a outra divisão entre plataformas. Cada plataforma tem a sua própria tecla e a outra não faz nada: `⇧⌘N` no macOS, Ctrl+M no Windows e Linux. `⌘M` não pode fazer o trabalho no macOS porque é a tecla do sistema para minimizar.
 
 Selecionar tudo segue o foco: com o painel de miniaturas, o painel de esquema ou o organizador de diapositivos com o foco, seleciona todos os diapositivos, e em qualquer outro sítio seleciona todos os elementos do diapositivo atual. Tab percorre as formas do diapositivo, e só quando o próprio painel do diapositivo tem o foco.
+
+F4 também funciona dentro da caixa de texto, aplicando a última formatação ao texto selecionado.
 
 ### Formatação de texto
 
@@ -445,12 +452,12 @@ Anular e Refazer avançam no histórico do documento; quando o cursor está num 
 
 ### Vista
 
-| Ação              | macOS            | Windows / Linux     |
-| ----------------- | ---------------- | ------------------- |
-| Ampliar           | ⌘=               | Ctrl+=              |
-| Reduzir           | ⌘-               | Ctrl+-              |
-| Ajustar à largura | ⌘0               | Ctrl+0              |
-| Zoom (contínuo)   | ⌘ + roda do rato | Ctrl + roda do rato |
+| Ação                | macOS            | Windows / Linux     |
+| ------------------- | ---------------- | ------------------- |
+| Ampliar             | ⌘=               | Ctrl+=              |
+| Reduzir             | ⌘-               | Ctrl+-              |
+| Ajustar à largura   | ⌘0               | Ctrl+0              |
+| Zoom (passos de 5%) | ⌘ + roda do rato | Ctrl + roda do rato |
 
 Ampliar também responde a `⌘+` e Ctrl++.
 
@@ -627,6 +634,8 @@ Estas teclas funcionam quando o separador HWP/HWPX está à frente e o documento
 | Localizar seguinte     | ⌃L          | Ctrl+L                       |
 | Localizar para trás    | ⌃Q, L       | Ctrl+Q, L                    |
 | Ir para                | ⌥G          | Alt+G                        |
+| Início do documento    | ⌃⇞          | Ctrl+PageUp                  |
+| Fim do documento       | ⌃⇟          | Ctrl+PageDown                |
 | Comparar documentos    | ⌥⇧V         | Alt+Shift+V                  |
 
 ### Caráter
@@ -690,21 +699,29 @@ Estas teclas funcionam quando o separador HWP/HWPX está à frente e o documento
 | Texto de data/hora                    | ⌃K, D       | Ctrl+K, D          |
 | Editar objeto, campo ou tabela/célula | ⌃N, K       | Ctrl+N, K          |
 | Símbolos                              | ⌃F10 / ⌥F10 | Ctrl+F10 / Alt+F10 |
+| Converter para hanja                  | F9          | Tecla Hanja / F9   |
 
 ### Tabela
 
-| Ação                   | macOS        | Windows / Linux        |
-| ---------------------- | ------------ | ---------------------- |
-| Adicionar linha/coluna | ⌥⏎ / ⌥Insert | Alt+Enter / Alt+Insert |
-| Eliminar linha/coluna  | ⌥⌫           | Alt+Delete             |
-| Dividir célula         | F5 → S       | F5 → S                 |
-| Unir células           | F5 → M       | F5 → M                 |
-| Soma do bloco          | F5 → ⇧⌘S     | F5 → Ctrl+Shift+S      |
-| Média do bloco         | F5 → ⌃⇧A     | F5 → Ctrl+Shift+A      |
-| Produto do bloco       | F5 → ⌃⇧P     | F5 → Ctrl+Shift+P      |
-| Dividir tabela         | ⌃N, A        | Ctrl+N, A              |
-| Unir tabelas           | ⌃N, Z        | Ctrl+N, Z              |
-| Fórmula de cálculo     | ⌃N, F        | Ctrl+N, F              |
+| Ação                                        | macOS        | Windows / Linux        |
+| ------------------------------------------- | ------------ | ---------------------- |
+| Adicionar linha/coluna                      | ⌥⏎ / ⌥Insert | Alt+Enter / Alt+Insert |
+| Eliminar linha/coluna                       | ⌥⌫           | Alt+Delete             |
+| Dividir célula                              | F5 → S       | F5 → S                 |
+| Unir células                                | F5 → M       | F5 → M                 |
+| Propriedades da tabela/célula               | F5 → P       | F5 → P                 |
+| Bordas / sombreamento, cada célula          | F5 → L / C   | F5 → L / C             |
+| Bordas / sombreamento, células como uma     | F5 → B / F   | F5 → B / F             |
+| Igualar altura da linha / largura da coluna | F5 → H / W   | F5 → H / W             |
+| Preenchimento automático da tabela          | F5 → A       | F5 → A                 |
+| Voltar a editar a célula                    | F5 → ⏎       | F5 → Enter             |
+| Recuo deslocado rápido (numa célula)        | ⌃⇧⇥          | Ctrl+Shift+Tab         |
+| Soma do bloco                               | F5 → ⇧⌘S     | F5 → Ctrl+Shift+S      |
+| Média do bloco                              | F5 → ⌃⇧A     | F5 → Ctrl+Shift+A      |
+| Produto do bloco                            | F5 → ⌃⇧P     | F5 → Ctrl+Shift+P      |
+| Dividir tabela                              | ⌃N, A        | Ctrl+N, A              |
+| Unir tabelas                                | ⌃N, Z        | Ctrl+N, Z              |
+| Fórmula de cálculo                          | ⌃N, F        | Ctrl+N, F              |
 
 ### Cálculos de tabela
 
@@ -745,3 +762,5 @@ Só funcionam quando o cursor está numa célula vazia de uma tabela. Há teclas
 | Ir para o separador Início (fora de uma tabela) | ⇧⌘H   | Ctrl+Shift+H    |
 
 Uma tecla escrita como `Ctrl+N,T` significa premir Ctrl+N, largar e depois premir T. `F5 → S` significa selecionar um bloco de células com F5 e depois premir S. `Ctrl+1 … Ctrl+0` correspondem ao primeiro ao décimo estilo do documento; `Ctrl+Alt+1 … Ctrl+Alt+0` aplicam os mesmos estilos. Com um bloco de células selecionado, `Ctrl+Shift+S` (no macOS `⇧⌘S`) é a soma do bloco; fora dele, essa tecla guarda como.
+
+Com o rato, como no Hangul, um clique duplo seleciona uma palavra, um clique triplo o parágrafo inteiro, e um clique duplo mantido e arrastado amplia a seleção palavra a palavra. Também funciona ao editar um cabeçalho, um rodapé ou uma nota de rodapé. Copiar um bloco de células (`Ctrl+C`) copia o texto das células e a própria tabela, por isso, colado no corpo do texto, cria de novo a mesma tabela. Colar com apenas o cursor numa célula de outra tabela abre a caixa Paste Cells: substituir a partir dessa célula (as células que ficam fora da tabela são descartadas) ou inserir as células acima, abaixo, à esquerda ou à direita. Arrastar a alça de canto de uma imagem mantém as suas proporções; uma forma ou caixa de texto mantém-nas se mantiver `Shift` premido ao arrastar um canto. Prima `Shift` ao mover um objeto para o deslocar apenas na horizontal ou na vertical, e `Esc` durante uma deslocação ou um redimensionamento para o repor onde estava. Com um objeto selecionado, as setas movem-no 0,2 mm e `Shift`+setas redimensionam-no 1 mm. `Tab` e `Shift+Tab` selecionam o objeto seguinte e o anterior da página, `Shift+PageUp` e `Shift+PageDown` levam o objeto para a frente ou para trás, e `Shift+Home` e `Shift+End` põem o objeto à frente ou atrás do texto. `G` e `U` agrupam e desagrupam, `L` e `C` abrem os separadores Linha e Preenchimento das propriedades do objeto, e `Ctrl+E` elimina o objeto. Para selecionar um objeto que está por baixo de outro, mantenha `Alt` premido e clique; cada clique seguinte seleciona o que está por baixo. Arrastar um canto de uma imagem com `Shift` premido recorta-a à sua escala, e arrastar um objeto com `Ctrl` premido deixa-o no lugar e coloca uma cópia onde o largar.

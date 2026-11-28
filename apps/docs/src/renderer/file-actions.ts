@@ -45,8 +45,10 @@ import {
 } from '@genoffice/docx-engine'
 import { docxToOdt, isOdtOpenError, saveOdt, type ConversionReport } from '@genoffice/odt-engine'
 import type { Dispatch, SetStateAction } from 'react'
+import { projectPanelText } from '@genoffice/ui'
 import type { AiDocContent, OpenDocxResult } from '../shared/ipc'
-import { docFormatOfPath, type DocFormat } from '../shared/open-file'
+import { docFormatOfPath, type DocFormat, type SaveAsKind } from '../shared/open-file'
+import { numberedExportPaths } from '@genoffice/electron-utils/numbered-export-paths'
 import {
   hfVariantsFromParsed,
   isOdtDoc,
@@ -59,7 +61,7 @@ import {
 } from './doc-state'
 import { hfSaveOptions } from './hf-sections'
 import { fetchDocBytes } from './doc-bytes'
-import { parseDocxOffThread, parseOdtOffThread } from './parse-off-thread'
+import { parseDocxOffThread, parseOdtOffThread, warmParseWorker } from './parse-off-thread'
 import { captureRenderedObjects } from './odt-objects'
 import {
   beginOdtSession,
@@ -96,8 +98,10 @@ import {
 import { t, getLang } from './i18n/locale'
 import { isBlankDocument, parseHtmlFragment, replaceBlockRange } from './ai/protocol'
 import { carryDocSeen } from './ai/tools'
+import { docWithoutAiMarks } from './ai/run-changes'
 import { isDocDirty, resetCrossDocEditState } from './doc-dirty'
 import { pruneUnreferencedNumbering } from './numbering-actions'
+import { sameRecoveryCopy } from './recovery-copy-compare'
 import { applySectPrRewrites, type SectPrRewrite } from './sectpr-rewrite'
 import { createSaveSerializer } from './save-until-persisted'
 import { checkMissingFonts, collectDocFonts } from './font-check'
@@ -109,8 +113,15 @@ import {
 } from './line-metrics'
 import { adoptEmbeddedFonts } from './embedded-fonts'
 import { defaultEastAsiaFontFor } from './font-list'
-import { hasPrintableHeaderFooter } from './pagination'
 import { clearPrintZoom, setPrintZoom } from './print-zoom'
+import {
+  printJobGroups,
+  selectionPrintDoc,
+  selectionSectPr,
+  type PrintPageJob,
+  type PrintSelectionJob,
+} from './print-job'
+import { sectionIndexAtBlock } from './ai/pending-sections'
 import { collectPdfInternalLinks } from './pdf-internal-links'
 import type { PdfInternalLink } from '../shared/ipc'
 import { showToast } from './components/toast-bus'
@@ -118,7 +129,12 @@ import { buildStandaloneHtml } from './html-export'
 import { aiPanelInitiallyOpen } from '@genoffice/ui'
 
 /** An export waiting for the pagination preview to mount; resolve settles the caller's exportPdf promise. */
-export type PendingPdfExport = { outPath?: string; resolve: (ok: boolean) => void }
+export type PendingPdfExport = {
+  outPath?: string
+  resolve: (ok: boolean) => void
+  /** the export opened the preview itself and closes it once the PDF is written */
+  closePreview: boolean
+}
 
 /** The App state the file actions need; built fresh per call. */
 export interface FileActionContext {
@@ -136,6 +152,8 @@ export interface FileActionContext {
   setStatus: (status: string) => void
   setRecent: (paths: string[]) => void
   setShowAi: (show: boolean) => void
+  /** AI parts shown (Settings › Editors and AI); false keeps the new-document line off the AI pane */
+  aiOn?: boolean
   setDoc: Dispatch<SetStateAction<DocState | null>>
   setAiPanelKey: Dispatch<SetStateAction<number>>
   setDocCss: (css: string) => void
@@ -433,6 +451,7 @@ function phasedHostFor(ctx: FileActionContext): PhasedContentHost {
  *  focus (e.g. the user clicked into the AI composer while the file parsed). */
 function focusDocumentStart(editor: Editor): void {
   const startedAt = performance.now()
+  let focusedAttempts = 0
   const attempt = (): void => {
     if (editor.isDestroyed) return
     const active = document.activeElement
@@ -443,10 +462,15 @@ function focusDocumentStart(editor: Editor): void {
     if (dom.isConnected && dom.offsetParent !== null) {
       editor.commands.focus('start', { scrollIntoView: false })
       if (document.activeElement !== document.body) return
+      // Back off once mounted so an unfocused background tab does not spin
+      // 60fps forced layout checks for 10 seconds.
+      if (++focusedAttempts >= 10) return
+      window.setTimeout(attempt, 100)
+      return
     }
     if (performance.now() - startedAt < 10_000) requestAnimationFrame(attempt)
   }
-  attempt()
+  requestAnimationFrame(attempt)
 }
 
 /** bumped when a document replacement starts; a slower one still parsing must not land */
@@ -463,6 +487,8 @@ export async function loadFile(
   }
   const generation = ++openGeneration
   try {
+    // overlap parse-worker module load with the main-process byte handoff fetch
+    warmParseWorker()
     const bytes = await fetchDocBytes(result.dataUrl)
     const format: DocFormat = docFormatOfPath(result.path) ?? 'docx'
     let parsed: ParsedDocFull
@@ -529,6 +555,8 @@ export async function loadFile(
         ? { saveAsDefaultPath: result.saveAsDefaultPath }
         : {}),
     })
+    // a converted .doc/.dot: the original is untouched and the first save writes a .docx
+    if (result.importedFrom) showToast(t('appLegacyDocImported', { ext: result.importedFrom }))
     ctx.onRevisionsLoaded(blocksHaveRevisions(parsed.blocks))
     // this tab's document was replaced: a password parked for the previous
     // unsaved draft is stale and must not encrypt this document's saves.
@@ -650,6 +678,7 @@ async function blankDocxBytes(): Promise<Uint8Array> {
   return buildBlankDocx({
     eastAsiaFont: defaultEastAsiaFontFor(getLang()),
     paperSize: paperSizeForLocale(await systemLocale()),
+    wordDefaults: true,
   })
 }
 
@@ -741,7 +770,7 @@ export async function newFile(ctx: FileActionContext): Promise<boolean | undefin
     ctx.dirtyRef.current = false
     // same rule as the first render, so the "open in new documents" setting holds for Cmd+N too
     ctx.setShowAi(aiPanelInitiallyOpen('aidocs.showAi'))
-    ctx.setStatus(t('appNewDocCreated'))
+    ctx.setStatus(t(ctx.aiOn === false ? 'appNewDocCreatedNoAi' : 'appNewDocCreated'))
     return true
   } catch (err) {
     if (generation !== openGeneration) return
@@ -790,11 +819,6 @@ function deriveAutoFileName(editor: Editor): string | null {
 }
 
 /**
- * Serialize the current editor/document state to .docx bytes — the shared
- * serialization half of save(); no dialogs, no state changes. Also used for
- * crash-recovery copies.
- */
-/**
  * The document as a skill's template (spec 5.6): the file a save would write
  * now, whole (lazily served pictures put back), in its own format (an ODT
  * document's ODT). Nothing is written and nothing in the tab changes.
@@ -814,13 +838,26 @@ export async function templateDocBytes(ctx: FileActionContext): Promise<Uint8Arr
   return full ? fetchDocBytes(full.dataUrl) : null
 }
 
-export async function buildDocBytes(ctx: FileActionContext): Promise<Uint8Array | null> {
+/**
+ * Serialize the current editor/document state to .docx bytes — the shared
+ * serialization half of save(); no dialogs, no state changes. Also used for
+ * crash-recovery copies.
+ *
+ * `pmOverride` serializes a document of the caller's making instead of the
+ * live one: the mail merge writes the template with one record's values in it,
+ * and the rest of the save (the sections, the headers, the pictures) is the
+ * save the document would get anyway.
+ */
+export async function buildDocBytes(
+  ctx: FileActionContext,
+  pmOverride?: PmNode,
+): Promise<Uint8Array | null> {
   const generation = docGeneration
   if (ctx.settleFontSettings) ctx = await ctx.settleFontSettings()
   if (docGeneration !== generation) return null
   const { doc, editor } = ctx
   if (!doc || !editor) return null
-  const pmJson = editor.getJSON() as PmNode
+  const pmJson = pmOverride ?? (editor.getJSON() as PmNode)
   const plan = pmDocToSavePlan(pmJson, doc.parsed.blocks)
   // chart data edits patch the chart's own zip part, not the body XML
   const partXml: Record<string, string> = {}
@@ -945,12 +982,6 @@ export function forgetRecoveryCopy(): void {
   lastRecoveryCopy = null
 }
 
-function sameBytes(a: Uint8Array, b: Uint8Array): boolean {
-  if (a.byteLength !== b.byteLength) return false
-  for (let i = 0; i < a.byteLength; i++) if (a[i] !== b[i]) return false
-  return true
-}
-
 /** 'failed': the copy could not be written (the caller backs off for a while) */
 export type RecoveryCopyOutcome = 'written' | 'skipped' | 'failed'
 
@@ -986,20 +1017,19 @@ export async function writeRecoveryCopy(
     // an ODT tab's copy is the ODT a save would write now: restoring it opens
     // an ODT document again, and its save writes ODT
     const bytes = isOdtDoc(doc) ? await odtBytesFor(doc.odt, docx) : docx
-    if (generation !== docGeneration || saves !== savesLanded || ctx.saveInFlightRef.current) {
-      return 'skipped'
-    }
     const last = lastRecoveryCopy
-    if (
+    // not the bytes: two serializations a tick apart differ in their time stamps
+    const unchanged =
       !options.force &&
-      last &&
+      last !== null &&
       last.generation === generation &&
       last.saves === saves &&
       last.path === doc.filePath &&
-      sameBytes(last.bytes, bytes)
-    ) {
+      (await sameRecoveryCopy(last.bytes, bytes))
+    if (generation !== docGeneration || saves !== savesLanded || ctx.saveInFlightRef.current) {
       return 'skipped'
     }
+    if (unchanged) return 'skipped'
     const result = await window.desktop.writeRecoveryCopy(
       doc.filePath,
       toArrayBuffer(bytes),
@@ -1081,6 +1111,26 @@ export function save(
   )
 }
 
+/**
+ * Project folders (spec 6): a never-saved document a create flow made (the
+ * AI's new Word document, a skill template's copy once its run ended well) is
+ * saved into its panel's project without a dialog. The main process picks the
+ * folder and a free name; with no project nothing is written and the document
+ * stays untitled, as before. A refused write keeps it untitled and says why.
+ * Resolves true when the document now has its file in the project.
+ */
+export function saveIntoProject(ctx: FileActionContext, newDocName: string): Promise<boolean> {
+  const generation = docGeneration
+  return runSerializedSave(
+    async () => {
+      const settled = ctx.settleFontSettings ? await ctx.settleFontSettings() : ctx
+      if (docGeneration !== generation) return false
+      return saveOnce(settled, false, true, newDocName, undefined, true)
+    },
+    () => false,
+  )
+}
+
 /** an MCP-driven explicit output target: write to this absolute path, no dialog */
 export interface ExplicitSaveTarget {
   path: string
@@ -1144,6 +1194,8 @@ export async function applyAiDocContent(
     // the document is born with this content: undo must not reach back to empty
     resetEditorHistory(editor)
   }
+  // with a project chosen the new document goes into the project folder (spec 6)
+  if (await saveIntoProject(ctx, `${content.title}.docx`)) return
   await save(ctx, false, true, `${content.title}.docx`)
 }
 
@@ -1227,6 +1279,8 @@ async function saveOnce(
   auto: boolean,
   newDocName?: string,
   explicitTarget?: ExplicitSaveTarget,
+  /** a never-saved document into its panel's project (spec 6), no dialog */
+  intoProject = false,
 ): Promise<boolean> {
   const { doc, editor } = ctx
   if (!doc || !editor) return false
@@ -1262,10 +1316,12 @@ async function saveOnce(
     // a pathless snapshot may belong to a document that an earlier queued pass
     // already landed on disk — overwrite that file instead of creating another
     let savedPath = doc.filePath ?? pathlessDocSavedPath
+    // a document that has its file already is not a new one
+    if (intoProject && savedPath) return false
     // a never-saved document's first save asks where (decision 0061: nothing lands in
     // the user's folders unasked); an automatic one waits for it. An MCP save names its
     // target explicitly and never asks.
-    const askPath = !explicitTarget && !savedPath
+    const askPath = !explicitTarget && !intoProject && !savedPath
     if (askPath && auto) return false
     let passwordIntentPending = false
     let fullBytes: Uint8Array | undefined
@@ -1294,6 +1350,28 @@ async function saveOnce(
       passwordIntentPending = result.passwordIntentPending === true
       if (result.dataUrl) fullBytes = await fetchDocBytes(result.dataUrl)
       if (!doc.filePath) pathlessDocSavedPath = savedPath
+    } else if (intoProject) {
+      const result = window.desktop.saveDocxIntoProject
+        ? await window.desktop.saveDocxIntoProject(
+            newDocName ?? doc.fileName,
+            format,
+            await fileBytes(),
+          )
+        : { ok: false, skipped: true }
+      if (!result.ok) {
+        // no project chosen (or no shell): nothing was written, nothing to say
+        if (result.skipped || !result.error) return false
+        const failed = projectPanelText(getLang(), 'newDocumentSaveFailed', {
+          error: result.error,
+        })
+        ctx.setStatus(failed)
+        showToast(failed, 'error')
+        return false
+      }
+      savedPath = result.path!
+      passwordIntentPending = result.passwordIntentPending === true
+      if (result.dataUrl) fullBytes = await fetchDocBytes(result.dataUrl)
+      if (!doc.filePath) pathlessDocSavedPath = savedPath
     } else if (saveAs || !savedPath) {
       // A never-saved document still called "Untitled" gets a name derived from its first heading
       const autoName =
@@ -1304,12 +1382,19 @@ async function saveOnce(
       if (saveAs || askPath) {
         // the dialog offers both formats; the picked extension is the format written
         // a restored copy whose file went missing suggests that file's place
+        // Save As proper also lists the export formats; a first save does not
         const pick = await window.desktop.pickSaveAsPath(
           autoName ?? doc.fileName,
           doc.filePath ?? doc.saveAsDefaultPath ?? null,
           format,
+          saveAs,
         )
         if (!pick) return false
+        if (pick.kind && pick.kind !== 'docx' && pick.kind !== 'odt') {
+          // a copy in another format: nothing about this document was saved
+          await exportSaveAsCopy(ctx, pick)
+          return false
+        }
         const target = docFormatOfPath(pick.path) ?? format
         if (target !== format) {
           return await saveWithFormatChange(ctx, editor, doc, pick.path, docx, target, auto)
@@ -1393,7 +1478,8 @@ async function saveOnce(
     const rebasedPm = blocksToPmDoc(reparsed.blocks, readSections(reparsed), pmDocOptions(reparsed))
     let unchanged = false
     try {
-      unchanged = editor.state.doc.eq(editor.schema.nodeFromJSON(rebasedPm))
+      // the AI's marks are not in the file: a save keeps them, and the undo history with them
+      unchanged = docWithoutAiMarks(editor.state.doc).eq(editor.schema.nodeFromJSON(rebasedPm))
     } catch {
       /* unrepresentable → rewrite */
     }
@@ -1401,7 +1487,12 @@ async function saveOnce(
     rebaseOdtSession(reparsed)
     // Equal doc: skip the rewrite so undo history, caret and scroll survive.
     if (!unchanged) {
-      editor.commands.setContent(rebasedPm as never)
+      // Rebase saved anchors without recording the reload as a user edit.
+      editor
+        .chain()
+        .setMeta(TRACK_IGNORE, true)
+        .setContent(rebasedPm as never)
+        .run()
       resetEditorHistory(editor)
       const chain = editor
         .chain()
@@ -1497,6 +1588,35 @@ async function saveOnce(
 }
 
 /**
+ * Save As › PDF, Hangul, HTML, Markdown or page images: the regular export writes a
+ * copy to the path the Save As dialog picked (the main process authorized it),
+ * with no dialog of its own. The document keeps its path, its unsaved state,
+ * its recovery copy and its tab title. Resolves true when the copy was written.
+ */
+export function exportSaveAsCopy(
+  ctx: FileActionContext,
+  pick: { path: string; kind?: SaveAsKind; dir?: string; pdfPath?: string },
+): Promise<boolean> {
+  switch (pick.kind) {
+    case 'pdf':
+      return exportPdf(ctx, pick.path)
+    case 'hwp':
+    case 'hwpx':
+      return exportHwp(ctx, pick.path)
+    case 'html':
+      return exportHtml(ctx, pick.path)
+    case 'md':
+      return exportMarkdown(ctx, pick.path)
+    case 'png':
+      return pick.dir && pick.pdfPath
+        ? exportImages(ctx, { path: pick.path, dir: pick.dir, pdfPath: pick.pdfPath })
+        : Promise.resolve(false)
+    default:
+      return Promise.resolve(false)
+  }
+}
+
+/**
  * Print via the pagination preview so each printed sheet is exactly one editor page
  * (WYSIWYG). Printing the continuous canvas instead would let Chromium auto-paginate:
  * middle pages lose the per-page top/bottom margins and the breaks drift from the
@@ -1530,15 +1650,12 @@ function chunkPrintGroups(groups: PrintGroup[], size: number): PrintGroup[] {
   return chunked
 }
 
-async function printGroupsMerged(
-  ctx: FileActionContext,
-  fileName: string,
+/** Each group printed to a PDF fragment (base64), in order; a page that fails on its own fails the whole. */
+async function printGroupParts(
   pvPages: HTMLElement[],
   groups: PrintGroup[],
   scale: number,
-  outPath?: string,
-  links?: PdfInternalLink[],
-): Promise<boolean> {
+): Promise<{ ok: true; parts: string[] } | { ok: false; error?: string }> {
   const parts: string[] = []
   // every printToPDF flips the whole document between print and screen media;
   // pv-exporting parks the covered editor's subtree layout for the export's
@@ -1566,13 +1683,30 @@ async function printGroupsMerged(
         queue.unshift({ ...g, to: mid }, { ...g, from: mid + 1 })
         continue
       }
-      ctx.setStatus(t('appExportPdfFailed', { error: part.error ?? t('appPrintGroupFailed') }))
-      return false
+      return { ok: false, error: part.error }
     }
   } finally {
     appRoot?.classList.remove('pv-exporting')
     pvPages.forEach((page) => page.classList.remove('pv-print-skip', 'pv-print-tail'))
   }
+  return { ok: true, parts }
+}
+
+async function printGroupsMerged(
+  ctx: FileActionContext,
+  fileName: string,
+  pvPages: HTMLElement[],
+  groups: PrintGroup[],
+  scale: number,
+  outPath?: string,
+  links?: PdfInternalLink[],
+): Promise<boolean> {
+  const printed = await printGroupParts(pvPages, groups, scale)
+  if (!printed.ok) {
+    ctx.setStatus(t('appExportPdfFailed', { error: printed.error ?? t('appPrintGroupFailed') }))
+    return false
+  }
+  const parts = printed.parts
   const result = await window.desktop.saveMergedPdf(fileName, parts, outPath, links)
   const mixed = groups.some((g) => g.w !== groups[0].w || g.h !== groups[0].h)
   ctx.setStatus(
@@ -1592,7 +1726,8 @@ function deferExportToPreview(ctx: FileActionContext, outPath?: string): Promise
   return new Promise<boolean>((resolve) => {
     const prev = ctx.pendingMixedExportRef.current
     if (prev) prev.resolve(false)
-    ctx.pendingMixedExportRef.current = { outPath, resolve }
+    const closePreview = !document.querySelector('.pagination-preview')
+    ctx.pendingMixedExportRef.current = { outPath, resolve, closePreview }
     ctx.setShowPagePreview(true)
     ctx.bumpPendingExportTick()
   })
@@ -1675,66 +1810,74 @@ export async function exportPdf(ctx: FileActionContext, outPath?: string): Promi
         return false
       }
     }
-    // preview closed: mixed paper auto-opens the preview and uses the merge path; uniform paper exports directly
-    const sizeKey = (w: number, h: number) => `${w}x${h}`
-    const counts = new Map<string, { w: number; h: number; n: number }>()
-    const list =
-      ctx.sections.length > 0
+    // Preview closed: open it and export its per-page sheets. Printing the
+    // edit canvas directly hands Chromium one padded box to auto-paginate, so
+    // only the first sheet gets a top margin, the bottom margin is ignored and
+    // the trailing padding spills onto a blank last page.
+    const sizes = new Set(
+      (ctx.sections.length > 0
         ? ctx.sections.map((sec) => sec.settings)
         : ctx.section
           ? [ctx.section]
           : []
-    for (const st of list) {
-      const key = sizeKey(st.pageWidth, st.pageHeight)
-      const cur = counts.get(key) ?? { w: st.pageWidth, h: st.pageHeight, n: 0 }
-      cur.n += 1
-      counts.set(key, cur)
-    }
-    // headers/footers exist once on the edit canvas (not once per page), so direct
-    // print would show them on the last page only — force the preview-merge path too
-    const mixedPaper = counts.size > 1
-    // direct print pads every page by the odd-page margins: mirrored even pages need the per-page sheets
-    if (
-      mixedPaper ||
-      ctx.mirrorMargins ||
-      hasPrintableHeaderFooter({
-        edited: [
-          ctx.header,
-          ctx.footer,
-          ...(ctx.titlePg ? [ctx.hfVariants.headerFirst, ctx.hfVariants.footerFirst] : []),
-          ...(ctx.evenOddHf ? [ctx.hfVariants.headerEven, ctx.hfVariants.footerEven] : []),
-          ...Object.values(ctx.sectionHfEdits),
-        ],
-        sections: ctx.sections,
-        hfParts: doc.parsed.hfParts ?? undefined,
-        evenOddHf: ctx.evenOddHf,
-      })
-    ) {
-      if (mixedPaper) ctx.setStatus(t('appMixedExportOpening'))
-      return deferExportToPreview(ctx, outPath)
-    }
-    const major = [...counts.values()][0]
-    const result = await window.desktop.exportPdf(
-      doc.fileName,
-      major?.w ?? ctx.section?.pageWidth ?? 12240,
-      major?.h ?? ctx.section?.pageHeight ?? 15840,
-      outPath,
+      ).map((st) => `${st.pageWidth}x${st.pageHeight}`),
     )
-    if (result.ok) {
-      ctx.setStatus(t('appExportedPdf', { path: result.path ?? '' }))
-      return true
-    }
-    if (!result.error) {
-      ctx.setStatus(t('appExportPdfCanceled'))
-      return false
-    }
-    // direct print of a heavy canvas failed: reroute through the preview so the
-    // retry can print in chunks; the failed attempt already authorized result.path
-    return deferExportToPreview(ctx, outPath ?? result.path)
+    if (sizes.size > 1) ctx.setStatus(t('appMixedExportOpening'))
+    return deferExportToPreview(ctx, outPath)
   } finally {
     clearPrintZoom()
     printJobActive = false
   }
+}
+
+const sheetTwips = (px: number) => Math.round((px / 96) * 1440)
+
+/**
+ * The advanced print route's job PDF (decision 0141): the chosen preview
+ * pages (0-based) printed the way the PDF export prints them — printToPDF per
+ * run of one paper size, other sheets hidden — as base64 fragments in order.
+ * Pages outside the range are in no fragment.
+ */
+export async function buildPrintJobParts(pages: number[]): Promise<PrintPageJob> {
+  if (printJobActive) return { ok: false, error: t('appExportingPdf') }
+  printJobActive = true
+  try {
+    const pvPages = [...document.querySelectorAll<HTMLElement>('.pagination-preview .pv-page')]
+    const sizes = pvPages.map((page) => ({
+      w: sheetTwips(parseFloat(page.style.width)),
+      h: sheetTwips(parseFloat(page.style.height)),
+    }))
+    const groups = printJobGroups(sizes, pages)
+    if (groups.length === 0) return { ok: false, error: t('appPrintNoPages') }
+    const scale = setPrintZoom()
+    return await printGroupParts(pvPages, groups, scale)
+  } finally {
+    clearPrintZoom()
+    printJobActive = false
+  }
+}
+
+/**
+ * Print selection (decision 0141): the selected content only, serialized by
+ * the save path into a .docx of its own (nothing is written and nothing in
+ * the tab changes), then laid out from the top of page 1 in a hidden window
+ * with the page setup, headers and footers of the section the selection
+ * starts in, page numbers from 1.
+ */
+export async function buildSelectionPrintPdf(ctx: FileActionContext): Promise<PrintSelectionJob> {
+  const { doc, editor } = ctx
+  if (!doc || !editor) return { ok: false }
+  await waitForFullContent()
+  const pmDoc = editor.state.doc
+  const { from, to } = editor.state.selection
+  const content = selectionPrintDoc(pmDoc, from, to)
+  if (!content) return { ok: false, error: t('appPrintNoPages') }
+  const start = sectionIndexAtBlock(pmDoc, ctx.sections, pmDoc.resolve(from).index(0))
+  const sectPr = selectionSectPr(ctx.sections, start)
+  const docx = await buildDocBytes(ctx, content)
+  if (!docx) return { ok: false }
+  const r = await window.desktop.printSelectionPdf(toArrayBuffer(docx), sectPr)
+  return r.ok ? { ok: true, parts: [r.base64], pages: r.pages } : { ok: false, error: r.error }
 }
 
 /** PNG resolution of "Export as Images" (2x the 96 dpi screen page) */
@@ -1742,11 +1885,16 @@ const IMAGE_EXPORT_DPI = 192
 
 /** Export as images: the PDF export (same pagination, mixed paper and chunking)
     runs against a temp file, which pdf.js then rasterizes one page per PNG into
-    the picked folder. Resolves true only when every page was written. */
-export async function exportImages(ctx: FileActionContext): Promise<boolean> {
+    the picked folder. Resolves true only when every page was written.
+    `saveAsTarget` (Save As › page images) replaces the folder picker: one
+    name, numbered per page beside it when there is more than one page. */
+export async function exportImages(
+  ctx: FileActionContext,
+  saveAsTarget?: { path: string; dir: string; pdfPath: string },
+): Promise<boolean> {
   const { doc } = ctx
   if (!doc) return false
-  const target = await window.desktop.pickExportImagesTarget()
+  const target = saveAsTarget ?? (await window.desktop.pickExportImagesTarget())
   if (!target) return false
   ctx.setStatus(t('appExportingImages'))
   const fail = (error: string) => {
@@ -1787,6 +1935,11 @@ export async function exportImages(ctx: FileActionContext): Promise<boolean> {
       const count = pdfDoc.numPages
       ctx.setStatus(t('appExportImagesProgress', { count }))
       const pad = count >= 100 ? 3 : 2
+      const saveAsNames = saveAsTarget
+        ? numberedExportPaths(saveAsTarget.path, count).map((p) =>
+            p.slice(Math.max(p.lastIndexOf('/'), p.lastIndexOf('\\')) + 1),
+          )
+        : null
       const canvas = document.createElement('canvas')
       for (let i = 1; i <= count; i++) {
         const page = await pdfDoc.getPage(i)
@@ -1805,7 +1958,7 @@ export async function exportImages(ctx: FileActionContext): Promise<boolean> {
         }
         const r = await window.desktop.writeExportImage(
           target.dir,
-          `${baseName}-${String(i).padStart(pad, '0')}.png`,
+          saveAsNames?.[i - 1] ?? `${baseName}-${String(i).padStart(pad, '0')}.png`,
           btoa(b64),
         )
         if (!r.ok) return fail(r.error ?? '')
@@ -1844,6 +1997,44 @@ export async function exportHtml(ctx: FileActionContext, outPath?: string): Prom
         : t('appExportHtmlCanceled'),
   )
   return result.ok
+}
+
+/**
+ * Resolves true only when a Hangul file was written to disk. The main process
+ * converts the docx a save would write, asks before writing a copy that loses
+ * something, and opens the copy.
+ */
+export async function exportHwp(ctx: FileActionContext, outPath?: string): Promise<boolean> {
+  const { doc } = ctx
+  if (!doc || !ctx.editor) return false
+  const generation = docGeneration
+  await waitForFullContent()
+  if (docGeneration !== generation) return false
+  window.dispatchEvent(new Event('ai-docs-commit-tables'))
+  ctx.setStatus(t('appExportingHwp'))
+  const docx = await buildDocBytes(ctx)
+  if (!docx) return false
+  const result = await window.desktop.exportHwp(
+    doc.fileName,
+    toArrayBuffer(docx),
+    outPath,
+    doc.encrypted === true,
+  )
+  if (result.ok) {
+    ctx.setStatus(t('appExportedHwp', { path: result.path ?? '' }))
+    return true
+  }
+  if (!result.error) {
+    ctx.setStatus(t('appExportHwpCanceled'))
+    return false
+  }
+  const failed =
+    result.code === 'hwp-readback'
+      ? t('appExportHwpReadback')
+      : t('appExportHwpFailed', { error: result.error })
+  ctx.setStatus(failed)
+  showToast(failed, 'error')
+  return false
 }
 
 /** Resolves true only when a Markdown file was written to disk. */

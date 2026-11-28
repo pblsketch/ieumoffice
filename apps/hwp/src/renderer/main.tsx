@@ -14,6 +14,8 @@ import '@genoffice/ui/markdown.css'
 import '@genoffice/ui/ai-panel-prefs.css'
 import './styles.css'
 import './ai-panel.css'
+import '@genoffice/ui/ai-panel.css'
+import './dialog-theme.css'
 import { applyAiPanelPrefs, installScreenTips } from '@genoffice/ui'
 
 installScreenTips()

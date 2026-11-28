@@ -97,9 +97,23 @@ describe('atomic export destinations', () => {
       'ipcMain.handle(PDF_CHANNELS.convertOffice',
     )
 
-    expect(docx).toContain('await atomicWriteFile(picked.filePath, result.docx)')
-    expect(pptx).toContain('await atomicWriteFile(picked.filePath, result.pptx)')
-    expect(xlsx).toContain('await atomicWriteFile(picked.filePath, result.xlsx)')
-    expect(`${docx}${pptx}${xlsx}`).not.toMatch(/writeFileSync\(picked\.filePath/)
+    // The conversion runs in the pdf-structure utility process (convertDoc job),
+    // which publishes the picked destination itself; the shell only hands it the path
+    for (const [body, format] of [
+      [docx, 'docx'],
+      [pptx, 'pptx'],
+      [xlsx, 'xlsx'],
+    ] as const) {
+      expect(body).toContain('convertPdfFileViaJobWithPrompt(')
+      expect(body).toContain(`'${format}',`)
+      expect(body).toContain('picked.filePath,')
+    }
+    expect(`${docx}${pptx}${xlsx}`).not.toMatch(/writeFile(Sync)?\(picked\.filePath/)
+    const jobs = read('apps/shell/src/main/pdf-structure/jobs.ts')
+    const convert = section(jobs, "case 'convertDoc':", "case 'blankPages':")
+    expect(convert).toContain('await atomicWriteFile(job.outPath, res.docx)')
+    expect(convert).toContain('await atomicWriteFile(job.outPath, res.pptx)')
+    expect(convert).toContain('await atomicWriteFile(job.outPath, res.xlsx)')
+    expect(convert).not.toMatch(/writeFile(Sync)?\(job\.outPath/)
   })
 })

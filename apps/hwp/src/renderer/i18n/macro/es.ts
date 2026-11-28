@@ -1,0 +1,146 @@
+import type { zh } from './zh'
+
+export const es = {
+  menuRecordToggle: 'Macro › Iniciar/detener grabación',
+  menuManage: 'Macro › Administrar macros…',
+  recordingBadge: 'Grabando macro',
+  recordingStopBtn: 'Detener',
+  noticeRecordingStarted:
+    'Grabación de macro iniciada. Pulse Alt+Mayús+H o haga clic en Detener al terminar.',
+  noticeUnsupportedCommand: 'Esta acción no se puede grabar en una macro: {label}',
+  noticeMouseIgnored: 'Las acciones del ratón no se graban en una macro.',
+  noticeSlotEmpty: 'No hay ninguna macro asignada a {shortcut}.',
+  noticeMacroRunSuccess: 'Macro «{name}» ejecutada.',
+  noticeMacroMessages: '{name}: {messages}',
+  noticeMacroRunError: 'Error al ejecutar la macro (línea {line}, col. {column}): {error}',
+  noticeMacroRunErrorNoLoc: 'Error al ejecutar la macro: {error}',
+  noticeMacroUnsupportedAction:
+    'Acción de macro no admitida «{action}» (línea {line}, col. {column}). Se revirtieron todos los cambios.',
+  noticeMacroRollbackObjectLoss:
+    'La macro se detuvo y revirtió para evitar la pérdida de objetos o notas del documento.',
+  managerTitle: 'Administrar macros',
+  newMacroBtn: 'Nueva macro',
+  importBtn: 'Importar (.ieummacro)',
+  recordStartBtn: 'Iniciar grabación',
+  recordStopBtn: 'Detener grabación',
+  emptyMacros:
+    'Aún no hay macros guardadas. Cree una macro, grabe acciones o importe un archivo .ieummacro.',
+  colName: 'Nombre',
+  colOrigin: 'Origen',
+  colShortcut: 'Atajo',
+  colActions: 'Acciones',
+  originRecorded: 'Grabada',
+  originManual: 'Manual',
+  originAi: 'Borrador IA',
+  originImported: 'Importada',
+  slotNone: 'Ninguno',
+  runBtn: 'Ejecutar',
+  editBtn: 'Editar',
+  exportBtn: 'Exportar',
+  deleteBtn: 'Eliminar',
+  closeBtn: 'Cerrar',
+  cancelBtn: 'Cancelar',
+  saveBtn: 'Guardar',
+  noticeMacroSaved: 'Macro «{name}» guardada.',
+  noticeMacroDeleted: 'Macro «{name}» eliminada.',
+  noticeMacroExported: 'Macro «{name}» exportada.',
+  noticeMacroImported: 'Macro «{name}» importada.',
+  noticeSlotAssigned: 'Se asignó {shortcut} a «{name}».',
+  noticeSlotCleared: 'Se quitó el atajo de «{name}».',
+  errorActionFailed: 'Error en la operación: {error}',
+  storeErrorTitle: 'No se pudo leer el almacén de macros',
+  storeErrorCorruptBody:
+    'El archivo de macros está dañado. Se deshabilitó la edición para proteger sus macros existentes.',
+  storeErrorTooLargeBody:
+    'El archivo de macros supera el límite de tamaño. Se deshabilitó la edición para proteger sus macros existentes.',
+  storeErrorReadBody:
+    'No se pudo leer el archivo de macros. Se deshabilitó la edición para proteger sus macros existentes.',
+  storeErrorBackupNote: 'Su archivo original se conservó en:',
+  storeErrorDisabledHint:
+    'Resuelva el problema del archivo y haga clic en Reintentar para seguir administrando macros.',
+  storeRetryBtn: 'Reintentar',
+  storeNearLimitTitle: 'Almacén de macros cerca del límite',
+  storeNearLimitBody:
+    'El almacén utiliza {size} de {max}. Considere eliminar macros sin usar o exportar una copia de seguridad.',
+  errorStoreWriteTooLarge:
+    'Este cambio llevaría el almacén a {actual}, superando el límite de {max}. No se sobrescribió nada.',
+  errorStoreWriteTooLargeGeneric:
+    'Este cambio supera el límite de tamaño del almacén de macros. No se sobrescribió nada.',
+  importPreviewTitle: 'Revisar macro importada',
+  importPreviewWarning:
+    'Revise el script completo antes de guardar. Las macros importadas no se pueden ejecutar hasta guardarlas.',
+  importPreviewFile: 'Archivo: {fileName}',
+  importPreviewName: 'Nombre',
+  importPreviewDesc: 'Descripción',
+  importPreviewScript: 'Script (solo lectura)',
+  importPreviewSyntaxOk: 'Comprobación de sintaxis correcta.',
+  importPreviewSyntaxError:
+    'Error de sintaxis en línea {line}, columna {column}: {error} (aún puede guardar y corregirlo en el editor).',
+  importConfirmBtn: 'Guardar macro importada',
+  importErrorInvalidFormat: 'Este archivo no es un archivo de macro .ieummacro válido.',
+  importErrorTooLarge: 'El archivo de macro seleccionado supera el tamaño máximo permitido.',
+  editorNewTitle: 'Nueva macro',
+  editorEditTitle: 'Editar macro',
+  editorRecordedTitle: 'Guardar macro grabada',
+  fieldName: 'Nombre',
+  fieldNamePlaceholder: 'Escriba el nombre de la macro…',
+  fieldDescription: 'Descripción',
+  fieldDescriptionPlaceholder: 'Nota opcional sobre qué hace esta macro…',
+  fieldShortcut: 'Ranura de atajo',
+  fieldScript: 'Script de la macro',
+  fieldScriptPlaceholder: '// Escriba el script usando insertText(), replaceAll(), etc.',
+  validationNameRequired: 'Introduzca un nombre para la macro.',
+  validationScriptRequired: 'Introduzca un script para la macro.',
+  syntaxOk: 'Sintaxis correcta',
+  syntaxError: 'Error de sintaxis (línea {line}, col. {column}): {error}',
+  skippedActionsTitle: 'No se pudieron grabar {count} acción(es) y se omitieron:',
+  editorRunBtn: 'Ejecutar',
+  editorSaveBtn: 'Guardar',
+  aiSectionTitle: 'Escribir con IA',
+  aiPromptPlaceholder:
+    'Describa qué debe hacer la macro (p. ej., reemplazar espacios dobles por uno solo)…',
+  aiWriteBtn: 'Escribir con IA',
+  aiWritingBtn: 'Escribiendo…',
+  aiCancelBtn: 'Cancelar',
+  aiReviewHint:
+    'Solo se envía su descripción a la IA (sin contenido del documento). El script generado se coloca en el editor para su revisión y nunca se guarda ni ejecuta automáticamente.',
+  aiEmptyPrompt: 'Describa primero qué desea que haga la macro.',
+  aiDraftReady: 'Borrador colocado en el editor. Revíselo antes de guardar o ejecutar.',
+  aiDraftFailed: 'No se pudo generar el script de la macro: {error}',
+  aiNoOutput: 'La IA no devolvió ningún script de macro.',
+  importPreviewSlotHint:
+    'Los atajos no se importan automáticamente. Asigna un atajo después de guardar.',
+  importPreviewBidiWarning:
+    'Este script contiene caracteres de control direccionales o de ancho cero ocultos (mostrados como [U+XXXX]).',
+  noticeMacroOutsideBody:
+    'Las macros solo se pueden grabar o ejecutar cuando el cursor está en un párrafo del cuerpo.',
+  noticeMacroRunNotRecorded:
+    'Ejecutar otra macro no se registra mientras la grabación está activa.',
+  noticeMacroRollbackObjectLossAt:
+    'La macro se detuvo y revirtió los cambios (línea {line}, col. {column}) para evitar perder objetos o comentarios del documento.',
+  noticeMacroRollbackObjectLossPostRun:
+    'La macro se detuvo y revirtió los cambios en la comprobación final para evitar perder objetos o comentarios del documento.',
+  noticeMacroRunErrorPostRun: 'La macro falló durante la comprobación final: {error}',
+  cmdUndo: 'Deshacer',
+  cmdRedo: 'Rehacer',
+  cmdCopy: 'Copiar',
+  cmdCut: 'Cortar',
+  cmdPaste: 'Pegar',
+  cmdFind: 'Buscar',
+  cmdInsertImage: 'Insertar imagen',
+  cmdInsertFootnote: 'Insertar nota al pie',
+  cmdInsertEndnote: 'Insertar nota al final',
+  cmdInsertHyperlink: 'Insertar hipervínculo',
+  cmdInsertBookmark: 'Insertar marcador',
+  cmdLineBreak: 'Salto de línea',
+  cmdTab: 'Tabulación',
+  cmdDeleteObject: 'Eliminar objeto del documento',
+  cmdOutsideBody: 'Edición fuera del párrafo del cuerpo',
+  cmdOtherAction: 'Acción de edición no compatible ({id})',
+  noticeOutsideBodyIgnored:
+    'Las acciones realizadas fuera de los párrafos del cuerpo (tablas, cuadros de texto, notas, encabezados/pies de página) no se graban.',
+  noticeMacroRegexTimeout:
+    'La macro se detuvo y revirtió los cambios porque la expresión regular tardó demasiado.',
+  noticeMacroRegexTimeoutAt:
+    'La macro se detuvo y revirtió los cambios (línea {line}, col. {column}) porque la expresión regular tardó demasiado.',
+} satisfies Record<keyof typeof zh, string>

@@ -8,6 +8,7 @@ import type { ReactNode } from 'react'
 
 export {
   IconAlignCenter,
+  IconAlignJustify,
   IconAlignLeft,
   IconAlignRight,
   IconBullets,
@@ -74,6 +75,15 @@ export function IconHeading(props: IconProps) {
   return (
     <Svg {...props}>
       <path d="M4 3v10M12 3v10M4 8h8" />
+    </Svg>
+  )
+}
+
+/** insert: equation (a sigma letterform) */
+export function IconSigma(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M3.8 3.5h8.4L8 8l4.2 4.5H3.8" />
     </Svg>
   )
 }
@@ -213,5 +223,15 @@ export function IconSummarize({ size = 24 }: IconProps) {
       <path d="M8.00007 13.4062H12.0001" />
       <path d="M17 14L17.2579 14.697C17.5961 15.611 17.7652 16.068 18.0986 16.4014C18.432 16.7348 18.889 16.9039 19.803 17.2421L20.5 17.5L19.803 17.7579C18.889 18.0961 18.432 18.2652 18.0986 18.5986C17.7652 18.932 17.5961 19.389 17.2579 20.303L17 21L16.7421 20.303C16.4039 19.389 16.2348 18.932 15.9014 18.5986C15.568 18.2652 15.111 18.0961 14.197 17.7579L13.5 17.5L14.197 17.2421C15.111 16.9039 15.568 16.7348 15.9014 16.4014C16.2348 16.068 16.4039 15.611 16.7421 14.697L17 14Z" />
     </svg>
+  )
+}
+
+/** ribbon: offline page template gallery (a document sheet with header and structured sections) */
+export function IconTemplate(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <rect x="2.5" y="2" width="11" height="12" rx="1.2" />
+      <path d="M4.8 5.2h6.4M4.8 8h3M4.8 10.6h6.4M9.5 8h1.7" />
+    </Svg>
   )
 }

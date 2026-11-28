@@ -25,21 +25,39 @@ export function anchorShiftPx(el: HTMLElement): number {
   return anchor + (parseFloat(getComputedStyle(el).top) || 0)
 }
 
+function parseCssLengthPx(raw: string): number {
+  const m = /^(-?\d+(?:\.\d+)?)(px|pt)$/i.exec(raw.trim())
+  if (!m) return 0
+  const n = parseFloat(m[1])
+  return m[2].toLowerCase() === 'pt' ? (n * 96) / 72 : n
+}
+
 /**
  * Extra leading of one line of an auto-multiple paragraph (px, unzoomed like
  * every computed length here). Word charges only the single-spacing extent at
  * the page bottom (probe 2026-09-23); exact and atLeast lines demand their full
  * box, space before/after always counts.
+ *
+ * Under a typed line grid, CSS centres the multiple's extra around the single
+ * grid cell (half above, half below). When the line height is driven by
+ * mult * pitch (not a taller snapped single cell), the trailing half-leading
+ * below the cell does not force an early break at the page bottom (e.g. an
+ * 18pt Korean Word docGrid at 1.5x = 27pt fits 25 lines in 671.8pt).
  */
 export function lineLeadPx(el: HTMLElement): number {
   const mult = autoLineMultOf(el)
   if (mult <= 1) return 0
   const cs = getComputedStyle(el)
-  // typed line grids centre the multiple's extra in the snapped cell (unprobed at
-  // the page bottom): keep charging the full box there
-  if (cs.getPropertyValue('--doc-grid-pitch').trim()) return 0
   const lh = parseFloat(cs.lineHeight)
   if (!Number.isFinite(lh) || lh <= 0) return 0
+  const pitchRaw = cs.getPropertyValue('--doc-grid-pitch').trim()
+  if (pitchRaw) {
+    const pitchPx = parseCssLengthPx(pitchRaw)
+    if (pitchPx > 0.5) {
+      if (lh > mult * pitchPx + 0.5) return 0
+      return Math.max(0, (lh - pitchPx) / 2)
+    }
+  }
   return lh * (1 - 1 / mult)
 }
 

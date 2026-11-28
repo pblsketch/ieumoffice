@@ -13,14 +13,20 @@ import {
   onAiRailClick,
   presentationKeyOf,
   rememberAiPanelOpen,
+  shortcutLetterOf,
   useAutoSavePref,
   skillTemplateText,
   templateDocumentOf,
   useAiSidebarEnabled,
   useSplitPaneFocusPing,
   useSplitPaneRole,
+  createZoomWheelClassifier,
+  wheelZoomStepPercent,
+  printLayoutText,
   type TemplateDocument,
 } from '@genoffice/ui'
+import { createDefaultOptions } from '@genoffice/print-layout/plan'
+import { MARKDOWN_PRINT_OPTIONS } from '../shared/print-options'
 import {
   pollUntilReady,
   runHeadlessRendererExport,
@@ -31,6 +37,7 @@ import type { Editor } from '@tiptap/core'
 import { TextSelection } from '@tiptap/pm/state'
 import { exportImages } from './export/imageExport'
 import type { StringKey } from './i18n/locale'
+import { countWords } from '../../../docs/src/renderer/word-count'
 import { t as translate, useI18n } from './i18n/locale'
 import {
   buildFrontmatterRaw,
@@ -41,6 +48,7 @@ import {
 } from './markdown/docText'
 import { buildSourceMap, spliceMarkdown, type SourceMap } from './markdown/sourceSplice'
 import { applySourceText } from './markdown/sourceView'
+import { isSourceViewKey } from './source-view-key'
 import { isSourceMode, textModeForPath, type TextMode } from '../shared/text-mode'
 import { renameAction } from '../shared/rename-mode'
 import { readSourceText, writeSourceText, type SourceTextFormat } from '../shared/source-text'
@@ -51,28 +59,37 @@ import { tiptapFindTarget } from './editor/findTarget'
 import { collectOutline, type OutlineItem } from './editor/outline'
 import { buildSlashItems } from './editor/slashCommand'
 import type { SlashController, SlashMenuState } from './editor/slashCommand'
-import { wikiFragmentPosition } from './editor/wikilink'
+import { wikiFragmentPosition, wikiTargetOf } from './editor/wikilink'
+import type { WikiSuggestController, WikiSuggestState } from './editor/wikiSuggest'
+import { invalidateWikiHeads } from './editor/wikiSuggest'
 import { dirOf, setImageBaseDir, VIEW_IMAGE_EVENT } from './editor/localImage'
 import { Ribbon } from './components/Ribbon'
 import type { MarkdownTheme } from '../shared/markdown-theme'
+import { applyEditorFont, rememberEditorFont, storedEditorFont } from './editor-font'
 import { ImageHostDialog } from './components/ImageHostDialog'
 import { RedactMenu } from './components/RedactMenu'
 import { OutlinePane } from './components/OutlinePane'
 import { SourcePane } from './components/SourcePane'
 import { SlashMenu, type SlashMenuHandle } from './components/SlashMenu'
+import { WikiSuggestMenu, type WikiSuggestMenuHandle } from './components/WikiSuggestMenu'
 import { BacklinksPane } from './components/BacklinksPane'
+import { TagsPane } from './components/TagsPane'
 import { GraphView } from './components/GraphView'
 import { ToastHost } from './components/toast'
 import { showToast } from './components/toast-bus'
 import { TableMenu } from './components/TableMenu'
+import { SelectionFormatBar } from './components/SelectionFormatBar'
 import { FrontmatterPanel } from './components/FrontmatterPanel'
 import { AiAskPopover } from './components/AiAskPopover'
+import { useAiVisible } from './ai-visibility'
 import { AiPanel, type AiPreset, type MarkdownAiDeps } from './ai/AiPanel'
 import { EDIT_QUEUE_MAX, selectionForAnchor, type EditQueueItem } from './ai/edit-queue'
 import { addQueueAnchor, clearQueueAnchors, removeQueueAnchors } from './editor/aiQueueAnchors'
 import { DOCX_MAX_IMAGE_PX, exportDocxBytes } from './export/docxExport'
 import { decodeImageDataUrl, toDocxImage } from './export/exportImage'
 import { buildPrintHtml } from './export/printHtml'
+import { PrintPreviewDialog, type PrintPreviewContent } from './print/PrintPreviewDialog'
+import { selectionPrintRoot, sourcePrintRoot } from './print/print-content'
 import { diagramSvgToPng, renderDiagram } from './editor/diagrams'
 import type { DiagramLanguage } from './editor/diagrams'
 import type { ExportFormat, SaveMode } from '../shared/ipc'
@@ -149,6 +166,15 @@ export function deriveAutoFileName(editor: Editor): string {
   return ''
 }
 
+/** Name an export suggests: the document's name without .md, else a derived one */
+export function exportBaseName(path: string | null, editor: Editor): string {
+  return (
+    (path
+      ? path.replace(/^.*[/\\]/, '').replace(/\.(md|markdown)$/i, '')
+      : deriveAutoFileName(editor)) || 'Untitled'
+  )
+}
+
 export default function App() {
   const { lang, t } = useI18n()
   // Fallback focus ping: the shell is told whenever this window gains focus
@@ -171,11 +197,16 @@ export default function App() {
   const [dirty, setDirty] = useState(false)
   const [saveState, setSaveState] = useState<SaveState>('idle')
   const exportingImagesRef = useRef(false)
+  /** Save As hands Word/ODT/page-image targets to the export code defined below it */
+  const runExportRef = useRef<
+    (format: ExportFormat, outPath?: string, saveAsTarget?: string) => Promise<boolean>
+  >(async () => false)
   const [imageExportStatus, setImageExportStatus] = useState<{
     key: StringKey
     params?: Record<string, string | number>
   } | null>(null)
   const [slashState, setSlashState] = useState<SlashMenuState | null>(null)
+  const [wikiSuggestState, setWikiSuggestState] = useState<WikiSuggestState | null>(null)
   const [fmOpen, setFmOpen] = useState(false)
   const [fmText, setFmText] = useState('')
   // Persisted so a closed AI panel stays closed on next launch (docs/slides parity)
@@ -185,6 +216,9 @@ export default function App() {
   const aiPanelOpen = effectiveAiPanelOpen(aiOpen, paneRole)
   // the sidebar switch is a soft hide; it closes the panel when it turns off
   const aiSidebarEnabled = useAiSidebarEnabled(setAiOpen)
+  // Settings › Editors and AI: while AI is off no AI part of this editor is drawn
+  // (panel, ribbon entries, Ask AI, withholding); turning it back on brings them back
+  const aiOn = useAiVisible()
   const [aiPreset, setAiPreset] = useState<AiPreset | null>(null)
   const [editQueue, setEditQueue] = useState<EditQueueItem[]>([])
   const editQueueRef = useRef(editQueue)
@@ -200,6 +234,7 @@ export default function App() {
     () => Number(localStorage.getItem('mdapp.outlineWidth')) || undefined,
   )
   const [backlinksOpen, setBacklinksOpen] = useState(false)
+  const [tagsOpen, setTagsOpen] = useState(false)
   const [graphOpen, setGraphOpen] = useState(false)
   const [sourceViewOpen, setSourceViewOpen] = useState(false)
   const [sourceText, setSourceText] = useState('')
@@ -224,6 +259,13 @@ export default function App() {
     if (theme === 'default') document.documentElement.removeAttribute('data-markdown-theme')
     else document.documentElement.setAttribute('data-markdown-theme', theme)
     window.markdownApi.setMarkdownTheme(theme).catch(() => {})
+  }
+  // main.tsx applies the stored font before the first paint; live picks apply it here
+  const [editorFont, setEditorFont] = useState(storedEditorFont)
+  const pickEditorFont = (font: string | null): void => {
+    setEditorFont(font)
+    applyEditorFont(font)
+    rememberEditorFont(font)
   }
   // off by default: it takes over the editor's right-click menu, and a reader
   // should opt into that rather than discover it
@@ -260,6 +302,7 @@ export default function App() {
   }
   const filePathRef = useRef<string | null>(null)
   const slashMenuRef = useRef<SlashMenuHandle>(null)
+  const wikiSuggestMenuRef = useRef<WikiSuggestMenuHandle>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
 
   const zoomOut = useCallback(
@@ -311,6 +354,32 @@ export default function App() {
     })
   }, [])
 
+  /**
+   * Close an unresolved `[[link]]` the Obsidian way: create the note it names
+   * and open it. Main decides where the file lands (beside this document, or
+   * under the vault root when the target carries a directory) and never
+   * overwrites; the answer carries the `#fragment`, so opening rides the same
+   * path every resolved link takes and no document text has to change.
+   */
+  const createWikiNoteAndOpen = useCallback(
+    (target: string): void => {
+      // The browser test harness stubs markdownApi without the Electron-only
+      // wiki channels; a missing API leaves the link as written.
+      if (typeof window.markdownApi.createWikiNote !== 'function') return
+      void window.markdownApi.createWikiNote({ target }).then((result) => {
+        if (!result.ok) {
+          showToast(translate('wikiLinkUnresolved', { target }), 'error')
+          return
+        }
+        void window.markdownApi.rememberWikiFragment(result.path, result.fragment)
+        void window.markdownApi.openSourcePath(result.path)
+        // a link into the note already on screen opens no tab; jump here
+        if (filePathRef.current === result.path) jumpToWikiFragment(result.path)
+      })
+    },
+    [jumpToWikiFragment],
+  )
+
   const extensions = useMemo(() => {
     const controller: SlashController = {
       onOpen: setSlashState,
@@ -318,10 +387,17 @@ export default function App() {
       onKeyDown: (event) => slashMenuRef.current?.handleKey(event) ?? false,
       onClose: () => setSlashState(null),
     }
+    const wikiSuggestController: WikiSuggestController = {
+      onOpen: setWikiSuggestState,
+      onUpdate: setWikiSuggestState,
+      onKeyDown: (event) => wikiSuggestMenuRef.current?.handleKey(event) ?? false,
+      onClose: () => setWikiSuggestState(null),
+    }
     return buildExtensions({
       slashController: controller,
       slashItems: () =>
         buildSlashItems({ insertImage: filePathRef.current ? insertImage : undefined }),
+      wikiSuggestController,
       wikiLink: {
         getDocumentPath: () => filePathRef.current ?? '',
         onOpen: (path, fragment) => {
@@ -332,10 +408,31 @@ export default function App() {
         },
         // the module-level `t`, not the hook's: this memo holds the closure for
         // the life of the editor, and the hook's `t` is a new function each render
-        onUnresolved: (target) => showToast(translate('wikiLinkUnresolved', { target }), 'error'),
+        onUnresolved: (target, embed) => {
+          // an embed of a missing file usually names a picture, which an empty
+          // note cannot stand in for; only a link creates its note
+          if (embed) {
+            showToast(translate('wikiLinkUnresolved', { target }), 'error')
+            return
+          }
+          createWikiNoteAndOpen(wikiTargetOf(target))
+        },
+      },
+      blockLink: {
+        getDocumentPath: () => filePathRef.current ?? '',
+        onCopied: (link) => showToast(translate('blockLinkCopied', { link })),
+        onNothing: () => showToast(translate('blockLinkNone'), 'error'),
       },
     })
-  }, [insertImage, jumpToWikiFragment])
+  }, [createWikiNoteAndOpen, insertImage, jumpToWikiFragment])
+
+  // status-bar text statistics: Word's CJK counting rule (asian chars count
+  // one by one, non-asian words by whitespace) shared with the docs status bar
+  const [docStats, setDocStats] = useState<{ words: number; chars: number } | null>(null)
+  const statsOf = (text: string) => ({
+    words: countWords(text),
+    chars: Array.from(text).length,
+  })
 
   const editor = useEditor({
     extensions,
@@ -346,6 +443,7 @@ export default function App() {
     onUpdate: ({ editor: updated, transaction }) => {
       if (!transaction.getMeta('uiOnly')) markDirty()
       setOutlineItems(collectOutline(updated))
+      setDocStats(statsOf(updated.getText()))
       syncSourceFromEditorRef.current()
     },
   })
@@ -394,6 +492,7 @@ export default function App() {
         const { text, format } = readSourceText(raw)
         sourceTextRef.current = text
         sourceFormatRef.current = format
+        setDocStats(statsOf(text))
         setFilePath(path)
         setFmText('')
         setFmOpen(false)
@@ -582,9 +681,12 @@ export default function App() {
   }, [flushSource])
 
   const toggleSource = useCallback(() => {
+    // A .txt/.json has no block document to swap with, and F5 hides the source
+    // pane for the show: the chord must not leave an invisible view behind.
+    if (sourceMode || presenting) return
     if (sourceViewOpenRef.current) closeSource()
     else openSource()
-  }, [closeSource, openSource])
+  }, [closeSource, openSource, presenting, sourceMode])
 
   const restoreAfterPresent = useCallback(() => {
     setPresenting(false)
@@ -645,6 +747,7 @@ export default function App() {
     (text: string) => {
       setSourceText(text)
       pendingSourceRef.current = text
+      setDocStats(statsOf(text))
       markDirty()
       if (sourceApplyTimerRef.current) clearTimeout(sourceApplyTimerRef.current)
       sourceApplyTimerRef.current = setTimeout(flushSource, SOURCE_APPLY_DEBOUNCE_MS)
@@ -722,14 +825,37 @@ export default function App() {
           sourceAtSave,
         )
         const imageSources = imageSourcesFromEditor(current)
+        // Save As can write the rendered document as a PDF instead; the HTML
+        // comes from what is on screen (pending edits included)
+        const pdfHtml =
+          mode === 'saveAs'
+            ? buildPrintHtml(current.view.dom, exportBaseName(filePathRef.current, current))
+            : undefined
         const result = await window.markdownApi.save({
           text,
           imageSources,
           mode,
           suggestedName,
           auto,
+          ...(pdfHtml !== undefined ? { pdfHtml } : {}),
         })
         if (result.ok && 'path' in result) {
+          // A PDF target is an export of this document: its path, unsaved edits
+          // and assets stay as they are (the main process opened the PDF)
+          if (result.exported === 'pdf') {
+            setSaveState('idle')
+            return true
+          }
+          // Word, ODT or page images: nothing was written yet. The export menu's
+          // code builds the copy and writes it to the approved path; the document
+          // keeps its path and unsaved edits like the PDF answer above
+          if (result.exportAs) {
+            setSaveState('idle')
+            void runExportRef.current(result.exportAs, undefined, result.path)
+            return true
+          }
+          // what this note offers `[[...#` has just changed on disk
+          invalidateWikiHeads()
           const unchanged =
             editorRef.current?.state.doc === docAtSave &&
             envelopeRef.current.frontmatter === fmAtSave
@@ -800,17 +926,17 @@ export default function App() {
     [flushSource, sourceMode, doSaveSource],
   )
 
-  /** `outPath` (headless export only) skips the save dialog; resolves true when a file was written. */
+  /**
+   * `outPath` (headless export only) skips the save dialog; resolves true when a file was written.
+   * `saveAsTarget` is the path Save As approved for this format (no second dialog).
+   */
   const runExport = useCallback(
-    async (format: ExportFormat, outPath?: string) => {
+    async (format: ExportFormat, outPath?: string, saveAsTarget?: string) => {
       // a source file has no rendered document to export
       if (sourceMode) return false
       const current = editorRef.current
       if (!current || statusRef.current !== 'ready') return false
-      const suggestedName =
-        (filePathRef.current
-          ? filePathRef.current.replace(/^.*[/\\]/, '').replace(/\.(md|markdown)$/i, '')
-          : deriveAutoFileName(current)) || 'Untitled'
+      const suggestedName = exportBaseName(filePathRef.current, current)
       if (format === 'png') {
         if (exportingImagesRef.current) return false
         exportingImagesRef.current = true
@@ -828,6 +954,7 @@ export default function App() {
             buildPrintHtml(current.view.dom, suggestedName),
             suggestedName,
             (count) => setImageExportStatus({ key: 'appExportImagesProgress', params: { count } }),
+            saveAsTarget,
           )
           if (!result.ok) throw new Error(result.error)
           if ('canceled' in result) {
@@ -865,7 +992,7 @@ export default function App() {
           return data ? toDocxImage(data, DOCX_MAX_IMAGE_PX) : null
         }
         const rasterizeDiagram = async (source: string, language: DiagramLanguage) => {
-          const result = await renderDiagram(language, source)
+          const result = await renderDiagram(language, source, DOCX_MAX_IMAGE_PX)
           return result.ok ? diagramSvgToPng(result.svg, DOCX_MAX_IMAGE_PX) : null
         }
         const bytes = await exportDocxBytes(current.getJSON(), loadImage, rasterizeDiagram)
@@ -874,14 +1001,26 @@ export default function App() {
           const result = await window.markdownApi.exportOdt({
             base64: bytesToBase64(bytes),
             suggestedName,
+            ...(saveAsTarget ? { saveAsTarget } : {}),
           })
           if (!result.ok) console.error('[markdown] odt export failed:', result.error)
+          return result.ok && !('canceled' in result)
+        }
+        if (format === 'hwp' || format === 'hwpx') {
+          // same Word bytes as the docx export; the main process converts them to Hangul
+          const result = await window.markdownApi.exportHwp({
+            base64: bytesToBase64(bytes),
+            suggestedName,
+            ...(saveAsTarget ? { saveAsTarget } : {}),
+          })
+          if (!result.ok) console.error('[markdown] hwp export failed:', result.error)
           return result.ok && !('canceled' in result)
         }
         const result = await window.markdownApi.exportDocx({
           base64: bytesToBase64(bytes),
           suggestedName,
           mode: format === 'docs' ? 'openInDocs' : 'dialog',
+          ...(saveAsTarget ? { saveAsTarget } : {}),
         })
         if (!result.ok) console.error('[markdown] docx export failed:', result.error)
         return result.ok && !('canceled' in result)
@@ -892,6 +1031,7 @@ export default function App() {
     },
     [sourceMode],
   )
+  runExportRef.current = runExport
 
   // Headless export mode (--headless-export): this renderer lives in a hidden
   // window whose only job is to run the File menu's PDF export against a path
@@ -917,10 +1057,9 @@ export default function App() {
   }, [runExport])
 
   /**
-   * Print through the same self-contained HTML the PDF export uses, loaded into a
-   * hidden same-session iframe (md-asset:// images keep resolving) — printing the
-   * live page would drag the ribbon/panels along, and Electron has no built-in
-   * preview to crop them out.
+   * Print through the same self-contained HTML the PDF export uses. The preview
+   * shows the PDF that HTML makes and printing sends the same HTML and options,
+   * so the paper is what the dialog drew — not the ribbon/panels around it.
    */
   const sourceHistory = useMemo(
     () => ({
@@ -940,55 +1079,87 @@ export default function App() {
     [sourceRev, sourceMode],
   )
 
-  const printingRef = useRef(false)
-  const printDoc = useCallback(async () => {
+  const [quickPrintNotice, setQuickPrintNotice] = useState<string | null>(null)
+  const [printPreview, setPrintPreview] = useState<
+    (PrintPreviewContent & { initialDestination?: string }) | null
+  >(null)
+  const buildMarkdownPrintSnapshot = useCallback(() => {
     const current = editorRef.current
-    if (!current || statusRef.current !== 'ready' || printingRef.current) return
-    printingRef.current = true
+    if (!current || statusRef.current !== 'ready') return null
     const title =
       (filePathRef.current
         ? filePathRef.current.replace(/^.*[/\\]/, '').replace(/\.(md|markdown|txt|json)$/i, '')
         : deriveAutoFileName(current)) || 'Untitled'
     let printRoot: HTMLElement = current.view.dom
+    let selectionRoot: HTMLElement | null
     if (sourceMode) {
-      printRoot = document.createElement('div')
-      const pre = document.createElement('pre')
-      pre.textContent = sourceTextRef.current
-      printRoot.appendChild(pre)
+      printRoot = sourcePrintRoot(sourceTextRef.current)
+      const picked = sourceRef.current?.selectedText() ?? ''
+      selectionRoot = picked ? sourcePrintRoot(picked) : null
+    } else {
+      selectionRoot = selectionPrintRoot(current.view)
     }
-    const frame = document.createElement('iframe')
-    frame.style.position = 'fixed'
-    frame.style.right = '100%'
-    frame.style.bottom = '100%'
-    frame.style.width = '0'
-    frame.style.height = '0'
-    frame.style.border = '0'
-    try {
-      await new Promise<void>((resolve) => {
-        frame.onload = () => resolve()
-        frame.srcdoc = buildPrintHtml(printRoot, title)
-        document.body.appendChild(frame)
-      })
-      const fdoc = frame.contentDocument
-      const fwin = frame.contentWindow
-      if (!fdoc || !fwin) return
-      // the export path passes printToPDF margins instead; the dialog needs @page
-      const pageStyle = fdoc.createElement('style')
-      pageStyle.textContent = '@page { margin: 0.6in; }'
-      fdoc.head.appendChild(pageStyle)
-      await Promise.all([...fdoc.images].map((img) => img.decode().catch(() => {})))
-      // resolve on afterprint so the frame survives until the dialog closes (cancel included)
-      await new Promise<void>((resolve) => {
-        fwin.addEventListener('afterprint', () => resolve())
-        fwin.print()
-      })
-    } catch (err) {
-      console.error('[markdown] print failed:', err)
-    } finally {
-      frame.remove()
-      printingRef.current = false
+    return {
+      html: buildPrintHtml(printRoot, title),
+      selectionHtml: selectionRoot ? buildPrintHtml(selectionRoot, title) : null,
+      title,
     }
   }, [sourceMode])
+
+  const printDoc = useCallback(
+    (initialDestination?: string) => {
+      if (printPreview !== null) return
+      const snap = buildMarkdownPrintSnapshot()
+      if (!snap) return
+      setPrintPreview({ ...snap, initialDestination })
+    },
+    [printPreview, buildMarkdownPrintSnapshot],
+  )
+
+  const runQuickPrint = useCallback(
+    async (printerLabel: string) => {
+      const snap = buildMarkdownPrintSnapshot()
+      if (!snap) return
+      setQuickPrintNotice(printLayoutText(lang, 'quickPrintSending', { printer: printerLabel }))
+      const result = await window.markdownApi.printLayout.print({
+        options: createDefaultOptions(),
+        editor: {
+          html: snap.html,
+          pages: null,
+          options: { ...MARKDOWN_PRINT_OPTIONS, pageSize: 'A4', landscape: false },
+          name: snap.title,
+        },
+        job: { deviceName: '', copies: 1, collate: true, duplex: 'simplex' },
+      })
+      if (result.ok) {
+        setQuickPrintNotice(printLayoutText(lang, 'quickPrintSent', { printer: printerLabel }))
+      } else if (!('aborted' in result)) {
+        setQuickPrintNotice(result.error)
+      } else {
+        setQuickPrintNotice(null)
+      }
+    },
+    [buildMarkdownPrintSnapshot, lang],
+  )
+
+  const getPrintPageCount = useCallback(async () => {
+    const snap = buildMarkdownPrintSnapshot()
+    if (!snap) return null
+    try {
+      const res = await window.markdownApi.renderPrintPreview({
+        html: snap.html,
+        options: { ...MARKDOWN_PRINT_OPTIONS, pageSize: 'A4', landscape: false },
+      })
+      if (!res.ok) return null
+      const { getDocument } = await import('pdfjs-dist/legacy/build/pdf.mjs')
+      const pdf = await getDocument({ data: res.pdf }).promise
+      const count = pdf.numPages
+      void pdf.loadingTask.destroy()
+      return count
+    } catch {
+      return null
+    }
+  }, [buildMarkdownPrintSnapshot])
 
   useEffect(() => {
     const offExport = window.markdownApi.onExportRequest((format) => void runExport(format))
@@ -1083,7 +1254,7 @@ export default function App() {
     })
     const onKeyDown = (event: KeyboardEvent) => {
       if (!(event.metaKey || event.ctrlKey) || event.altKey) return
-      const key = event.key.toLowerCase()
+      const key = shortcutLetterOf(event) ?? event.key.toLowerCase()
       if (key === 's') {
         event.preventDefault()
         void doSave(event.shiftKey ? 'saveAs' : 'save')
@@ -1098,8 +1269,8 @@ export default function App() {
         // its ⌘H belongs to the system Hide role, so the menu keeps that key
         event.preventDefault()
         openFind(true)
-      } else if (key === 'e' && !event.shiftKey) {
-        // Obsidian's edit/preview toggle: the source view
+      } else if (isSourceViewKey(event)) {
+        // Obsidian's edit/preview toggle; Ctrl+Shift+E formats inline code.
         event.preventDefault()
         toggleSource()
       } else if (key === 'o' && event.shiftKey) {
@@ -1127,14 +1298,19 @@ export default function App() {
     }
   }, [doSave, printDoc, zoomIn, zoomOut, openFind, toggleSource, loadFromPath, sourceMode, t])
 
-  // Chromium reports trackpad pinch as ctrl+wheel. Also support Cmd/Ctrl+scroll
-  // while the pointer is over the document canvas.
+  // Cmd/Ctrl+wheel over the document canvas: five percentage points per notch
+  // whatever the OS scroll setting; a trackpad pinch (ctrl+wheel in Chromium)
+  // moves in the same steps.
   useEffect(() => {
+    const zoomWheel = createZoomWheelClassifier()
     const onWheel = (event: WheelEvent) => {
       if (!event.ctrlKey && !event.metaKey) return
       if (!(event.target as HTMLElement | null)?.closest?.('.editor-scroll')) return
       event.preventDefault()
-      setZoom((value) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, value - event.deltaY * 0.6)))
+      const intent = zoomWheel.feed(event, event.timeStamp)
+      if (!intent) return
+      const dir = intent === 'zoom-in' ? 1 : -1
+      setZoom((value) => wheelZoomStepPercent(value, dir, MIN_ZOOM, MAX_ZOOM))
     }
     window.addEventListener('wheel', onWheel, { passive: false })
     return () => window.removeEventListener('wheel', onWheel)
@@ -1215,6 +1391,10 @@ export default function App() {
     if (editorRef.current) clearQueueAnchors(editorRef.current)
     setEditQueue([])
   }, [])
+  // AI turned off: the queued AI edits go with the panel, and so do their anchors
+  useEffect(() => {
+    if (!aiOn && editQueueRef.current.length > 0) queueClear()
+  }, [aiOn, queueClear])
   /** a submission hands its items to the run and drops them from the queue */
   const queueConsume = useCallback((qids: string[]): void => {
     if (editorRef.current) removeQueueAnchors(editorRef.current, qids)
@@ -1356,6 +1536,8 @@ export default function App() {
         imageEnabled={Boolean(filePath)}
         mdTheme={mdTheme}
         onMarkdownTheme={pickMarkdownTheme}
+        editorFont={editorFont}
+        onEditorFont={pickEditorFont}
         onInsertImage={insertImage}
         onImageHost={() => setImageHostOpen(true)}
         frontmatterOpen={fmOpen}
@@ -1365,8 +1547,11 @@ export default function App() {
         outlineOpen={outlineOpen}
         onToggleOutline={() => setOutlineOpen((v) => !v)}
         backlinksOpen={backlinksOpen}
+        tagsOpen={tagsOpen}
         onToggleBacklinks={() => setBacklinksOpen((v) => !v)}
+        onToggleTags={() => setTagsOpen((v) => !v)}
         onOpenGraph={() => setGraphOpen(true)}
+        onCopyBlockLink={() => editor?.commands.copyBlockLink()}
         spellcheck={spellcheck}
         onToggleSpellcheck={() => setSpellcheck((v) => !v)}
         sourceMode={sourceMode}
@@ -1382,42 +1567,50 @@ export default function App() {
           setRedactEnabled(on)
           localStorage.setItem('mdapp.redact', on ? '1' : '0')
         }}
+        onOpenPrintDialog={(dest) => printDoc(dest)}
+        onQuickPrint={runQuickPrint}
+        listPrinters={window.markdownApi?.printLayout?.listPrinters}
+        quickPrintPrefStore={window.markdownApi?.printLayout}
+        getPrintPageCount={getPrintPageCount}
+        onQuickPrintNotice={setQuickPrintNotice}
       />
       {status === 'loading' && <div className="center-note">{t('loading')}</div>}
       <div className="app-main" style={status === 'ready' ? undefined : { display: 'none' }}>
-        <div
-          className={`ai-dock${aiPanelOpen ? '' : ' collapsed'}${
-            !aiSidebarEnabled && !aiPanelOpen ? ' ai-dock-off' : ''
-          }`}
-        >
-          {!aiPanelOpen && aiSidebarEnabled && (
-            <button
-              className="ai-rail"
-              data-tip={t('aiOpenAssistant')}
-              aria-label={t('aiOpenAssistant')}
-              onClick={() => onAiRailClick(paneRole, aiOpen, setAiOpen, requestFocus)}
-            >
-              <AiMark size={22} />
-            </button>
-          )}
-          {/* mounted only after the file is loaded so chat history resolves against the real path */}
-          {status === 'ready' && (
-            <AiPanel
-              deps={aiDeps}
-              filePath={filePath}
-              preset={aiPreset}
-              onCollapse={() => setAiOpen(false)}
-              editQueue={editQueue}
-              onQueueEditInstruction={queueUpdate}
-              onQueueRemove={queueRemove}
-              onQueueClear={queueClear}
-              onQueueFocus={queueFocus}
-              onQueueConsume={queueConsume}
-              templateDocument={templateDocument}
-              onSkillHandoff={() => setAiOpen(true)}
-            />
-          )}
-        </div>
+        {aiOn && (
+          <div
+            className={`ai-dock${aiPanelOpen ? '' : ' collapsed'}${
+              !aiSidebarEnabled && !aiPanelOpen ? ' ai-dock-off' : ''
+            }`}
+          >
+            {!aiPanelOpen && aiSidebarEnabled && (
+              <button
+                className="ai-rail"
+                data-tip={t('aiOpenAssistant')}
+                aria-label={t('aiOpenAssistant')}
+                onClick={() => onAiRailClick(paneRole, aiOpen, setAiOpen, requestFocus)}
+              >
+                <AiMark size={22} />
+              </button>
+            )}
+            {/* mounted only after the file is loaded so chat history resolves against the real path */}
+            {status === 'ready' && (
+              <AiPanel
+                deps={aiDeps}
+                filePath={filePath}
+                preset={aiPreset}
+                onCollapse={() => setAiOpen(false)}
+                editQueue={editQueue}
+                onQueueEditInstruction={queueUpdate}
+                onQueueRemove={queueRemove}
+                onQueueClear={queueClear}
+                onQueueFocus={queueFocus}
+                onQueueConsume={queueConsume}
+                templateDocument={templateDocument}
+                onSkillHandoff={() => setAiOpen(true)}
+              />
+            )}
+          </div>
+        )}
         {outlineOpen && !sourceMode && (
           <OutlinePane
             items={outlineItems}
@@ -1431,6 +1624,9 @@ export default function App() {
             path={filePath}
             onOpen={(path) => void window.markdownApi.openSourcePath(path)}
           />
+        )}
+        {tagsOpen && !sourceMode && (
+          <TagsPane onOpen={(path) => void window.markdownApi.openSourcePath(path)} />
         )}
         <div className="app-content">
           {showFind && findTarget && (
@@ -1483,12 +1679,25 @@ export default function App() {
           )}
           <footer className="status-bar">
             <div className="status-left">
+              {quickPrintNotice && (
+                <span className="status-item status-export" role="status">
+                  {quickPrintNotice}
+                </span>
+              )}
               {imageExportStatus && (
                 <span className="status-item status-export" role="status">
                   {t(imageExportStatus.key, imageExportStatus.params)}
                 </span>
               )}
               {fileName && <span className="status-item status-file">{fileName}</span>}
+              {fileName && docStats && (
+                <span className="status-item status-stats">
+                  {t('statusWords', { n: docStats.words })} ·{' '}
+                  {t('statusChars', {
+                    n: docStats.chars,
+                  })}
+                </span>
+              )}
             </div>
             <div className="status-right">
               {statusText && (
@@ -1530,7 +1739,14 @@ export default function App() {
       {!sourceMode && (
         <SlashMenu ref={slashMenuRef} state={slashState} onDismiss={() => setSlashState(null)} />
       )}
-      <RedactMenu editor={editor} enabled={redactEnabled} />
+      {!sourceMode && (
+        <WikiSuggestMenu
+          ref={wikiSuggestMenuRef}
+          state={wikiSuggestState}
+          onDismiss={() => setWikiSuggestState(null)}
+        />
+      )}
+      <RedactMenu editor={editor} enabled={redactEnabled && aiOn} />
       <ToastHost />
       {graphOpen && (
         <GraphView
@@ -1562,7 +1778,10 @@ export default function App() {
         />
       )}
       {!sourceMode && <TableMenu editor={editor} scrollRef={scrollRef} zoom={zoom} />}
-      {editor && !sourceMode && status === 'ready' && (
+      {editor && status === 'ready' && !sourceMode && !sourceViewOpen && !presenting && (
+        <SelectionFormatBar editor={editor} scrollRef={scrollRef} zoom={zoom} />
+      )}
+      {editor && !sourceMode && status === 'ready' && aiOn && (
         <AiAskPopover
           editor={editor}
           queueFull={editQueue.length >= EDIT_QUEUE_MAX}
@@ -1571,6 +1790,15 @@ export default function App() {
           onQueueAdd={queueAdd}
           onQueueUpdate={queueUpdate}
           onQueueRemove={queueRemove}
+        />
+      )}
+      {printPreview !== null && (
+        <PrintPreviewDialog
+          html={printPreview.html}
+          selectionHtml={printPreview.selectionHtml}
+          title={printPreview.title}
+          initialDestination={printPreview.initialDestination}
+          onClose={() => setPrintPreview(null)}
         />
       )}
     </div>

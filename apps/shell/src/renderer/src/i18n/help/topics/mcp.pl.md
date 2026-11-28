@@ -6,7 +6,7 @@ GenOffice mówi językiem Model Context Protocol, więc agent programistyczny mo
 
 Robisz to w **Ustawienia ▸ Integracje**. Panel ma dwie połowy i możesz skorzystać z jednej albo z obu.
 
-**Skill.** Po jednym wierszu na każdego znalezionego na tym komputerze agenta programistycznego — Claude Code, Codex, Cursor, Gemini CLI, Copilot CLI, OpenCode, Windsurf —, każdy z przyciskami **Zainstaluj**, **Aktualizuj** i **Odinstaluj**, a także **Zainstaluj w innym folderze…**, **Pobierz skill (zip)** i **Kopiuj ścieżkę**. Jeśli twojego asystenta nie ma na liście, wskaż GenOffice folder, z którego czyta `SKILL.md`, albo zapisz zip i pozwól asystentowi go zainstalować. Skill i MCP mogą działać obok siebie: asystent wybiera jedno z nich, a robią dokładnie te same rzeczy.
+**Skill.** Po jednym wierszu na każdego znalezionego na tym komputerze agenta programistycznego — Claude Code, wspólny folder `~/.agents` (czytają go Codex, Cursor, Gemini CLI, Copilot CLI i OpenCode), Windsurf —, każdy z przyciskami **Zainstaluj**, **Aktualizuj** i **Odinstaluj**, a także **Zainstaluj w innym folderze…**, **Pobierz skill (zip)** i **Kopiuj ścieżkę**. Jeśli twojego asystenta nie ma na liście, wskaż GenOffice folder, z którego czyta `SKILL.md`, albo zapisz zip i pozwól asystentowi go zainstalować. Skill i MCP mogą działać obok siebie: asystent wybiera jedno z nich, a robią dokładnie te same rzeczy. Kopia zainstalowana wcześniej we własnym folderze jednego z tych pięciu narzędzi nadal widnieje pod wierszem wspólnego folderu i jest aktualizowana; gdy wspólny folder ma już skill, możesz usunąć tę kopię.
 
 **MCP.** Dostępne są dwie drogi: **Uruchamiany przez asystenta (zalecane)** — tam dodajesz pokazaną konfigurację do swojego klienta, a asystent sam uruchamia serwer — oraz **Lokalny serwer HTTP**, który aplikacja prowadzi za ciebie. Tak czy inaczej asystent ostatecznie rozmawia z GenOffice, a ty nie wpisujesz żadnej komendy.
 
@@ -58,7 +58,7 @@ Każde polecenie jest narzędziem. Najciekawsze:
 Żądanie z polecenia `ieumoffice` albo od klienta MCP nie zostało wpisane przez ciebie w aplikacji, więc GenOffice traktuje je ostrożnie.
 
 - **Wyszukiwanie** działa zawsze i domyślnie jest bezpłatne. Klucz dostawcy wyszukiwania jest używany tylko wtedy, gdy został wybrany.
-- **Generowanie obrazu** wymaga klucza dostawcy obrazów. W tej wersji subskrypcja nie generuje obrazów.
+- **Generowanie obrazu** korzysta z wyboru generowania obrazów w ustawieniach. Domyślny wybór, Plan ChatGPT (program Codex), używa Twojego planu ChatGPT za pomocą programu Codex i **nie jest używany, dopóki na to nie zezwolisz** (zobacz niżej). W przeciwnym razie używany jest klucz skonfigurowanego dostawcy obrazów. Model, który wskaże agent, jest używany, gdy ta droga go oferuje.
 - **Opisywanie obrazu** korzysta z dostawcy z kluczem, jeśli jest skonfigurowany. Twoja subskrypcja Claude lub Codex **nie jest używana, dopóki na to nie pozwolisz**.
 - **Wideo i dźwięk** wymagają dostawcy z kluczem obsługującego wideo.
 

@@ -46,6 +46,19 @@ interface ApplyOpsInput {
   ops: unknown[]
   dryRun?: boolean
 }
+interface InsertPictureInput {
+  url: string
+  afterBlockIndex?: number
+  width?: number | string
+  height?: number | string
+  float?: unknown
+  altText?: string
+}
+interface ReadBlocksInput {
+  startBlockIndex: number
+  endBlockIndex: number
+  offset?: number
+}
 
 /** mirror of AiPanel's clearAiHighlights: auto-accept the external edit, keeping undo history */
 function clearAiChangedFlags(editor: Editor): void {
@@ -146,10 +159,47 @@ async function runCommand(
       return { summary: outcome.summary, output: outcome.output, mutated: outcome.mutated }
     }
 
+    case 'insert_picture': {
+      const input = (payload ?? {}) as InsertPictureInput
+      // The shared executor validates the url scheme, the block-index range, the
+      // size fields and the float spec, and fetches the image exactly like the
+      // built-in agent's insert_picture (its stale-index guard applies too).
+      const outcome = await executeTool(
+        editor,
+        { id: 'mcp', name: 'insert_picture', input: { ...input } },
+        numIdsFor(ctx),
+      )
+      if (outcome.isError) throw new Error(mcpErrorText(outcome.output))
+      clearAiChangedFlags(editor)
+      return { summary: outcome.summary, mutated: outcome.mutated }
+    }
+
     case 'read_document': {
       const outcome = await executeTool(
         editor,
         { id: 'mcp', name: 'get_document_context', input: {} },
+        numIdsFor(ctx),
+      )
+      if (outcome.isError) throw new Error(mcpErrorText(outcome.output))
+      return { text: outcome.output }
+    }
+
+    case 'read_blocks': {
+      const input = (payload ?? {}) as ReadBlocksInput
+      // The shared executor enforces the range, the read cap and the paging
+      // offset, and marks the document seen on success — the same freshness
+      // baseline read_document establishes for index-addressed writes.
+      const outcome = await executeTool(
+        editor,
+        {
+          id: 'mcp',
+          name: 'read_blocks',
+          input: {
+            startBlockIndex: input.startBlockIndex,
+            endBlockIndex: input.endBlockIndex,
+            ...(input.offset === undefined ? {} : { offset: input.offset }),
+          },
+        },
         numIdsFor(ctx),
       )
       if (outcome.isError) throw new Error(mcpErrorText(outcome.output))

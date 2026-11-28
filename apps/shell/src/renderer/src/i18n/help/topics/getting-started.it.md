@@ -1,6 +1,6 @@
 # Avvio rapido: l'interfaccia e le basi
 
-GenOffice è una suite per ufficio che funziona sulla tua macchina: una sola finestra, una fila di schede, con otto editor — Docs (elaborazione testi), Sheets (fogli di calcolo), Slides (presentazioni), PDF, Markdown e testo semplice, HTML, HWP/HWPX (documenti Hangul) e mappe mentali (.xmind). Ogni editor apre e salva i file nel proprio formato: .docx, .xlsx, .pptx, .pdf, .md, .html, .hwp/.hwpx e .xmind. Per modificare non serve la rete; per le funzioni di IA sì.
+GenOffice è una suite per ufficio che funziona sulla tua macchina: una sola finestra, una fila di schede, con otto editor — Docs (elaborazione testi), Sheets (fogli di calcolo), Slides (presentazioni), PDF, Markdown e testo semplice, HTML, HWP/HWPX (documenti Hangul) e mappe mentali (.xmind). Ogni editor apre e salva i file nel proprio formato: .docx, .xlsx, .pptx, .pdf, .md, .html, .hwp/.hwpx e .xmind. Per modificare non serve la rete; per le funzioni di IA sì. L’editor di mappe mentali importa anche i file FreeMind e Freeplane (.mm) come nuove mappe, salvate come .xmind.
 
 ## Panoramica dell'interfaccia
 
@@ -38,7 +38,7 @@ I file .odt (testo OpenDocument, il formato salvato da Hancom Office, LibreOffic
 ## Il modello di salvataggio
 
 - **Salvataggio manuale**: ⌘S/ctrl+S, oppure File ▸ Salva / Salva con nome…. Al primo salvataggio ti verranno richiesti percorso e nome.
-- **Il salvataggio automatico** si attiva solo dopo che hai salvato il file manualmente almeno una volta — un PDF che hai soltanto letto non viene mai riscritto di nascosto. Il salvataggio automatico interviene poco dopo che il contenuto è cambiato.
+- **Il salvataggio automatico** segue l’interruttore di ogni editor (e il valore predefinito dell’app). Un PDF che hai soltanto letto non viene mai riscritto di nascosto, e un nuovo documento senza file proprio inizia a salvarsi automaticamente dopo il primo salvataggio.
 - Se chiudi una scheda con modifiche non salvate, ti viene prima chiesto di scegliere tra Salva / Scarta / Annulla.
 - Ogni scrittura è atomica (file temporaneo + rinomina), così un'interruzione di corrente non può lasciare metà file.
 

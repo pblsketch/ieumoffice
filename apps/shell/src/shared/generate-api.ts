@@ -14,7 +14,7 @@ import type { Lang } from '@genoffice/i18n'
 export type GenerateMode = 'ai' | 'convert'
 
 /** what the AI can make; each is a new untitled tab of that editor */
-export const AI_TARGET_KINDS = ['slides', 'html', 'mindmap'] as const
+export const AI_TARGET_KINDS = ['slides', 'html', 'mindmap', 'whiteboard'] as const
 export type AiTargetKind = (typeof AI_TARGET_KINDS)[number]
 
 /**
@@ -26,6 +26,7 @@ export const CONVERT_KINDS = [
   'mindmap-to-markdown',
   'mindmap-to-slides',
   'markdown-to-mindmap',
+  'whiteboard-to-markdown',
 ] as const
 export type ConvertKind = (typeof CONVERT_KINDS)[number]
 
@@ -47,6 +48,7 @@ export const CONVERT_TARGETS = {
   'mindmap-to-markdown': 'markdown',
   'mindmap-to-slides': 'slides',
   'markdown-to-mindmap': 'mindmap',
+  'whiteboard-to-markdown': 'markdown',
 } as const satisfies Record<ConvertKind, 'markdown' | 'slides' | 'mindmap'>
 
 /**
@@ -120,6 +122,8 @@ export interface GenerateWindowState {
   failure: 'make' | 'save' | 'convert' | null
   /** with `failure: 'convert'`: why nothing was converted */
   convertProblem: ConvertProblem | null
+  /** optional slides-only toggle (default false): keep slide text brief and place details in speaker notes */
+  speakerNotesSeparate: boolean
   limits: {
     maxMaterials: number
     maxMaterialMb: number
@@ -134,6 +138,7 @@ export const GENERATE_CHANNELS = {
   getState: 'generate:get-state',
   getTheme: 'generate:get-theme',
   setKind: 'generate:set-kind',
+  setSpeakerNotesSeparate: 'generate:set-speaker-notes-separate',
   /** a conversion without AI (8.6), or null for back to the AI kinds */
   setConvert: 'generate:set-convert',
   addMaterials: 'generate:add-materials',
@@ -155,6 +160,7 @@ export interface GenerateWindowApi {
   onThemeChanged(handler: (theme: 'light' | 'dark' | 'system') => void): () => void
   getTheme(): Promise<'light' | 'dark' | 'system'>
   setKind(kind: AiTargetKind): Promise<void>
+  setSpeakerNotesSeparate(enabled: boolean): Promise<void>
   /** choose a conversion without AI (8.6); null goes back to the AI kinds */
   setConvert(kind: ConvertKind | null): Promise<void>
   /** file picker in the main process; picked files join the list */
@@ -174,3 +180,16 @@ export interface GenerateHomeApi {
   /** the Starred view's group: every file in it */
   openWithGroup(group: string): Promise<void>
 }
+
+/**
+ * The editor choice as the generate window reads it. The window's preload may
+ * not import the shared choice bridge: a module two preloads import is split
+ * into a chunk a sandboxed preload cannot load (the window comes up blank).
+ * These equal `APP_CHOICE_CHANNELS.get` / `.changed` and `APP_CHOICE_BRIDGE_KEY`
+ * in @genoffice/electron-utils/app-choice (a test keeps them in step).
+ */
+export const GENERATE_CHOICE = {
+  get: 'app:get-editor-choice',
+  changed: 'app:editor-choice-changed',
+  bridgeKey: 'aiOfficeEditorChoice',
+} as const

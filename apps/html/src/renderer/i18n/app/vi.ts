@@ -1,6 +1,34 @@
 import type { zh } from './zh'
 
 export const vi = {
+  mathInsert: 'Chèn công thức',
+  mathEdit: 'Sửa công thức',
+  mathHelp: 'Nhập trực quan hoặc sửa LaTeX. HTML giữ mã nguồn để chỉnh sửa sau.',
+  mathVisualInput: 'Nhập công thức trực quan',
+  mathSource: 'Mã nguồn LaTeX',
+  mathDisplay: 'Hiển thị trên dòng riêng',
+  mathPreview: 'Xem trước',
+  mathUnsupported: 'Không thể hiển thị biểu thức này. Mã nguồn sẽ được lưu để sửa sau.',
+  mathTooLong: 'Dùng tối đa {n} ký tự.',
+  mathStale: 'Tài liệu đã thay đổi. Sao chép bản nháp, đóng cửa sổ này rồi mở lại công thức.',
+  mathShortcut: '⌘+Enter để áp dụng',
+  mathApply: 'Áp dụng công thức',
+  mathKeyboard: 'Bàn phím toán học',
+  mathFraction: 'Phân số',
+  mathRoot: 'Căn bậc hai',
+  mathNthRoot: 'Căn bậc n',
+  mathPower: 'Lũy thừa',
+  mathSubscript: 'Chỉ số dưới',
+  mathSum: 'Tổng',
+  mathProduct: 'Tích',
+  mathIntegral: 'Tích phân',
+  mathLimit: 'Giới hạn',
+  mathMatrix: 'Ma trận',
+  mathVector: 'Vectơ',
+  mathCases: 'Hệ phương trình',
+  mathPiecewise: 'Hàm từng phần',
+  mathBinomial: 'Hệ số nhị thức',
+
   redactMenuLabel: 'Ẩn phần đã chọn khỏi AI',
   redactDialogDesc:
     'Văn bản vẫn còn trong tài liệu và tệp; mô hình chỉ thấy placeholder bên dưới. Đặt tên để mô hình biết nó đại diện cho điều gì.',
@@ -17,6 +45,10 @@ export const vi = {
   saveFailedStatus: 'Lưu thất bại',
   exportFailed: 'Xuất thất bại',
   printFailed: 'In thất bại: {error}',
+  printRangeEmpty: 'Tài liệu này có {count} trang. Hãy nhập số trang nằm trong phạm vi đó.',
+  printPagesFailed: 'Không thể đếm số trang cần in: {error}',
+  printLayoutSaved: 'Đã lưu kết quả sắp xếp thành PDF.',
+  printLayoutSaveFailed: 'Không thể lưu PDF: {error}',
   exportHtmlSkipped: 'Đã xuất, nhưng {count} tài nguyên không thể nhúng (ví dụ {first})',
   viewPreview: 'Xem trước',
   viewSplit: 'Chia đôi',
@@ -51,7 +83,8 @@ export const vi = {
   slideThumbGo: 'Đi tới trang chiếu {n}',
   previewNeedsSave:
     'Hình ảnh và kiểu dáng có đường dẫn tương đối sẽ hiển thị trong bản xem trước sau khi tệp được lưu',
-  inspectHint: 'Nhấp vào một phần tử trong bản xem trước để chọn, nhấp đúp để chỉnh sửa văn bản',
+  inspectHint:
+    'Nhấp vào một phần tử trong bản xem trước để chọn, nhấp đúp để chỉnh sửa văn bản, Shift+nhấp hoặc {alt}+kéo để chọn nhiều phần tử',
   nodeDynamic:
     'Phần tử này được tạo bởi tập lệnh trang và không có mã nguồn; hãy chỉnh sửa qua mã nguồn hoặc AI',
   nodeDynamicShort: 'tạo bởi tập lệnh',
@@ -101,6 +134,7 @@ export const vi = {
   alignLeft: 'Căn trái',
   alignCenter: 'Căn giữa',
   alignRight: 'Căn phải',
+  alignJustify: 'Căn đều',
   fontSizeDec: 'Giảm cỡ chữ',
   fontSizeInc: 'Tăng cỡ chữ',
   typography: 'Kiểu chữ',

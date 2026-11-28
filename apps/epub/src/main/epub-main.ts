@@ -24,9 +24,20 @@
  */
 import { randomBytes } from 'node:crypto'
 import { existsSync } from 'node:fs'
-import { readFile } from 'node:fs/promises'
-import { basename, dirname, extname, join } from 'node:path'
-import { BrowserWindow, WebContentsView, app, dialog, ipcMain, protocol, shell } from 'electron'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { basename, dirname, extname, join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import {
+  BrowserWindow,
+  WebContentsView,
+  app,
+  dialog,
+  ipcMain,
+  protocol,
+  session,
+  shell,
+} from 'electron'
 import type { WebContents } from 'electron'
 import {
   DOCX_MEDIA_SCHEME_PRIVILEGE,
@@ -34,6 +45,7 @@ import {
   RENDERER_SCHEME_PRIVILEGE,
   confirmOverwriteIfConflicted,
   contextMenuLabels,
+  documentsDirOrFallback,
   installContextMenu,
   installNavigationGuard,
   installRendererProtocol,
@@ -44,12 +56,16 @@ import {
 } from '@genoffice/electron-utils'
 import type { SaveDiskState } from '@genoffice/electron-utils'
 import { getUiLang, normalizeLang, setUiLang } from '@genoffice/i18n'
-import { buildTranslatedEpub, epubTranslationUnits } from '@genoffice/epub-engine'
+import { buildTranslatedEpub, epubTranslationUnits, openEpub } from '@genoffice/epub-engine'
 import { ResultStore } from '@genoffice/pdf-structure/store'
+import { registerAiJob } from '@genoffice/electron-utils/ai-activity'
+import { aiRunRefusal } from '@genoffice/electron-utils/ai-run-guard'
+import { aiFeaturesOn } from '@genoffice/electron-utils/app-choice'
 import { registerEpubAiIpc } from './ai-attachments'
 import { EPUB_ASSET_SCHEME_PRIVILEGE, serveEpubAsset } from './asset-protocol'
 import { atomicWriteFile } from './atomic-write'
 import { EpubBookSession } from './book-session'
+import { buildEpubPrintHtml } from './epub-headless'
 import { tm } from './i18n-main'
 import { createReadingState, readPositionOf } from './reading-state'
 import type { ReadingState } from './reading-state'
@@ -57,6 +73,7 @@ import { checkResultPath, pathKey, samePath } from './result-paths'
 import { saveBook } from './save-pipeline'
 import type { MigrateJobRecords } from './save-pipeline'
 import { createEpubStoreHandlers } from './store-handlers'
+import { AI_OFF_FALLBACK, createScreenAiJobs } from './screen-ai-jobs'
 import type { EpubStoreHandlers } from './store-handlers'
 import { epubAssetBase, defaultResultName } from '../shared/asset-url'
 import { APP_CHANNELS, EPUB_ASSET_SCHEME, EPUB_CHANNELS } from '../shared/ipc'
@@ -126,6 +143,8 @@ const resultTargetsByWc = new Map<number, Set<string>>()
 const closeSaveWaiters = new Map<number, (ok: boolean) => void>()
 /** Resolvers for menu-triggered saves, resolved when the renderer's save invoke completes */
 const saveWaiters = new Map<number, (ok: boolean) => void>()
+/** Each read waits for its own acknowledgement from the book's renderer. */
+const flushWaiters = new Map<number, Map<string, (result: boolean | 'composing') => void>>()
 /** The save running for each view; the next one waits for it */
 const saveChainByWc = new Map<number, Promise<EpubSaveResult>>()
 
@@ -164,8 +183,8 @@ function isPathOpenInTab(path: string): boolean {
 // ── Split-copy save guard (decision 0036), as in the other editors ──
 const docDiskStates = new Map<number, Map<string, SaveDiskState>>()
 
-async function rememberDiskState(wcId: number, path: string): Promise<void> {
-  const state = await recordDiskState(path)
+async function rememberDiskState(wcId: number, path: string, read?: Uint8Array): Promise<void> {
+  const state = await recordDiskState(path, read)
   if (!state) return
   const states = docDiskStates.get(wcId) ?? new Map<string, SaveDiskState>()
   states.set(path, state)
@@ -345,6 +364,37 @@ export async function epubReadText(contents: WebContents): Promise<string> {
   if (contents.isDestroyed()) throw new Error('the book is no longer open')
   const session = sessionByWc.get(contents.id)
   if (!session) throw new Error('the file did not open, so there is no book to read')
+  await new Promise<void>((resolve, reject) => {
+    const requestId = randomBytes(16).toString('hex')
+    const waiters =
+      flushWaiters.get(contents.id) ?? new Map<string, (result: boolean | 'composing') => void>()
+    flushWaiters.set(contents.id, waiters)
+    const finish = (error?: string): void => {
+      clearTimeout(timer)
+      waiters.delete(requestId)
+      if (waiters.size === 0) flushWaiters.delete(contents.id)
+      if (error) reject(new Error(error))
+      else resolve()
+    }
+    const timer = setTimeout(() => finish('timed out flushing the book'), 10_000)
+    waiters.set(requestId, (result) =>
+      finish(
+        result === true
+          ? undefined
+          : result === 'composing'
+            ? 'typing in progress, try again shortly'
+            : 'could not flush the book',
+      ),
+    )
+    try {
+      contents.send(EPUB_CHANNELS.flushRequest, requestId)
+    } catch {
+      finish('could not flush the book')
+    }
+  })
+  if (contents.isDestroyed() || sessionByWc.get(contents.id) !== session) {
+    throw new Error('the book is no longer open')
+  }
   return session.readText()
 }
 
@@ -407,7 +457,7 @@ async function resolveSaveTarget(
   if (mode === 'save' && current) return current
   const defaultPath = current
     ? join(dirname(current), basename(current))
-    : join(app.getPath('documents'), `book${BOOK_EXTENSION}`)
+    : join(documentsDirOrFallback(app), `book${BOOK_EXTENSION}`)
   const picked = await showSaveDialogWithMemory(dialog, parentOf(contents), {
     title: tm('dlgSaveTitle'),
     defaultPath,
@@ -519,10 +569,22 @@ async function writeTranslated(
   if (typeof request !== 'object' || request === null) {
     return { ok: false, error: 'invalid-request', message: 'request must be an object' }
   }
-  const { kind, lang, chapters: rawChapters, path, docHash } = request as Record<string, unknown>
+  const {
+    kind,
+    lang,
+    mode,
+    chapters: rawChapters,
+    path,
+    docHash,
+  } = request as Record<string, unknown>
   if (kind !== 'translated' && kind !== 'bilingual') {
     return { ok: false, error: 'invalid-request', message: 'bad kind' }
   }
+  // left out it is a translation, as before; 'easy' builds the easy explanation's book
+  if (mode !== undefined && mode !== 'translate' && mode !== 'easy') {
+    return { ok: false, error: 'invalid-request', message: 'bad mode' }
+  }
+  const easy = mode === 'easy'
   if (typeof lang !== 'string' || !LANGUAGE_TAG.test(lang) || lang.length > 128) {
     return { ok: false, error: 'invalid-request', message: 'bad language' }
   }
@@ -541,12 +603,15 @@ async function writeTranslated(
   }
   const bytes = session.bytes
   try {
-    const stored = await store().readTranslation(docHash, lang)
+    const stored = easy
+      ? await store().readTranslation(docHash, lang, 'easy')
+      : await store().readTranslation(docHash, lang)
     const built = await buildTranslatedEpub(bytes, {
       kind,
       lang,
       ...(chapters ? { chapters } : {}),
       results: stored?.blocks ?? new Map(),
+      ...(easy ? { mode: 'easy' as const } : {}),
     })
     if (!built.ok)
       return { ok: false, error: 'refused', message: `${built.reason}: ${built.detail}` }
@@ -565,6 +630,15 @@ async function writeTranslated(
 
 let ipcRegistered = false
 let storeHandlers: EpubStoreHandlers | null = null
+
+/** the screens' book translations on the shell's list of running AI work */
+const screenAiJobs = createScreenAiJobs({
+  aiOn: aiFeaturesOn,
+  // the shell's refusal of a screen's AI run while AI is turned off (Settings)
+  refusal: (senderId) => aiRunRefusal({ senderId, provider: '', model: '' }) ?? AI_OFF_FALLBACK,
+  register: registerAiJob,
+  stopChannel: EPUB_CHANNELS.aiJobStop,
+})
 
 function registerEpubIpc(): void {
   if (ipcRegistered) return
@@ -601,7 +675,7 @@ function registerEpubIpc(): void {
       }
       session = opened.session
       sessionByWc.set(wcId, session)
-      await rememberDiskState(wcId, path)
+      await rememberDiskState(wcId, path, bytes)
     }
     // Seen open, here: only now is the path a save target.
     unopenedByWc.delete(wcId)
@@ -679,6 +753,13 @@ function registerEpubIpc(): void {
   ipcMain.on(EPUB_CHANNELS.dirtyChanged, (e, dirty: unknown) => {
     if (dirty === true && mayWrite(e.sender.id)) rendererDirtyByWc.add(e.sender.id)
     else rendererDirtyByWc.delete(e.sender.id)
+  })
+
+  ipcMain.on(EPUB_CHANNELS.flushResult, (e, requestId: unknown, result: unknown) => {
+    if (typeof requestId !== 'string') return
+    flushWaiters.get(e.sender.id)?.get(requestId)?.(
+      result === 'composing' ? result : result === true,
+    )
   })
 
   ipcMain.on(EPUB_CHANNELS.closeSaveResult, (e, ok: unknown) => {
@@ -776,11 +857,13 @@ function registerEpubIpc(): void {
     store,
     knows: (owner, docHash) => knownHashesByWc.get(owner)?.has(docHash) === true,
   }))
-  ipcMain.handle(EPUB_CHANNELS.storeTranslations, (e, docHash: unknown) =>
-    handlers.translations(e.sender.id, docHash),
+  ipcMain.handle(EPUB_CHANNELS.storeTranslations, (e, docHash: unknown, mode: unknown) =>
+    handlers.translations(e.sender.id, docHash, mode),
   )
-  ipcMain.handle(EPUB_CHANNELS.storeTranslation, (e, docHash: unknown, lang: unknown) =>
-    handlers.translation(e.sender.id, docHash, lang),
+  ipcMain.handle(
+    EPUB_CHANNELS.storeTranslation,
+    (e, docHash: unknown, lang: unknown, mode: unknown) =>
+      handlers.translation(e.sender.id, docHash, lang, mode),
   )
   ipcMain.handle(EPUB_CHANNELS.storeUnfinishedJobs, (e, docHash: unknown) =>
     handlers.unfinishedJobs(e.sender.id, docHash),
@@ -789,8 +872,14 @@ function registerEpubIpc(): void {
     handlers.write(e.sender.id, request),
   )
 
+  // a book translation begins and ends (the screen runs it; refused while AI is off)
+  ipcMain.handle(EPUB_CHANNELS.aiJobBegin, (e, jobId: unknown) =>
+    screenAiJobs.begin(e.sender, jobId),
+  )
+  ipcMain.on(EPUB_CHANNELS.aiJobEnd, (e, jobId: unknown) => screenAiJobs.end(e.sender.id, jobId))
+
   // the AI panel's attachments
-  registerEpubAiIpc()
+  registerEpubAiIpc({ filePathOf: (wcId) => savePathByWc.get(wcId) ?? openPathByWc.get(wcId) })
 
   // Language channel shared with other modules; removeHandler tolerates duplicate registration
   ipcMain.removeHandler(APP_CHANNELS.getLanguage)
@@ -806,6 +895,8 @@ function refuseWrites(wcId: number): void {
 }
 
 function forgetView(wcId: number): void {
+  for (const waiter of flushWaiters.get(wcId)?.values() ?? []) waiter(false)
+  flushWaiters.delete(wcId)
   openPathByWc.delete(wcId)
   allowedByWc.delete(wcId)
   savePathByWc.delete(wcId)
@@ -864,6 +955,96 @@ export function createEpubView(openPath: string): WebContentsView {
   grantAndTrack(view.webContents, openPath)
   void view.webContents.loadURL(epubRendererUrl())
   return view
+}
+
+const EPUB_HEADLESS_PARTITION = 'epub-headless-export'
+let epubHeadlessBlockerInstalled = false
+const epubHeadlessPageFiles = new Set<string>()
+
+function epubHeadlessPathKey(filePath: string): string {
+  const full = resolve(filePath)
+  return process.platform === 'win32' ? full.toLowerCase() : full
+}
+
+function epubHeadlessSession(): Electron.Session {
+  const own = session.fromPartition(EPUB_HEADLESS_PARTITION)
+  if (!epubHeadlessBlockerInstalled) {
+    epubHeadlessBlockerInstalled = true
+    own.webRequest.onBeforeRequest((details, callback) => {
+      let allowed = /^data:/i.test(details.url)
+      if (!allowed && /^file:/i.test(details.url)) {
+        try {
+          allowed = epubHeadlessPageFiles.has(epubHeadlessPathKey(fileURLToPath(details.url)))
+        } catch {
+          allowed = false
+        }
+      }
+      callback({ cancel: !allowed })
+    })
+  }
+  return own
+}
+
+/**
+ * Dialog-free PDF export for `.epub` files: parses the archive with
+ * `@genoffice/epub-engine`, builds a self-contained offline HTML print view,
+ * and renders it to A4 PDF in an isolated, script-free hidden window.
+ */
+export async function exportEpubPdfHeadless(
+  input: string,
+  outPath: string,
+  timeoutMs = 180_000,
+): Promise<void> {
+  const raw = await readFile(input)
+  const bytes = new Uint8Array(raw.buffer, raw.byteOffset, raw.byteLength)
+  const opened = await openEpub(bytes)
+  if (!opened.ok) {
+    throw new Error(`epub did not open (${opened.reason}): ${opened.detail}`)
+  }
+  const html = await buildEpubPrintHtml(opened.book)
+  const workDir = await mkdtemp(join(tmpdir(), 'genoffice-epub-pdf-'))
+  const htmlPath = join(workDir, 'book.html')
+  const key = epubHeadlessPathKey(htmlPath)
+  epubHeadlessPageFiles.add(key)
+  let win: BrowserWindow | undefined
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    await writeFile(htmlPath, html, 'utf8')
+    win = new BrowserWindow({
+      show: false,
+      width: 900,
+      height: 1200,
+      autoHideMenuBar: true,
+      webPreferences: {
+        sandbox: true,
+        javascript: false,
+        session: epubHeadlessSession(),
+      },
+    })
+    const activeWin = win
+    const pdfBuffer = await new Promise<Buffer>((resolvePdf, rejectPdf) => {
+      timer = setTimeout(
+        () => rejectPdf(new Error(`epub export timed out after ${timeoutMs}ms`)),
+        timeoutMs,
+      )
+      void activeWin
+        .loadFile(htmlPath)
+        .then(() =>
+          activeWin.webContents.printToPDF({
+            pageSize: 'A4',
+            printBackground: true,
+            preferCSSPageSize: true,
+          }),
+        )
+        .then(resolvePdf, rejectPdf)
+    })
+    await atomicWriteFile(outPath, pdfBuffer)
+  } finally {
+    if (timer) clearTimeout(timer)
+    if (win && !win.isDestroyed()) win.destroy()
+    epubHeadlessPageFiles.delete(key)
+    await rm(workDir, { recursive: true, force: true })
+  }
 }
 
 /** Standalone window mode: `npm run dev -w @genoffice/epub`, a book path passed via argv */

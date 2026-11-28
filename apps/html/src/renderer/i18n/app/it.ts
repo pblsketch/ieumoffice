@@ -1,6 +1,36 @@
 import type { zh } from './zh'
 
 export const it = {
+  mathInsert: 'Inserisci equazione',
+  mathEdit: 'Modifica equazione',
+  mathHelp:
+    'Scrivi visivamente o modifica LaTeX. Il codice viene salvato nel file HTML per modificarlo in seguito.',
+  mathVisualInput: 'Inserimento visivo di equazioni',
+  mathSource: 'Codice LaTeX',
+  mathDisplay: 'Mostra su una riga separata',
+  mathPreview: 'Anteprima',
+  mathUnsupported:
+    'Impossibile comporre questa espressione. Il codice sarà conservato per correggerlo in seguito.',
+  mathTooLong: 'Usa al massimo {n} caratteri.',
+  mathStale: 'Il documento è cambiato. Copia la bozza, chiudi questa finestra e riapri la formula.',
+  mathShortcut: '⌘+Invio per applicare',
+  mathApply: 'Applica equazione',
+  mathKeyboard: 'Tastiera matematica',
+  mathFraction: 'Frazione',
+  mathRoot: 'Radice quadrata',
+  mathNthRoot: 'Radice n-esima',
+  mathPower: 'Potenza',
+  mathSubscript: 'Pedice',
+  mathSum: 'Somma',
+  mathProduct: 'Prodotto',
+  mathIntegral: 'Integrale',
+  mathLimit: 'Limite',
+  mathMatrix: 'Matrice',
+  mathVector: 'Vettore',
+  mathCases: 'Sistema',
+  mathPiecewise: 'Funzione a tratti',
+  mathBinomial: 'Coefficiente binomiale',
+
   redactMenuLabel: 'Nascondi la selezione all’IA',
   redactDialogDesc:
     'Le parole restano nel documento e nel file; il modello vede solo il segnaposto. Dai un nome perché sappia cosa rappresenta.',
@@ -17,6 +47,11 @@ export const it = {
   saveFailedStatus: 'Salvataggio non riuscito',
   exportFailed: 'Esportazione non riuscita',
   printFailed: 'Stampa non riuscita: {error}',
+  printRangeEmpty:
+    'Questo documento ha {count} pagine. Inserisci numeri di pagina compresi in questo intervallo.',
+  printPagesFailed: 'Impossibile contare le pagine da stampare: {error}',
+  printLayoutSaved: 'Il risultato impaginato è stato salvato come PDF.',
+  printLayoutSaveFailed: 'Impossibile salvare il PDF: {error}',
   exportHtmlSkipped:
     'Esportato, ma {count} risorsa/e non è stato possibile incorporarle (es. {first})',
   viewPreview: 'Anteprima',
@@ -53,7 +88,7 @@ export const it = {
   previewNeedsSave:
     "Immagini e stili relativi compaiono nell'anteprima dopo il salvataggio del file",
   inspectHint:
-    "Fai clic su un elemento nell'anteprima per selezionarlo, doppio clic per modificare il testo",
+    "Fai clic su un elemento nell'anteprima per selezionarlo, doppio clic per modificare il testo, Maiusc+clic o {alt}+trascina per selezionarne più di uno",
   nodeDynamic:
     "Questo elemento è stato creato dallo script della pagina e non esiste nel sorgente; modificalo dal sorgente o con l'IA",
   nodeDynamicShort: 'generato da script',
@@ -103,6 +138,7 @@ export const it = {
   alignLeft: 'Allinea a sinistra',
   alignCenter: 'Centra',
   alignRight: 'Allinea a destra',
+  alignJustify: 'Giustifica',
   fontSizeDec: 'Riduci dimensione carattere',
   fontSizeInc: 'Aumenta dimensione carattere',
   typography: 'Tipografia',

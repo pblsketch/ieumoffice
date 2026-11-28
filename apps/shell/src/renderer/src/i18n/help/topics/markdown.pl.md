@@ -8,6 +8,7 @@ Edytor Markdown otwiera .md / .markdown — oraz .txt / .json, od razu w widoku 
 - **Zapisywanie**: wierne bajt w bajt — znacznik BOM, znaki CRLF i obecność pustej linii na końcu są zachowywane; zapis bez zmian nie przepisuje pliku.
 - **Znajdź i zamień**: ctrl+F przeszukuje źródło; Zastąp wszystko zapisuje wynik.
 - **AI**: gotowe przyciski pozwalają asystentowi przepisać, rozbudować lub przetłumaczyć dokument. Zaznaczenie można ukryć przed AI (patrz rozdział o panelu AI).
+- **Otwieranie linków**: podczas edycji Ctrl+kliknięcie linku (⌘ na Macu) otwiera go w przeglądarce; zwykłe kliknięcie ustawia kursor w tekście linku, aby można go było edytować. W trybie prezentacji (F5) link otwiera zwykłe kliknięcie.
 
 ## Pasek narzędzi
 
@@ -36,6 +37,7 @@ Menu Plik — wszystko lokalne i wszystko pyta, gdzie umieścić wynik:
 
 - **Eksportuj jako Word…** i **Eksportuj jako PDF…** zapisują prawdziwy plik .docx lub .pdf.
 - **Eksportuj jako ODT…** zapisuje plik .odt (tekst OpenDocument) tą samą konwersją co eksport do Worda; jeśli coś się po drodze zmieni lub przepadnie, zobaczysz listę i najpierw to potwierdzisz.
+- **Eksportuj jako dokument HWP…** zapisuje dokument HWP (.hwp lub .hwpx) za pomocą tej samej konwersji; nagłówki, listy i tabele trafiają do dokumentu HWP jako takie, a długa tabela jest kontynuowana na następnej stronie. Jeśli czegoś nie da się przenieść, najpierw zobaczysz listę i ją potwierdzisz.
 - **Eksportuj jako obrazy…** zapisuje po jednym PNG na stronę w katalogu, który wybierzesz.
 - **Konwertuj i otwórz w Docs** konwertuje do .docx i otwiera go we wbudowanej karcie Docs tutaj w aplikacji — to nie jest przekazanie czegokolwiek do chmury, a przekonwertowana kopia leży w folderze pamięci podręcznej, który jest czyszczony po około tygodniu.
 
@@ -43,6 +45,7 @@ Menu Plik — wszystko lokalne i wszystko pyta, gdzie umieścić wynik:
 
 Wstążka zawiera przełącznik **Źródło** (z lokalizacją razem z aplikacją). Włącz go, a edytor zostanie zastąpiony surowym Markdownem: dokładnie ten tekst, który zapisuje zapisywanie, nic nie jest ładniejsze, nic nie jest normalizowane w tle.
 
+- **Klawiatura**: Ctrl+E (⌘E na Macu) przełącza między widokiem źródła a renderowanym ekranem edycji. Naciśnij F5, aby czytać na pełnym ekranie.
 - **Edycja wierna bajtom.** Zapis z widoku źródła daje te same bajty co zapis z edytora — BOM, CRLF i obecność końcowego znaku nowej linii zostają zachowane.
 - **To ten sam dokument.** Przełączaj się swobodnie; źródło to własny tekst edytora, a nie kopia wymagająca scalenia.
 - **Pasek narzędzi formatowania je niedostępny** podczas jej otwarcia, bo większość tych przycisków wstawia konstrukcje edytora, które mają sens tylko po wyrenderowaniu. Wraca po zamknięciu widoku.

@@ -13,7 +13,9 @@
  * fetch so tests never reach the providers.
  */
 import { createHash, randomBytes } from 'node:crypto'
-import { createServer } from 'node:http'
+// node:http is imported where a server starts: on Node 22 a static ESM import of
+// it evaluates its WebSocket getter, which compiles undici's WebAssembly parser,
+// and the command line reaches this module through the ChatGPT sign-in.
 import type { IncomingMessage, Server, ServerResponse } from 'node:http'
 import { aiFetch } from './fetch'
 import { GEMINI_FREE_MODEL, OPENROUTER_FREE_MODELS } from './free-ai'
@@ -152,6 +154,7 @@ async function waitForCode(
   }
 
   try {
+    const { createServer } = await import('node:http')
     const primary = createServer(handle)
     servers.push(primary)
     const port = await listen(primary, 0, '127.0.0.1')

@@ -4,38 +4,90 @@ import {
   CREATE_DOCUMENT_TOOL,
   USE_SKILL_TOOL,
   USER_SKILL_TOOL_NAMES,
-  composeSkills,
+  composeWithGuards,
   createDocumentSkill,
   createIpcTransport,
   createKnowledgeBaseSkill,
+  type AgentMessage,
+  type AgentToolCall,
+  type AgentTransport,
   type CreateDocumentFormat,
   type KbFileInfo,
+  type ToolExecution,
+  windowMcpState,
+  windowMcpUsableServers,
 } from '@genoffice/agent-core'
 import {
+  AiAssistantBody,
   AiBlockedNotice,
   AiComposer,
   AiConnectPrompt,
-  AiTypingIndicator,
+  AiNextSteps,
+  AiQuestionCard,
+  AiQuestionReceipt,
+  isQuestionToolActivity,
+  AiToolsUnsupportedNotice,
+  AiReplyProgress,
   AiUsageChip,
+  useAiInlineQuestions,
   addTokenUsage,
+  aiContextConfirmText,
   aiRunErrorText,
+  aiSendGate,
   aiSubscriptionText,
+  consolidateProjectMemory,
   createFileNav,
-  Markdown,
+  McpPermissionCard,
+  McpServerButton,
+  useMcpWindow,
   NO_SKILL_USE,
+  ProjectChatMenu,
+  ProjectFolderHintLine,
+  ProjectMemoryConsolidatedLine,
+  ProjectMemoryEventLine,
+  memoryLineGone,
+  memoryRemoveOutcome,
+  type ProjectMemoryRemoveOutcome,
+  ProjectNoticeLine,
+  ProjectNoticeList,
+  ProjectPicker,
+  ProjectToolSummaryLine,
+  ProjectProblemLine,
+  placeRemoteEntries,
+  projectAddProblem,
+  projectPanelText,
+  type ProjectProblem,
   SentSkillChips,
+  panelProjectSkill,
   panelUserSkills,
+  undoProjectMemoryConsolidation,
   useComposerSkills,
+  useProjectChat,
   useSkillProposals,
   useSkillTemplates,
   type AiTokenUsageView,
+  type ProjectChatEntry,
+  type ProjectChatOpened,
+  type ProjectMemoryLine,
   type SkillChipRef,
   type SkillUse,
+  type TextQuestionCardState,
 } from '@genoffice/ui'
+import type {
+  AddFolderResult,
+  CreateProjectResult,
+  ProjectEditor,
+  ProjectId,
+  ProjectListItem,
+  ProjectNotice,
+  ToolActivity,
+} from '@genoffice/project-store'
 import type { AiSettings } from '@genoffice/ai-provider'
 import {
   AI_SUBSCRIPTION_PROVIDERS,
   isSubscriptionProvider,
+  localContextLimit,
+  localModelCapabilities,
   selectAiProvider,
   type AiSubscriptionProviderId,
 } from '@genoffice/ai-provider/browser'
@@ -46,6 +98,19 @@ import {
   withContinuedProvider,
   type AskBlockedRun,
 } from './kb-ask-connection'
+import {
+  askScopeFailure,
+  isProjectTool,
+  notesAfterCreate,
+  openAskScope,
+  projectToolNote,
+  startedToolNote,
+  storedToolNotes,
+  toolRecordOf,
+  type AskToolLabels,
+  type ToolNote,
+} from './kb-ask-project'
+import { kbAskProjectText } from './kb-ask-project-strings'
 import { useI18n } from './locale'
 import { changeAiSettings } from './settings-ai'
 import type { SubscriptionConnection } from './subscription-client'
@@ -62,20 +127,19 @@ import sendStop from './assets/send-stop.png'
  * nav), so answers cite the folder and file they came from and clicking a
  * citation opens that file in the app that owns it.
  *
- * The conversation lives in memory only; it does not survive a restart (the
- * editor panels persist through project-store — wiring that here is a
- * deliberate later step, not an oversight). An empty corpus gets an
- * onboarding hero instead of a bare hint: the only useful move there is
- * going to Recents and starring files, so the panel says so and offers the
- * jump as a button.
+ * Without a project the conversation lives in memory only; it does not
+ * survive a restart. With a project chosen under the composer (spec 5.2,
+ * 5.3.8) the chat is kept in that folder through the shared project chat
+ * hook, the [chat ▾] menu appears in the head bar, and a run reads the
+ * project folder plus the starred scope chosen above (spec 5.5). Going back
+ * to "No project" brings back the in-memory chat that was there before.
+ * An empty corpus gets an onboarding hero instead of a bare hint: the only
+ * useful move there is going to Recents and starring files, so the panel
+ * says so and offers the jump as a button.
  */
 
-/** one tool a turn used, badge-shaped; the icon follows the call name */
-interface ToolNote {
-  label: string
-  /** 'skill': "<title> skill used"; 'create': a new document was made */
-  kind: 'search' | 'read' | 'skill' | 'create'
-}
+/** the editor id the home ask records its project chats under */
+const HOME_EDITOR: ProjectEditor = 'home'
 
 interface AskMessage {
   role: 'user' | 'assistant'
@@ -87,6 +151,8 @@ interface AskMessage {
   usage?: AiTokenUsageView
   /** the "save as" buttons' outcome for this answer */
   saved?: { path: string; name: string } | { error: string } | 'saving'
+  /** the answer's document was saved into the chosen project's folder: no "save as" buttons */
+  createdInProject?: boolean
   /** the run stopped because its connection cannot go on: shown as the blocked notice */
   blocked?: AskBlockedRun
   /** the reason as the transport worded it, for a kind the notice has no text of its own for */
@@ -95,6 +161,62 @@ interface AskMessage {
   skills?: SkillChipRef[]
   /** skill cards the model proposed in this answer (keys of useSkillProposals) */
   skillProposals?: string[]
+  /** "remembered / changed / removed" lines of a project chat (spec 5.6) */
+  memory?: ProjectMemoryLine[]
+  /** tools another editor ran for this message: one summary line, never expanded (spec 5.3.2) */
+  otherTools?: { editor: ProjectEditor; fileRef?: string; count: number }
+  /** read back from a saved chat: its question cards are read-only */
+  restored?: boolean
+  /** the question card calls of a saved answer, drawn as read-only cards */
+  questions?: ToolActivity[]
+}
+
+/** a question card call keeps its input and output up to the store's own cut (question card spec 5.1) */
+const QUESTION_TOOL_FIELD_MAX_CHARS = 16_000
+
+/** a tool call's input as the chat keeps it (undefined when it cannot be written out) */
+function toolInputText(input: unknown): string | undefined {
+  if (input === undefined || input === null) return undefined
+  try {
+    const text = typeof input === 'string' ? input : JSON.stringify(input)
+    return text ? text.slice(0, QUESTION_TOOL_FIELD_MAX_CHARS) : undefined
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * One tool record of a run as the project chat keeps it: a question card call
+ * also keeps its input and output, so the chat opened again draws its card;
+ * every other tool is kept as `toolRecordOf` says.
+ */
+function askToolRecordOf(call: AgentToolCall, execution: ToolExecution): ToolActivity {
+  const record = toolRecordOf(call, execution)
+  if (!isQuestionToolActivity(call)) return record
+  const input = toolInputText(call.input)
+  return {
+    ...record,
+    ...(input !== undefined ? { input } : {}),
+    ...(execution.output
+      ? { output: execution.output.slice(0, QUESTION_TOOL_FIELD_MAX_CHARS) }
+      : {}),
+  }
+}
+
+/** the in-memory chat set aside while a project chat is shown */
+interface MemoryChat {
+  messages: AskMessage[]
+  model: AgentMessage[]
+  /** its answered text-block cards, so they stay answered when it shows again */
+  textCards: Record<string, TextQuestionCardState>
+}
+
+/** a person-triggered memory consolidation that went through ("N → M [undo]") */
+interface ConsolidatedMemory {
+  projectId: ProjectId
+  before: number
+  after: number
+  backupName: string
 }
 
 export function KbAskPanel({
@@ -104,6 +226,7 @@ export function KbAskPanel({
   aiSettings,
   noticeDue,
   onOpenAiSettings,
+  openChatRequest,
 }: {
   onOpenPath: (path: string) => void
   onGoToRecents: () => void
@@ -115,10 +238,18 @@ export function KbAskPanel({
   noticeDue: boolean
   /** open Settings on its AI section, where a connection is made */
   onOpenAiSettings: () => void
+  /**
+   * A project chat the home project screen asked to open here (main handed
+   * it to the home window, see ProjectsPanel); `seq` bumps on every request.
+   */
+  openChatRequest?: { projectId: ProjectId; chatId: ProjectId; seq: number } | null
 }): React.JSX.Element {
   const { t, lang } = useI18n()
   const [messages, setMessages] = useState<AskMessage[]>([])
   const [draft, setDraft] = useState('')
+  const inlineQuestions = useAiInlineQuestions()
+  const textCardStatesRef = useRef(inlineQuestions.textCardStates)
+  textCardStatesRef.current = inlineQuestions.textCardStates
   const [busy, setBusy] = useState(false)
   const [corpusCount, setCorpusCount] = useState<number | null>(null)
   const corpusRef = useRef<KbFileInfo[]>([])
@@ -135,9 +266,12 @@ export function KbAskPanel({
   const [connectAsked, setConnectAsked] = useState(false)
   /** a question sent while the connection was still being checked: it waits for the answer */
   const heldRef = useRef<string | null>(null)
+  /** this window's MCP servers (user MCP spec 7.5); the chips name the ones not usable now */
+  const mcpWindow = useMcpWindow()
   /** the skills called with `/` or `$` in the composer, and the text a question gets for them */
   const skills = useComposerSkills({
     lang,
+    usableMcpServers: mcpWindow.state?.usableServers(),
     // a chip whose skill has a template opens its copy in a new tab (spec 9.7)
     onTemplateSkill: (request) => skillTemplatesRef.current.onTemplateSkill(request),
   })
@@ -176,6 +310,133 @@ export function KbAskPanel({
   const runScopeRef = useRef<string | undefined>(undefined)
   /** that scope while main still holds it open */
   const openScopeRef = useRef<string | undefined>(undefined)
+  const messagesRef = useRef(messages)
+  messagesRef.current = messages
+  const aiSettingsRef = useRef(aiSettings)
+  aiSettingsRef.current = aiSettings
+  /** the chat transport, for the person-triggered memory consolidation */
+  const transportRef = useRef<AgentTransport | null>(null)
+  /** a run's question and answer are the last two messages and the answer is on its way */
+  const runActiveRef = useRef(false)
+  /** the answer text and tool records of the run in flight, for the project chat */
+  const runTextRef = useRef('')
+  const runToolsRef = useRef<ToolActivity[]>([])
+  /** a project (or earlier) chat is shown, not the in-memory one */
+  const showingProjectRef = useRef(false)
+  /** the in-memory chat set aside while a project chat is shown */
+  const memoryChatRef = useRef<MemoryChat | null>(null)
+  /** the project list for the picker, refreshed when it opens */
+  const [projects, setProjects] = useState<ProjectListItem[]>([])
+  const projectsRef = useRef(projects)
+  projectsRef.current = projects
+  const [defaultParentFolder, setDefaultParentFolder] = useState<string | undefined>(undefined)
+  /** what the last send of the chosen project brought up (changed, long, cut, sync folder) */
+  const [projectNotices, setProjectNotices] = useState<ProjectNotice[]>([])
+  /** a write into the project failed outside the chat records (consolidation, a send's context) */
+  const [unwritableNotice, setUnwritableNotice] = useState(false)
+  const [consolidated, setConsolidated] = useState<ConsolidatedMemory | null>(null)
+  const [consolidating, setConsolidating] = useState(false)
+  const [consolidateFailed, setConsolidateFailed] = useState(false)
+  /** what the person asked for in the picker that did not happen (a refused folder, …) */
+  const [projectProblem, setProjectProblem] = useState<ProjectProblem | null>(null)
+
+  const toolLabels = (): AskToolLabels => ({
+    search: t('askToolSearch'),
+    read: t('askToolRead'),
+    create: t('askToolCreate'),
+  })
+
+  const askMessageOf = (entry: ProjectChatEntry): AskMessage => ({
+    role: entry.role,
+    text: entry.text,
+    toolNotes:
+      entry.role === 'assistant'
+        ? storedToolNotes(
+            entry.tools?.filter((tool) => !isQuestionToolActivity(tool)),
+            toolLabels(),
+          )
+        : [],
+    restored: true,
+    ...(entry.role === 'assistant' && entry.tools?.some(isQuestionToolActivity)
+      ? { questions: entry.tools.filter(isQuestionToolActivity) }
+      : {}),
+    ...(entry.skills && entry.skills.length > 0 ? { skills: entry.skills } : {}),
+    ...(entry.memory.length > 0 ? { memory: entry.memory } : {}),
+    ...(entry.otherEditorTools ? { otherTools: entry.otherEditorTools } : {}),
+  })
+
+  /** a run in flight belongs to the chat on screen: leaving that chat stops it */
+  const abandonRun = (): void => {
+    if (!busy && !runActiveRef.current) return
+    runActiveRef.current = false
+    askSeqRef.current++
+    loopRef.current?.cancel()
+    endRunScope()
+    void projectChatRef.current.finishSend()
+    setBusy(false)
+  }
+
+  /** the project chat hook opened a chat, or went back to "no project" */
+  const showOpenedChat = (opened: ProjectChatOpened): void => {
+    const loop = loopRef.current
+    setProjectNotices([])
+    setUnwritableNotice(false)
+    setConsolidated(null)
+    setConsolidateFailed(false)
+    setProjectProblem(null)
+    if (opened.kind === 'document') {
+      // back to the in-memory chat as it was before a project was chosen
+      if (!showingProjectRef.current) return
+      abandonRun()
+      showingProjectRef.current = false
+      const kept = memoryChatRef.current
+      memoryChatRef.current = null
+      // question cards belong to their chat: an open one answers skip, the shown chat's go
+      inlineQuestions.resetConversation()
+      for (const [key, card] of Object.entries(kept?.textCards ?? {})) {
+        inlineQuestions.markTextCard(key, card.status, card.answer)
+      }
+      setMessages(kept?.messages ?? [])
+      loop?.reset()
+      // another chat shows: no MCP choices of the one before (user MCP spec 7.6)
+      windowMcpState()?.newConversation()
+      if (kept) loop?.restore(kept.model)
+      return
+    }
+    abandonRun()
+    if (!showingProjectRef.current) {
+      memoryChatRef.current = {
+        messages: messagesRef.current,
+        model: [...(loop?.messages ?? [])],
+        textCards: textCardStatesRef.current,
+      }
+    }
+    // question cards belong to their chat: an open one answers skip, the shown chat's go
+    inlineQuestions.resetConversation()
+    showingProjectRef.current = true
+    setMessages(opened.entries.map(askMessageOf))
+    loop?.reset()
+    // another chat shows: no MCP choices of the one before (user MCP spec 7.6)
+    windowMcpState()?.newConversation()
+    loop?.restore(opened.model)
+  }
+
+  /** another window recorded a message in the open chat: shown now, ahead of a run in flight */
+  const showRemoteMessage = (entry: ProjectChatEntry): void => {
+    const message = askMessageOf(entry)
+    setMessages((prev) => placeRemoteEntries(prev, [message], runActiveRef.current))
+  }
+
+  const projectChat = useProjectChat({
+    editor: HOME_EDITOR,
+    loop: () => loopRef.current,
+    onOpen: showOpenedChat,
+    onRemoteMessage: showRemoteMessage,
+  })
+  const projectChatRef = useRef(projectChat)
+  projectChatRef.current = projectChat
+  /** the chosen project (null: no project) */
+  const projectId = projectChat.projectId
   /** the provider a question would run on right now (null until the settings are read) */
   const providerChoice = aiSettings ? selectAiProvider(aiSettings, connection.statuses) : null
   const aiConnected = providerChoice?.connected === true
@@ -242,20 +503,30 @@ export function KbAskPanel({
     const docSkill = createDocumentSkill({
       create: (request) => window.aiOffice.kbCreateDocument(request),
     })
+    const transport = createIpcTransport<AiSettings>({
+      onStream: (listener) => window.aiOffice.onAiStream(listener),
+      start: (request) => window.aiOffice.aiStream(request),
+      cancel: (requestId) => void window.aiOffice.aiStreamCancel(requestId),
+      getSettings: () => settingsRef.current as AiSettings,
+      unknownErrorText: () => t('askUnknownError'),
+      // the subscription causes are worded once for every AI surface of the suite
+      errorText: (cause) => aiRunErrorText(langRef.current, cause),
+      // a local model's window: the transport warns at 80% and asks once per run
+      contextLimit: (settings) => localContextLimit(settings),
+      confirmContext: (warning) => window.confirm(aiContextConfirmText(langRef.current, warning)),
+      onStreamError: (error) => {
+        streamErrorRef.current = askBlockedRunOf(error)
+      },
+    })
+    transportRef.current = transport
     loopRef.current = new AgentLoop({
-      transport: createIpcTransport<AiSettings>({
-        onStream: (listener) => window.aiOffice.onAiStream(listener),
-        start: (request) => window.aiOffice.aiStream(request),
-        cancel: (requestId) => void window.aiOffice.aiStreamCancel(requestId),
-        getSettings: () => settingsRef.current as AiSettings,
-        unknownErrorText: () => t('askUnknownError'),
-        // the subscription causes are worded once for every AI surface of the suite
-        errorText: (cause) => aiRunErrorText(langRef.current, cause),
-        onStreamError: (error) => {
-          streamErrorRef.current = askBlockedRunOf(error)
-        },
-      }),
-      skill: composeSkills('kb+skills', '', [
+      transport,
+      // a local model that reported no tool support answers in text only
+      toolsAllowed: () =>
+        settingsRef.current ? localModelCapabilities(settingsRef.current).tools !== false : true,
+      // the outbound guards and the person's MCP servers as in the editors, without Drive
+      // (user MCP spec 7.2)
+      skill: composeWithGuards('kb+skills', '', () => loopRef.current?.messages ?? [], [
         createKnowledgeBaseSkill({
           listFiles: () => corpusRef.current,
           // a narrowed run's calls carry its scope; main keeps them to the group
@@ -270,6 +541,8 @@ export function KbAskPanel({
           messages: () => loopRef.current?.messages ?? [],
           // a template skill the model used offers its new document (spec 5.7)
           onUsed: (skill) => skillTemplatesRef.current.onUsed(skill),
+          // use_skill names the MCP servers it expects that are not usable now (spec 8)
+          mcpServerUsable: (name) => windowMcpUsableServers().has(name),
           onProposal: (proposal) => {
             skillCardsRef.current.add(proposal)
             patchLast((last) => ({
@@ -277,25 +550,48 @@ export function KbAskPanel({
             }))
           },
         }),
+        // the chosen project folder (spec 5.4, 5.5): adds nothing unless the send's
+        // prepareSend found a project; the run's knowledge scope covers the folder too
+        ...panelProjectSkill({
+          run: projectChatRef.current.run,
+          lang: () => langRef.current,
+          onMemoryEdit: (line) => patchLast((last) => ({ memory: [...(last.memory ?? []), line] })),
+        }),
         docSkill,
+        inlineQuestions.askQuestionsSkill,
       ]),
       events: {
-        onText: (text) => patchLast({ text }),
+        onText: (text) => {
+          runTextRef.current = text
+          patchLast({ text })
+        },
         onToolStart: (call) => {
-          // the skill tools show their own line once they ran
-          if (USER_SKILL_TOOL_NAMES.has(call.name)) return
+          // the skill and project tools show their own line once they ran
+          if (USER_SKILL_TOOL_NAMES.has(call.name) || isProjectTool(call.name)) return
           patchLast((last) => ({
-            toolNotes: [
-              ...last.toolNotes,
-              call.name === 'search_knowledge_base'
-                ? { label: t('askToolSearch'), kind: 'search' as const }
-                : call.name === CREATE_DOCUMENT_TOOL
-                  ? { label: t('askToolCreate'), kind: 'create' as const }
-                  : { label: t('askToolRead'), kind: 'read' as const },
-            ],
+            toolNotes: [...last.toolNotes, startedToolNote(call.name, toolLabels())],
           }))
         },
         onToolExecuted: ({ call, execution }) => {
+          if (runActiveRef.current) runToolsRef.current.push(askToolRecordOf(call, execution))
+          if (call.name === CREATE_DOCUMENT_TOOL) {
+            // saved into the chosen project's folder: the step is done and says where
+            const path = execution.isError ? undefined : docSkill.createdPaths().at(-1)
+            const chosen = projectChatRef.current.projectId
+            const folder = projectsRef.current.find((item) => item.id === chosen)?.path
+            patchLast((last) => {
+              const notes = notesAfterCreate(last.toolNotes, path, folder, (name) =>
+                kbAskProjectText(langRef.current, 'askSavedToProject', { name }),
+              )
+              return notes ? { toolNotes: notes, createdInProject: true } : {}
+            })
+            return
+          }
+          if (isProjectTool(call.name)) {
+            const note = projectToolNote(call.name, execution.summary, execution.isError)
+            if (note) patchLast((last) => ({ toolNotes: [...last.toolNotes, note] }))
+            return
+          }
           if (call.name !== USE_SKILL_TOOL || execution.isError) return
           patchLast((last) => ({
             toolNotes: [...last.toolNotes, { label: execution.summary, kind: 'skill' as const }],
@@ -303,6 +599,20 @@ export function KbAskPanel({
         },
         onDone: () => {
           endRunScope()
+          // the answer joins the project chat (a stopped run keeps what came so far)
+          if (runActiveRef.current) {
+            runActiveRef.current = false
+            const text = runTextRef.current
+            const tools = runToolsRef.current
+            if (text || tools.length > 0) {
+              projectChatRef.current.persist({
+                role: 'assistant',
+                text,
+                ...(tools.length > 0 ? { tools } : {}),
+              })
+            }
+          }
+          void projectChatRef.current.finishSend()
           finishLast()
         },
         onUsage: (usage) => {
@@ -312,6 +622,9 @@ export function KbAskPanel({
         },
         onError: (error) => {
           endRunScope()
+          // a failed run records no answer; the question stays unanswered in the chat
+          runActiveRef.current = false
+          void projectChatRef.current.finishSend()
           const blocked = streamErrorRef.current
           streamErrorRef.current = null
           if (blocked) {
@@ -387,6 +700,8 @@ export function KbAskPanel({
       return
     }
     streamErrorRef.current = null
+    // a new question closes a card still waiting and allows one card in this run
+    inlineQuestions.supersedeOpen()
     // a held question was left in the composer while it waited: it is sent now
     if (again === undefined || draft.trim() === instruction) setDraft('')
     skills.consume(skillUse)
@@ -402,25 +717,34 @@ export function KbAskPanel({
     refreshSettings()
     const seq = ++askSeqRef.current
     runUsageRef.current = undefined
+    /** nothing is sent: the question shows with why */
+    const stopWith = (text: string, isError = true): void => {
+      setMessages((prev) => [
+        ...prev,
+        asked,
+        { role: 'assistant', text, toolNotes: [], ...(isError ? { isError: true } : {}) },
+      ])
+      setBusy(false)
+    }
     // a narrowed ask: main mints this run's scope for the chosen group and keeps
     // every call of the run inside it. A group that has no files any more runs
-    // nothing; it never widens to every starred file.
+    // nothing; it never widens to every starred file. With a project chosen the
+    // scope also covers that folder (spec 5.5): the group choice still applies
+    // to the starred part.
     const group = scopeGroup
+    const runProject = projectChatRef.current.projectId
     refreshGroups()
     let scope: string | undefined
-    if (group !== null) {
-      try {
-        scope = await window.aiOffice.kbOpenScope(group)
-      } catch {
-        if (askSeqRef.current !== seq) return
-        setMessages((prev) => [
-          ...prev,
-          asked,
-          { role: 'assistant', text: t('askScopeGone'), toolNotes: [], isError: true },
-        ])
-        setBusy(false)
-        return
-      }
+    try {
+      scope = await openAskScope(window.aiOffice, group, runProject)
+    } catch (error) {
+      if (askSeqRef.current !== seq) return
+      stopWith(
+        askScopeFailure(error, runProject) === 'group-gone'
+          ? t('askScopeGone')
+          : kbAskProjectText(langRef.current, 'askProjectMissing'),
+      )
+      return
     }
     runScopeRef.current = scope
     openScopeRef.current = scope
@@ -429,41 +753,71 @@ export function KbAskPanel({
       return
     }
     // freshly starred files are answerable this very turn
+    let listed = true
     try {
       const files =
         scope === undefined ? await window.aiOffice.kbList() : await window.aiOffice.kbList(scope)
       corpusRef.current = files
-      if (scope === undefined) setCorpusCount(files.length)
+      if (group === null) setCorpusCount(files.length)
       else setScopeCount(files.length)
     } catch {
       // keep the mount snapshot; a narrowed run never falls back to the full list
+      listed = false
       if (scope !== undefined) corpusRef.current = []
     }
     if (askSeqRef.current !== seq) {
       endRunScope()
       return
     }
-    if (corpusRef.current.length === 0) {
+    // with a project the folder is there to read even when nothing is starred
+    if (corpusRef.current.length === 0 && (runProject === null || !listed)) {
       endRunScope()
-      setMessages((prev) => [
-        ...prev,
-        asked,
-        scope === undefined
-          ? { role: 'assistant', text: t('askEmptyCorpus'), toolNotes: [] }
-          : { role: 'assistant', text: t('askScopeGone'), toolNotes: [], isError: true },
-      ])
-      setBusy(false)
+      if (runProject !== null) stopWith(t('askUnknownError'))
+      else if (scope === undefined) stopWith(t('askEmptyCorpus'), false)
+      else stopWith(t('askScopeGone'))
       return
     }
+    // the project's context for this request, read now and fixed for the run
+    const prepared = await projectChatRef.current.prepareSend()
+    if (askSeqRef.current !== seq) {
+      endRunScope()
+      void projectChatRef.current.finishSend()
+      return
+    }
+    if (prepared.status !== 'ok' && prepared.status !== 'none') {
+      endRunScope()
+      void projectChatRef.current.finishSend()
+      stopWith(
+        prepared.status === 'failed'
+          ? t('askUnknownError')
+          : kbAskProjectText(langRef.current, 'askProjectMissing'),
+      )
+      return
+    }
+    const notices = prepared.status === 'ok' ? prepared.notices : []
+    setProjectNotices(notices.filter((notice) => notice.kind !== 'unwritable'))
+    if (notices.some((notice) => notice.kind === 'unwritable')) setUnwritableNotice(true)
+    setConsolidateFailed(false)
+    runTextRef.current = ''
+    runToolsRef.current = []
+    runActiveRef.current = true
     setMessages((prev) => [
       ...prev,
       asked,
       { role: 'assistant', text: '', toolNotes: [], streaming: true },
     ])
+    // with a project the question joins its chat; without one it stays in memory as before
+    projectChatRef.current.persist({
+      role: 'user',
+      text: instruction,
+      ...(skillUse.chips.length > 0 ? { skills: skillUse.chips } : {}),
+    })
     try {
       // the skill text rides with this question only; the question shows the chips
       await loopRef.current!.run(instruction + skillUse.text)
     } catch {
+      runActiveRef.current = false
+      void projectChatRef.current.finishSend()
       finishLast()
     }
   }
@@ -515,20 +869,194 @@ export function KbAskPanel({
     }
   }
 
+  // ---- project folder (spec 5.1, 5.6, 5.10, 5.12) ----
+
+  const refreshProjects = (): void => {
+    const bridge = window.projectFolderApi
+    if (!bridge) return
+    void bridge
+      .listProjects()
+      .then(setProjects)
+      .catch(() => undefined)
+  }
+
+  // the picker's list and where "new project" goes; again whenever the choice moves
+  useEffect(() => {
+    if (!projectChat.available) return
+    refreshProjects()
+    void window.projectFolderApi
+      ?.getDefaultParentFolder()
+      .then(setDefaultParentFolder)
+      .catch(() => undefined)
+  }, [projectChat.available, projectId])
+
+  /** a folder became a project (added, created, relocated, adopted): choose it */
+  const chooseAddedProject = (result: AddFolderResult | CreateProjectResult): void => {
+    refreshProjects()
+    // refused or not made: say why (spec 5.1); a closed dialog says nothing
+    setProjectProblem(projectAddProblem(result))
+    if (result.status !== 'added' && result.status !== 'created') return
+    const once = result.status === 'added' ? result.notices : []
+    void projectChat.selectProject(result.project.id).then(() => {
+      // one-time notices of the addition (a sync folder) show once the chat is open
+      if (once.length > 0) setProjectNotices(once)
+    })
+  }
+
+  /** a bridge call the person made failed: say so instead of doing nothing */
+  const showActionFailed = (): void => setProjectProblem({ kind: 'action-failed' })
+
+  // the home project screen asked for a chat of a project: open it here
+  const openChatSeq = openChatRequest?.seq
+  useEffect(() => {
+    if (openChatRequest) projectChat.openChatRef(openChatRequest)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only a new request matters
+  }, [openChatSeq])
+
+  const removeProjectFromList = (id: ProjectId): void => {
+    const bridge = window.projectFolderApi
+    if (!bridge) return
+    void bridge
+      .removeFromList({ projectId: id })
+      .then(() => {
+        refreshProjects()
+        if (projectChatRef.current.projectId === id) void projectChat.selectProject(null)
+      })
+      .catch(showActionFailed)
+  }
+
+  /** "[remove]" on a memory line: the entry leaves memory.md and the line says so */
+  const forgetMemory = (
+    index: number,
+    line: ProjectMemoryLine,
+  ): Promise<ProjectMemoryRemoveOutcome> =>
+    projectChat
+      .forgetMemory(line)
+      .then((result) => {
+        const outcome = memoryRemoveOutcome(result)
+        // an entry already gone before the click is as good as removed
+        if (outcome === 'failed') return outcome
+        setMessages((prev) =>
+          prev.map((m, i) =>
+            i === index
+              ? {
+                  ...m,
+                  memory: (m.memory ?? []).map((l) =>
+                    l === line
+                      ? {
+                          kind: 'removed',
+                          text: line.text,
+                          change: { op: 'remove', text: line.text },
+                        }
+                      : l,
+                  ),
+                }
+              : m,
+          ),
+        )
+        return outcome
+      })
+      .catch((): ProjectMemoryRemoveOutcome => 'failed')
+
+  /** "[Tidy up]": one request on the chat's connection, only when the person presses it */
+  const consolidate = (): void => {
+    const id = projectChatRef.current.projectId
+    const transport = transportRef.current
+    // the home screen's first-connection notice comes before any request
+    if (!id || !transport || consolidating || busy || noticeDue) return
+    setConsolidating(true)
+    setConsolidateFailed(false)
+    void consolidateProjectMemory({
+      projectId: id,
+      transport,
+      gate: () => aiSendGate(aiSettingsRef.current, connectionRef.current.statuses),
+    })
+      .then((result) => {
+        if (result.status === 'ok') {
+          setConsolidated({
+            projectId: id,
+            before: result.before,
+            after: result.after,
+            backupName: result.backupName,
+          })
+          setProjectNotices((prev) => prev.filter((notice) => notice.kind !== 'memory-long'))
+        } else if (result.status === 'not-ready') {
+          if (result.gate.kind === 'connect') setConnectAsked(true)
+        } else if (result.status === 'unwritable') {
+          setUnwritableNotice(true)
+        } else if (result.status === 'failed') {
+          setConsolidateFailed(true)
+        }
+      })
+      .catch(() => setConsolidateFailed(true))
+      .finally(() => setConsolidating(false))
+  }
+
+  const undoConsolidation = (done: ConsolidatedMemory): void => {
+    const bridge = window.projectFolderApi
+    if (!bridge) return
+    void undoProjectMemoryConsolidation(bridge, done.projectId, done.backupName)
+      .then((result) => {
+        if (result.status === 'ok') setConsolidated(null)
+        else if (result.status === 'unwritable') setUnwritableNotice(true)
+      })
+      .catch(() => undefined)
+  }
+
+  const chat = projectChat.chat
+  const showUnwritable = projectId !== null && (projectChat.unwritable || unwritableNotice)
+  /** the chosen project's name for the head and the input hint */
+  const projectName =
+    projects.find((item) => item.id === projectId)?.name ??
+    projectPanelText(lang, 'projectFallback')
+  const askPlaceholder =
+    projectId === null
+      ? t('askPlaceholder')
+      : kbAskProjectText(
+          lang,
+          (corpusCount ?? 0) > 0 ? 'askProjectStarsPlaceholder' : 'askProjectPlaceholder',
+          { name: projectName },
+        )
+
   const fileNav = createFileNav((path) => onOpenPath(path))
 
   return (
     <div className="kb-ask">
-      {corpusCount !== null && corpusCount > 0 && (
+      {corpusCount !== null && (corpusCount > 0 || projectId !== null) && (
         <div className="kb-ask-headbar">
-          <b>{t('askTitle')}</b>
-          <span>
-            {scopeGroup === null
-              ? t('askCorpusCount', { n: String(corpusCount) })
-              : scopeCount === null
-                ? scopeGroup
-                : t('askCorpusCountGroup', { group: scopeGroup, n: String(scopeCount) })}
-          </span>
+          <b>
+            {projectId !== null
+              ? kbAskProjectText(lang, 'askProjectTitle', { name: projectName })
+              : t('askTitle')}
+          </b>
+          {/* the chosen project's chats (spec 5.3): only with a project */}
+          {projectId !== null && chat !== null && (
+            <ProjectChatMenu
+              lang={lang}
+              chats={projectChat.chats}
+              currentChatId={chat.kind === 'project' && !chat.isNew ? chat.chatId : null}
+              currentTitle={chat.kind === 'project' && chat.title ? chat.title : undefined}
+              legacy={projectChat.legacy}
+              legacyActive={chat.kind === 'legacy'}
+              disabled={busy}
+              onOpen={() => void projectChat.refreshChats()}
+              onSelect={(id) => void projectChat.openChat(id)}
+              onNewChat={() => void projectChat.newChat()}
+              onRename={(id, title) => void projectChat.renameChat(id, title)}
+              onDelete={(id) => void projectChat.deleteChat(id)}
+              onSelectLegacy={() => void projectChat.openLegacy()}
+            />
+          )}
+          {/* with a project and nothing starred, the star count says nothing */}
+          {(projectId === null || (corpusCount ?? 0) > 0 || scopeGroup !== null) && (
+            <span>
+              {scopeGroup === null
+                ? t('askCorpusCount', { n: String(corpusCount) })
+                : scopeCount === null
+                  ? scopeGroup
+                  : t('askCorpusCountGroup', { group: scopeGroup, n: String(scopeCount) })}
+            </span>
+          )}
           {(groups.length > 0 || scopeGroup !== null) && (
             <KbAskScopeChoice
               groups={
@@ -546,7 +1074,7 @@ export function KbAskPanel({
         </div>
       )}
       <div className="kb-ask-thread" ref={scrollRef}>
-        {messages.length === 0 && corpusCount === 0 && (
+        {messages.length === 0 && corpusCount === 0 && projectId === null && (
           <div className="kb-ask-hero">
             <div className="kb-ask-hero-icon" aria-hidden="true">
               <IconBookOpen />
@@ -580,9 +1108,17 @@ export function KbAskPanel({
               <IconStar />
               {t('askCtaRecents')}
             </button>
+            {projectChat.available && (
+              <p className="kb-ask-hero-project">{kbAskProjectText(lang, 'askHeroProjectHint')}</p>
+            )}
           </div>
         )}
-        {messages.length === 0 && corpusCount !== null && corpusCount > 0 && (
+        {messages.length === 0 && projectId !== null && (
+          <p className="kb-ask-hint">
+            {kbAskProjectText(lang, 'askProjectIntro', { name: projectName })}
+          </p>
+        )}
+        {messages.length === 0 && projectId === null && corpusCount !== null && corpusCount > 0 && (
           <p className="kb-ask-hint">{t('askIntro')}</p>
         )}
         {messages.map((m, i) => (
@@ -593,75 +1129,148 @@ export function KbAskPanel({
             {m.role === 'assistant' && m.toolNotes.length > 0 && (
               <div className="kb-ask-tools">
                 {m.toolNotes.map((note, j) => (
-                  <span key={j} className="kb-ask-tool-note">
+                  <span
+                    key={j}
+                    className={`kb-ask-tool-note${note.kind === 'created' ? ' is-done' : ''}`}
+                  >
                     {note.kind === 'search' ? (
                       <IconSearch />
                     ) : note.kind === 'read' ? (
                       <IconFileText />
-                    ) : note.kind === 'create' ? (
+                    ) : note.kind === 'create' || note.kind === 'created' ? (
                       <IconFilePlus />
                     ) : null}
                     {note.label}
-                    {m.streaming && j === m.toolNotes.length - 1 ? '…' : ''}
+                    {m.streaming && note.kind !== 'created' && j === m.toolNotes.length - 1
+                      ? '…'
+                      : ''}
+                    {note.kind === 'created' && note.path && (
+                      <button
+                        type="button"
+                        className="kb-ask-tool-open"
+                        onClick={() => onOpenPath(note.path as string)}
+                      >
+                        {kbAskProjectText(lang, 'askOpenCreated')}
+                      </button>
+                    )}
                   </span>
                 ))}
               </div>
             )}
+            {m.questions?.map((tool, j) => (
+              <AiQuestionReceipt key={`q-${j}`} lang={lang} activity={tool} />
+            ))}
+            {m.otherTools && (
+              <ProjectToolSummaryLine
+                lang={lang}
+                editor={m.otherTools.editor}
+                documentName={m.otherTools.fileRef?.split(/[\\/]/).pop()}
+                count={m.otherTools.count}
+              />
+            )}
+            {m.memory?.map((line, j) => (
+              <ProjectMemoryEventLine
+                key={j}
+                lang={lang}
+                change={line.change}
+                gone={memoryLineGone(line, projectChat.memoryEntries)}
+                onRemove={line.kind === 'added' ? () => forgetMemory(i, line) : undefined}
+              />
+            ))}
             {m.skillProposals?.map((key) => skillCards.render(key))}
-            {m.text ? (
-              m.role === 'assistant' ? (
-                <Markdown text={m.text} navs={[fileNav]} />
+            {m.text &&
+              (m.role === 'assistant' ? (
+                <AiAssistantBody
+                  lang={lang}
+                  text={m.text}
+                  navs={[fileNav]}
+                  streaming={m.streaming}
+                  restored={m.restored}
+                  questionStatus={inlineQuestions.textCardStates[`m-${i}`]?.status}
+                  questionAnswer={inlineQuestions.textCardStates[`m-${i}`]?.answer}
+                  onQuestionSubmit={(view, answer) => {
+                    inlineQuestions.markTextCard(`m-${i}`, 'submitted', answer)
+                    void ask(inlineQuestions.formatFollowUp(lang, view, answer))
+                  }}
+                  onQuestionSkip={(view) => {
+                    inlineQuestions.markTextCard(`m-${i}`, 'skipped')
+                    void ask(inlineQuestions.formatFollowUp(lang, view, { kind: 'skip' }))
+                  }}
+                />
               ) : (
                 m.text
-              )
-            ) : m.streaming ? (
-              <AiTypingIndicator label={t('askHintBusy')} />
-            ) : null}
+              ))}
+            {m.role === 'assistant' && i === messages.length - 1 && !m.streaming && (
+              <AiNextSteps
+                lang={lang}
+                context={{
+                  aiVisible: true,
+                  streaming: false,
+                  completedNormally: !m.isError && !m.blocked,
+                  editorKind: 'home',
+                  editedDocument: false,
+                  qualityIssueCount: 0,
+                  usedSkillName: m.skills?.[0]?.title,
+                  canGenerateOtherDoc: false,
+                  hasSavedPath: false,
+                }}
+              />
+            )}
             {m.role === 'assistant' && m.usage && (
               <div className="ai-message-usage">
                 <AiUsageChip usage={m.usage} lang={lang} />
               </div>
             )}
-            {m.role === 'assistant' && m.text && !m.streaming && !m.isError && (
-              <div className="kb-ask-actions">
-                {m.saved && typeof m.saved === 'object' && 'path' in m.saved ? (
-                  <button
-                    type="button"
-                    className="kb-ask-action kb-ask-action-saved"
-                    onClick={() => onOpenPath((m.saved as { path: string }).path)}
-                  >
-                    <IconFileText />
-                    {t('askSavedAs', { name: m.saved.name })}
-                  </button>
-                ) : (
-                  <>
+            <AiReplyProgress
+              reply={m}
+              thinking={t('askHintBusy')}
+              working={t('askHintBusy')}
+              paused={inlineQuestions.waitingForPerson}
+            />
+            {m.role === 'assistant' &&
+              m.text &&
+              !m.streaming &&
+              !m.isError &&
+              !m.createdInProject && (
+                <div className="kb-ask-actions">
+                  {m.saved && typeof m.saved === 'object' && 'path' in m.saved ? (
                     <button
                       type="button"
-                      className="kb-ask-action"
-                      disabled={m.saved === 'saving'}
-                      onClick={() => void saveAnswer(i, 'md')}
+                      className="kb-ask-action kb-ask-action-saved"
+                      onClick={() => onOpenPath((m.saved as { path: string }).path)}
                     >
-                      <IconFilePlus />
-                      {t('askSaveMd')}
+                      <IconFileText />
+                      {t('askSavedAs', { name: m.saved.name })}
                     </button>
-                    <button
-                      type="button"
-                      className="kb-ask-action"
-                      disabled={m.saved === 'saving'}
-                      onClick={() => void saveAnswer(i, 'docx')}
-                    >
-                      <IconFilePlus />
-                      {t('askSaveDocx')}
-                    </button>
-                    {m.saved && typeof m.saved === 'object' && 'error' in m.saved && (
-                      <span className="kb-ask-action-error">
-                        {t('askSaveFailed', { error: m.saved.error })}
-                      </span>
-                    )}
-                  </>
-                )}
-              </div>
-            )}
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        className="kb-ask-action"
+                        disabled={m.saved === 'saving'}
+                        onClick={() => void saveAnswer(i, 'md')}
+                      >
+                        <IconFilePlus />
+                        {t('askSaveMd')}
+                      </button>
+                      <button
+                        type="button"
+                        className="kb-ask-action"
+                        disabled={m.saved === 'saving'}
+                        onClick={() => void saveAnswer(i, 'docx')}
+                      >
+                        <IconFilePlus />
+                        {t('askSaveDocx')}
+                      </button>
+                      {m.saved && typeof m.saved === 'object' && 'error' in m.saved && (
+                        <span className="kb-ask-action-error">
+                          {t('askSaveFailed', { error: m.saved.error })}
+                        </span>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
             {m.blocked && (
               <AiBlockedNotice
                 kind={m.blocked.kind}
@@ -677,7 +1286,20 @@ export function KbAskPanel({
             )}
           </div>
         ))}
+        {inlineQuestions.activeToolCard && (
+          <AiQuestionCard
+            key={inlineQuestions.activeToolCard.id}
+            lang={lang}
+            view={inlineQuestions.activeToolCard.view}
+            status={inlineQuestions.activeToolCard.status}
+            answer={inlineQuestions.activeToolCard.answer}
+            onSubmit={inlineQuestions.submitToolCard}
+            onSkip={inlineQuestions.skipToolCard}
+          />
+        )}
         {skillTemplates.notes}
+        {/* an MCP tool waiting for the person's yes (user MCP spec 7.4) */}
+        <McpPermissionCard lang={lang} />
         {connectPromptOpen && (
           <>
             <AiConnectPrompt
@@ -715,10 +1337,57 @@ export function KbAskPanel({
           </>
         )}
       </div>
-      {messages.length > 0 && (
+      {/* with a project the chat is kept in its folder; the unwritable line says when it is not */}
+      {messages.length > 0 && projectId === null && (
         <p className="kb-ask-nosave">
           <IconInfo />
           {t('askNoSave')}
+        </p>
+      )}
+      {projectChat.hint && (
+        <ProjectFolderHintLine
+          lang={lang}
+          hint={projectChat.hint}
+          onUse={() =>
+            void window.projectFolderApi
+              ?.adoptFolderHint()
+              .then(chooseAddedProject)
+              .catch(showActionFailed)
+          }
+        />
+      )}
+      {projectProblem && (
+        <ProjectProblemLine
+          lang={lang}
+          problem={projectProblem}
+          onDismiss={() => setProjectProblem(null)}
+        />
+      )}
+      {projectId !== null && (
+        <ProjectNoticeList
+          lang={lang}
+          notices={projectNotices}
+          onView={(section) =>
+            void window.projectFolderApi
+              ?.openProjectScreen({ projectId, section })
+              .catch(() => undefined)
+          }
+          onConsolidate={consolidating || busy ? undefined : consolidate}
+          onDismiss={(index) => setProjectNotices((prev) => prev.filter((_, k) => k !== index))}
+        />
+      )}
+      {showUnwritable && <ProjectNoticeLine lang={lang} notice={{ kind: 'unwritable' }} />}
+      {consolidated !== null && consolidated.projectId === projectId && (
+        <ProjectMemoryConsolidatedLine
+          lang={lang}
+          before={consolidated.before}
+          after={consolidated.after}
+          onUndo={() => undoConsolidation(consolidated)}
+        />
+      )}
+      {consolidateFailed && (
+        <p className="kb-ask-login kb-ask-error" role="alert">
+          {t('askUnknownError')}
         </p>
       )}
       {connectHint && !connectPromptOpen && (
@@ -731,21 +1400,70 @@ export function KbAskPanel({
           </button>
         </p>
       )}
+      {aiSettings !== null && localModelCapabilities(aiSettings).tools === false && (
+        <AiToolsUnsupportedNotice lang={lang} />
+      )}
       <AiComposer
         value={draft}
         busy={busy}
-        placeholder={t('askPlaceholder')}
+        placeholder={askPlaceholder}
         hintIdle={t('askHintIdle')}
         hintBusy={t('askHintBusy')}
         sendLabel={t('askSend')}
         stopLabel={t('askStop')}
-        ariaLabel={t('askPlaceholder')}
+        ariaLabel={askPlaceholder}
         iconOnly
         sendIconEnabled={<img src={sendEnterOn} alt="" aria-hidden />}
         sendIconDisabled={<img src={sendEnterOff} alt="" aria-hidden />}
         stopIcon={<img src={sendStop} alt="" aria-hidden />}
         footerStart={
-          sessionUsage ? <AiUsageChip usage={sessionUsage} session lang={lang} /> : undefined
+          <>
+            {sessionUsage && <AiUsageChip usage={sessionUsage} session lang={lang} />}
+            <McpServerButton lang={lang} showDrive={false} />
+          </>
+        }
+        footerBelow={
+          projectChat.available ? (
+            <ProjectPicker
+              lang={lang}
+              projects={projects}
+              selectedId={projectId}
+              disabled={busy}
+              defaultParentFolder={defaultParentFolder}
+              onOpen={refreshProjects}
+              onSelect={(id) => void projectChat.selectProject(id)}
+              onCreate={(name, { otherPlace }) =>
+                void window.projectFolderApi
+                  ?.createProject({ name, otherPlace })
+                  .then(chooseAddedProject)
+                  .catch(showActionFailed)
+              }
+              onAddFolder={() =>
+                void window.projectFolderApi
+                  ?.addFolder()
+                  .then(chooseAddedProject)
+                  .catch(showActionFailed)
+              }
+              onRelocate={(id) =>
+                void window.projectFolderApi
+                  ?.relocateProject({ projectId: id })
+                  .then(chooseAddedProject)
+                  .catch(showActionFailed)
+              }
+              onSetPinned={(id, pinned) =>
+                void window.projectFolderApi
+                  ?.setPinned({ projectId: id, pinned })
+                  .then(refreshProjects)
+                  .catch(() => undefined)
+              }
+              onOpenInFileManager={(id) =>
+                void window.projectFolderApi
+                  ?.openInFileManager({ projectId: id })
+                  .catch(() => undefined)
+              }
+              onRemoveFromList={removeProjectFromList}
+            />
+          ) : undefined
         }
         onChange={setDraft}
         onSend={() => {

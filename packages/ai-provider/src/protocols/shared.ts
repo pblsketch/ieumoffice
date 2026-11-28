@@ -1,4 +1,4 @@
-import type { AgentToolCall } from '@genoffice/agent-core'
+import type { AgentToolCall, AgentToolResult } from '@genoffice/agent-core'
 import type { AiSubscriptionUsage, AiTokenUsage } from '../types'
 
 // ---- endpoint URL composition ----
@@ -268,6 +268,13 @@ export interface StreamCallbacks {
   onActivity?: () => void
   /** Stable renderer transport id for providers with native sessions. */
   sessionId?: string
+  /**
+   * Live tool executor for ACP-native providers (Google Antigravity) where the
+   * ACP agent runs its own tool loop and calls editor tools via loopback MCP.
+   */
+  onAcpToolCall?: (call: AgentToolCall) => Promise<AgentToolResult>
+  /** Signals that an ACP-native provider completed the full multi-step run */
+  onAcpNativeDone?: () => void
   signal: AbortSignal
 }
 
@@ -275,6 +282,22 @@ export interface StreamCallbacks {
 export function usageCount(value: unknown): number | undefined {
   const n = typeof value === 'string' ? Number(value) : value
   return typeof n === 'number' && Number.isFinite(n) && n >= 0 ? n : undefined
+}
+
+/** OpenAI-shaped usage (Chat Completions and Responses name the same figures differently). */
+export function openAiUsage(
+  input: unknown,
+  output: unknown,
+  details: { cached_tokens?: unknown } | null | undefined,
+): AiTokenUsage | undefined {
+  const usage: AiTokenUsage = {}
+  const inputTokens = usageCount(input)
+  const outputTokens = usageCount(output)
+  const cached = usageCount(details?.cached_tokens)
+  if (inputTokens !== undefined) usage.inputTokens = inputTokens
+  if (outputTokens !== undefined) usage.outputTokens = outputTokens
+  if (cached !== undefined) usage.cacheReadTokens = cached
+  return inputTokens !== undefined || outputTokens !== undefined ? usage : undefined
 }
 
 /**

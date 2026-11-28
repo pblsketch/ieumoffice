@@ -1,6 +1,6 @@
 # Szybki start: interfejs i podstawy
 
-GenOffice to pakiet biurowy działający na Twoim komputerze: jedno okno, jeden rząd kart, w którym mieści się osiem edytorów — Docs (edytor tekstu), Sheets (arkusze), Slides (prezentacje), PDF, Markdown i zwykły tekst, HTML, HWP/HWPX (dokumenty Hangul) oraz mapy myśli (.xmind). Każdy edytor otwiera i zapisuje pliki w swoim formacie: .docx, .xlsx, .pptx, .pdf, .md, .html, .hwp/.hwpx i .xmind. Edycja nie wymaga sieci; funkcje AI jej potrzebują.
+GenOffice to pakiet biurowy działający na Twoim komputerze: jedno okno, jeden rząd kart, w którym mieści się osiem edytorów — Docs (edytor tekstu), Sheets (arkusze), Slides (prezentacje), PDF, Markdown i zwykły tekst, HTML, HWP/HWPX (dokumenty Hangul) oraz mapy myśli (.xmind). Każdy edytor otwiera i zapisuje pliki w swoim formacie: .docx, .xlsx, .pptx, .pdf, .md, .html, .hwp/.hwpx i .xmind. Edycja nie wymaga sieci; funkcje AI jej potrzebują. Edytor map myśli importuje też pliki FreeMind i Freeplane (.mm) jako nowe mapy, zapisywane jako .xmind.
 
 ## Przegląd interfejsu
 
@@ -38,7 +38,7 @@ Pliki .odt (tekst OpenDocument, format zapisywany przez Hancom Office, LibreOffi
 ## Model zapisywania
 
 - **Zapis ręczny**: ⌘S/ctrl+S albo Plik ▸ Zapisz / Zapisz jako… Przy pierwszym zapisie zostaniesz poproszony o lokalizację i nazwę.
-- **Autozapis** włącza się dopiero po tym, jak zapiszesz plik ręcznie przynajmniej raz — pliku PDF, który tylko czytałeś, nigdy nie da się zapisać po cichu w tle. Autozapis następuje krótko po zmianie zawartości.
+- **Autozapis** działa zgodnie z przełącznikiem w każdym edytorze (oraz domyślnym ustawieniem aplikacji). Plik PDF, który tylko czytasz, nigdy nie zostanie po cichu zapisany, a nowy dokument bez własnego pliku zacznie być automatycznie zapisywany po pierwszym zapisie.
 - Zamknięcie karty z niezapisanymi zmianami najpierw pyta o Zapisz / Odrzuć / Anuluj.
 - Każdy zapis jest atomowy (plik tymczasowy + zmiana nazwy), więc awaria zasilania nie zostawi uszkodzonego pliku.
 

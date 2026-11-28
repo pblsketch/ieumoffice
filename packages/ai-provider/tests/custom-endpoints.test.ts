@@ -12,13 +12,14 @@ import {
 import { streamOpenAiCompatible } from '../src/protocols/openai-compatible'
 import { okResponse, sseStream } from './test-utils'
 import { sanitizeAiSettings } from '../src/ai-settings-guard'
+import { isKeyProviderConfigured } from '../src/provider-selection'
 import { defaultAiSettings, resolveAiSettings } from '../src/providers'
 import { normalizeAiSettings } from '../src/legacy-settings'
 import { normalizeOllamaServers, ollamaBaseUrl } from '../src/ollama-servers'
 import { showOllamaModel } from '../src/custom-models'
 import { jsonResponse } from './test-utils'
-import type { AiCustomEndpoint } from '../src/types'
 import { explainOllamaSystemError, isOllamaOrCustomRequest } from '../src/ollama-friendly-error'
+import type { AiCustomEndpoint, AiLocalModelProfile } from '../src/types'
 
 const ollama: AiCustomEndpoint = {
   id: 'a',
@@ -553,5 +554,215 @@ describe('streamOpenAiCompatible effort handling', () => {
     )
     expect(sentBody.temperature).toBe(0.3)
     expect(sentBody.options).toBeUndefined()
+  })
+})
+
+// ── local profile data (T1) ────────────────────────────────
+
+const modelProfile: AiLocalModelProfile = {
+  contextLength: 32_768,
+  maxContextLength: 131_072,
+  tools: true,
+  vision: false,
+  contextSource: 'user',
+  toolsSource: 'server',
+  visionSource: 'test',
+  checkedAt: 1_700_000_000_000,
+  notes: 'qwen3:8b · Apache-2.0',
+}
+
+const localOllama: AiCustomEndpoint = {
+  id: 'loc',
+  name: 'Ollama',
+  baseUrl: 'http://127.0.0.1:11434/v1',
+  apiKey: '',
+  model: 'qwen3:8b',
+  models: ['qwen3:8b', 'llama3'],
+  kind: 'local',
+  modelProfiles: { 'qwen3:8b': modelProfile },
+  timeoutMs: 300_000,
+}
+
+function storedLocal() {
+  return {
+    provider: 'custom',
+    providers: {
+      custom: { apiKey: '', model: '', baseUrl: '' },
+    },
+    customEndpoints: [localOllama],
+    customEndpoint: 'loc',
+  }
+}
+
+describe('local fields', () => {
+  it('survives normalize -> sanitize -> normalize', () => {
+    const normalized = normalizeAiSettings(storedLocal(), defaultAiSettings())
+    expect(normalized.customEndpoints![0]).toMatchObject({
+      kind: 'local',
+      timeoutMs: 300_000,
+    })
+    expect(normalized.customEndpoints![0]!.modelProfiles!['qwen3:8b']).toEqual(modelProfile)
+
+    const saved = sanitizeAiSettings(normalized)
+    expect(saved).not.toBeNull()
+    expect(saved!.customEndpoints![0]!.kind).toBe('local')
+    expect(saved!.customEndpoints![0]!.timeoutMs).toBe(300_000)
+    expect(saved!.customEndpoints![0]!.modelProfiles!['qwen3:8b']).toEqual(modelProfile)
+
+    const reread = normalizeAiSettings(saved, defaultAiSettings())
+    expect(reread.customEndpoints![0]!.kind).toBe('local')
+    expect(reread.customEndpoints![0]!.timeoutMs).toBe(300_000)
+    expect(reread.customEndpoints![0]!.modelProfiles!['qwen3:8b']).toEqual(modelProfile)
+  })
+
+  it('does not classify a server saved before kind existed as local', () => {
+    const next = normalizeAiSettings(
+      {
+        provider: 'custom',
+        providers: { custom: { apiKey: 'k', model: 'gpt-x', baseUrl: gateway.baseUrl } },
+        customEndpoints: [gateway],
+        customEndpoint: 'b',
+      },
+      defaultAiSettings(),
+    )
+    expect(next.customEndpoints![0]!.kind).toBeUndefined()
+    expect(next.customEndpoints![0]!.modelProfiles).toBeUndefined()
+    expect(next.customEndpoints![0]!.timeoutMs).toBeUndefined()
+  })
+
+  it('drops malformed local values but keeps the server', () => {
+    const next = resolveCustomEndpoints({
+      ...defaultAiSettings(),
+      customEndpoints: [
+        {
+          ...localOllama,
+          kind: 'cloud' as never,
+          timeoutMs: 10_000,
+          modelProfiles: {
+            'qwen3:8b': {
+              contextLength: -1,
+              maxContextLength: 10_000_001,
+              tools: 'yes' as never,
+              vision: 1 as never,
+              contextSource: 'cloud' as never,
+              checkedAt: 1.5,
+              notes: `  ${'x'.repeat(600)}  `,
+            },
+            ['k'.repeat(300)]: { tools: true },
+          },
+        },
+      ],
+      customEndpoint: 'loc',
+    })
+    const entry = next.customEndpoints![0]!
+    expect(entry.kind).toBeUndefined()
+    expect(entry.timeoutMs).toBeUndefined()
+    expect(Object.keys(entry.modelProfiles!)).toEqual(['qwen3:8b'])
+    expect(entry.modelProfiles!['qwen3:8b']).toEqual({ notes: 'x'.repeat(500) })
+  })
+
+  it('keeps at most 2000 model profiles', () => {
+    const many = Object.fromEntries(
+      Array.from({ length: 2_005 }, (_, i) => [`m${i}`, { tools: true }]),
+    )
+    const next = resolveCustomEndpoints({
+      ...defaultAiSettings(),
+      customEndpoints: [{ ...localOllama, modelProfiles: many }],
+      customEndpoint: 'loc',
+    })
+    const profiles = next.customEndpoints![0]!.modelProfiles!
+    expect(Object.keys(profiles)).toHaveLength(2_000)
+    expect(profiles.m1999).toEqual({ tools: true })
+    expect(profiles.m2000).toBeUndefined()
+  })
+
+  it('accepts the exact bounds and rejects the ones past them', () => {
+    const bounds = [
+      { timeoutMs: 59_999, ok: false },
+      { timeoutMs: 60_000, ok: true },
+      { timeoutMs: 600_000, ok: true },
+      { timeoutMs: 600_001, ok: false },
+      { timeoutMs: 300_000.5, ok: false },
+    ]
+    for (const { timeoutMs, ok } of bounds) {
+      const next = resolveCustomEndpoints({
+        ...defaultAiSettings(),
+        customEndpoints: [{ ...localOllama, timeoutMs }],
+        customEndpoint: 'loc',
+      })
+      expect(next.customEndpoints![0]!.timeoutMs).toBe(ok ? timeoutMs : undefined)
+    }
+  })
+})
+
+describe('no active custom server', () => {
+  it('an explicit empty id clears the mirror instead of falling back to the first entry', () => {
+    const next = resolveCustomEndpoints({
+      ...defaultAiSettings(),
+      provider: 'custom',
+      customEndpoints: [localOllama, gateway],
+      customEndpoint: '',
+    })
+    expect(next.customEndpoint).toBe('')
+    expect(activeCustomEndpoint(next)).toBeUndefined()
+    expect(next.providers.custom).toEqual({ apiKey: '', model: '', baseUrl: '' })
+    expect(isKeyProviderConfigured(next, 'custom')).toBe(false)
+  })
+
+  it('a file without the field still falls back to the first entry', () => {
+    const next = normalizeAiSettings(
+      {
+        provider: 'custom',
+        providers: { custom: { apiKey: 'k', model: 'gpt-x', baseUrl: gateway.baseUrl } },
+        customEndpoints: [localOllama, gateway],
+      },
+      defaultAiSettings(),
+    )
+    expect(next.customEndpoint).toBe('loc')
+    expect(next.providers.custom.baseUrl).toBe(localOllama.baseUrl)
+  })
+
+  it('removeCustomEndpoint keeps the old fallback unless asked not to', () => {
+    const base = resolveCustomEndpoints({
+      ...defaultAiSettings(),
+      customEndpoints: [localOllama, gateway],
+      customEndpoint: 'loc',
+    })
+    const fallback = removeCustomEndpoint(base, 'loc')
+    expect(fallback.customEndpoint).toBe('b')
+    expect(fallback.providers.custom.baseUrl).toBe(gateway.baseUrl)
+
+    const noFallback = removeCustomEndpoint(base, 'loc', { fallback: false })
+    expect(noFallback.customEndpoint).toBe('')
+    expect(noFallback.customEndpoints!.map((e) => e.id)).toEqual(['b'])
+    expect(noFallback.providers.custom).toEqual({ apiKey: '', model: '', baseUrl: '' })
+    expect(isKeyProviderConfigured(noFallback, 'custom')).toBe(false)
+
+    const reread = normalizeAiSettings(sanitizeAiSettings(noFallback), defaultAiSettings())
+    expect(reread.customEndpoint).toBe('')
+    expect(isKeyProviderConfigured(reread, 'custom')).toBe(false)
+  })
+
+  it('removing the last entry without fallback leaves an explicit empty selection', () => {
+    const base = resolveCustomEndpoints({
+      ...defaultAiSettings(),
+      customEndpoints: [localOllama],
+      customEndpoint: 'loc',
+    })
+    const next = removeCustomEndpoint(base, 'loc', { fallback: false })
+    expect(next.customEndpoints).toBeUndefined()
+    expect(next.customEndpoint).toBe('')
+    expect(next.providers.custom).toEqual({ apiKey: '', model: '', baseUrl: '' })
+  })
+
+  it('removing an inactive entry leaves the active one alone', () => {
+    const base = resolveCustomEndpoints({
+      ...defaultAiSettings(),
+      customEndpoints: [localOllama, gateway],
+      customEndpoint: 'loc',
+    })
+    const next = removeCustomEndpoint(base, 'b', { fallback: false })
+    expect(next.customEndpoint).toBe('loc')
+    expect(next.providers.custom.baseUrl).toBe(localOllama.baseUrl)
   })
 })

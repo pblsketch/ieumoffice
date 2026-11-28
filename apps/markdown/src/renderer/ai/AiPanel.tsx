@@ -1,5 +1,6 @@
 import {
   aiPanelWidthAtPointer,
+  AiPanelHeader,
   AiPanelSideButton,
   AiModelPicker,
   type AiModelPickerBridge,
@@ -7,12 +8,32 @@ import {
   AiConnectPrompt,
   AiFirstConnectionNotice,
   AiInputTruncatedNotice,
+  AiChangesCard,
+  type AiChangeLine,
+  type AiChangesState,
   AiMark,
+  AiAssistantBody,
+  AiQuestionCard,
+  AiQuestionReceipt,
+  isQuestionToolActivity,
+  questionToolActivities,
+  AiReplyFooter,
+  openGenerateForCurrentDocument,
+  useAiInlineQuestions,
+  AiScrollToBottom,
+  AiToolsUnsupportedNotice,
   AiSubscriptionUsageLine,
+  AiWorkSteps,
+  IconArrowUp,
+  IconStop,
+  AiEmptyHints,
   aiSubscriptionText,
   useAiSendGate,
+  useScrollToBottom,
+  useSubscriptionUsageUpdates,
 } from '@genoffice/ui'
 import { useEffect, useRef, useState } from 'react'
+import type { Lang } from '@genoffice/i18n'
 import type { PointerEvent as ReactPointerEvent, ReactElement, ReactNode } from 'react'
 import {
   AgentLoop,
@@ -20,28 +41,37 @@ import {
   type IpcStreamError,
   type MindMapTreeNode,
   composeWithDrive,
+  windowMcpState,
+  windowMcpUsableServers,
+  toolStepLabel,
 } from '@genoffice/agent-core'
 import type {
   AiSettings,
   AiSubscriptionProviderId,
   AiSubscriptionUsage,
 } from '@genoffice/ai-provider/browser'
+import { localModelCapabilities } from '@genoffice/ai-provider/browser'
 import {
   AiComposer,
   AiQueueStrip,
   AI_QUEUE_LABELS,
   AiScopeQuote,
-  AiTypingIndicator,
+  AiReplyProgress,
   AiUsageChip,
   addTokenUsage,
   createFileNav,
-  Markdown,
+  McpPermissionCard,
+  McpServerButton,
+  useMcpWindow,
   useChatRunQueue,
   NO_SKILL_USE,
   SentSkillChips,
   skillChipRefsOf,
   useComposerSkills,
   panelUserSkills,
+  panelProjectSkill,
+  placeRemoteEntries,
+  useProjectPanel,
   SkillUsedNotes,
   useSkillProposals,
   useSkillTemplates,
@@ -50,16 +80,18 @@ import {
   type AiTokenUsageView,
   type SkillChipRef,
   type SkillUse,
+  type ProjectChatEntry,
+  type ProjectChatOpened,
+  type ProjectMemoryLine,
 } from '@genoffice/ui'
 import type { Editor } from '@tiptap/core'
 import { aiLangDirective, t as tGlobal, useI18n } from '../i18n/locale'
-import sendEnterOn from '../assets/send-enter-on.png'
-import sendEnterOff from '../assets/send-enter-off.png'
-import sendStop from '../assets/send-stop.png'
-import { clearAiHighlights } from '../editor/aiHighlight'
+import { aiMarks, clearAiHighlights } from '../editor/aiHighlight'
 import { setInactiveSelectionShown } from '../editor/inactiveSelection'
+import { uiOp } from '../editor/ops'
 import { createMarkdownSkill, MARKDOWN_RULES } from './markdown-skill'
 import { MindMapCard } from './MindMapCard'
+import { mindMapToMermaid } from '@genoffice/agent-core/mind-map'
 import {
   buildDocWriterRequest,
   countMarkdownBlocks,
@@ -82,6 +114,9 @@ import {
 } from './edit-queue'
 import { DOC_NAV_SCHEME, navigateToBlock, parseDocNavHref } from './doc-nav'
 
+/** Another editor's tool records on a reopened message, shown as one line */
+type OtherEditorTools = NonNullable<ProjectChatEntry['otherEditorTools']>
+
 // Word-parity count (docs word-count.ts): Asian chars one by one + non-Asian words
 const ASIAN_RE =
   /[ᄀ-ᇿ⺀-⿟、-〿぀-ヿ㄀-ㄯ㄰-㆏㇀-ㇿ㐀-䶿一-鿿가-힯豈-﫿！-｠￠-￦]|[\uD840-\uD87F][\uDC00-\uDFFF]/g
@@ -96,6 +131,8 @@ const PANEL_WIDTH_DEFAULT = 360
 const PANEL_WIDTH_MIN = 280
 const MAX_SNAPSHOTS = 20
 const TOOL_OUTPUT_MAX_CHARS = 2000
+/** Cap on a question tool's input and output kept in the transcript (the store cuts at 16,000 too) */
+const QUESTION_TOOL_FIELD_MAX = 16_000
 /** progress chip refresh while a write streams */
 const CHIP_UPDATE_MS = 400
 
@@ -122,6 +159,68 @@ interface ToolActivity {
   running?: boolean
   isError?: boolean
   output?: string
+  /** Tool input (JSON); kept for question tools so a reopened chat redraws the card */
+  input?: string
+}
+
+/** A question tool's input as JSON for the transcript; undefined when it cannot be written. */
+function questionInputText(input: unknown): string | undefined {
+  try {
+    const text = JSON.stringify(input)
+    return text ? text.slice(0, QUESTION_TOOL_FIELD_MAX) : undefined
+  } catch {
+    return undefined
+  }
+}
+
+/** A stored tool activity as the transcript shows it: question tools keep their input and whole output. */
+function restoredToolOf(tool: {
+  readonly name: string
+  readonly summary: string
+  readonly isError?: boolean | undefined
+  readonly input?: string | undefined
+  readonly output?: string | undefined
+}): ToolActivity {
+  if (isQuestionToolActivity(tool)) {
+    return {
+      name: tool.name,
+      summary: tool.summary,
+      isError: tool.isError,
+      ...(tool.input !== undefined ? { input: tool.input } : {}),
+      ...(tool.output !== undefined ? { output: tool.output } : {}),
+    }
+  }
+  return {
+    name: tool.name,
+    summary: tool.summary,
+    isError: tool.isError,
+    output: tool.output ? tool.output.slice(0, TOOL_OUTPUT_MAX_CHARS) : undefined,
+  }
+}
+
+/**
+ * The work steps of one reply. A restored reply draws each question tool as a
+ * read-only card instead of a step; a live reply keeps its card at the foot of the chat.
+ */
+function ReplyToolSteps({
+  lang,
+  tools,
+  restored,
+}: {
+  lang: Lang
+  tools: ToolActivity[] | undefined
+  restored: boolean | undefined
+}): ReactElement | null {
+  if (!tools || tools.length === 0) return null
+  if (!restored) return <AiWorkSteps lang={lang} steps={tools} />
+  return (
+    <>
+      <AiWorkSteps lang={lang} steps={tools.filter((tool) => !isQuestionToolActivity(tool))} />
+      {questionToolActivities(tools).map((activity, k) => (
+        <AiQuestionReceipt key={`q${k}`} lang={lang} activity={activity} />
+      ))}
+    </>
+  )
 }
 
 interface ChatEntry {
@@ -145,6 +244,125 @@ interface ChatEntry {
   skillProposals?: string[]
   /** tokens the provider billed for this reply, summed across its turns (absent when unreported) */
   usage?: AiTokenUsageView
+  /** project memory lines of a reopened project message (live ones come from its tools) */
+  memory?: ProjectMemoryLine[]
+  /** another editor's tools on a reopened project message: one summary line */
+  otherEditorTools?: OtherEditorTools
+  /** the run this reply ends changed the document (session-only, not persisted) */
+  changes?: RunChanges
+  /** came from a stored conversation: question cards are read-only */
+  restored?: boolean
+}
+
+interface MarkdownChangeLine extends AiChangeLine {
+  block?: number
+}
+
+const MAX_MD_CHANGE_LINES = 24
+
+function clipLineText(text: unknown, max = 56): string {
+  if (typeof text !== 'string') return ''
+  const compact = text.replace(/\s+/g, ' ').trim()
+  return compact.length > max ? `${compact.slice(0, max - 1)}…` : compact
+}
+
+function mdChangeLinesFromTool(
+  name: string,
+  input: Record<string, unknown>,
+  summary: string,
+): MarkdownChangeLine[] {
+  if (name === 'apply_ops' && Array.isArray(input.ops)) {
+    const out: MarkdownChangeLine[] = []
+    for (const raw of input.ops) {
+      if (!raw || typeof raw !== 'object') continue
+      const op = raw as Record<string, unknown>
+      const kind = typeof op.op === 'string' ? op.op : ''
+      const target =
+        op.target && typeof op.target === 'object' ? (op.target as Record<string, unknown>) : null
+      const block =
+        typeof target?.start === 'number'
+          ? target.start
+          : typeof op.after === 'number'
+            ? op.after + 1
+            : typeof op.index === 'number'
+              ? op.index
+              : undefined
+      if (kind === 'setFrontmatter') {
+        out.push({ kind: 'named', to: 'Frontmatter', showable: false })
+      } else if (kind === 'replaceText') {
+        out.push({
+          kind: 'replace',
+          from: clipLineText(op.find),
+          to: clipLineText(op.replace),
+          showable: block !== undefined,
+          block,
+        })
+      } else if (kind === 'insertContent' || kind === 'insertBlocks') {
+        out.push({
+          kind: 'insert',
+          to: clipLineText(op.markdown ?? op.text ?? kind),
+          showable: block !== undefined,
+          block,
+        })
+      } else if (kind === 'deleteBlocks' || kind === 'deleteRange') {
+        out.push({
+          kind: 'delete',
+          from: block !== undefined ? `Block ${block + 1}` : kind,
+          showable: false,
+        })
+      } else if (kind) {
+        out.push({
+          kind: 'named',
+          from: block !== undefined ? `Block ${block + 1}` : undefined,
+          to: clipLineText(op.markdown ?? op.text ?? kind),
+          showable: block !== undefined,
+          block,
+        })
+      }
+    }
+    return out
+  }
+  return [{ kind: 'named', to: clipLineText(summary || name), showable: true, block: 0 }]
+}
+
+/**
+ * What one run changed, on its last reply. The run is taken back by restoring
+ * the snapshot taken before its first change, which also takes back every
+ * later run (and anything typed since), so those cards turn 'reverted' too.
+ */
+interface RunChanges {
+  /** the snapshot it restores (ids grow with each run) */
+  id: number
+  state: AiChangesState
+  /** top-level blocks the run marked, when that is every place it changed */
+  count?: number
+  /** per-edit change summary lines for the diff card */
+  lines?: MarkdownChangeLine[]
+}
+
+/** A project chat message as this panel shows it */
+function entryFromProject(m: ProjectChatEntry & { skillProposals?: string[] }): ChatEntry {
+  return {
+    role: m.role,
+    text: m.text,
+    restored: true,
+    tools: m.tools?.map(restoredToolOf),
+    ...(m.scope ? { scope: m.scope } : {}),
+    ...(m.role === 'user' && skillChipRefsOf(m.skills).length > 0
+      ? { skills: skillChipRefsOf(m.skills) }
+      : {}),
+    ...(m.skillProposals ? { skillProposals: m.skillProposals } : {}),
+    ...(m.memory.length > 0 ? { memory: m.memory } : {}),
+    ...(m.otherEditorTools ? { otherEditorTools: m.otherEditorTools } : {}),
+  }
+}
+
+/** an apply_ops input that writes the properties block, which no mark on the page can show */
+function setsFrontmatter(input: Record<string, unknown>): boolean {
+  const ops = input.ops
+  return (
+    Array.isArray(ops) && ops.some((op) => (op as { op?: unknown } | null)?.op === 'setFrontmatter')
+  )
 }
 
 /** longest selection excerpt echoed on a user bubble */
@@ -160,8 +378,7 @@ export interface DocSnapshot {
 }
 
 interface Snapshot {
-  label: string
-  time: string
+  id: number
   doc: DocSnapshot
 }
 
@@ -230,6 +447,7 @@ export function AiPanel({
   /** bumped by New chat / unmount: a writer resuming after its abort must not open the keep card */
   const writerEpochRef = useRef(0)
   const [prompt, setPrompt] = useState('')
+  const inlineQuestions = useAiInlineQuestions()
   const [busy, setBusy] = useState(false)
   /** messages queued while a reply runs; the pump re-runs them through send on settle */
   const msgQueue = useChatRunQueue<{ skillUse: SkillUse }>({
@@ -240,14 +458,20 @@ export function AiPanel({
       // nothing can run right now: the message stays queued, and in front of "not connected"
       // the queue is paused so it does not start by itself after a sign-in
       if (!sendGateRef.current.admitQueued(() => msgQueueRef.current.setPaused(true))) return false
+      // the queued message starts its own run: it gets its one card
+      inlineQuestions.supersedeOpen()
       return send(text, text, null, meta.skillUse)
     },
   })
   const msgQueueRef = useRef(msgQueue)
   msgQueueRef.current = msgQueue
+  /** this window's MCP servers (user MCP spec 7.5); the chips name the ones not usable now */
+  const mcpWindow = useMcpWindow()
   /** the skills called with `/` or `$`: the list, the chips and the text a request gets */
   const skills = useComposerSkills({
     lang,
+    editor: 'markdown',
+    usableMcpServers: mcpWindow.state?.usableServers(),
     // a chip whose skill has a template runs in a new tab (spec 5.7)
     onTemplateSkill: (request) => skillTemplatesRef.current.onTemplateSkill(request),
   })
@@ -273,6 +497,11 @@ export function AiPanel({
     cards: skillCards,
     busy,
     send: (text, use) => send(text, undefined, undefined, use),
+    // a template skill called in a document with content asks where to run
+    hasContent: () => {
+      const doc = deps.getSnapshot()
+      return doc.body.trim() !== '' || doc.frontmatter.trim() !== ''
+    },
     onTaken: onSkillHandoff,
     setComposer: setPrompt,
   })
@@ -280,8 +509,15 @@ export function AiPanel({
   skillTemplatesRef.current = skillTemplates
   /** the skills of the last send: a retry sends the same skill text */
   const lastSkillUseRef = useRef<SkillUse>(NO_SKILL_USE)
-  const [copiedIdx, setCopiedIdx] = useState<number | null>(null)
+  /** the snapshots the change cards restore, oldest first; a card whose snapshot was pushed out is 'expired' */
   const [snapshots, setSnapshots] = useState<Snapshot[]>([])
+  const nextSnapshotIdRef = useRef(1)
+  /** taken before the in-flight run's first change; becomes its card's snapshot when the run ends */
+  const runSnapshotRef = useRef<DocSnapshot | null>(null)
+  /** the in-flight run changed something its marks cannot show (the properties block) */
+  const runUnmarkedRef = useRef(false)
+  /** detailed change lines accumulated during the active run */
+  const runChangeLinesRef = useRef<MarkdownChangeLine[]>([])
   // bumped on selection/doc changes so the scope chip & queue rows stay fresh
   const [, setScopeTick] = useState(0)
   /** the scope chip's expandable preview of the selected text */
@@ -289,6 +525,11 @@ export function AiPanel({
   const chatRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const stickToBottomRef = useRef(true)
+  const {
+    showButton: showScrollBottom,
+    onScroll: onScrollBottom,
+    scrollToBottom,
+  } = useScrollToBottom(chatRef)
   // preferred = the user's chosen width (the only value persisted); panelWidth =
   // what fits the current window. Deriving the display width from the preference
   // means a transiently small window never permanently shrinks the panel.
@@ -383,6 +624,9 @@ export function AiPanel({
   const streamErrorRef = useRef<IpcStreamError | null>(null)
   /** usage windows the subscription program reported last */
   const [subscriptionUsage, setSubscriptionUsage] = useState<AiSubscriptionUsage[]>([])
+  // usage a picture request reported reaches every window (the chat stream only its own);
+  // the shared merge keeps the windows a report does not name
+  useSubscriptionUsageUpdates(() => window.markdownApi.aiSubscription, setSubscriptionUsage)
   /** the input of the last run was cut to fit a limit */
   const [inputTruncated, setInputTruncated] = useState(false)
   const langRef = useRef(lang)
@@ -425,7 +669,69 @@ export function AiPanel({
     })
   }
 
+  /**
+   * The project folder (spec 5): the chip under the input, the header's chat
+   * menu, the notices, and where the chat is recorded. Without a chosen
+   * project everything below runs exactly as before.
+   */
+  const projectPanel = useProjectPanel({
+    editor: 'markdown',
+    lang,
+    busy,
+    loop: () => loopRef.current,
+    onOpen: (opened) => openProjectChat(opened),
+    onRemoteMessages: (entries, running) =>
+      setChat((prev) =>
+        placeRemoteEntries(
+          prev,
+          entries.map((entry) => entryFromProject(entry)),
+          running,
+        ),
+      ),
+    onNewChat: () => startNewChat(),
+    consolidation: async () => {
+      // the same gate as a send: nothing goes out until a provider can run
+      if (!sendGateRef.current.admitQueued(() => {})) {
+        showWhatHoldsTheSend()
+        return null
+      }
+      settingsRef.current = await window.markdownApi.getAiSettings()
+      return { transport: transportRef.current!, gate: sendGateRef.current.peek }
+    },
+  })
+  const projectPanelRef = useRef(projectPanel)
+  projectPanelRef.current = projectPanel
+
   const persistMessage = (
+    role: 'user' | 'assistant',
+    text: string,
+    tools?: ToolActivity[],
+    scope?: AiScopeQuoteData,
+    skillChips?: SkillChipRef[],
+  ) => {
+    // a chosen project (or this document's earlier chat) records it; otherwise the per-document store
+    const recorded = projectPanelRef.current.chat.persist({
+      role,
+      text,
+      ...(tools && tools.length > 0
+        ? {
+            tools: tools.map((tool) => ({
+              name: tool.name,
+              summary: tool.summary,
+              isError: tool.isError,
+              ...(tool.input ? { input: tool.input } : {}),
+              output: tool.output,
+            })),
+          }
+        : {}),
+      ...(scope ? { scope } : {}),
+      ...(skillChips && skillChips.length > 0 ? { skills: skillChips } : {}),
+    })
+    if (!recorded) persistToDocument(role, text, tools, scope, skillChips)
+  }
+
+  /** the per-document chat store, as before project folders */
+  const persistToDocument = (
     role: 'user' | 'assistant',
     text: string,
     tools?: ToolActivity[],
@@ -547,11 +853,43 @@ export function AiPanel({
     [],
   )
 
+  /**
+   * The card of the run that just ended, if it changed the document: its
+   * snapshot joins the ring (the oldest falls out past MAX_SNAPSHOTS) and the
+   * count is the blocks its marks sit in, unless something it changed has no mark.
+   */
+  const takeRunChanges = (): { changes: RunChanges } | Record<string, never> => {
+    const doc = runSnapshotRef.current
+    const unmarked = runUnmarkedRef.current
+    const lines = runChangeLinesRef.current
+    runSnapshotRef.current = null
+    runUnmarkedRef.current = false
+    runChangeLinesRef.current = []
+    if (!doc) return {}
+    const id = nextSnapshotIdRef.current++
+    setSnapshots((prev) => [...prev, { id, doc }].slice(-MAX_SNAPSHOTS))
+    const editor = depsRef.current.getEditor()
+    const marks = editor ? aiMarks(editor.state) : null
+    const count =
+      marks && !unmarked && !marks.unmarked && marks.blocks > 0 ? marks.blocks : undefined
+    return {
+      changes: {
+        id,
+        state: 'applied',
+        ...(count !== undefined ? { count } : {}),
+        ...(lines.length > 0 ? { lines } : {}),
+      },
+    }
+  }
+
   // The loop is built once; every mutable value goes through a ref getter
   const loopRef = useRef<AgentLoop<DocSnapshot> | null>(null)
   if (!loopRef.current) {
     loopRef.current = new AgentLoop<DocSnapshot>({
       transport: transportRef.current,
+      // a local model that reported no tool support answers in text only
+      toolsAllowed: () =>
+        settingsRef.current ? localModelCapabilities(settingsRef.current).tools !== false : true,
       skill: composeWithDrive('markdown+search', '', () => loopRef.current?.messages ?? [], [
         createMarkdownSkill(
           () => depsRef.current.getEditor(),
@@ -565,12 +903,16 @@ export function AiPanel({
           }),
         ),
         createSearchSkill(),
+        inlineQuestions.askQuestionsSkill,
         // the person's skills: use_skill, read_skill_file, propose_skill (app-run tools)
         ...panelUserSkills({
+          editor: 'markdown',
           lang: () => langRef.current,
           messages: () => loopRef.current?.messages ?? [],
           // a template skill the model used offers its new document (spec 5.7)
           onUsed: (skill) => skillTemplatesRef.current.onUsed(skill),
+          // use_skill names the MCP servers it expects that are not usable now (spec 8)
+          mcpServerUsable: (name) => windowMcpUsableServers().has(name),
           onProposal: (proposal) => {
             skillCardsRef.current.add(proposal)
             patchLast((last) => ({
@@ -578,6 +920,8 @@ export function AiPanel({
             }))
           },
         }),
+        // the chosen project folder: its context in the system prompt, project_* tools (app-run)
+        ...panelProjectSkill({ run: projectPanel.chat.run, lang: () => langRef.current }),
       ]),
       captureSnapshot: () => depsRef.current.getSnapshot(),
       systemSuffix: () => aiLangDirective(langRef.current),
@@ -588,22 +932,23 @@ export function AiPanel({
           patchLast((last) => ({
             tools: [
               ...(last.tools ?? []),
-              { name: call.name, summary: call.name.replace(/[_-]+/g, ' '), running: true },
+              { name: call.name, summary: toolStepLabel(call.name), running: true },
             ],
           }))
         },
         onToolExecuted: ({ call, execution, snapshotBefore }) => {
-          if (execution.mutated) runMutatedRef.current = true
-          if (snapshotBefore !== undefined) {
-            const label = runInstructionRef.current.slice(0, 40)
-            const time = new Date().toLocaleTimeString([], {
-              hour: '2-digit',
-              minute: '2-digit',
-            })
-            setSnapshots((prev) =>
-              [...prev, { label, time, doc: snapshotBefore }].slice(-MAX_SNAPSHOTS),
-            )
+          if (execution.mutated) {
+            runMutatedRef.current = true
+            if (runChangeLinesRef.current.length < MAX_MD_CHANGE_LINES) {
+              const nextLines = mdChangeLinesFromTool(call.name, call.input, execution.summary)
+              runChangeLinesRef.current = [...runChangeLinesRef.current, ...nextLines].slice(
+                0,
+                MAX_MD_CHANGE_LINES,
+              )
+            }
           }
+          if (snapshotBefore !== undefined) runSnapshotRef.current = snapshotBefore
+          if (execution.mutated && setsFrontmatter(call.input)) runUnmarkedRef.current = true
           // mind maps ride the UI-only display side channel onto the message
           const display = execution.display
           const mindmap = display?.kind === 'mindmap' ? display.tree : undefined
@@ -613,7 +958,19 @@ export function AiPanel({
             isError: execution.isError,
             output: execution.output?.slice(0, TOOL_OUTPUT_MAX_CHARS),
           }
-          runToolsRef.current.push(activity)
+          // a question card is kept whole (input and output) so a reopened chat redraws it
+          const questionInput = isQuestionToolActivity(call)
+            ? questionInputText(call.input)
+            : undefined
+          runToolsRef.current.push(
+            isQuestionToolActivity(call)
+              ? {
+                  ...activity,
+                  output: execution.output?.slice(0, QUESTION_TOOL_FIELD_MAX),
+                  ...(questionInput !== undefined ? { input: questionInput } : {}),
+                }
+              : activity,
+          )
           patchLast((last) => {
             // Swap out the running placeholder pushed by onToolStart (parse-fail calls have none)
             const tools = [...(last.tools ?? [])]
@@ -640,21 +997,25 @@ export function AiPanel({
           const final = truncated
             ? [base, tGlobal('aiTruncatedNote')].filter(Boolean).join('\n\n')
             : base
+          // a cancelled run keeps what it already changed: that gets its card too
+          const changed = takeRunChanges()
           patchLast((last) => ({
             streaming: false,
             text: final || (last.tools?.length ? last.text : tGlobal('aiNoReply')),
             // A stop mid-tool can leave a running placeholder behind — drop it
             tools: last.tools?.filter((tl) => !tl.running),
+            ...changed,
           }))
           persistMessage('assistant', final, runToolsRef.current)
-          const editor = depsRef.current.getEditor()
-          if (editor) clearAiHighlights(editor)
+          projectPanelRef.current.finishSend()
           depsRef.current.onRunDone(runMutatedRef.current)
           setBusy(false)
         },
         onError: (error) => {
           const blocked = blockedRunOf(streamErrorRef.current, error)
           streamErrorRef.current = null
+          // a run can fail after it already changed the document: its card stays
+          const changed = takeRunChanges()
           if (blocked) {
             // the queue must not fire one message after another into the same wall
             msgQueueRef.current.hold()
@@ -678,10 +1039,12 @@ export function AiPanel({
                 isError: true,
                 ...(blocked ? { blocked } : {}),
                 tools: last.tools?.filter((tl) => !tl.running),
+                ...changed,
               }
             }
             return next
           })
+          projectPanelRef.current.finishSend()
           setBusy(false)
         },
       },
@@ -699,22 +1062,33 @@ export function AiPanel({
     }
   }, [])
 
+  /** bumped whenever a project chat opens: a per-document load still in flight is dropped */
+  const documentChatEpochRef = useRef(0)
+
   // ── chat-history persistence: bind to the file, restore prior transcript ──
-  useEffect(() => {
+  const loadDocumentChat = (): void => {
     const api = window.projectApi
     if (!api) return
-    const tempChatId = `unsaved-${Date.now()}`
-    void api
-      .resolveChat({ filePath: filePathRef.current ?? null, tempChatId })
-      .then((ids) => {
-        chatIdsRef.current = ids
-        for (const msg of pendingPersistRef.current.splice(0)) {
-          persistMessage(msg.role, msg.text, msg.tools, msg.scope, msg.skills)
-        }
-        return api.loadChat({ projectId: ids.projectId, chatId: ids.chatId, limit: 200 })
-      })
+    const epoch = documentChatEpochRef.current
+    const known = chatIdsRef.current
+    const resolved = known
+      ? Promise.resolve(known)
+      : api
+          .resolveChat({
+            filePath: filePathRef.current ?? null,
+            tempChatId: `unsaved-${Date.now()}`,
+          })
+          .then((ids) => {
+            chatIdsRef.current = ids
+            for (const msg of pendingPersistRef.current.splice(0)) {
+              persistToDocument(msg.role, msg.text, msg.tools, msg.scope, msg.skills)
+            }
+            return ids
+          })
+    void resolved
+      .then((ids) => api.loadChat({ projectId: ids.projectId, chatId: ids.chatId, limit: 200 }))
       .then((stored) => {
-        if (stored.length === 0) return
+        if (stored.length === 0 || epoch !== documentChatEpochRef.current) return
         // skill cards come back closed; a saved card's record is not part of the conversation
         const msgs = skillCardsRef.current.restore(stored)
         // the user may have sent a message while history was loading — never
@@ -726,12 +1100,8 @@ export function AiPanel({
           return msgs.map((m) => ({
             role: m.role,
             text: m.text,
-            tools: m.tools?.map((tool) => ({
-              name: tool.name,
-              summary: tool.summary,
-              isError: tool.isError,
-              output: tool.output ? tool.output.slice(0, TOOL_OUTPUT_MAX_CHARS) : undefined,
-            })),
+            restored: true,
+            tools: m.tools?.map(restoredToolOf),
             ...(m.scope ? { scope: m.scope } : {}),
             ...(m.role === 'user' && skillChipRefsOf(m.skills).length > 0
               ? { skills: skillChipRefsOf(m.skills) }
@@ -740,6 +1110,8 @@ export function AiPanel({
           }))
         })
         if (applied && !loopRef.current?.busy) {
+          // a reopened conversation starts with no MCP choices of another chat (user MCP spec 7.6)
+          windowMcpState()?.newConversation()
           loopRef.current?.restore(msgs.map((m) => ({ role: m.role, text: m.text })))
           // the next request re-reads the current text of the skills this conversation used
           skillsRef.current.restoreHistory(
@@ -750,10 +1122,65 @@ export function AiPanel({
       .catch(() => {
         /* history load failures are silent */
       })
+  }
+  useEffect(() => {
+    loadDocumentChat()
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount only
   }, [])
 
+  /** the conversation on screen, in the loop and in the composer's helpers goes away */
+  const resetConversation = (): void => {
+    stop()
+    abandonWriter()
+    msgQueue.clear()
+    sendGate.reset()
+    loopRef.current?.reset()
+    // servers off in this chat and "always allow in this chat" go too (user MCP spec 7.6)
+    windowMcpState()?.newConversation()
+    setBusy(false)
+    setChat([])
+    // the cards go with the chat, and the snapshots and marks with them
+    setSnapshots([])
+    runSnapshotRef.current = null
+    clearMarks()
+    skills.resetConversation()
+    skillCards.reset()
+    skillTemplates.reset()
+    // question cards belong to the chat: an open one answers skip, all states go
+    inlineQuestions.resetConversation()
+  }
+
+  /** "New chat": a new project chat when a project is chosen, else the reset as before */
+  const startNewChat = (): void => {
+    resetConversation()
+    void projectPanelRef.current.chat.newChat()
+  }
+
+  /** a project chat, this document's earlier chat, or (no project) the per-document chat */
+  const openProjectChat = (opened: ProjectChatOpened): void => {
+    documentChatEpochRef.current++
+    resetConversation()
+    if (opened.kind === 'document') {
+      loadDocumentChat()
+      return
+    }
+    // skill cards come back closed; a saved card's record is not part of the conversation
+    const msgs = skillCardsRef.current.restore(opened.entries)
+    setChat(msgs.map((m) => entryFromProject(m)))
+    loopRef.current?.restore(msgs.map((m) => ({ role: m.role, text: m.text })))
+    skillsRef.current.restoreHistory(
+      msgs.map((m) => (m.role === 'user' ? skillChipRefsOf(m.skills) : undefined)),
+    )
+  }
+
+  /** the path the document had when the panel last looked: a new one is a save (as) */
+  const savedPathRef = useRef(filePath)
   /** after an untitled document's first save, bind the unsaved-* history to the real path */
   useEffect(() => {
+    if (filePath && filePath !== savedPathRef.current) {
+      void projectPanelRef.current.chat.documentSaved()
+    }
+    savedPathRef.current = filePath
     filePathRef.current = filePath
     const ids = chatIdsRef.current
     if (!window.projectApi || !ids || !filePath || !ids.chatId.startsWith('unsaved-')) return
@@ -777,6 +1204,7 @@ export function AiPanel({
     const el = chatRef.current
     if (!el) return
     stickToBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48
+    onScrollBottom()
   }
 
   /**
@@ -815,6 +1243,11 @@ export function AiPanel({
     runInstructionRef.current = instruction
     runDisplayRef.current = displayText ?? instruction
     runMutatedRef.current = false
+    runSnapshotRef.current = null
+    runUnmarkedRef.current = false
+    runChangeLinesRef.current = []
+    // the marks show what the last run changed: a new run starts with none
+    clearMarks()
     runToolsRef.current = []
     runUsageRef.current = undefined
     // a queue batch carries its own display text: no selection quote
@@ -854,9 +1287,13 @@ export function AiPanel({
         settingsRef.current = settings
         if (!mountedRef.current) return
         applyAiSettings(settings)
+        // the chosen project's context for this request (after the send gate, right before the run)
+        await projectPanelRef.current.prepareSend()
+        if (!mountedRef.current) return
         // the skill text rides with this request only; the bubble and the record keep the chips
         await loop.run(instruction + skillUse.text)
       } catch (err) {
+        projectPanelRef.current.finishSend()
         if (!mountedRef.current) return
         patchLast({
           streaming: false,
@@ -878,6 +1315,7 @@ export function AiPanel({
   const sendTyped = () => {
     const text = prompt.trim()
     if (!text) return
+    inlineQuestions.supersedeOpen()
     skills.withSkills(text, (skillUse) => send(text, undefined, undefined, skillUse))
   }
 
@@ -891,6 +1329,9 @@ export function AiPanel({
     skillsRef.current.consume(skillUse)
     msgQueue.enqueue(text, { skillUse })
     setPrompt('')
+    // a message sent while a card waits closes it: the run goes on without the answer
+    // (and cannot ask again in this run)
+    inlineQuestions.closeOpenCard()
   }
 
   const retry = (): void => {
@@ -936,6 +1377,10 @@ export function AiPanel({
       ? ''
       : editor.state.doc.textBetween(liveSelection.from, liveSelection.to, '\n', ' ').trim()
   const hasScopeSelection = selectionText.length > 0
+  // whether the marks of the last run are on the page (the scope tick re-renders on edits and clears)
+  const marksShown = !!editor && !editor.isDestroyed && aiMarks(editor.state).shown
+  /** the newest reply with a changes card: only its run's changes are marked */
+  const latestChangesIdx = chat.map((entry) => entry.changes !== undefined).lastIndexOf(true)
 
   /** the × on the scope chip: collapse the selection so the run targets the whole document */
   const clearScopeSelection = (): void => {
@@ -1014,17 +1459,50 @@ export function AiPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [preset])
 
-  const copyMessage = (text: string, idx: number): void => {
-    void navigator.clipboard.writeText(text)
-    setCopiedIdx(idx)
-    window.setTimeout(() => setCopiedIdx((cur) => (cur === idx ? null : cur)), 1200)
+  /** takes the marks of the last run's changes off the document */
+  const clearMarks = (): void => {
+    const current = depsRef.current.getEditor()
+    if (current) clearAiHighlights(current)
+    // a clear changes no content, so no editor update re-renders the card
+    setScopeTick((tick) => tick + 1)
   }
 
-  const rollback = (snapshot: Snapshot): void => {
+  /**
+   * Takes a run back: the document returns to the snapshot from before the
+   * run's first change. That also drops every later run (and edits made since),
+   * so their cards turn 'reverted' and their snapshots go.
+   */
+  const revertRun = (id: number): void => {
     if (busy) return
-    depsRef.current.restoreSnapshot(snapshot.doc)
-    setSnapshots((prev) => prev.filter((s) => s !== snapshot))
+    const snapshot = snapshots.find((s) => s.id === id)
+    if (!snapshot) return
+    let state: AiChangesState = 'reverted'
+    try {
+      depsRef.current.restoreSnapshot(snapshot.doc)
+    } catch {
+      state = 'refused'
+    }
+    if (state === 'reverted') {
+      clearMarks()
+      setSnapshots((prev) => prev.filter((s) => s.id < id))
+    }
+    setChat((prev) =>
+      prev.map((entry) => {
+        const changes = entry.changes
+        if (!changes || changes.state !== 'applied') return entry
+        if (changes.id === id) return { ...entry, changes: { ...changes, state } }
+        if (state === 'reverted' && changes.id > id)
+          return { ...entry, changes: { ...changes, state: 'reverted' } }
+        return entry
+      }),
+    )
   }
+
+  /** the card's state: an applied run whose snapshot fell out of the ring can no longer be taken back */
+  const cardState = (changes: RunChanges): AiChangesState =>
+    changes.state === 'applied' && !snapshots.some((s) => s.id === changes.id)
+      ? 'expired'
+      : changes.state
 
   // Re-derive the display width on window resize (max is 60% of the window);
   // growing the window back restores the preferred width
@@ -1085,51 +1563,45 @@ export function AiPanel({
         aria-orientation="vertical"
         aria-label={aiSubscriptionText(lang, 'aiAssistant')}
       />
-      <header className="ai-panel-header">
-        <span className="ai-panel-title">
-          <AiMark size={22} />
-          {aiSubscriptionText(lang, 'aiAssistant')}
-        </span>
-        <div className="ai-panel-header-actions">
-          <AiPanelSideButton
-            lang={lang}
-            onMove={(side) => window.markdownApi.setAiPanelPrefs({ side })}
-          />
-          {chat.length > 0 && (
+      <AiPanelHeader
+        lang={lang}
+        chatMenu={projectPanel.chatMenu}
+        actions={
+          <>
+            <AiPanelSideButton
+              lang={lang}
+              onMove={(side) => window.markdownApi.setAiPanelPrefs({ side })}
+            />
+            {chat.length > 0 && (
+              <button
+                type="button"
+                className="ai-header-btn"
+                onClick={startNewChat}
+                data-tip={t('aiNewChat')}
+                aria-label={t('aiNewChat')}
+              >
+                <IconNewChat />
+              </button>
+            )}
             <button
-              className="ai-header-btn"
-              onClick={() => {
-                stop()
-                abandonWriter()
-                msgQueue.clear()
-                sendGate.reset()
-                loopRef.current?.reset()
-                setBusy(false)
-                setChat([])
-                skills.resetConversation()
-                skillCards.reset()
-                skillTemplates.reset()
-              }}
-              data-tip={t('aiNewChat')}
-              aria-label={t('aiNewChat')}
+              type="button"
+              className="ai-header-btn ai-panel-collapse"
+              onClick={onCollapse}
+              data-tip={t('aiCollapsePanel')}
+              aria-label={t('aiCollapsePanel')}
             >
-              <IconNewChat />
+              <IconCollapse />
             </button>
-          )}
-          <button
-            className="ai-header-btn ai-panel-collapse"
-            onClick={onCollapse}
-            data-tip={t('aiCollapsePanel')}
-            aria-label={t('aiCollapsePanel')}
-          >
-            <IconCollapse />
-          </button>
-        </div>
-      </header>
+          </>
+        }
+      />
 
       <div className="ai-chat" ref={chatRef} onScroll={onChatScroll}>
         {chat.length === 0 && (
           <div className="ai-chat-empty">
+            <div className="ai-chat-empty-badge">
+              <AiMark size={24} />
+            </div>
             <div className="ai-chat-empty-title">{t('aiEmptyTitle')}</div>
             <div className="ai-chat-empty-body">{t('aiEmptyBody')}</div>
             <div className="ai-starter-list">
@@ -1161,6 +1633,7 @@ export function AiPanel({
                 {t('aiQuickMindMap')}
               </button>
             </div>
+            <AiEmptyHints lang={lang} showSkill={Boolean(skills.composer)} />
           </div>
         )}
         {chat.map((entry, i) => {
@@ -1189,7 +1662,14 @@ export function AiPanel({
             )
           }
           const hasTools = (entry.tools?.length ?? 0) > 0
-          if (!entry.text && !entry.streaming && !hasTools) return null
+          if (
+            !entry.text &&
+            !entry.streaming &&
+            !hasTools &&
+            !entry.otherEditorTools &&
+            !entry.changes
+          )
+            return null
           const isLast = i === chat.length - 1
           // Action row appears once per completed reply: on the turn's final segment only
           // (mid-turn segments have a following assistant entry; the live turn ends when !busy)
@@ -1202,11 +1682,8 @@ export function AiPanel({
               key={i}
               className={`ai-msg ai-msg-assistant${entry.isError && !blocked ? ' ai-msg-error' : ''}${entry.streaming ? ' ai-msg-streaming' : ''}`}
             >
-              {!entry.text && entry.streaming ? (
-                <span className="ai-typing-row">
-                  <AiTypingIndicator label={hasTools ? t('aiWorking') : t('aiThinking')} />
-                </span>
-              ) : blocked ? (
+              <ReplyToolSteps lang={lang} tools={entry.tools} restored={entry.restored} />
+              {blocked ? (
                 <AiBlockedNotice
                   kind={blocked.kind}
                   provider={blocked.provider}
@@ -1221,11 +1698,26 @@ export function AiPanel({
               ) : (
                 entry.text && (
                   <div dir="auto">
-                    <Markdown text={entry.text} navs={[docNav, fileNav]} />
+                    <AiAssistantBody
+                      lang={lang}
+                      text={entry.text}
+                      navs={[docNav, fileNav]}
+                      streaming={entry.streaming}
+                      restored={entry.restored}
+                      questionStatus={inlineQuestions.textCardStates[`m-${i}`]?.status}
+                      questionAnswer={inlineQuestions.textCardStates[`m-${i}`]?.answer}
+                      onQuestionSubmit={(view, answer) => {
+                        inlineQuestions.markTextCard(`m-${i}`, 'submitted', answer)
+                        send(inlineQuestions.formatFollowUp(lang, view, answer))
+                      }}
+                      onQuestionSkip={(view) => {
+                        inlineQuestions.markTextCard(`m-${i}`, 'skipped')
+                        send(inlineQuestions.formatFollowUp(lang, view, { kind: 'skip' }))
+                      }}
+                    />
                   </div>
                 )
               )}
-              {hasTools && <ToolChipList tools={entry.tools!} />}
               {entry.mindmap && (
                 <MindMapCard
                   tree={entry.mindmap}
@@ -1237,74 +1729,95 @@ export function AiPanel({
                     const current = depsRef.current.getEditor()
                     if (current) navigateToBlock(current, index)
                   }}
+                  onInsert={() => {
+                    const current = depsRef.current.getEditor()
+                    if (!current || !entry.mindmap) return
+                    uiOp(current, {
+                      op: 'insertContent',
+                      after: current.state.doc.childCount - 1,
+                      markdown: ['```mermaid', mindMapToMermaid(entry.mindmap), '```'].join('\n'),
+                    })
+                  }}
                 />
               )}
               <SkillUsedNotes tools={entry.tools} />
+              {projectPanel.messageParts(entry)}
               {entry.skillProposals?.map((key) => skillCards.render(key))}
-              {entry.usage && (
-                <div className="ai-message-usage">
-                  <AiUsageChip usage={entry.usage} lang={lang} />
-                </div>
-              )}
-              {showToolbar && (
-                <div className="ai-msg-toolbar">
-                  <button
-                    className="ai-msg-tool-btn"
-                    onClick={() => copyMessage(entry.text, i)}
-                    aria-label={t('aiCopyReplyTitle')}
-                    data-tip={t('aiCopyReplyTitle')}
-                  >
-                    {copiedIdx === i ? (
-                      <svg
-                        width="14"
-                        height="14"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="1.8"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      >
-                        <polyline points="20 6 9 17 4 12" />
-                      </svg>
-                    ) : (
-                      <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                        <path
-                          d="M14.6113 5.34253C16.0608 5.3428 17.2363 6.518 17.2363 7.96753V15.5066C17.2361 16.956 16.0607 18.1313 14.6113 18.1316H7.07227C5.62267 18.1316 4.44751 16.9561 4.44727 15.5066V7.96753C4.44732 6.51783 5.62255 5.34253 7.07227 5.34253H14.6113ZM7.07227 6.59253C6.31291 6.59253 5.69732 7.20819 5.69727 7.96753V15.5066C5.69751 16.2658 6.31302 16.8816 7.07227 16.8816H14.6113C15.3703 16.8813 15.9861 16.2656 15.9863 15.5066V7.96753C15.9863 7.20835 15.3705 6.5928 14.6113 6.59253H7.07227ZM10.0176 2.8689C10.3626 2.86905 10.6426 3.14882 10.6426 3.4939C10.6425 3.83888 10.3626 4.11874 10.0176 4.1189H4.59961C3.84022 4.1189 3.22461 4.73451 3.22461 5.4939V11.324C3.22433 11.6689 2.94461 11.949 2.59961 11.949C2.25461 11.949 1.97489 11.6689 1.97461 11.324V5.4939C1.97461 4.04415 3.14987 2.8689 4.59961 2.8689H10.0176Z"
-                          fill="currentColor"
-                        />
-                      </svg>
-                    )}
-                  </button>
-                  {isLast && !busy && runInstructionRef.current && (
-                    <button
-                      className="ai-msg-tool-btn"
-                      onClick={retry}
-                      aria-label={t('aiRegenerateTitle')}
-                      data-tip={t('aiRegenerateTitle')}
-                    >
-                      <svg
-                        width="20"
-                        height="20"
-                        viewBox="0 0 16 16"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="1"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        aria-hidden
-                      >
-                        <path d="M 12.68 6.65 a 4.86 4.86 0 0 0 -9 -1.08 M 3.32 9.35 a 4.86 4.86 0 0 0 9 1.08" />
-                        <path d="M 12.95 3.05 v 2.7 h -2.7 M 3.05 12.95 v -2.7 h 2.7" />
-                      </svg>
-                    </button>
+              {entry.changes && (
+                <AiChangesCard
+                  lang={lang}
+                  state={cardState(entry.changes)}
+                  count={entry.changes.count}
+                  lines={entry.changes.lines}
+                  onShowLine={(idx) => {
+                    const line = entry.changes?.lines?.[idx]
+                    const current = depsRef.current.getEditor()
+                    if (line?.block !== undefined && current) navigateToBlock(current, line.block)
+                  }}
+                  canRevert={!busy}
+                  revertsLater={chat.some(
+                    (later) =>
+                      later.changes &&
+                      later.changes.id > entry.changes!.id &&
+                      later.changes.state === 'applied',
                   )}
-                </div>
+                  onRevert={() => revertRun(entry.changes!.id)}
+                  // the marks are of the newest run's changes
+                  onClearMarks={i === latestChangesIdx && marksShown ? clearMarks : null}
+                />
+              )}
+              <AiReplyProgress
+                reply={entry}
+                thinking={t('aiThinking')}
+                working={t('aiWorking')}
+                paused={inlineQuestions.waitingForPerson}
+              />
+              {(showToolbar || entry.usage) && (
+                <AiReplyFooter
+                  lang={lang}
+                  isLast={isLast}
+                  copyText={showToolbar ? entry.text : undefined}
+                  onRetry={
+                    showToolbar && isLast && !busy && runInstructionRef.current ? retry : undefined
+                  }
+                  usage={entry.usage}
+                  nextSteps={
+                    isLast
+                      ? {
+                          context: {
+                            aiVisible: true,
+                            streaming: Boolean(entry.streaming),
+                            completedNormally: !entry.isError && !entry.blocked,
+                            editorKind: 'markdown',
+                            editedDocument: Boolean(entry.changes),
+                            qualityIssueCount: 0,
+                            usedSkillName: entry.skills?.[0]?.title,
+                            canGenerateOtherDoc: true,
+                            hasSavedPath: Boolean(filePath),
+                          },
+                          onGenerateOtherDoc: openGenerateForCurrentDocument,
+                        }
+                      : undefined
+                  }
+                />
               )}
             </div>
           )
         })}
+        {inlineQuestions.activeToolCard && (
+          <AiQuestionCard
+            key={inlineQuestions.activeToolCard.id}
+            lang={lang}
+            view={inlineQuestions.activeToolCard.view}
+            status={inlineQuestions.activeToolCard.status}
+            answer={inlineQuestions.activeToolCard.answer}
+            onSubmit={inlineQuestions.submitToolCard}
+            onSkip={inlineQuestions.skipToolCard}
+          />
+        )}
         {skillTemplates.notes}
+        {/* an MCP tool waiting for the person's yes (user MCP spec 7.4) */}
+        <McpPermissionCard lang={lang} />
         {sendGate.connectChoice && (
           <AiConnectPrompt
             choice={sendGate.connectChoice}
@@ -1333,27 +1846,20 @@ export function AiPanel({
         {inputTruncated && (
           <AiInputTruncatedNotice lang={lang} onDismiss={() => setInputTruncated(false)} />
         )}
+        {aiSettings !== null && localModelCapabilities(aiSettings).tools === false && (
+          <AiToolsUnsupportedNotice lang={lang} />
+        )}
+        {projectPanel.notices}
       </div>
 
-      {snapshots.length > 0 && (
-        <div className="ai-versions">
-          <div className="ai-versions-title">
-            <IconClock />
-            {t('aiSnapshotsTitle')}
-          </div>
-          {snapshots.map((s, i) => (
-            <div key={i} className="ai-version-row">
-              <span className="ai-version-label" data-tip={s.label}>
-                <span className="ai-version-time">{s.time}</span>
-                {s.label}
-              </span>
-              <button className="ai-version-rollback" disabled={busy} onClick={() => rollback(s)}>
-                {t('aiRollback')}
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
+      <AiScrollToBottom
+        visible={showScrollBottom && chat.length > 0}
+        lang={lang}
+        onClick={() => {
+          stickToBottomRef.current = true
+          scrollToBottom()
+        }}
+      />
 
       <div className="ai-composer">
         {activePartial && (
@@ -1390,6 +1896,10 @@ export function AiPanel({
             onFocus={(qid) => onQueueFocus?.(qid)}
           />
         )}
+        {projectPanel.hint}
+        {/* Above the input card, not inside its footer: the reset time is long and
+            would otherwise squeeze the footer controls in a narrow panel. */}
+        <AiSubscriptionUsageLine usage={subscriptionUsage} lang={lang} />
         <AiComposer
           queueStrip={
             <AiQueueStrip
@@ -1450,162 +1960,30 @@ export function AiPanel({
           sendLabel={t('aiSend')}
           stopLabel={t('aiStop')}
           iconOnly
-          footerStart={
-            <>
-              <AiModelPicker
-                bridge={MODEL_BRIDGE}
-                lang={lang}
-                subscriptionStatuses={statuses ?? {}}
-                onRefreshSubscriptions={subscription.refresh}
-              />
-              {sessionUsage && <AiUsageChip usage={sessionUsage} session lang={lang} />}
-              <AiSubscriptionUsageLine usage={subscriptionUsage} lang={lang} />
-            </>
+          lang={lang}
+          showSkillButton
+          footerStart={<McpServerButton lang={lang} />}
+          footerEnd={
+            <AiModelPicker
+              bridge={MODEL_BRIDGE}
+              lang={lang}
+              subscriptionStatuses={statuses ?? {}}
+              onRefreshSubscriptions={subscription.refresh}
+            />
           }
-          sendIconEnabled={<img src={sendEnterOn} alt="" aria-hidden />}
-          sendIconDisabled={<img src={sendEnterOff} alt="" aria-hidden />}
-          stopIcon={<img src={sendStop} alt="" aria-hidden />}
+          sendIconEnabled={<IconArrowUp size={15} />}
+          sendIconDisabled={<IconArrowUp size={15} />}
+          stopIcon={<IconStop size={12} />}
           textareaRef={inputRef}
           onChange={setPrompt}
           onSend={sendTyped}
           onStop={stop}
           skills={skills.composer}
+          footerBelow={projectPanel.picker}
+          footerBelowEnd={sessionUsage && <AiUsageChip usage={sessionUsage} session lang={lang} />}
         />
       </div>
     </aside>
-  )
-}
-
-/** Step-row status icons (timeline glyphs, unified with the other apps) */
-function StepIcon({ status }: { status: 'running' | 'done' | 'error' }) {
-  if (status === 'running') {
-    return (
-      <svg
-        viewBox="0 0 24 24"
-        width="14"
-        height="14"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        aria-hidden
-      >
-        <path d="M6.5 3.5h11M6.5 20.5h11M8 3.5v3.2c0 2.6 4 4.2 4 5.3 0 1.1 4 2.7 4 5.3v3.2M16 3.5v3.2c0 2.6-4 4.2-4 5.3 0 1.1-4 2.7-4 5.3v3.2" />
-      </svg>
-    )
-  }
-  if (status === 'error') {
-    return (
-      <svg
-        viewBox="0 0 24 24"
-        width="14"
-        height="14"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        aria-hidden
-      >
-        <circle cx="12" cy="12" r="9" />
-        <path d="m9.2 9.2 5.6 5.6M14.8 9.2l-5.6 5.6" />
-      </svg>
-    )
-  }
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      width="14"
-      height="14"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.6"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <circle cx="12" cy="12" r="9" />
-      <path d="m8.5 12.4 2.4 2.4 4.6-5" />
-    </svg>
-  )
-}
-
-/** Tool activity group (docs parity): auto-opens while tools run, auto-collapses into
- *  "Worked · N steps" when they finish; a manual toggle always wins */
-function ToolChipList({ tools }: { tools: ToolActivity[] }) {
-  const { t: tr } = useI18n()
-  const [expanded, setExpanded] = useState<Set<number>>(new Set())
-  const [userOpen, setUserOpen] = useState<boolean | null>(null)
-
-  const toggle = (j: number) => {
-    setExpanded((prev) => {
-      const next = new Set(prev)
-      if (next.has(j)) next.delete(j)
-      else next.add(j)
-      return next
-    })
-  }
-
-  const anyRunning = tools.some((tool) => tool.running)
-  const open = userOpen ?? anyRunning
-  const label = anyRunning ? tr('aiGroupWorking') : tr('aiWorkedSteps', { n: tools.length })
-
-  return (
-    <div className="ai-work-group">
-      <button
-        type="button"
-        className={`ai-work-group-summary${anyRunning ? ' running' : ''}`}
-        aria-expanded={open}
-        onClick={() => setUserOpen(!open)}
-      >
-        {anyRunning && !open && <span className="ai-tool-chip-spinner" aria-hidden />}
-        <span className="ai-work-group-label">{label}</span>
-        <span className={`ai-tool-chip-caret${open ? ' open' : ''}`} aria-hidden>
-          ›
-        </span>
-      </button>
-      <div className={`ai-work-group-body${open ? ' open' : ''}`}>
-        <div className="ai-work-group-body-inner">
-          {tools.map((tool, j) => {
-            const hasOutput = !tool.running && !!tool.output
-            const isOpen = expanded.has(j)
-            const stepStatus = tool.running ? 'running' : tool.isError ? 'error' : 'done'
-            return (
-              <div key={j} className="ai-step-row">
-                <span className={`ai-step-icon ${stepStatus}`} aria-hidden>
-                  <StepIcon status={stepStatus} />
-                </span>
-                <div className="ai-step-content">
-                  {hasOutput ? (
-                    <button
-                      type="button"
-                      className="ai-step-title clickable"
-                      data-tip={tool.name}
-                      aria-expanded={isOpen}
-                      onClick={() => toggle(j)}
-                    >
-                      {tool.summary}
-                    </button>
-                  ) : (
-                    <span className="ai-step-title" data-tip={tool.name}>
-                      {tool.summary}
-                    </span>
-                  )}
-                  {hasOutput && isOpen && (
-                    <div className="ai-step-detail">
-                      <div className="ai-tool-output">
-                        <div className="ai-tool-output-pre">{tool.output}</div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      </div>
-    </div>
   )
 }
 
@@ -1653,24 +2031,6 @@ function IconCollapse(): ReactElement {
       <rect x="1.5" y="2.5" width="13" height="11" rx="1" />
       <path d="M5.5 2.5v11" />
       <path d="M12.5 8H8.1M9.8 5.9 7.7 8l2.1 2.1" strokeWidth="1.3" strokeLinejoin="round" />
-    </svg>
-  )
-}
-
-function IconClock(): ReactElement {
-  return (
-    <svg
-      width="12"
-      height="12"
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.3"
-      strokeLinecap="round"
-      aria-hidden
-    >
-      <circle cx="8" cy="8" r="6" />
-      <path d="M8 4.8V8l2.2 1.6" />
     </svg>
   )
 }

@@ -147,6 +147,37 @@ describe('read-url command', () => {
     },
   )
 
+  it.each(['9007199254740992', '9007199254740993', '9'.repeat(400)])(
+    'rejects an unrepresentable offset %s before fetching',
+    async (offset) => {
+      fakes.read.mockResolvedValue(success())
+      const { env } = dataFolder()
+      const r = await run(['read-url', 'https://example.com', '--offset', offset, '--json'], {
+        env,
+      })
+      expect(r.code).toBe(1)
+      expect(r.json().error).toBe('invalid_argument')
+      expect(fakes.read).not.toHaveBeenCalled()
+    },
+  )
+
+  it.each(['0', '0003', ' 3 ', '9007199254740991'])(
+    'preserves the supported integer offset %s',
+    async (offset) => {
+      fakes.read.mockResolvedValue(success())
+      const { env } = dataFolder()
+      const r = await run(['read-url', 'https://example.com', '--offset', offset, '--json'], {
+        env,
+      })
+      expect(r.code).toBe(0)
+      expect(fakes.read).toHaveBeenCalledWith(
+        expect.any(String),
+        'https://example.com',
+        Number(offset),
+      )
+    },
+  )
+
   it('rejects an --offset with no value', async () => {
     const { env } = dataFolder()
     const r = await run(['read-url', 'https://example.com', '--offset', '--json'], { env })

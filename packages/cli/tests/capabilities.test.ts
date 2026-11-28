@@ -16,20 +16,31 @@ import { run, tempDir } from './helpers'
 
 // capabilities asks the subscription CLIs for their status when a subscription could answer;
 // the check is replaced so no test starts a real one
-const fakes = vi.hoisted(() => ({ detect: vi.fn() }))
+const fakes = vi.hoisted(() => ({ detect: vi.fn(), codexImage: vi.fn(), codexModels: vi.fn() }))
 
 vi.mock('@genoffice/ai-provider/subscription', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@genoffice/ai-provider/subscription')>()),
   detectSubscriptionLogin: fakes.detect,
 }))
 
+// every command registers the Codex image generator; a report must never run it, and if it did
+// these stand in for the Codex app-server client so nothing real starts
+vi.mock('@genoffice/ai-provider', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@genoffice/ai-provider')>()),
+  generateCodexImage: fakes.codexImage,
+  listCodexModels: fakes.codexModels,
+}))
+
 const READY: Record<string, SubscriptionDetection> = {
   'claude-code': { provider: 'claude-code', state: 'ready', loginMethod: 'subscription' },
   codex: { provider: 'codex', state: 'ready', loginMethod: 'subscription' },
+  // the terminal command has no ChatGPT connection of its own
+  chatgpt: { provider: 'chatgpt', state: 'signed-out' },
 }
 
+// the command line offers the Codex route, so with the switch off the hint names the switch
 const IMAGE_GENERATION_HINT =
-  'Image generation is unavailable: add an image provider key under Settings > AI > Advanced. Use image search for imagery instead.'
+  "Image generation is unavailable: add an image provider key under Settings > AI > Advanced. Command-line and integration requests use a subscription login only after that is turned on under Settings > AI > Advanced. If the user uses a ChatGPT plan, making images needs the Codex program signed in with the same ChatGPT account (Settings > AI > Codex); the app's direct ChatGPT connection cannot make images because OpenAI does not allow it. Use image search for imagery instead."
 const IMAGE_ANALYSIS_HINT =
   'Image analysis is unavailable: select an image analysis provider key under Settings > AI > Advanced. Command-line and integration requests use a subscription login only after that is turned on under Settings > AI > Advanced.'
 const PDF_AI_READ_BLOCKED =
@@ -43,8 +54,12 @@ beforeEach(() => {
   expect(vi.isMockFunction(detectSubscriptionLogin)).toBe(true)
   fakes.detect.mockReset()
   fakes.detect.mockImplementation(async (provider: string) => READY[provider])
+  fakes.codexImage.mockReset()
+  fakes.codexModels.mockReset()
 })
 afterEach(() => {
+  expect(fakes.codexImage).not.toHaveBeenCalled()
+  expect(fakes.codexModels).not.toHaveBeenCalled()
   vi.restoreAllMocks()
   aiSearch.registerCodexImageGenerator(null)
   setCodexImageGenerationAvailable(false)
@@ -78,7 +93,7 @@ describe('genoffice capabilities', () => {
       command: 'capabilities',
       // a checkout finds its own development build; an installed command line may find no app
       summary: expect.stringMatching(
-        /^available: search, image_search(, app)?; unavailable: image_generation, image_analysis, video_analysis, pdf_ai_read, pdf_translation(, app)?$/,
+        /^available: search, image_search(, wasm)?(, app)?; unavailable: image_generation, image_analysis, video_analysis, pdf_ai_read, pdf_translation(, wasm)?(, app)?$/,
       ),
       detail: {
         search: { available: true, via: 'parallel', route: 'free' },
@@ -101,6 +116,8 @@ describe('genoffice capabilities', () => {
         },
         automatic_calls: { subscription_enabled: false },
         app: { available: expect.any(Boolean) },
+        // the machine's virtual-memory cap decides this, so the shape is pinned, not the value
+        wasm: expect.objectContaining({ available: expect.any(Boolean) }),
         settings_path: settings,
       },
     })
@@ -150,8 +167,8 @@ describe('genoffice capabilities', () => {
     expect(d.media_analysis).toEqual(d.image_analysis)
     expect(d.video_analysis).toEqual({ available: true, via: 'gemini', route: 'key' })
     expect(d.app.available).toBe(true)
-    expect(r.json().summary).toBe(
-      'available: search, image_search, image_generation, image_analysis, video_analysis, app; unavailable: pdf_ai_read, pdf_translation',
+    expect(r.json().summary).toMatch(
+      /^available: search, image_search, image_generation, image_analysis, video_analysis, (wasm, )?app; unavailable: pdf_ai_read, pdf_translation(, wasm)?$/,
     )
     expect(fakes.detect).not.toHaveBeenCalled()
   })
@@ -188,8 +205,9 @@ describe('genoffice capabilities', () => {
   })
 
   it('reports the subscription routes and the count of automatic calls when the switch is on', async () => {
-    setCodexImageGenerationAvailable(true)
-    aiSearch.registerCodexImageGenerator(async () => ({ url: 'https://example.invalid/x.png' }))
+    // nothing is registered by hand: the command line registers the Codex route itself
+    aiSearch.registerCodexImageGenerator(null)
+    setCodexImageGenerationAvailable(false)
     const dir = tempDir()
     const settings = settingsFile(dir, ON)
     const first = (await run(['capabilities', '--json'], { env: envFor(settings) })).json().detail
@@ -214,7 +232,12 @@ describe('genoffice capabilities', () => {
       limit: null,
       remaining: null,
     })
-    expect(fakes.detect.mock.calls.map((call) => call[0]).sort()).toEqual(['claude-code', 'codex'])
+    // the ChatGPT check reads no program: it answers signed out at once here
+    expect(fakes.detect.mock.calls.map((call) => call[0]).sort()).toEqual([
+      'chatgpt',
+      'claude-code',
+      'codex',
+    ])
 
     // past what used to be the hourly cap of 20
     for (let i = 0; i < 21; i++) {
@@ -229,6 +252,25 @@ describe('genoffice capabilities', () => {
     })
     expect('resetsAt' in counted.automatic_calls).toBe(false)
     expect(counted.image_analysis.available).toBe(true)
+  })
+
+  it('leaves the Codex image route out when Codex is turned off in the app, with the switch on', async () => {
+    const settings = settingsFile(tempDir(), { ...ON, subscriptionOff: { codex: true } })
+    const d = (await run(['capabilities', '--json'], { env: envFor(settings) })).json().detail
+    expect(d.image_generation).toMatchObject({ available: false, via: null, route: null })
+    expect(d.image_generation.message).toContain('Image generation is unavailable')
+  })
+
+  it('leaves the Codex image route out while the switch is off, though Codex is ready', async () => {
+    const settings = settingsFile(tempDir(), {})
+    const d = (await run(['capabilities', '--json'], { env: envFor(settings) })).json().detail
+    expect(d.image_generation).toEqual({
+      available: false,
+      via: null,
+      route: null,
+      message: IMAGE_GENERATION_HINT,
+    })
+    expect(fakes.detect).not.toHaveBeenCalled()
   })
 
   it('reads a switch turned on under the older warning as off, with no count', async () => {

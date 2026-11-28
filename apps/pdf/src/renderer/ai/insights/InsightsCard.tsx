@@ -224,6 +224,8 @@ export function InsightsCard(props: InsightsCardProps): ReactElement {
     const call = createModelCall({
       settings: () => route.settings,
       lang: () => propsRef.current.lang,
+      // a one-call run: the id is its own (the summary job below has another)
+      runId: crypto.randomUUID(),
     })
     const text = await call(request, signal)
     return { text, provider: route.provider, model: route.model }
@@ -271,6 +273,8 @@ export function InsightsCard(props: InsightsCardProps): ReactElement {
     const call = createModelCall({
       settings: () => confirmed.settings,
       lang: () => propsRef.current.lang,
+      // this summary job's calls share one id (startSingle has its own)
+      runId: crypto.randomUUID(),
       guard: async () => {
         const statuses = await attemptSubscription((s) => s.statuses())
         const settingsNow = await window.pdfApi?.getAiSettings().catch(() => null)

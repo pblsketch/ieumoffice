@@ -1,14 +1,18 @@
 import { MCP_SERVER_NAME, mcpLaunch, SKILL_NAME, type McpLaunch } from '@genoffice/cli/mcp-launch'
 import { PRODUCT_REPO_SLUG } from '@genoffice/i18n'
 import { useCallback, useEffect, useState } from 'react'
-import type { TFunc } from './locale'
+import { useI18n, type TFunc } from './locale'
+import { buildCodingAgentGuide } from './agent-guide-text'
+import { diagnosticsUiText } from './i18n/strings-diagnostics'
 import { McpServerSection } from './McpServerSection'
 import { DriveSettingsCard } from './DriveSettingsCard'
-import type {
-  AgentId,
-  AgentTarget,
-  IntegrationsStatus,
-  SkillInstallState,
+import { McpServersCard } from './mcp/McpServersCard'
+import {
+  SHARED_AGENT_ID,
+  type AgentId,
+  type AgentTarget,
+  type IntegrationsStatus,
+  type SkillInstallState,
 } from '../../shared/integrations-api'
 
 // ── Settings → Integrations ─────────────────────────────────
@@ -32,9 +36,7 @@ interface Pending {
 
 export const NPX_INSTALL_COMMAND = `npx skills add ${PRODUCT_REPO_SLUG}`
 
-/** some detected assistant holds an older copy of the skill than the bundled one */
-export const skillUpdateDue = (s: IntegrationsStatus): boolean =>
-  s.agents.some((a) => a.state.older === true)
+export { skillUpdateDue } from './integrations-helpers'
 
 const EXAMPLE_KEYS = ['intgExample1', 'intgExample2', 'intgExample3'] as const
 
@@ -59,10 +61,14 @@ const api = () => window.aiOfficeIntegrations
 export function IntegrationsPane({
   t,
   onStatus,
+  mcpServers = true,
 }: {
   t: TFunc
   onStatus?: (s: IntegrationsStatus) => void
+  /** the person's own MCP servers (an AI feature): left out while AI is off */
+  mcpServers?: boolean
 }) {
+  const { lang } = useI18n()
   const [status, setStatus] = useState<IntegrationsStatus | null>(null)
   const [pending, setPending] = useState<Pending | null>(null)
   const [busy, setBusy] = useState(false)
@@ -105,10 +111,18 @@ export function IntegrationsPane({
 
   const askInstall = (row: AgentRow, note?: string) => {
     setNotice(null)
+    // installing the shared row also rewrites the older copies that are plainly outdated (see the IPC)
+    const also =
+      row.id === SHARED_AGENT_ID
+        ? (status?.agents ?? [])
+            .filter((a) => a.legacy && a.state.status === 'outdated')
+            .map((a) => a.state.path)
+        : []
+    const notes = [note, also.length ? t('intgConfirmAlsoUpdate', { paths: also.join(', ') }) : '']
     setPending({
       kind: 'install',
       path: row.state.path,
-      note,
+      note: notes.filter(Boolean).join(' ') || undefined,
       target: { agentId: row.id },
       agentId: row.id,
     })
@@ -197,7 +211,9 @@ export function IntegrationsPane({
     <>
       <h3 className="set-pane-title">{t('setSecIntegrations')}</h3>
 
-      <DriveSettingsCard />
+      <DriveSettingsCard aiOn={mcpServers} />
+
+      {mcpServers && <McpServersCard />}
 
       <section className="set-intg-hero">
         <div className="set-intg-hero-title">{t('intgHeroTitle')}</div>
@@ -231,21 +247,26 @@ export function IntegrationsPane({
           return (
             <div
               key={row.id}
-              className="set-intg-row"
+              className={row.legacy ? 'set-intg-row set-intg-row-legacy' : 'set-intg-row'}
               data-agent={row.id}
               data-state={state.status}
             >
               <div className="set-field">
                 <div className="set-field-text">
                   <div className="set-field-stack">
-                    <div className="set-field-label">{row.label}</div>
+                    <div className="set-field-label">{rowLabel(t, row)}</div>
                     <div className="set-field-desc set-intg-state" data-tip={state.path}>
                       {stateText(t, state, bundled)}
                     </div>
+                    {row.legacy && (
+                      <div className="set-field-desc set-intg-legacy">
+                        {t('intgLegacyHint', { tool: row.label })}
+                      </div>
+                    )}
                   </div>
                 </div>
                 <div className="set-intg-actions">
-                  {state.status === 'missing' && (
+                  {state.status === 'missing' && !row.legacy && (
                     <button className="set-btn primary" onClick={() => askInstall(row)}>
                       {t('intgInstall')}
                     </button>
@@ -386,6 +407,9 @@ export function IntegrationsPane({
           <span className="set-intg-step-no">2</span>
           {t('intgMcpPartTitle')}
         </h4>
+        <div className="set-field-desc set-intg-who" data-testid="intg-mcp-who">
+          {t('intgMcpPartWho')}
+        </div>
         <div className="set-field-desc set-intg-lead">{t('intgMcpPartDesc')}</div>
 
         <div className="set-intg-mcp">
@@ -444,11 +468,30 @@ export function IntegrationsPane({
 
         <h5 className="set-intg-sub">{t('intgStep2Title')}</h5>
         <div className="set-field-desc set-intg-lead">{t('intgStep2Desc')}</div>
+        <div className="set-field" data-testid="copy-agent-guide-row">
+          <div className="set-field-text">
+            <div className="set-field-label">{diagnosticsUiText(lang, 'copyAgentGuide')}</div>
+          </div>
+          <button
+            type="button"
+            className="set-btn"
+            onClick={() => copy(buildCodingAgentGuide(lang), 'agent-guide')}
+          >
+            {copied === 'agent-guide'
+              ? diagnosticsUiText(lang, 'copiedAgentGuide')
+              : diagnosticsUiText(lang, 'copyAgentGuide')}
+          </button>
+        </div>
         {examples}
         <div className="set-field-desc set-intg-lead">{t('intgMcpTryNote')}</div>
       </section>
     </>
   )
+}
+
+/** Product names are shown as they are; the shared row's label is a description, so it is translated. */
+function rowLabel(t: TFunc, row: AgentRow): string {
+  return row.id === SHARED_AGENT_ID ? t('intgSharedAgentsLabel') : row.label
 }
 
 function stateText(t: TFunc, state: SkillInstallState, bundled: string): string {

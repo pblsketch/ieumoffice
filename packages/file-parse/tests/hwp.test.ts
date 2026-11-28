@@ -1,10 +1,10 @@
 import { readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import JSZip from 'jszip'
-import { beforeAll, describe, expect, it } from 'vitest'
+import { beforeAll, describe, expect, it, vi } from 'vitest'
 import init, { HwpDocument } from '@rhwp/core'
 import { parseFileToText } from '../src/index'
-import { hwpToText } from '../src/hwp'
+import { checkedHwpBytes, hwpToText } from '../src/hwp'
 import { buildPdfFixture, writeFixture } from './helpers/fixtures'
 
 /**
@@ -48,6 +48,21 @@ const REPORT: (string | string[][])[] = [
   ],
   '끝.',
 ]
+
+/** A document of the same shape with one memo on paragraph `para`. */
+function withMemo(
+  lines: (string | string[][])[],
+  memo: { author?: string; text: string },
+  para = 0,
+): HwpDocument {
+  const doc = build(lines)
+  const length = doc.getParagraphLength(0, para)
+  const created = JSON.parse(doc.insertMemo(0, para, 0, length, JSON.stringify(memo))) as {
+    ok: boolean
+  }
+  expect(created.ok).toBe(true)
+  return doc
+}
 
 describe('hwp and hwpx to text', () => {
   it('reads paragraphs as lines and a data table as rows, from a .hwp file', async () => {
@@ -161,6 +176,73 @@ describe('hwp and hwpx to text', () => {
   })
 })
 
+describe('hwp and hwpx memos', () => {
+  it('adds no comment block when the document has no memos', async () => {
+    const result = await parseFileToText(writeFixture('plain.hwp', build(REPORT).exportHwp()))
+    expect(result.ok).toBe(true)
+    expect(result.text).not.toContain('### Comments')
+    expect(result.text!.split('\n')).toEqual([
+      '등록제 시행 안내',
+      '7월 1일부터 시행합니다.',
+      '구분 | 세관명 | 연락처',
+      '특송 | 인천세관 | 032-722-4315',
+      '우편 | 국제우편세관 | 032-720-7428',
+      '끝.',
+    ])
+  })
+
+  it('appends a body memo as a comment block, from a .hwp file', async () => {
+    const doc = withMemo(['본문 첫 줄', '본문 둘째 줄'], {
+      author: 'user',
+      text: 'first line\nsecond line',
+    })
+    const result = await parseFileToText(writeFixture('memo.hwp', doc.exportHwp()))
+    expect(result).toMatchObject({ ok: true, kind: 'text' })
+    expect(result.text!.split('\n')).toEqual([
+      '본문 첫 줄',
+      '본문 둘째 줄',
+      '### Comments',
+      '- user (p.1): first line',
+      '  second line',
+    ])
+    // the memo body is document data, not a second copy of the body text
+    expect(result.text!.split('\n').filter((line) => line.includes('first line'))).toHaveLength(1)
+  })
+
+  it('writes unknown for a memo without an author', async () => {
+    const doc = withMemo(['본문'], { text: '작성자 없는 메모' })
+    const text = await hwpToText(doc.exportHwp())
+    expect(text.split('\n')).toEqual(['본문', '### Comments', '- unknown (p.1): 작성자 없는 메모'])
+  })
+
+  it('leaves out the page marker when the engine knows no page', async () => {
+    // a memo the engine cannot place on a page (header/footer memos) reports page 0;
+    // the body API cannot make one, so the engine's list shape is fed in directly
+    const spy = vi
+      .spyOn(HwpDocument.prototype, 'getMemoList')
+      .mockReturnValue(JSON.stringify([{ author: 'user', text: 'no page', page: 0 }]))
+    try {
+      expect(await hwpToText(build(['본문']).exportHwp())).toBe(
+        '본문\n### Comments\n- user: no page',
+      )
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
+  it('appends the same comment block from a .hwpx file', async () => {
+    const doc = withMemo(['본문'], { author: '한글', text: '첫 줄\n둘째 줄' })
+    const result = await parseFileToText(writeFixture('memo.hwpx', doc.exportHwpx()))
+    expect(result.ok).toBe(true)
+    expect(result.text!.split('\n')).toEqual([
+      '본문',
+      '### Comments',
+      '- 한글 (p.1): 첫 줄',
+      '  둘째 줄',
+    ])
+  })
+})
+
 describe('hwp files that cannot be read', () => {
   it('reports a password-protected document instead of throwing', async () => {
     const path = writeFixture('locked.hwp', build(REPORT).exportHwpWithPassword('1234'))
@@ -201,6 +283,26 @@ describe('hwp files that cannot be read', () => {
     bytes.writeUInt32LE(600_000_000, centralName - 46 + 24)
     await expect(hwpToText(new Uint8Array(bytes))).rejects.toThrow(
       /declares 600000000 uncompressed bytes/,
+    )
+  })
+})
+
+describe('the bytes handed to an engine that reads them itself', () => {
+  it('passes an HWPX zip and an HWP 5 file under their own names', async () => {
+    const doc = build(['한 줄'])
+    const hwpx = new Uint8Array(doc.exportHwpx())
+    const hwp = new Uint8Array(doc.exportHwp())
+    await expect(checkedHwpBytes(hwpx, 'hwpx')).resolves.toBe(hwpx)
+    await expect(checkedHwpBytes(hwp, 'hwp')).resolves.toBe(hwp)
+    // an HWPX saved under the old name is read by its content
+    await expect(checkedHwpBytes(hwpx, 'hwp')).resolves.toBe(hwpx)
+  })
+
+  it('refuses content that is not what the name says', async () => {
+    const hwp = new Uint8Array(build(['한 줄']).exportHwp())
+    await expect(checkedHwpBytes(hwp, 'hwpx')).rejects.toThrow(/Content mismatch/)
+    await expect(checkedHwpBytes(new TextEncoder().encode('plain text'), 'hwp')).rejects.toThrow(
+      /Content mismatch/,
     )
   })
 })

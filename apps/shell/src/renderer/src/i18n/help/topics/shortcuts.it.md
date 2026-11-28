@@ -12,10 +12,12 @@ Ogni editor ha le proprie combinazioni di tasti, e solo poche funzionano ovunque
 | Comprimi / espandi il nastro — ogni editor               | ⌥⌘R   | Ctrl+F1         |
 | Barra compatta — solo Docs                               | ⌥⌘K   | Ctrl+Alt+K      |
 | Apri il foglio delle scorciatoie da tastiera — solo Word | ⌘/    | Ctrl+/          |
+| Aprire le impostazioni — tutte le schede tranne Word     | ⌘,    | Ctrl+,          |
 
 - **F1 apre questo manuale**, non il foglio delle scorciatoie. Il tasto appartiene al menu dell’applicazione, quindi funziona allo stesso modo da Word, Sheets, Slides, PDF o dalla scheda Home.
 - **L’interruttore del nastro è `Ctrl+F1`, oppure `⌥⌘R` su macOS.** Premere `F1` da solo non fa nulla — F1 è il manuale, e il tasto del nastro non condivide deliberatamente quella combinazione. `Ctrl+F1` è accettata anche su macOS, ma `⌥⌘R` è il tasto che usa Office per Mac.
 - **Il foglio delle scorciatoie da tastiera appartiene solo a Word** (`⌘/`). Elenca esattamente la tabella di Word qui sotto. Nessun altro editor ne ha uno.
+- **`⌘,` apre le impostazioni** (`Ctrl+,` su Windows e Linux), come nella maggior parte delle app per Mac. In una scheda Word la combinazione resta il pedice: lì apri le impostazioni dal menu dell’app su un Mac, o da Menu (☰) ▸ Impostazioni… su Windows e Linux.
 
 ![Il foglio delle scorciatoie da tastiera di Word stesso: l’azione a sinistra, la scorciatoia a destra, raggruppati per File, Modifica, Formattazione del testo, Formattazione del paragrafo, Inserimento, Revisione e strumenti, Vista](img/word-shortcuts.png)
 
@@ -24,7 +26,7 @@ Ogni editor ha le proprie combinazioni di tasti, e solo poche funzionano ovunque
 
 ## Modalità presentazione
 
-- **Avvio**: F5 in Word, PDF, Mindmap, HTML e Markdown. In un foglio di calcolo, Ctrl+F5 (da A1) o Shift+F5 (dalla cella attiva).
+- **Avvio**: F5 in Word, PDF, Mindmap, HTML e Markdown. In un foglio di calcolo, Ctrl+F5 (da A1) o Shift+F5 (dalla cella attiva). In un documento HWP, Ctrl+F5 (lì F5 seleziona le celle della tabella).
 - **Altre vie**: in Word, Ctrl+F5 e Shift+F5 aprono la vista di lettura senza schermo intero; in PDF partono dalla pagina corrente; in HTML presentano nella scheda.
 - **Uscita**: Esc o F5. F11 è lo schermo intero della finestra e non cambia la vista del documento.
 
@@ -278,18 +280,19 @@ La scorciatoia di Excel per il filtro, Ctrl+Shift+L, non fa nulla su Windows o L
 
 ### Finestra
 
-| Azione                                                                 | macOS      | Windows / Linux |
-| ---------------------------------------------------------------------- | ---------- | --------------- |
-| Salva la cartella di lavoro                                            | ⌘S         | Ctrl+S          |
-| Salva come                                                             | ⇧⌘S        | Ctrl+Shift+S    |
-| Apri una cartella di lavoro                                            | ⌘O         | Ctrl+O          |
-| Stampa                                                                 | ⌘P         | Ctrl+P          |
-| Chiudi la cartella di lavoro (macOS) / Esci dall’app (Windows e Linux) | ⌘W         | Ctrl+Q          |
-| Apri la guida utente                                                   | F1         | F1              |
-| Ingrandisci                                                            | ⌘=         | Ctrl+=          |
-| Zoom con la rotella del mouse                                          | ⌘ + scorri | Ctrl + scorri   |
-| Mostra o nascondi le formule nelle celle                               | ⌘`         | Ctrl+`          |
-| Espandi o comprimi la barra delle formule                              | ⌘⇧U        | Ctrl+Shift+U    |
+| Azione                                                                                  | macOS      | Windows / Linux |
+| --------------------------------------------------------------------------------------- | ---------- | --------------- |
+| Salva la cartella di lavoro                                                             | ⌘S         | Ctrl+S          |
+| Salva come                                                                              | ⇧⌘S        | Ctrl+Shift+S    |
+| Apri una cartella di lavoro                                                             | ⌘O         | Ctrl+O          |
+| Stampa                                                                                  | ⌘P         | Ctrl+P          |
+| Chiudi la cartella di lavoro (macOS) / Esci dall’app (Windows e Linux)                  | ⌘W         | Ctrl+Q          |
+| Apri la guida utente                                                                    | F1         | F1              |
+| Ingrandisci                                                                             | ⌘=         | Ctrl+=          |
+| Zoom con la rotella del mouse                                                           | ⌘ + scorri | Ctrl + scorri   |
+| Mostra o nascondi le formule nelle celle                                                | ⌘`         | Ctrl+`          |
+| Espandi o comprimi la barra delle formule                                               | ⌘⇧U        | Ctrl+Shift+U    |
+| Esegui un pulsante della barra di accesso rapido in base alla posizione (dal 1º al 10º) |            | Alt+1 … Alt+0   |
 
 ## Slides
 
@@ -312,20 +315,24 @@ Chiudere una scheda è l’unico punto in cui le due piattaforme si separano com
 
 ### Modifica
 
-| Azione                                               | macOS  | Windows / Linux |
-| ---------------------------------------------------- | ------ | --------------- |
-| Nuova diapositiva                                    | ⇧⌘N    | Ctrl+M          |
-| Trova (non mentre modifichi il testo in una forma)   | ⌘F     | Ctrl+F          |
-| Annota la selezione con l’IA (con forme selezionate) | ⌘K     | Ctrl+K          |
-| Ingrandisci                                          | ⌘=     | Ctrl+=          |
-| Riduci                                               | ⌘-     | Ctrl+-          |
-| Dimensione reale (100 %)                             | ⌘0     | Ctrl+0          |
-| Seleziona tutto                                      | ⌘A     | Ctrl+A          |
-| Scorri la selezione delle forme in avanti / indietro | ⇥ / ⇧⇥ | Tab / Shift+Tab |
+| Azione                                                                                  | macOS  | Windows / Linux |
+| --------------------------------------------------------------------------------------- | ------ | --------------- |
+| Nuova diapositiva                                                                       | ⇧⌘N    | Ctrl+M          |
+| Trova (non mentre modifichi il testo in una forma)                                      | ⌘F     | Ctrl+F          |
+| Annota la selezione con l’IA (con forme selezionate)                                    | ⌘K     | Ctrl+K          |
+| Ingrandisci                                                                             | ⌘=     | Ctrl+=          |
+| Riduci                                                                                  | ⌘-     | Ctrl+-          |
+| Dimensione reale (100 %)                                                                | ⌘0     | Ctrl+0          |
+| Seleziona tutto                                                                         | ⌘A     | Ctrl+A          |
+| Scorri la selezione delle forme in avanti / indietro                                    | ⇥ / ⇧⇥ | Tab / Shift+Tab |
+| Ripeti l’ultima azione (formattazione, riempimento, linea, allineamento, duplicazione…) | F4     | F4              |
+| Mostra/nascondi il riquadro Selezione                                                   | ⌥F10   | Alt+F10         |
 
 La nuova diapositiva è l’altra divisione tra piattaforme. Ogni piattaforma ha il proprio tasto e l’altro non fa nulla: `⇧⌘N` su macOS, Ctrl+M su Windows e Linux. `⌘M` non può svolgere il compito su macOS perché è il tasto di sistema per ridurre a icona.
 
 Seleziona tutto segue il focus: con il riquadro delle miniature, il riquadro della struttura o il selettore di diapositive focalizzato seleziona tutte le diapositive, e ovunque altro seleziona tutti gli elementi della diapositiva corrente. Tab scorre le forme sulla diapositiva, e solo quando è il riquadro della diapositiva ad avere il focus.
+
+F4 funziona anche dentro la casella di testo e applica l’ultima formattazione al testo selezionato.
 
 ### Formattazione del testo
 
@@ -450,7 +457,7 @@ Annulla e Ripeti scorrono la cronologia del documento; quando il cursore è in u
 | Ingrandisci           | ⌘=          | Ctrl+=          |
 | Riduci                | ⌘-          | Ctrl+-          |
 | Adatta alla larghezza | ⌘0          | Ctrl+0          |
-| Zoom (continuo)       | ⌘ + rotella | Ctrl + rotella  |
+| Zoom (passi del 5%)   | ⌘ + rotella | Ctrl + rotella  |
 
 Ingrandisci risponde anche a `⌘+` e Ctrl++.
 
@@ -611,23 +618,25 @@ Questi tasti funzionano quando la scheda HWP/HWPX è in primo piano e il documen
 
 ### Modifica
 
-| Azione              | macOS       | Windows / Linux              |
-| ------------------- | ----------- | ---------------------------- |
-| Annulla             | ⌃Z          | Ctrl+Z                       |
-| Ripeti              | ⌃⇧Z         | Ctrl+Shift+Z                 |
-| Elimina la riga     | ⌃Y          | Ctrl+Y                       |
-| Taglia              | ⌃X          | Ctrl+X                       |
-| Copia               | ⌃C          | Ctrl+C                       |
-| Incolla             | ⌃V          | Ctrl+V                       |
-| Elimina             | ⌃E          | Ctrl+E                       |
-| Seleziona tutto     | ⌃A          | Ctrl+A                       |
-| Copia formattazione | ⌥C          | Alt+C                        |
-| Trova               | ⌃F / ⌃Q, F  | Ctrl+F / Ctrl+Q, F           |
-| Trova e sostituisci | ⌃F2 / ⌃Q, A | Ctrl+H / Ctrl+F2 / Ctrl+Q, A |
-| Trova successivo    | ⌃L          | Ctrl+L                       |
-| Trova all’indietro  | ⌃Q, L       | Ctrl+Q, L                    |
-| Vai a               | ⌥G          | Alt+G                        |
-| Confronta documenti | ⌥⇧V         | Alt+Shift+V                  |
+| Azione               | macOS       | Windows / Linux              |
+| -------------------- | ----------- | ---------------------------- |
+| Annulla              | ⌃Z          | Ctrl+Z                       |
+| Ripeti               | ⌃⇧Z         | Ctrl+Shift+Z                 |
+| Elimina la riga      | ⌃Y          | Ctrl+Y                       |
+| Taglia               | ⌃X          | Ctrl+X                       |
+| Copia                | ⌃C          | Ctrl+C                       |
+| Incolla              | ⌃V          | Ctrl+V                       |
+| Elimina              | ⌃E          | Ctrl+E                       |
+| Seleziona tutto      | ⌃A          | Ctrl+A                       |
+| Copia formattazione  | ⌥C          | Alt+C                        |
+| Trova                | ⌃F / ⌃Q, F  | Ctrl+F / Ctrl+Q, F           |
+| Trova e sostituisci  | ⌃F2 / ⌃Q, A | Ctrl+H / Ctrl+F2 / Ctrl+Q, A |
+| Trova successivo     | ⌃L          | Ctrl+L                       |
+| Trova all’indietro   | ⌃Q, L       | Ctrl+Q, L                    |
+| Vai a                | ⌥G          | Alt+G                        |
+| Inizio del documento | ⌃⇞          | Ctrl+PageUp                  |
+| Fine del documento   | ⌃⇟          | Ctrl+PageDown                |
+| Confronta documenti  | ⌥⇧V         | Alt+Shift+V                  |
 
 ### Carattere
 
@@ -690,21 +699,29 @@ Questi tasti funzionano quando la scheda HWP/HWPX è in primo piano e il documen
 | Stringa data/ora                        | ⌃K, D       | Ctrl+K, D          |
 | Modifica oggetto, campo o tabella/cella | ⌃N, K       | Ctrl+N, K          |
 | Simboli                                 | ⌃F10 / ⌥F10 | Ctrl+F10 / Alt+F10 |
+| Converti in hanja                       | F9          | Tasto Hanja / F9   |
 
 ### Tabella
 
-| Azione                | macOS        | Windows / Linux        |
-| --------------------- | ------------ | ---------------------- |
-| Aggiungi riga/colonna | ⌥⏎ / ⌥Insert | Alt+Enter / Alt+Insert |
-| Elimina riga/colonna  | ⌥⌫           | Alt+Delete             |
-| Dividi cella          | F5 → S       | F5 → S                 |
-| Unisci celle          | F5 → M       | F5 → M                 |
-| Somma del blocco      | F5 → ⇧⌘S     | F5 → Ctrl+Shift+S      |
-| Media del blocco      | F5 → ⌃⇧A     | F5 → Ctrl+Shift+A      |
-| Prodotto del blocco   | F5 → ⌃⇧P     | F5 → Ctrl+Shift+P      |
-| Dividi tabella        | ⌃N, A        | Ctrl+N, A              |
-| Unisci tabelle        | ⌃N, Z        | Ctrl+N, Z              |
-| Formula di calcolo    | ⌃N, F        | Ctrl+N, F              |
+| Azione                                        | macOS        | Windows / Linux        |
+| --------------------------------------------- | ------------ | ---------------------- |
+| Aggiungi riga/colonna                         | ⌥⏎ / ⌥Insert | Alt+Enter / Alt+Insert |
+| Elimina riga/colonna                          | ⌥⌫           | Alt+Delete             |
+| Dividi cella                                  | F5 → S       | F5 → S                 |
+| Unisci celle                                  | F5 → M       | F5 → M                 |
+| Proprietà tabella/cella                       | F5 → P       | F5 → P                 |
+| Bordi / sfondo, ogni cella                    | F5 → L / C   | F5 → L / C             |
+| Bordi / sfondo, celle come una                | F5 → B / F   | F5 → B / F             |
+| Stessa altezza di riga / larghezza di colonna | F5 → H / W   | F5 → H / W             |
+| Riempimento automatico della tabella          | F5 → A       | F5 → A                 |
+| Torna a modificare la cella                   | F5 → ⏎       | F5 → Enter             |
+| Rientro sporgente rapido (in una cella)       | ⌃⇧⇥          | Ctrl+Shift+Tab         |
+| Somma del blocco                              | F5 → ⇧⌘S     | F5 → Ctrl+Shift+S      |
+| Media del blocco                              | F5 → ⌃⇧A     | F5 → Ctrl+Shift+A      |
+| Prodotto del blocco                           | F5 → ⌃⇧P     | F5 → Ctrl+Shift+P      |
+| Dividi tabella                                | ⌃N, A        | Ctrl+N, A              |
+| Unisci tabelle                                | ⌃N, Z        | Ctrl+N, Z              |
+| Formula di calcolo                            | ⌃N, F        | Ctrl+N, F              |
 
 ### Calcoli di tabella
 
@@ -745,3 +762,5 @@ Funzionano solo quando il cursore è in una cella vuota di una tabella. Ci sono 
 | Vai alla scheda Home (fuori da una tabella)   | ⇧⌘H   | Ctrl+Shift+H    |
 
 Un tasto scritto come `Ctrl+N,T` significa premere Ctrl+N, rilasciarlo e poi premere T. `F5 → S` significa selezionare un blocco di celle con F5 e poi premere S. `Ctrl+1 … Ctrl+0` indicano dal primo al decimo stile del documento; `Ctrl+Alt+1 … Ctrl+Alt+0` applicano gli stessi stili. Con un blocco di celle selezionato, `Ctrl+Shift+S` (su macOS `⇧⌘S`) è la somma del blocco; altrove quel tasto salva come.
+
+Con il mouse, come in Hangul, un doppio clic seleziona una parola, un triplo clic l’intero paragrafo, e un doppio clic tenuto premuto e trascinato estende la selezione parola per parola. Vale anche mentre si modifica un’intestazione, un piè di pagina o una nota a piè di pagina. Copiare un blocco di celle (`Ctrl+C`) copia il testo delle celle e la tabella stessa, quindi incollandolo nel corpo si ricrea la stessa tabella. Incollare con il solo cursore in una cella di un’altra tabella apre la finestra Paste Cells: sovrascrivere a partire da quella cella (le celle che escono dalla tabella vengono scartate) oppure inserire le celle sopra, sotto, a sinistra o a destra. Trascinando la maniglia d'angolo di un'immagine se ne mantengono le proporzioni; una forma o una casella di testo le mantiene se si tiene premuto `Shift` mentre si trascina un angolo. Premendo `Shift` mentre si sposta un oggetto lo si muove solo in orizzontale o in verticale, e premendo `Esc` durante uno spostamento o un ridimensionamento l'oggetto torna dov'era. Con un oggetto selezionato, i tasti freccia lo spostano di 0,2 mm e `Shift`+frecce lo ridimensionano di 1 mm. `Tab` e `Shift+Tab` selezionano l'oggetto successivo e precedente della pagina, `Shift+PageUp` e `Shift+PageDown` portano l'oggetto in primo piano o sullo sfondo, e `Shift+Home` e `Shift+End` mettono l'oggetto davanti o dietro al testo. `G` e `U` raggruppano e separano, `L` e `C` aprono le schede Linea e Riempimento delle proprietà dell'oggetto, e `Ctrl+E` elimina l'oggetto. Per selezionare un oggetto che sta sotto un altro, tenere premuto `Alt` e fare clic; ogni clic successivo seleziona quello sottostante. Trascinando un angolo di un'immagine tenendo premuto `Shift` la si ritaglia alla sua scala, e trascinando un oggetto tenendo premuto `Ctrl` l'oggetto resta al suo posto e ne viene lasciata una copia dove si rilascia.

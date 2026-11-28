@@ -95,9 +95,20 @@ export const renderCommand: CommandDef = {
       }
       only = [...slides][0]
     }
+    // Reject active option errors before rendering can replace existing page images.
+    const scale = parseScale(flagString(args, 'scale'))
+    const pad = targets.length
+      ? whole(flagString(args, 'pad'), DEFAULT_PAD_PX, 'pad', 0)
+      : DEFAULT_PAD_PX
+    const gridOptions = flagBool(args, 'grid')
+      ? {
+          cols: positive(flagString(args, 'cols'), DEFAULT_GRID_COLS, 'cols'),
+          tile: positive(flagString(args, 'tile'), DEFAULT_TILE_PX, 'tile'),
+        }
+      : undefined
     const files = await renderToPngs(path, ctx, {
       outDir,
-      scale: parseScale(flagString(args, 'scale')),
+      scale,
       only,
       range: { flag: 'page', oneBased: true },
       log: ctx.log,
@@ -107,7 +118,6 @@ export const renderCommand: CommandDef = {
     if (targets.length) {
       const page = files[0]!
       const png = readFileSync(page.path)
-      const pad = whole(flagString(args, 'pad'), DEFAULT_PAD_PX, 'pad', 0)
       const pxPerEmu = page.width / deckSize!.cx
       for (const t of targets) {
         const { png: cropped, rect } = cropPng(
@@ -130,11 +140,11 @@ export const renderCommand: CommandDef = {
       formats: RENDERABLE,
       via: path.toLowerCase().endsWith('.pdf') ? 'pdfium' : 'ieumoffice --headless-export + pdfium',
     }
-    if (flagBool(args, 'grid')) {
+    if (gridOptions) {
       const sheet = contactSheet(
         files.map((f) => ({ page: f.page + 1, png: readFileSync(f.path) })),
-        positive(flagString(args, 'cols'), DEFAULT_GRID_COLS, 'cols'),
-        positive(flagString(args, 'tile'), DEFAULT_TILE_PX, 'tile'),
+        gridOptions.cols,
+        gridOptions.tile,
       )
       const out = join(outDir, `${stem}-grid.png`)
       writeFileSync(out, sheet.png)

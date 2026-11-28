@@ -1,5 +1,7 @@
 /** app strings, zh: defines the key set every other locale shard must match. */
 export const zh = {
+  appLegacyPptImported:
+    '已将 .ppt 文件转换为 .pptx 副本打开。原文件保持不变，保存时将写入新的 .pptx 文件。演讲者备注和动画不会转换。',
   redactMenuLabel: '把选中的内容对 AI 隐藏',
   redactDialogDesc:
     '选中的内容会留在文档和文件里，AI 读到的却是下面的标记。给它起个名字，AI 才知道它是什么。',
@@ -159,6 +161,8 @@ export const zh = {
   appPrintLandscape: '横向',
   appPrintFrame: '幻灯片加框',
   appPrintHidden: '打印隐藏幻灯片',
+  appPrintRangeSelected: '所选幻灯片',
+  appPrintLayoutBlocked: '讲义和备注页每张纸只打印一页。要排列页面，请将版式改为“整页幻灯片”。',
   appPrintPageCount: '共 {n} 页',
   appPrintNoPages: '没有可打印的幻灯片',
   appPrintRendering: '正在生成预览…',
@@ -168,6 +172,7 @@ export const zh = {
   appCtxSendToBack: '置于底层',
   appCtxBringForward: '上移一层',
   appCtxSendBackward: '下移一层',
+  appCtxRotate: '旋转',
   appCtxRotateLeft90: '向左旋转 90°',
   appCtxRotateRight90: '向右旋转 90°',
   appCtxFlipH: '水平翻转',
@@ -207,6 +212,8 @@ export const zh = {
   appMasterFillNone: '无填充',
   appMasterStroke: '边框颜色…',
   appMasterStrokeNone: '无边框',
+  appMasterInsertTextBox: '文本框',
+  appMasterInsertShape: '形状',
   appStartOpening: '正在打开…',
   appReadingSlideTitle: '单击翻到下一页（Esc 退出阅读视图）',
   appReadingPrev: '‹ 上一页',
@@ -240,4 +247,10 @@ export const zh = {
   appStatusSummaryZoomInserted: '已插入摘要缩放页（{count} 个缩略图）',
   appSectionSummary: '摘要节',
   appSectionN: '第 {n} 节',
+  appStatusAnimPainterNone: '所选元素没有动画',
+  appStatusAnimPainterOnce: '单击要应用动画的元素；双击按钮可切换为连续模式',
+  appStatusAnimPainterContinuous: '动画刷连续模式，按 Esc 退出',
+  appStatusAnimPainted: '已应用动画',
+  appStatusMergeUnsupported: '无法合并这些形状（线条、图片、表格、图表和部分形状除外）',
+  appStatusMergeEmpty: '合并结果为空（形状没有重叠）',
 }

@@ -23,10 +23,23 @@ import { execFile } from 'node:child_process'
 import { readFile, writeFile, mkdir, open } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync } from 'node:fs'
-import { basename, dirname, join, resolve } from 'node:path'
+import { basename, dirname, isAbsolute, join, resolve } from 'node:path'
 import { cleanupExpiredGeneratedPages } from './generated-page-temp'
+import { buildExportImagePaths } from './export-images'
+import {
+  resolveSlidesSaveAsPick,
+  SaveAsImageTargets,
+  slidesSaveAsFilters,
+  slidesSaveAsSuggestion,
+} from './save-as-formats'
 import { exportSlidesPdf } from './pdf-export'
-import { printSlidesHtml } from './print-window'
+import { printSlidesHtml, slidesPrintHtml, slidesPrintJobPdf } from './print-window'
+import {
+  ensurePrintLayoutIpc,
+  imageSaveDialogSpec,
+  LABEL_SPEC_FILE_NAME,
+  registerPrintLayoutIpc,
+} from '@genoffice/electron-utils/print-arranged'
 import { shutdownSubscriptionChildren } from '@genoffice/ai-provider/subscription'
 import {
   appMenuLabels,
@@ -48,6 +61,7 @@ import {
   showOpenDialogWithMemory,
   showSaveDialogWithMemory,
   helpMenuTemplate,
+  macAppMenuTemplate,
   toggleDevToolsItem,
   installRendererProtocol,
   registerRendererScheme,
@@ -56,6 +70,7 @@ import {
   isUntitledIdentity,
   newUntitledRecoveryId,
   readBodyCapped,
+  sharedPathGrants,
   registerRecoveryEditor,
   resolveRecoveryOnOpen,
   type RecoveryDeleteReason,
@@ -74,6 +89,7 @@ import {
 } from '@genoffice/pptx-ops'
 import { matchesElementRef } from '@genoffice/pptx-engine/identity'
 import { buildPagePptx, parsePageSpec } from '@genoffice/pipelines/slides'
+import { fillMissingRunFonts, parseFontRoles } from './ai-default-fonts'
 import { sniffImageMime } from './media-mime'
 import {
   newPasteCascade,
@@ -101,6 +117,7 @@ import {
   getRunLinks,
   readHeaderFooter,
   createBlankPptx,
+  setSlideSize,
   copySlide,
   type SlideBundle,
   listSlideLayouts,
@@ -153,7 +170,7 @@ import {
 import { DEFAULT_PICTURE_DPI, pictureFrame } from './picture-frame'
 import { refineComplexWidths, shapedMetricsReady } from './shaped-metrics'
 import { cfbKind, isCfbHeader } from './cfb-sniff'
-import { atomicWriteFile } from '@genoffice/electron-utils/atomic-write'
+import { atomicWriteFile, atomicWriteVia } from '@genoffice/electron-utils/atomic-write'
 import {
   decryptOfficeFile,
   encryptOoxml,
@@ -221,6 +238,7 @@ import type {
   MasterEditFillOp,
   MasterEditStrokeOp,
   MasterDeleteElementOp,
+  MasterAddElementOp,
   MasterEnterResult,
   PrintSlidesOp,
   EditPictureOpacityOp,
@@ -261,7 +279,6 @@ import type {
 } from '../shared/ipc'
 import { DECK_LINK_PROTOCOLS } from '../shared/run-link'
 import { planSlideDuplicates, planSlideMoves } from '../shared/slide-selection'
-import { buildPrintDocumentHtml } from '../shared/print-html'
 
 import { tm } from './i18n-main'
 import { tiffToPng } from './tiff-decode'
@@ -270,6 +287,7 @@ import {
   editorAttachedIds,
   beginHistoryBatch,
   buildAllRenderSlides,
+  buildSlideUpdate,
   carryHistoryForReplacement,
   dialogParent,
   endHistoryBatch,
@@ -281,6 +299,7 @@ import {
   markMetaDirty,
   pushHistory,
   rebuildSlide,
+  readSlideMedia,
   rebuildSlideWithReparse,
   registerAiSnapshot,
   restoreAiSnapshot,
@@ -309,12 +328,13 @@ import { registerTemplateCoverIpc } from './template-cover'
 let slideClipboard: { bundles: SlideBundle[]; pngs?: string[] } | null = null
 
 /** The immediately preceding slide paste per webContents, so the paste-options floater can redo it with another mode. */
-const lastSlidePaste = new Map<number, { afterIndex: number; undoLen: number }>()
+const lastSlidePaste = new Map<number, { afterIndex: number; undoLen: number; changed: number[] }>()
 
 // Generated single-page pptx: marker strings travel in pageMarkers slots; only paths issued
 // by slides:local-page-generate are readable (the renderer can't point the reader at arbitrary files)
 const CLOUD_PAGE_PREFIX = 'cloudpptx:'
 const issuedCloudPages = new Set<string>()
+import { isSlidesScreenRecordingSource } from './display-media-gate'
 import { registerPresenterIpc } from './presenter-show'
 import { registerAttachmentIpc } from './attachments-ipc'
 import { registerGenerateHandoffIpc } from './generate-handoff-ipc'
@@ -446,9 +466,13 @@ function trackSlidesWebContents(wc: WebContents): void {
     closeSaveWaiters.get(wc.id)?.(false)
     closeSaveWaiters.delete(wc.id)
     autoSavePrefByWc.delete(wc.id)
+    saveAsImageTargets.forget(wc.id)
     if (windowRefs.activeWebContents === wc) windowRefs.activeWebContents = null
   })
 }
+
+/** Save As › PNG names the dialog returned, accepted once by the image export */
+const saveAsImageTargets = new SaveAsImageTargets()
 
 // ── In-app element clipboard (app-wide, so elements copied in one deck paste into any other open deck; the cascade decides the paste offset) ─
 let elementClipboard: {
@@ -462,6 +486,23 @@ let elementClipboard: {
 let slidesOpenedHook: ((wc: WebContents, path: string) => void) | null = null
 export function setSlidesOpenedHook(fn: ((wc: WebContents, path: string) => void) | null): void {
   slidesOpenedHook = fn
+}
+
+/**
+ * Shell hook: a legacy .ppt picked inside a tab opens as a converted copy in a
+ * new tab of its own (the shell converts it); without the hook the tab
+ * explains that it cannot open the file.
+ */
+let slidesLegacyOpenHook: ((path: string) => void) | null = null
+export function setSlidesLegacyOpenHook(fn: ((path: string) => void) | null): void {
+  slidesLegacyOpenHook = fn
+}
+
+/** a .ppt the shell takes over; true when it did */
+function handOffLegacyPpt(path: string): boolean {
+  if (!slidesLegacyOpenHook || !/\.ppt$/i.test(path)) return false
+  slidesLegacyOpenHook(path)
+  return true
 }
 
 /** Detached editor windows (createSlidesWindow), keyed by webContents id — their titles are owned here */
@@ -699,7 +740,7 @@ async function writeSessionCopy(session: Session, ignoreBackoff: boolean): Promi
       session.password === undefined
         ? await recoveryStore.writeCopyStreamed(
             identity,
-            (tempPath) => writeDeckFile(session, tempPath),
+            (tempPath) => savePptxToFile(session.opened, tempPath),
             options,
           )
         : await recoveryStore.writeCopy(
@@ -1127,14 +1168,17 @@ function deckFileBytes(session: Session, bytes: Uint8Array): Buffer {
 }
 
 /**
- * Write the session's deck to `filePath`. A plain deck streams straight to
- * disk (savePptxToFile); an encrypted one has to be encrypted as one buffer,
- * so it is assembled in memory, encrypted, then written atomically — its
- * plaintext never touches the disk.
+ * Write the session's deck to `filePath`. A plain deck streams to disk
+ * (savePptxToFile) through a sibling temp; an encrypted one has to be
+ * encrypted as one buffer, so it is assembled in memory, encrypted, then
+ * written atomically — its plaintext never touches the disk.
  */
 async function writeDeckFile(session: Session, filePath: string): Promise<void> {
   if (session.password === undefined) {
-    await savePptxToFile(session.opened, filePath)
+    // savePptxToFile truncates the path it streams into, so the deck goes out
+    // through a sibling temp renamed over `filePath` once the stream finished:
+    // a save that dies mid-way leaves the previous deck on disk (genoffice#2123)
+    await atomicWriteVia(filePath, (tmp) => savePptxToFile(session.opened, tmp))
     return
   }
   await atomicWriteFile(filePath, deckFileBytes(session, await savePptx(session.opened)))
@@ -1188,12 +1232,13 @@ async function openAndBuild(
       slides: buildAllRenderSlides(existing.opened, fitWidthPx),
       size: { cx: existing.opened.deck.size.cx, cy: existing.opened.deck.size.cy },
       defaultFont: deckDefaultFont(existing.opened),
+      ...(existing.password !== undefined ? { encrypted: true } : {}),
     }
   }
   const raw = unlocked?.bytes ?? (await readFile(path))
   // the split-view save guard's baseline: the file's disk state as this copy
   // read it (hashed in parallel; the parse below takes far longer)
-  const diskStatePromise = recordDiskState(path)
+  const diskStatePromise = recordDiskState(path, unlocked ? undefined : raw)
   // a 0-byte .pptx is an empty deck, not a corrupt one: open the blank template
   // under the file's own path so Save writes back to it
   const { bytes, recovered } = await recoveredOpenBytes(
@@ -1245,6 +1290,7 @@ async function openAndBuild(
     slides,
     size: { cx: opened.deck.size.cx, cy: opened.deck.size.cy },
     defaultFont: deckDefaultFont(opened),
+    ...(unlocked !== undefined ? { encrypted: true } : {}),
   }
 }
 
@@ -1280,6 +1326,17 @@ function nameGeneratedDeck(session: Session, deckName?: string): void {
   const base = sanitizeDraftBaseName(deckName)
   if (base && !session.firstSaveName) session.firstSaveName = `${base}.pptx`
   session.askPathOnFirstSave = true
+}
+
+/**
+ * The file name an untitled deck is written under in a project folder (spec
+ * 6): its suggested first-save name, else the untitled name; a bare name with
+ * the .pptx extension (the folder is the shell's to choose).
+ */
+function projectDeckFileName(firstSaveName: string | undefined): string {
+  const named = firstSaveName ? basename(firstSaveName).replace(/\.pptx$/i, '') : ''
+  const base = sanitizeDraftBaseName(named) ?? sanitizeDraftBaseName(tm('untitledDeck'))
+  return `${base ?? 'presentation'}.pptx`
 }
 
 /** Theme body (minor) Latin font: fallback shown in the ribbon font box when the selection has no text element. */
@@ -1618,9 +1675,25 @@ export function registerSlidesIpc(): void {
   // Screen recording: source dispatch for the renderer's navigator.mediaDevices.getDisplayMedia.
   // macOS prefers the system picker (with its permission flow), falling back to the first screen.
   void app.whenReady().then(() => {
+    electronSession.defaultSession.protocol.handle('genoffice-slide-media', (request) => {
+      const media = readSlideMedia(request.url)
+      if (!media) return new Response(null, { status: 404 })
+      return new Response(media.body as BodyInit, {
+        headers: {
+          'Content-Type': media.mime,
+          'Content-Length': String(media.body.byteLength),
+          'Access-Control-Allow-Origin': '*',
+          'Cache-Control': 'no-store',
+        },
+      })
+    })
     try {
       electronSession.defaultSession.setDisplayMediaRequestHandler(
-        (_request, callback) => {
+        (request, callback) => {
+          if (!isSlidesScreenRecordingSource(request.frame?.url, runtime.rendererDevUrl)) {
+            callback({})
+            return
+          }
           desktopCapturer
             .getSources({ types: ['screen', 'window'] })
             .then((sources) => {
@@ -1705,6 +1778,7 @@ export function registerSlidesIpc(): void {
     }
     const r = await showOpenDialogWithMemory(dialog, parent, options)
     if (r.canceled || !r.filePaths[0]) return null
+    if (handOffLegacyPpt(r.filePaths[0])) return null
     const prepared = await preparePptxOpen(r.filePaths[0])
     if (prepared === 'rejected') return null
     return openAndBuild(
@@ -1717,6 +1791,10 @@ export function registerSlidesIpc(): void {
 
   ipcMain.handle('slides:open-path', async (e, path: string, fitWidthPx: number) => {
     if (!path || !existsSync(path)) return null
+    // renderer-facing open channel: a deck this view's user put in front of
+    // the app (dropped — the preload bridge records it) or opened before.
+    if (process.env.GENOFFICE_E2E !== '1' && !sharedPathGrants().has(e.sender.id, path)) return null
+    if (handOffLegacyPpt(path)) return null
     const prepared = await preparePptxOpen(path)
     if (prepared === 'rejected') return null
     return openAndBuild(e.sender, path, fitWidthPx, prepared === 'plain' ? undefined : prepared)
@@ -1775,6 +1853,7 @@ export function registerSlidesIpc(): void {
         slides: buildAllRenderSlides(session.opened, fitWidthPx),
         size: { cx: session.opened.deck.size.cx, cy: session.opened.deck.size.cy },
         defaultFont: deckDefaultFont(session.opened),
+        ...(session.password !== undefined ? { encrypted: true } : {}),
       } satisfies OpenResult
     }
     return null
@@ -1826,6 +1905,8 @@ export function registerSlidesIpc(): void {
       italic: op.italic,
       underline: op.underline,
       color: op.color,
+      highlight: op.highlight,
+      letterSpacingPt: op.letterSpacingPt,
     }
     pushHistory(session)
     const r = journaledTxn(session, 'edit', {
@@ -2124,13 +2205,16 @@ export function registerSlidesIpc(): void {
     'slides:local-page-generate',
     async (
       _e,
-      op: { specJson: string },
+      op: { specJson: string; defaultFonts?: unknown },
     ): Promise<{ ok: boolean; marker?: string; error?: string; imageFailures?: string[] }> => {
       const parsed = parsePageSpec(String(op?.specJson ?? ''))
       if (!parsed.ok) return { ok: false, error: parsed.error }
+      // the fonts of Settings › General, sent only when they apply to this deck
+      const roles = parseFontRoles(op?.defaultFonts)
+      const spec = roles ? fillMissingRunFonts(parsed.spec, roles) : parsed.spec
       try {
         const started = Date.now()
-        const { bytes, imageFailures } = await buildPagePptx(parsed.spec, {
+        const { bytes, imageFailures } = await buildPagePptx(spec, {
           fontMetrics: getFontMetrics(),
           fetchImage: async (url) => {
             const resp = await fetchRemoteImage(url)
@@ -2388,17 +2472,25 @@ export function registerSlidesIpc(): void {
     },
   )
 
-  ipcMain.handle('slides:new-blank', async (e, fitWidthPx: number): Promise<OpenResult> => {
-    const opened = await openPptx(await createBlankPptx())
-    sessions.set(e.sender.id, { path: '', opened, fitWidthPx, undoStack: [], redoStack: [] })
-    scheduleHistoryNotify(sessions.get(e.sender.id)!)
-    return {
-      path: '',
-      slides: buildAllRenderSlides(opened, fitWidthPx),
-      size: { cx: opened.deck.size.cx, cy: opened.deck.size.cy },
-      defaultFont: deckDefaultFont(opened),
-    }
-  })
+  ipcMain.handle(
+    'slides:new-blank',
+    async (e, fitWidthPx: number, size?: unknown): Promise<OpenResult> => {
+      const opened = await openPptx(await createBlankPptx())
+      // the renderer's saved default size; anything a .pptx cannot store keeps the template
+      const side = (v: unknown): v is number =>
+        typeof v === 'number' && Number.isInteger(v) && v >= 914400 && v <= 51206400
+      const s = size as { cx?: unknown; cy?: unknown } | undefined
+      if (s && side(s.cx) && side(s.cy)) setSlideSize(opened, s.cx, s.cy)
+      sessions.set(e.sender.id, { path: '', opened, fitWidthPx, undoStack: [], redoStack: [] })
+      scheduleHistoryNotify(sessions.get(e.sender.id)!)
+      return {
+        path: '',
+        slides: buildAllRenderSlides(opened, fitWidthPx),
+        size: { cx: opened.deck.size.cx, cy: opened.deck.size.cy },
+        defaultFont: deckDefaultFont(opened),
+      }
+    },
+  )
 
   ipcMain.handle('slides:add-element', (e, op: AddElementOp) => {
     const session = sessions.get(e.sender.id)
@@ -2582,6 +2674,7 @@ export function registerSlidesIpc(): void {
     const session = sessions.get(e.sender.id)
     if (!session) return null
     const slides = session.opened.deck.slides
+    const before = slides.map((s) => s.path)
     const targets = op.slideIndex === -1 ? slides : [slides[op.slideIndex]].filter(Boolean)
     if (targets.length === 0) return null
 
@@ -2664,7 +2757,11 @@ export function registerSlidesIpc(): void {
       }
     }
     session.fitWidthPx = op.fitWidthPx
-    return buildAllRenderSlides(session.opened, op.fitWidthPx)
+    return buildSlideUpdate(
+      session,
+      before,
+      targets.map((s) => slides.indexOf(s)),
+    )
   })
 
   ipcMain.handle('slides:edit-image-fill', async (e, op: EditFillImageOp) => {
@@ -2838,6 +2935,7 @@ export function registerSlidesIpc(): void {
   ipcMain.handle('slides:add-slide', (e, op: AddSlideOp) => {
     const session = sessions.get(e.sender.id)
     if (!session) return null
+    const before = session.opened.deck.slides.map((s) => s.path)
     const r = sessionTxn(session, {
       ops: [
         {
@@ -2851,7 +2949,7 @@ export function registerSlidesIpc(): void {
     session.fitWidthPx = op.fitWidthPx
     markMetaDirty(session)
     return {
-      slides: buildAllRenderSlides(session.opened, op.fitWidthPx),
+      ...buildSlideUpdate(session, before),
       index: op.sourceIndex + 1,
     }
   })
@@ -2876,7 +2974,12 @@ export function registerSlidesIpc(): void {
   ipcMain.handle('slides:has-slide-clipboard', () => slideClipboard !== null)
 
   // Several copied slides paste in order; 'picture' mode stacks every bitmap on the anchor slide.
-  const performSlidePaste = (session: Session, op: PasteSlideOp): PasteSlideResult | null => {
+  const performSlidePaste = (
+    session: Session,
+    op: PasteSlideOp,
+    before = session.opened.deck.slides.map((s) => s.path),
+    restored: number[] = [],
+  ): PasteSlideResult | null => {
     if (!slideClipboard) return null
     const picture = op.mode === 'picture'
     const { bundles, pngs } = slideClipboard
@@ -2897,9 +3000,13 @@ export function registerSlidesIpc(): void {
     // repaste-slide re-runs this after restoring a snapshot that cleared the flag.
     markMetaDirty(session)
     const created = r.records!.flatMap((x) => x.created ?? [])
+    const index = (rec.after as { index: number }).index
     return {
-      slides: buildAllRenderSlides(session.opened, op.fitWidthPx),
-      index: (rec.after as { index: number }).index,
+      ...buildSlideUpdate(session, before, [
+        ...restored,
+        ...Array.from({ length: picture ? 1 : bundles.length }, (_, j) => index + j),
+      ]),
+      index,
       count: picture ? 0 : bundles.length,
       ...(created.length ? { sourceIds: created } : {}),
     }
@@ -2917,6 +3024,7 @@ export function registerSlidesIpc(): void {
     lastSlidePaste.set(e.sender.id, {
       afterIndex: op.afterIndex,
       undoLen: session.undoStack.length,
+      changed: op.mode === 'picture' ? [r.index] : [],
     })
     return r
   })
@@ -2930,24 +3038,32 @@ export function registerSlidesIpc(): void {
     if (session.undoStack.length !== rec.undoLen) return null
     const snap = session.undoStack.pop()
     if (!snap) return null
+    const before = session.opened.deck.slides.map((s) => s.path)
     restoreSnapshot(session, snap)
     pushHistory(session)
-    const r = performSlidePaste(session, {
-      afterIndex: rec.afterIndex,
-      fitWidthPx: op.fitWidthPx,
-      mode: op.mode,
-    })
+    const r = performSlidePaste(
+      session,
+      {
+        afterIndex: rec.afterIndex,
+        fitWidthPx: op.fitWidthPx,
+        mode: op.mode,
+      },
+      before,
+      rec.changed,
+    )
     if (!r) {
       session.undoStack.pop()
       return null
     }
     rec.undoLen = session.undoStack.length
+    rec.changed = op.mode === 'picture' ? [r.index] : []
     return r
   })
 
   ipcMain.handle('slides:add-blank-slide', (e, op: AddBlankSlideOp) => {
     const session = sessions.get(e.sender.id)
     if (!session) return null
+    const before = session.opened.deck.slides.map((s) => s.path)
     const r = sessionTxn(session, {
       ops: [
         { op: 'addBlankSlide', target: { slide: op.sourceIndex } },
@@ -2964,7 +3080,7 @@ export function registerSlidesIpc(): void {
     // element dirty flag is set and the insert would otherwise be unsaveable.
     markMetaDirty(session)
     return {
-      slides: buildAllRenderSlides(session.opened, op.fitWidthPx),
+      ...buildSlideUpdate(session, before),
       index: op.before ? op.sourceIndex : op.sourceIndex + 1,
     }
   })
@@ -2984,6 +3100,7 @@ export function registerSlidesIpc(): void {
   ipcMain.handle('slides:add-slide-with-layout', (e, op: AddSlideWithLayoutOp) => {
     const session = sessions.get(e.sender.id)
     if (!session) return null
+    const before = session.opened.deck.slides.map((s) => s.path)
     // 'builtin:' resolution may inject a layout part — do it before the undo snapshot
     // is taken so a failed insert still rolls back to a consistent package
     pushHistory(session)
@@ -3000,7 +3117,7 @@ export function registerSlidesIpc(): void {
     session.fitWidthPx = op.fitWidthPx
     markMetaDirty(session)
     return {
-      slides: buildAllRenderSlides(session.opened, op.fitWidthPx),
+      ...buildSlideUpdate(session, before),
       index: op.sourceIndex + 1,
     }
   })
@@ -3194,6 +3311,39 @@ export function registerSlidesIpc(): void {
     return masterEditDone(session)
   })
 
+  // Insert a text box / preset shape / line onto the current master or layout
+  // part. Pixel geometry converts like slides:add-element; the op is the same
+  // part-addressed addElement the slide path runs, so undo/journal/save all
+  // behave like the other master edits.
+  ipcMain.handle('slides:master-add-element', (e, op: MasterAddElementOp) => {
+    const session = sessions.get(e.sender.id)
+    const me = session?.masterEdit
+    if (!session || !me) return null
+    const baseWidthPx = session.opened.deck.size.cx / EMU_PER_PX_96
+    const scale = op.fitWidthPx / baseWidthPx
+    const toEmu = (px: number) => Math.round((px / scale) * EMU_PER_PX_96)
+    const r = masterTxn(session, me, {
+      op: 'addElement',
+      target: { part: me.partPath },
+      kind: op.kind,
+      offset: { x: toEmu(op.xPx), y: toEmu(op.yPx), cx: toEmu(op.wPx), cy: toEmu(op.hPx) },
+      ...(op.paragraphs?.length ? { paragraphs: op.paragraphs as Paragraph[] } : {}),
+      ...(op.fillColor ? { fill: op.fillColor } : {}),
+      ...(op.stroke
+        ? {
+            stroke: {
+              color: op.stroke.color,
+              widthEmu: Math.round(op.stroke.widthPt * EMU_PER_PT),
+            },
+          }
+        : {}),
+      ...(op.bodyPr ? { bodyPr: op.bodyPr } : {}),
+    })
+    const sourceId = r?.records?.[0]?.created?.[0]
+    if (!r || !sourceId) return null
+    return { slide: masterEditDone(session), sourceId }
+  })
+
   ipcMain.handle('slides:edit-picture-opacity', (e, op: EditPictureOpacityOp) => {
     const session = sessions.get(e.sender.id)
     if (!session) return null
@@ -3251,6 +3401,7 @@ export function registerSlidesIpc(): void {
   ipcMain.handle('slides:find-replace', (e, op: FindReplaceOp) => {
     const session = sessions.get(e.sender.id)
     if (!session) return null
+    const before = session.opened.deck.slides.map((s) => s.path)
     const r = sessionTxn(session, {
       ops: [
         {
@@ -3264,18 +3415,22 @@ export function registerSlidesIpc(): void {
         },
       ],
     })
-    if (!r) return { count: 0, slides: null }
-    const count = (r.records![0]!.after as { count: number }).count
-    return { count, slides: buildAllRenderSlides(session.opened, session.fitWidthPx) }
+    if (!r) return { count: 0, update: null }
+    const { count, changedSlides } = r.records![0]!.after as {
+      count: number
+      changedSlides: number[]
+    }
+    return { count, update: buildSlideUpdate(session, before, changedSlides) }
   })
 
   ipcMain.handle('slides:delete-slide', (e, slideIndex: number) => {
     const session = sessions.get(e.sender.id)
     if (!session) return null
+    const before = session.opened.deck.slides.map((s) => s.path)
     const r = sessionTxn(session, { ops: [{ op: 'deleteSlide', target: { slide: slideIndex } }] })
     if (!r) return null
     markMetaDirty(session)
-    return buildAllRenderSlides(session.opened, session.fitWidthPx)
+    return buildSlideUpdate(session, before)
   })
 
   // Highest index first: every op is validated against the pre-transaction deck
@@ -3283,6 +3438,7 @@ export function registerSlidesIpc(): void {
   ipcMain.handle('slides:delete-slides', (e, op: DeleteSlidesOp) => {
     const session = sessions.get(e.sender.id)
     if (!session) return null
+    const before = session.opened.deck.slides.map((s) => s.path)
     const indexes = [...new Set(op.slideIndexes)].sort((a, b) => b - a)
     if (!indexes.length || indexes.length >= session.opened.deck.slides.length) return null
     const r = sessionTxn(session, {
@@ -3290,7 +3446,7 @@ export function registerSlidesIpc(): void {
     })
     if (!r) return null
     markMetaDirty(session)
-    return buildAllRenderSlides(session.opened, session.fitWidthPx)
+    return buildSlideUpdate(session, before)
   })
 
   ipcMain.handle('slides:duplicate-slides', (e, op: DuplicateSlidesOp) => {
@@ -3298,6 +3454,7 @@ export function registerSlidesIpc(): void {
     if (!session) return null
     const steps = planSlideDuplicates(op.slideIndexes)
     if (!steps.length) return null
+    const before = session.opened.deck.slides.map((s) => s.path)
     const r = sessionTxn(session, {
       ops: steps.map((st) =>
         'duplicate' in st
@@ -3311,7 +3468,7 @@ export function registerSlidesIpc(): void {
     // would otherwise leave the deck changed but reported clean.
     markMetaDirty(session)
     return {
-      slides: buildAllRenderSlides(session.opened, op.fitWidthPx),
+      ...buildSlideUpdate(session, before),
       index: Math.max(...op.slideIndexes) + 1,
     }
   })
@@ -3319,6 +3476,7 @@ export function registerSlidesIpc(): void {
   ipcMain.handle('slides:set-slides-hidden', (e, op: SetSlidesHiddenOp) => {
     const session = sessions.get(e.sender.id)
     if (!session || !op.slideIndexes.length) return null
+    const before = session.opened.deck.slides.map((s) => s.path)
     const r = sessionTxn(session, {
       ops: op.slideIndexes.map((i) => ({
         op: 'setHidden' as const,
@@ -3326,7 +3484,7 @@ export function registerSlidesIpc(): void {
         hidden: op.hidden,
       })),
     })
-    return r ? buildAllRenderSlides(session.opened, session.fitWidthPx) : null
+    return r ? buildSlideUpdate(session, before, op.slideIndexes) : null
   })
 
   ipcMain.handle('slides:edit-table-cell', (e, op: EditTableCellOp) => {
@@ -3534,6 +3692,39 @@ export function registerSlidesIpc(): void {
     if (!slide) return null
     return getChartElementData(slide, sourceId)
   })
+
+  // Selection Pane: show/hide (reparses the slide, so every element id changes) and rename
+  ipcMain.handle(
+    'slides:set-element-hidden',
+    (e, op: { slideIndex: number; sourceId: string; hidden: boolean }) => {
+      const session = sessions.get(e.sender.id)
+      if (!session) return null
+      const r = sessionTxn(session, {
+        ops: [
+          {
+            op: 'setElementHidden',
+            target: { slide: op.slideIndex, el: op.sourceId },
+            hidden: op.hidden,
+          },
+        ],
+      })
+      return r ? rebuildSlide(session, op.slideIndex) : null
+    },
+  )
+
+  ipcMain.handle(
+    'slides:set-element-name',
+    (e, op: { slideIndex: number; sourceId: string; name: string }) => {
+      const session = sessions.get(e.sender.id)
+      if (!session) return null
+      const r = sessionTxn(session, {
+        ops: [
+          { op: 'renameElement', target: { slide: op.slideIndex, el: op.sourceId }, name: op.name },
+        ],
+      })
+      return r ? rebuildSlide(session, op.slideIndex) : null
+    },
+  )
 
   ipcMain.handle('slides:reorder-element', (e, op: ReorderElementOp) => {
     const session = sessions.get(e.sender.id)
@@ -4183,11 +4374,19 @@ export function registerSlidesIpc(): void {
   })
 
   // Media recorded by the renderer (screen-recording webm) or dropped on the canvas: placed like an inserted file
-  ipcMain.handle('slides:add-media-bytes', async (e, op: AddMediaBytesOp) => {
-    const session = sessions.get(e.sender.id)
+  ipcMain.handle('slides:add-media-bytes', async (event, op: AddMediaBytesOp) => {
+    const session = sessions.get(event.sender.id)
     if (!session || !session.opened.deck.slides[op.slideIndex]) return null
     let bytes: Uint8Array
     try {
+      if (
+        'path' in op &&
+        // canvas media drops are OS drops: the preload bridge records their
+        // paths in the ledger, and the embed verifies against it
+        !sharedPathGrants().has(event.sender.id, op.path)
+      ) {
+        return null
+      }
       bytes =
         'path' in op
           ? new Uint8Array(await readFile(op.path))
@@ -4445,11 +4644,17 @@ export function registerSlidesIpc(): void {
     const session = sessions.get(e.sender.id)
     const slide = session?.opened.deck.slides[slideIndex]
     if (!slide) return []
-    return slide.elements.map((el) => ({
-      sourceId: el.id,
-      spid: elementSpid(el),
-      name: el.name ?? '',
-    }))
+    return slide.elements.map((el) => {
+      // Hidden elements parse as passthroughs without a model name: read their own cNvPr
+      const cNvPr = /<p:cNvPr\b[^>]*>/.exec(el.anchor?.originalXml ?? '')?.[0] ?? ''
+      const rawName = /\sname="([^"]*)"/.exec(cNvPr)?.[1]
+      return {
+        sourceId: el.id,
+        spid: elementSpid(el),
+        name: el.name ?? (rawName ? decodeXmlAttr(rawName) : ''),
+        ...(/\shidden="(?:1|true)"/.test(cNvPr) ? { hidden: true } : {}),
+      }
+    })
   })
 
   ipcMain.handle('slides:set-animations', (e, op: SetAnimationsOp) => {
@@ -4510,6 +4715,7 @@ export function registerSlidesIpc(): void {
   ipcMain.handle('slides:remove-section-slides', (e, op: RemoveSectionSlidesOp) => {
     const session = sessions.get(e.sender.id)
     if (!session) return null
+    const before = session.opened.deck.slides.map((s) => s.path)
     const total = session.opened.deck.slides.length
     const { lead, sections } = normalizeSections(getSections(session.opened), total)
     const indices = op.id == null ? lead : sections.find((s) => s.id === op.id)?.slideIndices
@@ -4523,22 +4729,23 @@ export function registerSlidesIpc(): void {
     if (!r) return null
     markMetaDirty(session)
     return {
-      slides: buildAllRenderSlides(session.opened, session.fitWidthPx),
+      ...buildSlideUpdate(session, before),
       sections: getSections(session.opened),
     }
   })
 
-  // Drag to reorder slides (sldIdLst + deck.slides + section membership); must send back the full RenderSlide set
+  // Drag to reorder slides (sldIdLst + deck.slides + section membership)
   ipcMain.handle('slides:move-slide', (e, op: MoveSlideOp) => {
     const session = sessions.get(e.sender.id)
     if (!session) return null
+    const before = session.opened.deck.slides.map((s) => s.path)
     const r = sessionTxn(session, {
       ops: [{ op: 'moveSlide', target: { slide: op.fromIndex }, to: op.toIndex }],
     })
     if (!r) return null
     markMetaDirty(session)
     return {
-      slides: buildAllRenderSlides(session.opened, session.fitWidthPx),
+      ...buildSlideUpdate(session, before),
       sections: getSections(session.opened),
     }
   })
@@ -4546,6 +4753,7 @@ export function registerSlidesIpc(): void {
   ipcMain.handle('slides:move-slides', (e, op: MoveSlidesOp) => {
     const session = sessions.get(e.sender.id)
     if (!session) return null
+    const before = session.opened.deck.slides.map((s) => s.path)
     const steps = planSlideMoves(session.opened.deck.slides.length, op.slideIndexes, op.insertAt)
     if (!steps.length) return null
     const r = sessionTxn(session, {
@@ -4554,19 +4762,20 @@ export function registerSlidesIpc(): void {
     if (!r) return null
     markMetaDirty(session)
     return {
-      slides: buildAllRenderSlides(session.opened, session.fitWidthPx),
+      ...buildSlideUpdate(session, before),
       sections: getSections(session.opened),
     }
   })
 
-  // Moving a whole section changes slide order (sldIdLst + deck.slides); must send back the full RenderSlide set
+  // Moving a whole section changes slide order (sldIdLst + deck.slides)
   ipcMain.handle('slides:move-section', (e, op: MoveSectionOp) => {
     const session = sessions.get(e.sender.id)
     if (!session) return null
+    const before = session.opened.deck.slides.map((s) => s.path)
     const sections = sectionShim(e, { op: 'moveSection', id: op.id, dir: op.dir })
     if (!sections) return null
     return {
-      slides: buildAllRenderSlides(session.opened, session.fitWidthPx),
+      ...buildSlideUpdate(session, before),
       sections,
     }
   })
@@ -4671,6 +4880,45 @@ export function registerSlidesIpc(): void {
     return buildAllRenderSlides(session.opened, session.fitWidthPx)
   })
 
+  ipcMain.handle('slides:timeline-restore-bytes', async (e, raw: unknown) => {
+    const session = sessions.get(e.sender.id)
+    if (!session || session.masterEdit || session.historyBatch) return null
+    const bytes =
+      raw instanceof Uint8Array
+        ? raw
+        : ArrayBuffer.isView(raw)
+          ? new Uint8Array(raw.buffer, raw.byteOffset, raw.byteLength)
+          : null
+    if (!bytes || bytes.byteLength === 0) return null
+    try {
+      const opened = await openPptx(bytes)
+      settleStaleHistoryBatch(session)
+      session.undoStack.push(takeSnapshot(session))
+      session.redoStack.length = 0
+      restoreSnapshot(session, {
+        slides: opened.deck.slides,
+        entries: new Map(opened.archive.entries),
+        size: { ...opened.deck.size },
+        metaDirty: true,
+      })
+      scheduleHistoryNotify(session)
+      scheduleDeckBroadcast(session)
+      return buildAllRenderSlides(session.opened, session.fitWidthPx)
+    } catch {
+      return null
+    }
+  })
+
+  // Which AI rollback points are still in the ring: the panel tells a point
+  // pushed out by newer runs from one that only cannot be used right now
+  ipcMain.handle('slides:ai-snapshot-alive', (e, ids: unknown) => {
+    const session = sessions.get(e.sender.id)
+    if (!session || !Array.isArray(ids)) return []
+    return ids.filter(
+      (id): id is number => typeof id === 'number' && session.aiSnapshots?.has(id) === true,
+    )
+  })
+
   ipcMain.handle('slides:undo', (e) => {
     const session = sessions.get(e.sender.id)
     // Undo disabled in master view: the masterEdit.slide model cannot roll back with snapshots (v1 trade-off; undoable after exiting)
@@ -4716,11 +4964,15 @@ export function registerSlidesIpc(): void {
     // and new blank decks alike); the AutoSave pass leaves it alone until then
     if (!session.path) {
       if (auto === true) return { ok: false, reason: 'external-modified' }
+      const firstName = session.firstSaveName || `${tm('untitledDeck')}.pptx`
+      // a deck whose panel has a project is offered in that folder (spec 6)
+      const projectDir = await runtime.newDocumentDir?.(e.sender.id)
       const picked = await showSaveDialogWithMemory(
         dialog,
         dialogParent(),
         {
-          defaultPath: session.firstSaveName || `${tm('untitledDeck')}.pptx`,
+          defaultPath:
+            projectDir && !isAbsolute(firstName) ? join(projectDir, firstName) : firstName,
           filters: [{ name: 'PowerPoint', extensions: ['pptx'] }],
         },
         getDraftsDir(),
@@ -4778,25 +5030,78 @@ export function registerSlidesIpc(): void {
     }
   })
 
+  // Project folders (spec 6): the run a create flow handed to this untitled deck
+  // ended well. The deck's bytes go to the shell's project writer, which picks
+  // the folder from the panel's project and a free name (never over a file);
+  // the renderer names neither. The deck then becomes that file like a first
+  // save. Without a project (or a shell) nothing is written: `skipped`.
+  ipcMain.handle('slides:save-into-project', async (e) => {
+    const session = sessions.get(e.sender.id)
+    const write = runtime.writeNewDocument
+    if (!session || session.path || session.masterEdit || !write) {
+      return { ok: false, skipped: true }
+    }
+    const fileName = projectDeckFileName(session.firstSaveName)
+    try {
+      const metaRevAtSave = session.metaRev ?? 0
+      const written = await write(
+        e.sender.id,
+        fileName,
+        deckFileBytes(session, await savePptx(session.opened)),
+      )
+      // no project chosen, or a save that asked where landed meanwhile
+      if (!written || session.path) return { ok: false, skipped: true }
+      session.path = written
+      session.askPathOnFirstSave = false
+      followTemplateSelection(session, '', written)
+      await pushRecent(written)
+      slidesOpenedHook?.(e.sender, written)
+      session.diskState = (await recordDiskState(written)) ?? undefined
+      recoveryCopiesSaved(session, '')
+      commitSaved(session.opened)
+      if ((session.metaRev ?? 0) === metaRevAtSave) session.metaDirty = false
+      return {
+        ok: true,
+        path: written,
+        slides: buildAllRenderSlides(session.opened, session.fitWidthPx),
+      }
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) }
+    }
+  })
+
   ipcMain.handle('slides:save-as', async (e, defaultName: string) => {
     const session = sessions.get(e.sender.id)
     if (!session) return { ok: false, error: 'no file open' }
     const parent = dialogParent()
     const options = {
-      defaultPath: saveAsSuggestion(session.path, defaultName),
-      filters: [{ name: 'PowerPoint', extensions: ['pptx'] }],
+      // with copy formats on offer the suggestion carries no extension: the
+      // file type chosen in the dialog supplies it
+      defaultPath: slidesSaveAsSuggestion(saveAsSuggestion(session.path, defaultName)),
+      // the deck's own type first, then the copies (PDF, one PNG per slide)
+      filters: slidesSaveAsFilters((key) => tm(key)),
     }
     const r = await showSaveDialogWithMemory(dialog, parent, options, getDraftsDir())
     if (r.canceled || !r.filePath) return { ok: false }
+    const pick = resolveSlidesSaveAsPick(r.filePath)
+    // A copy format writes no deck: the renderer runs the existing export to
+    // the picked path, and the session keeps its path, dirty state and
+    // recovery copy. The PNG name is authorized for one image export.
+    if (pick.kind === 'pdf') return { ok: false, exportAs: 'pdf', path: pick.path }
+    if (pick.kind === 'png') {
+      saveAsImageTargets.authorize(e.sender.id, pick.path)
+      return { ok: false, exportAs: 'png', path: pick.path }
+    }
+    const target = pick.path
     try {
       const metaRevAtSave = session.metaRev ?? 0
       const previousPath = session.path
-      await writeDeckFile(session, r.filePath)
-      followTemplateSelection(session, session.path, r.filePath)
-      session.path = r.filePath
-      session.diskState = (await recordDiskState(r.filePath)) ?? undefined
-      await pushRecent(r.filePath)
-      syncAttachedPaths(session, r.filePath)
+      await writeDeckFile(session, target)
+      followTemplateSelection(session, session.path, target)
+      session.path = target
+      session.diskState = (await recordDiskState(target)) ?? undefined
+      await pushRecent(target)
+      syncAttachedPaths(session, target)
       commitSaved(session.opened)
       if ((session.metaRev ?? 0) === metaRevAtSave) session.metaDirty = false
       // after the deck reads as saved: a copy a pass wrote while the steps
@@ -4804,7 +5109,7 @@ export function registerSlidesIpc(): void {
       recoveryCopiesSaved(session, previousPath)
       return {
         ok: true,
-        path: r.filePath,
+        path: target,
         slides: buildAllRenderSlides(session.opened, session.fitWidthPx),
       }
     } catch (err) {
@@ -4827,15 +5132,21 @@ export function registerSlidesIpc(): void {
 
   ipcMain.handle(
     'slides:export-images',
-    async (_e, op: ExportImagesOp): Promise<ExportImagesResult> => {
+    async (e, op: ExportImagesOp): Promise<ExportImagesResult> => {
       try {
-        // Zero-padding width follows the total page count (3 digits for ≥100 pages)
-        const pad = op.pngsBase64.length >= 100 ? 3 : 2
-        const paths: string[] = []
-        for (let i = 0; i < op.pngsBase64.length; i++) {
-          const p = join(op.dir, `${op.baseName}-${String(i + 1).padStart(pad, '0')}.png`)
-          await writeFile(p, Buffer.from(op.pngsBase64[i], 'base64'))
-          paths.push(p)
+        const ext = op.format === 'jpg' ? 'jpg' : 'png'
+        if (op.saveAsTarget !== undefined && ext !== 'png') {
+          return { ok: false, error: 'Save As images are PNG' }
+        }
+        // Save As › PNG: the one name the person typed becomes one file per
+        // slide beside it, and only a name this tab's Save As dialog returned
+        const paths =
+          op.saveAsTarget !== undefined
+            ? saveAsImageTargets.take(e.sender.id, op.saveAsTarget, op.pngsBase64.length)
+            : buildExportImagePaths(op.dir, op.baseName, op.pngsBase64.length, ext)
+        if (!paths) return { ok: false, error: 'export target was not authorized' }
+        for (let i = 0; i < paths.length; i++) {
+          await writeFile(paths[i], Buffer.from(op.pngsBase64[i], 'base64'))
         }
         return { ok: true, paths }
       } catch (err) {
@@ -4888,36 +5199,92 @@ export function registerSlidesIpc(): void {
     })
   })
 
+  /** Hidden window the system print dialog prints from (Windows shows it for the dialog). */
+  const createPrintDialogWindow = (sender: WebContents | undefined): BrowserWindow => {
+    const owner = (sender ? hostWindowFor(sender) : undefined) ?? dialogParent()
+    return new BrowserWindow({
+      show: false,
+      ...(owner && !owner.isDestroyed() ? { parent: owner } : {}),
+      ...(process.platform === 'win32'
+        ? {
+            width: 900,
+            height: 700,
+            autoHideMenuBar: true,
+            closable: false,
+            skipTaskbar: true,
+          }
+        : {}),
+      webPreferences: { sandbox: true },
+    })
+  }
+
   ipcMain.handle(
     'slides:print',
     async (e, op: PrintSlidesOp): Promise<{ ok: boolean; error?: string }> => {
       // Page assembly is shared with the renderer's print-preview pane (print-html.ts)
-      const html = buildPrintDocumentHtml({
-        srcs: op.pngsBase64.map((b64) => `data:image/png;base64,${b64}`),
-        ratio: op.widthPx / op.heightPx,
-        layout: op.layout ?? 'full',
-        ...(op.notes ? { notes: op.notes } : {}),
-        ...(op.orientation ? { orientation: op.orientation } : {}),
-        ...(op.frame ? { frame: true } : {}),
-      })
-      const owner = hostWindowFor(e.sender) ?? dialogParent()
-      const win = new BrowserWindow({
-        show: false,
-        ...(owner && !owner.isDestroyed() ? { parent: owner } : {}),
-        ...(process.platform === 'win32'
-          ? {
-              width: 900,
-              height: 700,
-              autoHideMenuBar: true,
-              closable: false,
-              skipTaskbar: true,
-            }
-          : {}),
-        webPreferences: { sandbox: true },
-      })
-      return printSlidesHtml(html, win)
+      const html = slidesPrintHtml(op)
+      return printSlidesHtml(html, createPrintDialogWindow(e.sender))
     },
   )
+
+  // Advanced print (decision 0141): the job PDF is the same print document
+  // printed to PDF; arranging, rasterizing and sending are shared.
+  ensurePrintLayoutIpc({
+    ipcMain,
+    labelSpecPath: () => join(app.getPath('userData'), LABEL_SPEC_FILE_NAME),
+  })
+  registerPrintLayoutIpc<PrintSlidesOp>('slides', {
+    ipcMain,
+    buildJobPdf: (_e, op) =>
+      slidesPrintJobPdf(
+        op,
+        () =>
+          // hidden: without backgroundThrottling off the readiness wait can stall
+          new BrowserWindow({
+            show: false,
+            webPreferences: { sandbox: true, backgroundThrottling: false },
+          }),
+      ),
+    createPrintWindow: (e) => createPrintDialogWindow(webContents.fromId(e.sender.id)),
+    pickSavePath: async (e) => {
+      const session = sessions.get(e.sender.id)
+      const name = session?.path
+        ? basename(session.path).replace(/\.pptx$/i, '')
+        : session
+          ? untitledRecoveryTitle(session)
+          : tm('untitledDeck')
+      const r = await showSaveDialogWithMemory(
+        dialog,
+        dialogParent(),
+        {
+          title: tm('dlgExportPdf'),
+          defaultPath: `${name}.pdf`,
+          filters: [{ name: 'PDF', extensions: ['pdf'] }],
+        },
+        getDraftsDir(),
+      )
+      return r.canceled || !r.filePath ? null : r.filePath
+    },
+    pickImageSavePath: async (e, _editor, image) => {
+      const session = sessions.get(e.sender.id)
+      const name = session?.path
+        ? basename(session.path).replace(/\.pptx$/i, '')
+        : session
+          ? untitledRecoveryTitle(session)
+          : tm('untitledDeck')
+      const spec = imageSaveDialogSpec(name, image)
+      const r = await showSaveDialogWithMemory(
+        dialog,
+        dialogParent(),
+        {
+          defaultPath: spec.defaultFileName,
+          filters: spec.filters,
+        },
+        getDraftsDir(),
+      )
+      return r.canceled || !r.filePath ? null : r.filePath
+    },
+  })
 
   ipcMain.handle('slides:recent', () => readRecent())
 
@@ -5283,7 +5650,7 @@ export function buildSlidesMenu(): Menu {
   const isMac = process.platform === 'darwin'
   const labels = appMenuLabels(getUiLang())
   const template: Electron.MenuItemConstructorOptions[] = [
-    ...(isMac ? [{ role: 'appMenu' as const }] : []),
+    ...(isMac ? [macAppMenuTemplate(labels)] : []),
     {
       label: tm('menuFile'),
       submenu: [
@@ -5310,6 +5677,7 @@ export function buildSlidesMenu(): Menu {
         // to export or print at all
         { label: tm('menuExportPdf'), click: () => send('export-pdf') },
         { label: tm('menuExportImages'), click: () => send('export-images') },
+        { label: tm('menuExportImagesJpg'), click: () => send('export-images-jpg') },
         { label: tm('menuPrint'), accelerator: 'CmdOrCtrl+P', click: () => send('print') },
         { type: 'separator' },
         // tab mode: the item closes the focused tab or window, never the app,
@@ -5494,5 +5862,15 @@ export function startSlidesStandalone(): void {
 
   app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') app.quit()
+  })
+}
+
+/** XML attribute text → string (the predefined entities and numeric character references) */
+function decodeXmlAttr(s: string): string {
+  const named: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'" }
+  return s.replace(/&(?:#x([0-9a-f]+)|#(\d+)|([a-z]+));/gi, (m, hex, dec, name) => {
+    const code = hex ? parseInt(hex, 16) : dec ? parseInt(dec, 10) : NaN
+    if (Number.isFinite(code)) return code <= 0x10ffff ? String.fromCodePoint(code) : m
+    return named[String(name).toLowerCase()] ?? m
   })
 }

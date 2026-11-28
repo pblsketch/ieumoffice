@@ -9,10 +9,12 @@ import { PDF_TOOLS_HANDOFF } from '../../pdf/src/shared/ipc'
 import { isPdfToolId, toolInputKind } from '../src/main/pdf-tools/tools'
 
 /**
- * The PDF tools window (decision 0030), fixed by reading the source where
- * Electron would be needed: it never reaches an AI provider, paths stay in
- * the main process, the window is sandboxed and wired once, and every string
- * exists in all 21 languages with the editor's own names for its commands.
+ * The PDF tools window (decisions 0030 and 0165), fixed by reading the source
+ * where Electron would be needed: it never reaches an AI provider, renderer
+ * file paths arrive only from the open dialog or preload-only webUtils drop
+ * resolution, paths stay in the main process, the window is sandboxed and
+ * wired once, and every string exists in all 22 languages with the editor's
+ * own names for its commands.
  */
 
 const src = (path: string) => readFileSync(fileURLToPath(new URL(path, import.meta.url)), 'utf8')
@@ -42,15 +44,24 @@ describe('no AI on the PDF tools path', () => {
 
 describe('paths stay in the main process', () => {
   const win = src('../src/main/pdf-tools/pdf-tools-window.ts')
+  const preload = src('../src/preload/pdf-tools.ts')
 
-  it('takes inputs only from its own open dialog and hands out ids', () => {
+  it('takes renderer inputs only from its open dialog or preload webUtils drop, and hands out ids only', () => {
     expect(win).toMatch(/showOpenDialogWithMemory\(dialog, owner/)
+    expect(win).toMatch(/ipcMain\.handle\(\s*PDF_TOOLS_CHANNELS\.dropInputs/)
+    expect(win).toMatch(/ipcMain\.handle\(\s*PDF_TOOLS_CHANNELS\.releaseInputs/)
+    expect(win).toMatch(/unlockedSecrets\.delete\(id\)/)
+    expect(win).toMatch(/mixQueue\.remove\(id\)/)
+    expect(preload).toMatch(/webUtils\.getPathForFile\(file\)/)
+    expect(preload).toMatch(/PDF_TOOLS_CHANNELS\.dropInputs/)
+    expect(preload).toMatch(/PDF_TOOLS_CHANNELS\.releaseInputs/)
+    // Renderer never receives paths — only toPublicInput(input) without a path property
     expect(win).toMatch(/inputs\.set\(input\.id, input\)/)
-    expect(win).toMatch(
-      /out\.inputs\.push\(\{ id: input\.id, kind, name, pages: input\.pages, size \}\)/,
-    )
-    // a picture never reaches a PDF tool, nor a PDF the picture tool
-    expect(win).toMatch(/input\.kind === kind\)/)
+    expect(win).toMatch(/out\.inputs\.push\(toPublicInput\(input\)\)/)
+    const pubFn = win.match(/function toPublicInput[\s\S]*?\n\}/)?.[0] ?? ''
+    expect(pubFn).not.toMatch(/\bpath\b/)
+    // file kinds are checked via acceptsFileKind(kind, input.kind)
+    expect(win).toMatch(/acceptsFileKind\(kind, input\.kind\)/)
   })
 
   it('writes only where the save dialog points, never over a source or an unsaved open file', () => {
@@ -60,26 +71,26 @@ describe('paths stay in the main process', () => {
   })
 
   it('answers only its own window, and Home only from the shell window', () => {
-    const handlers = win.match(/ipcMain\.handle\(PDF_TOOLS_CHANNELS\.\w+/g) ?? []
-    expect(handlers.length).toBeGreaterThanOrEqual(7)
+    const handlers = win.match(/ipcMain\.handle\(\s*PDF_TOOLS_CHANNELS\.\w+/g) ?? []
+    expect(handlers.length).toBeGreaterThanOrEqual(18)
     expect(win.match(/fromWindow\(event\)/g)!.length).toBeGreaterThanOrEqual(handlers.length)
     expect(win).toMatch(/event\.sender !== parent\.webContents/)
   })
 
   it("shrinks pictures with Chromium's code in the main process, and can be stopped", () => {
-    expect(win).toMatch(/recode: recodeWithChromium,\s*signal: stop\.signal,/)
+    expect(win).toMatch(/recodeWithChromium,\s*\{ onProgress, signal \}/)
     expect(win).toMatch(/PDF_TOOLS_CHANNELS\.cancelRun[\s\S]*?runStop\?\.abort\(\)/)
     expect(src('../src/main/pdf-tools/image-recode.ts')).toMatch(/size\.width !== source\.width/)
   })
 
   it('adds and removes passwords in the PDF job process, and checks what comes back', () => {
-    expect(win).toMatch(/deps\.runJob\(owner\.webContents, jobId, jobFor\(tool, path, options\)/)
+    expect(win).toMatch(/deps\.runJob\(\s*owner\.webContents,\s*jobId,\s*jobFor\(tool,/)
     expect(win).toMatch(
       /tool === 'encrypt' \? !info\.ok && info\.problem === 'encrypted' : info\.ok/,
     )
     expect(win).toMatch(/if \(runningJob\) deps\?\.cancelJob\(event\.sender\.id, runningJob\)/)
-    // a password-protected PDF reaches only "remove password"; an unreadable one only "repair"
-    expect(win).toMatch(/info\.problem === 'encrypted' && accept === 'encrypted'/)
+    // encrypted PDFs are accepted for decrypt or inline-unlock; unreadable ones only for repair
+    expect(win).toMatch(/if \(info\.problem === 'encrypted'\)/)
     expect(win).toMatch(/info\.problem === 'unreadable' && accept === 'damaged'/)
   })
 
@@ -99,7 +110,11 @@ describe('paths stay in the main process', () => {
 
   it('opens a picked PDF without reloading an open tab, and only its own results with a reload', () => {
     expect(win).toMatch(/deps\.openForEditing\(path\)/)
-    expect(win).toMatch(/results\.get\(id\)[\s\S]*deps\?\.openResult\(path\)/)
+    // while the result's editor is off its open asks first (editor choice spec 7.3)
+    expect(win).toMatch(/results\.get\(id\)[\s\S]*d\.openResult\(p(ath)?\)/)
+    // split bookmark lookup and visual-editor handoff take opaque input ids only
+    expect(win).toMatch(/PDF_TOOLS_CHANNELS\.readBookmarks[\s\S]*readBookmarksForInput/)
+    expect(win).toMatch(/PDF_TOOLS_CHANNELS\.openSplitInEditor[\s\S]*openSplitForInput/)
   })
 })
 
@@ -159,7 +174,7 @@ describe('the window and its wiring', () => {
 describe('strings', () => {
   const keys = Object.keys(pdfToolsStrings.zh).sort()
 
-  it('fills every key in all 21 languages', () => {
+  it('fills every key in all 22 languages', () => {
     for (const lang of LANGS) {
       const dict = (pdfToolsStrings as Record<string, Record<string, string>>)[lang]!
       expect(Object.keys(dict).sort(), lang).toEqual(keys)
@@ -185,16 +200,22 @@ describe('strings', () => {
   it("names the editor ribbon's PDF tools menu and its tasks as the window does", () => {
     const same: [string, string][] = [
       ['pdfToolsMenu', 'windowTitle'],
+      ['pdfToolsOrganize', 'toolOrganize'],
+      ['pdfToolsInterleave', 'toolInterleave'],
       ['pdfToolsBlankPages', 'toolBlankPages'],
       ['pdfToolsDuplex', 'toolDuplex'],
       ['pdfToolsOverlay', 'toolOverlay'],
       ['pdfToolsStripAnnots', 'toolStripAnnots'],
+      ['pdfToolsPdfToImages', 'toolExportImages'],
+      ['pdfToolsConvertFromPdf', 'toolConvert'],
       ['pdfToolsToText', 'toolToText'],
+      ['pdfToolsOcr', 'toolOcr'],
       ['pdfToolsCompress', 'toolCompress'],
       ['pdfToolsEncrypt', 'toolEncrypt'],
       ['pdfToolsDecrypt', 'toolDecrypt'],
       ['pdfToolsRepair', 'toolRepair'],
     ]
+    expect(PDF_TOOLS_HANDOFF).toHaveLength(14)
     for (const lang of LANGS) {
       const ours = (pdfToolsStrings as Record<string, Record<string, string>>)[lang]!
       const editor = (pdfEditorStrings as unknown as Record<string, Record<string, string>>)[lang]!
@@ -212,7 +233,7 @@ describe('strings', () => {
     }
   })
 
-  it('labels the Home card in all 21 languages', () => {
+  it('labels the Home card in all 22 languages', () => {
     for (const lang of LANGS) {
       const dict = (homeStrings as unknown as Record<string, Record<string, string>>)[lang]!
       expect(dict.pdfToolsCard, lang).toBeTruthy()

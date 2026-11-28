@@ -58,3 +58,11 @@ Un meta viewport è deliberatamente assente: questo documento viene renderizzato
 Il `lang` segue la lingua dell'interfaccia dell'app, così lo scheletro che inserisci è quello per cui il tuo tooling è già configurato. Poi puoi modificarlo liberamente.
 
 La voce compare solo in modalità modifica e solo mentre il documento è vuoto — quando c'è contenuto, non c'è nulla _in cui_ inserire uno scheletro.
+
+## Modifica equazione
+
+Scrivi visivamente o modifica LaTeX. Il codice viene salvato nel file HTML per modificarlo in seguito.
+
+Scegli Inserisci equazione nella barra, usa il campo visivo, i modelli o LaTeX e applica. Fai clic su una formula salvata nell’anteprima per modificarla. Per inserirla nel testo, seleziona un paragrafo e disattiva la riga separata; verrà aggiunta alla fine del paragrafo.
+
+Un’espressione che il compositore non gestisce non va persa: la formula conserva il codice LaTeX e mostra il testo grezzo nella pagina, così puoi riaprirla e correggerla.

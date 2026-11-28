@@ -17,11 +17,15 @@ export const ko = {
   cardErrNeedsUpdatePath: '이 앱이 실행하는 파일:',
   cardErrNeedsUpdateWindows:
     'WSL(Ubuntu)이나 다른 폴더에 설치된 {provider}를 업데이트해도 이 파일은 바뀌지 않습니다. Windows PowerShell에서 {command}를 실행하세요.',
+  claudeDesktopNote:
+    'Claude 데스크톱 앱은 이 앱이 실행하는 Claude Code가 아닙니다. Claude Code는 터미널에서 쓰는 별도 프로그램이라, 데스크톱 앱을 설치하거나 업데이트해도 바뀌지 않습니다.',
   cardErrTimeout: '{provider} 프로그램이 제때 응답하지 않았습니다. 잠시 뒤 다시 확인하세요.',
   cardErrFailed: '{provider} 연결을 확인하는 중에 문제가 생겼습니다. 다시 확인해 보세요.',
   actionInstall: '설치',
   actionLogin: '로그인',
   actionLoginWindow: '브라우저가 열리지 않았나요?',
+  actionLoginWithCode: '브라우저에 코드가 나왔나요?',
+  actionLoginBrowser: '브라우저에서 다시 로그인',
   actionRecheck: '다시 확인',
   actionAcceptMetered: '그래도 사용',
   actionInstallHelp: '공식 설치 안내',
@@ -39,15 +43,19 @@ export const ko = {
   meteredMeaning:
     'API 키나 종량제 계정으로 로그인되어 있거나, 로그인 방식을 확인하지 못한 상태입니다. "그래도 사용"을 누르면 이 연결로 AI를 쓰게 되고, 요청할 때마다 그 계정에 요금이 청구됩니다.',
   connectTitle: 'AI를 쓰려면 먼저 연결하세요',
-  connectBody: '이미 쓰고 있는 Claude 또는 Codex 구독으로 AI를 씁니다. API 키는 필요 없습니다.',
+  connectBody:
+    '이미 쓰고 있는 Claude, ChatGPT 또는 Google Antigravity 구독으로 AI를 씁니다. API 키는 필요 없습니다.',
   connectProviderTitle: '{provider} 연결을 지금 쓸 수 없습니다',
   connectKeyBody:
     '{provider} 설정이 아직 끝나지 않았습니다. 설정에서 마무리하거나 다른 AI를 선택하세요.',
-  errNotConnected: '연결된 AI가 없습니다. Claude·Codex 구독이나 무료 AI를 먼저 연결하세요.',
+  errNotConnected:
+    '연결된 AI가 없습니다. Claude·ChatGPT·Codex·Antigravity 구독이나 무료 AI를 먼저 연결하세요.',
   errNotInstalled: '이 PC에서 {provider} 프로그램을 찾지 못했습니다.',
   errSignedOut: '{provider} 로그인이 풀렸습니다. 다시 로그인한 뒤 계속하세요.',
   errRateLimit: '{provider} 구독 한도를 모두 썼습니다.',
   errRateLimitReset: '{provider} 구독 한도를 모두 썼습니다. {time}에 초기화됩니다.',
+  errChatGptAppLimit:
+    'ChatGPT에서 이 앱이 쓸 수 있는 사용량을 다 썼습니다. 요금제 전체의 한도이거나 이 앱에 정해 둔 한도일 수 있습니다. ChatGPT 설정 → 사용량에서 확인하세요.',
   errUnsafeTools:
     '{provider} 프로그램이 자체 도구를 켠 채로 시작되어, 안전을 위해 실행을 멈췄습니다.',
   errMeteredNotAccepted:
@@ -56,11 +64,13 @@ export const ko = {
     '{provider} 프로그램 버전이 낮아 이 기능을 쓸 수 없습니다. 업데이트한 뒤 다시 시도하세요.',
   errHeadlessLimit: '자동 호출의 시간당 한도에 도달했습니다.',
   errHeadlessLimitReset: '자동 호출의 시간당 한도에 도달했습니다. {time}부터 다시 가능합니다.',
-  connectFreeHint: '구독이 없나요? 설정에서 무료 AI를 1분 안에 연결할 수 있습니다.',
+  connectFreeHint: '구독이 없어도 설정에서 무료 AI를 1분 안에 연결할 수 있습니다.',
   actionConnectFree: '무료 AI 연결하기',
   errFreeLimit:
     '오늘 쓸 수 있는 무료 사용량을 다 썼습니다. 내일 다시 쓰거나 설정에서 다른 AI를 고르세요.',
   errFreeLimitReset: '오늘 쓸 수 있는 무료 사용량을 다 썼습니다. {time}부터 다시 쓸 수 있습니다.',
+  errFreeTierModel:
+    '이 모델은 무료 등급이 없어서 무료 키로는 쓸 수 없습니다. 무료로 쓸 수 있는 모델(Flash 등)을 고르거나, 그 회사의 콘솔에서 결제를 켜세요.',
   continueWith: '{provider}로 계속',
   continueMeteredNote: '{provider} 연결은 구독이 아닙니다. 계속하면 쓴 만큼 요금이 나갑니다.',
   usageLine: '{percent}% 사용 · {time}에 초기화',
@@ -68,7 +78,7 @@ export const ko = {
   usageWindowSevenDay: '7일 한도',
   noticeTitle: '구독으로 AI를 쓰기 전에',
   noticeSend:
-    '문서 내용과 대화는 사용자 본인 계정으로 Anthropic 또는 OpenAI에 전송됩니다. 요청마다 "스스로 쓰기"로 둔 스킬의 이름·제목·설명이 함께 가고, 쓰는 스킬의 글과 AI가 읽은 스킬 파일도 함께 전송됩니다.',
+    '문서 내용과 대화는 사용자 본인 계정으로 Anthropic, OpenAI 또는 Google에 전송됩니다. 요청마다 "스스로 쓰기"로 둔 스킬의 이름·제목·설명이 함께 가고, 쓰는 스킬의 글과 AI가 읽은 스킬 파일도 함께 전송됩니다.',
   noticeTraining: '그 내용이 AI 학습에 쓰이는지는 해당 회사의 사용자 계정 설정에 따라 정해집니다.',
   noticeCodexHistory:
     '이 앱은 Codex의 대화 기록 저장을 꺼 둡니다. 다만 Codex가 자체 진단 로그를 이 PC에 남길 수 있습니다.',
@@ -104,12 +114,15 @@ export const ko = {
   stepInstall: '프로그램 설치',
   stepLogin: '로그인',
   stepReady: '연결 완료',
-  installReturnNote: '창에서 설치가 끝나면 이 화면으로 돌아오세요. 앱이 저절로 다시 확인합니다.',
+  installReturnNote:
+    '설치 창에는 내려받는 몇 분 동안 아무것도 나오지 않을 수 있습니다. 창을 닫지 말고 기다리세요. 설치가 끝나면 이 화면으로 돌아오세요. 앱이 저절로 다시 확인합니다.',
   loginHowNote:
     '누르면 브라우저가 열립니다. {vendor} 계정으로 로그인하고 허용을 누르면 저절로 연결됩니다.',
   signingInStalledNote:
     '브라우저에 로그인 화면이 열리지 않았다면 아래 버튼으로 로그인 창을 여세요. 브라우저에서 로그인하는 중이라면 누르지 말고 마저 끝내세요. 버튼을 누르면 하던 로그인은 멈추고 처음부터 다시 시작합니다.',
   actionLoginWindowOpen: '로그인 창 열기',
+  loginUnfinishedNote:
+    '로그인이 끝나지 않았습니다. 브라우저에 코드가 나왔다면 코드를 붙여 넣을 창이 필요합니다. 창을 열어 그 안내대로 다시 로그인하세요. 이미 나온 코드는 쓰이지 않습니다.',
   loginWindowTitle: '{provider} 로그인',
   loginWindowIntro:
     '이 창은 {provider} 프로그램의 로그인 창입니다. 아래에 이어지는 영어 글은 {provider} 프로그램이 보여 주는 안내입니다.',
@@ -132,4 +145,49 @@ export const ko = {
   actionCopyInfo: '도움 요청용 정보 복사',
   copyInfoDone: '복사했습니다',
   actionConnectHelp: '연결하는 방법 화면으로 보기',
+  guidePathChatGptBody:
+    'ChatGPT 계정으로 로그인하면 그 요금제 안에서 씁니다. 프로그램을 설치하지 않아도 됩니다. 무료 요금제는 쓸 수 있는 양이 적습니다.',
+  guideUseCodex: '이 PC에서 Codex 프로그램을 이미 쓰고 있나요? Codex로 연결',
+  guideUseDirect: 'Codex 없이 앱에서 바로 연결',
+  chatgptLoginNote:
+    '누르면 브라우저에 ChatGPT 로그인 화면이 열립니다. 로그인한 뒤 이 앱이 ChatGPT 요금제를 쓰도록 허용하면 저절로 연결됩니다.',
+  chatgptLoginUnfinishedNote:
+    '로그인이 끝나지 않았습니다. 다시 누르면 처음부터 시작합니다. ChatGPT 요금제 사용을 허용해야 연결됩니다.',
+  chatgptLoginNoPlanNote:
+    'ChatGPT 로그인은 됐지만 이 앱이 요금제를 쓰는 허용을 받지 못했습니다. 다시 누르고 허용 화면에서 요금제 사용을 허용하세요. 허용했는데도 이렇다면, 이 계정(회사·학교에서 관리하는 계정 등)이나 요금제에는 OpenAI가 이 사용을 열지 않았을 수 있습니다. 그럴 때는 Codex 프로그램으로 연결할 수 있습니다.',
+  chatgptLoginDeniedNote:
+    '브라우저에서는 로그인했지만 OpenAI가 이 연결을 받아 주지 않았거나, 돌아온 답이 확인되지 않았습니다. 이 PC의 날짜와 시각이 맞는지 확인한 뒤 다시 누르면 처음부터 시작합니다.',
+  chatgptLoginNetworkNote:
+    'OpenAI에 연결하지 못했거나 브라우저를 열지 못해 로그인을 마치지 못했습니다. 인터넷 연결(회사망, VPN, 프록시 포함)을 확인하고 다시 누르세요.',
+  chatgptLoginWorkspacePolicyNote:
+    '이 ChatGPT 계정은 회사나 학교가 관리하는 작업 공간에 속해 있어, OpenAI가 이 앱에서 작업 공간의 ChatGPT 요금제를 쓰는 것을 허용하지 않습니다. 작업 공간 관리자가 이 앱을 허용할 수 있는 설정은 없어서 다시 로그인해도 결과가 같습니다. 개인 ChatGPT 계정(Go, Plus, Pro)으로 로그인하거나, Codex 카드로 연결해 보세요.',
+  chatgptLoginNotAllowedNote:
+    '이 앱이 ChatGPT 요금제를 쓰도록 허용하지 않았거나, 브라우저가 로그인 실패로 돌아왔습니다. 다시 누르고 로그인한 뒤 허용 화면에서 허용하세요.',
+  chatgptSigningInNote:
+    '열린 브라우저에서 ChatGPT 계정으로 로그인하고, 이 앱이 요금제를 쓰도록 허용하세요. 끝나면 저절로 연결됩니다.',
+  chatgptPlanNote:
+    '이 앱에서 쓰는 AI는 ChatGPT 요금제 안에서 처리됩니다. 연결을 끊으면 이 앱에서만 끊기고, 이 PC의 다른 프로그램은 그대로입니다.',
+  actionContinueWithChatGpt: 'ChatGPT로 계속',
+  actionManageUsage: '사용량 관리',
+  browserPageDoneBody: '이 탭을 닫고 앱으로 돌아가세요.',
+  browserPageFailedTitle: '연결하지 못했습니다',
+  browserPageFailedBody: '앱으로 돌아가 다시 시도하세요.',
+  cardOff: '이 앱에서 꺼 둠',
+  offNote:
+    '이 앱은 {provider} 프로그램을 실행하지도, 상태를 묻지도 않습니다. 이 PC의 {provider} 로그인과 터미널에서 쓰는 것은 그대로입니다.',
+  offElsewhereNote: '설정 → AI에서 다시 쓸 수 있습니다.',
+  offSwitchNote:
+    '"이 앱에서 쓰지 않기"는 이 PC의 {provider} 로그인을 그대로 두고 이 앱에서만 멈춥니다. 로그아웃은 PC 전체에 적용됩니다.',
+  actionTurnOff: '이 앱에서 쓰지 않기',
+  actionTurnOn: '다시 쓰기',
+  connectOffTitle: '{provider}를 이 앱에서 꺼 두었습니다',
+  connectOffBody: '설정 → AI의 {provider} 카드에서 "다시 쓰기"를 누르거나 다른 AI를 고르세요.',
+  errOffInApp:
+    '{provider}를 이 앱에서 꺼 두어 실행하지 않았습니다. 설정 → AI에서 다시 쓸 수 있습니다.',
+  guideBadgeOff: '꺼 둠',
+  guidePathAntigravityTitle: 'Google Antigravity를 써요',
+  guidePathAntigravityBody:
+    'Google 계정으로 Antigravity 프로그램에 로그인해서 Google AI 요금제를 씁니다.',
+  antigravityCardNote:
+    '기본 AI 창과 에이전트 모드에서 Antigravity CLI의 공식 ACP 프로토콜로 동작합니다. 사용 가능한 모델, 데이터 학습, 한도 초과 크레딧 설정은 Antigravity 설정을 따릅니다.',
 } satisfies Record<keyof typeof zh, string>

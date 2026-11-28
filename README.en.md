@@ -2,20 +2,21 @@
 
 [한국어](README.md) · **English**
 
-[![Total downloads](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fpblsketch%2Fopenoffice%2Fmain%2Fdocs%2Ftracking%2Fgrowth-latest.json&query=%24.totalDownloads&label=total%20downloads)](https://github.com/pblsketch/openoffice/releases)
-[![Stars](https://img.shields.io/github/stars/pblsketch/openoffice?style=social)](https://github.com/pblsketch/openoffice/stargazers)
+[![Total downloads](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fpblsketch%2Fieumoffice%2Fmain%2Fdocs%2Ftracking%2Fgrowth-latest.json&query=%24.totalDownloads&label=total%20downloads)](https://github.com/pblsketch/ieumoffice/releases)
+[![Stars](https://img.shields.io/github/stars/pblsketch/ieumoffice?style=social)](https://github.com/pblsketch/ieumoffice/stargazers)
 
 If IeumOffice helps you, please tap the **star** above. Every star makes it
 easier for the next person to find this program.
 
 IeumOffice (이음오피스) is a free, open-source desktop office suite. It opens
-and edits Word, Excel, PowerPoint, PDF, Markdown and HTML documents and mind
-maps in one window, and its AI works on the document itself instead of
+and edits Word, Excel, PowerPoint, PDF, Markdown and HTML documents, mind
+maps and diagrams in one window, and its AI works on the document itself instead of
 answering in a chat box beside it.
 
-The AI runs on **the Claude or Codex subscription you already pay for**. You
-do not create an API key and you do not pay IeumOffice anything. Without a
-subscription you can connect a **free AI** (OpenRouter or Google Gemini).
+The AI runs on **the Claude subscription or ChatGPT plan you already pay
+for**. You do not create an API key and you do not pay IeumOffice anything.
+Without a subscription you can connect a **free AI** (OpenRouter or Google
+Gemini).
 
 IeumOffice is a modified version of the open-source project
 [GenOffice](https://github.com/genspark-ai/genoffice) (see
@@ -64,8 +65,8 @@ The author's own account, in Korean, is at
 ## What works today
 
 - **Editors in one tabbed window**: Word (`.docx`), Excel (`.xlsx`),
-  PowerPoint (`.pptx`), PDF, Hangul (`.hwp`, `.hwpx`), Markdown, HTML and mind
-  maps. Files are opened and saved in their real formats on your own PC; edits are written back as narrow changes
+  PowerPoint (`.pptx`), PDF, Hangul (`.hwp`, `.hwpx`), Markdown, HTML, mind
+  maps and diagrams (draw.io files `.drawio`). Files are opened and saved in their real formats on your own PC; edits are written back as narrow changes
   to the original file, so the parts you did not touch are kept as they were.
 - **An AI panel in every editor.** You ask in plain words, and the AI changes
   the document through the app's own editing tools. You see what was changed
@@ -76,7 +77,13 @@ The author's own account, in Korean, is at
 - **Mind maps**: opens and saves XMind files (`.xmind`) in place. Elements the
   editor does not show are kept when you save, and a map you did not change is
   saved byte for byte as it was. Several sheets, themes, export to a picture,
-  PDF or Markdown outline, and printing.
+  PDF or Markdown outline, and printing. FreeMind and Freeplane files (`.mm`)
+  are imported as new maps and saved as `.xmind`.
+- **Diagrams**: opens draw.io files (`.drawio`, `.dio`, `.drawio.svg`,
+  `.drawio.png`) and saves them in the same format. The drawing screen runs
+  on this PC only and sends nothing to the internet.
+  Visio files (`.vsdx`) are imported as new diagrams. Export to PNG, SVG or
+  PDF, printing, and drawing from Mermaid in the AI panel.
 - **New documents from your documents**: start "Make a new document" from a
   starred group on the home screen, from files you picked, or from an
   editor's File menu, and the material is turned into a PowerPoint deck, an
@@ -87,25 +94,31 @@ The author's own account, in Korean, is at
 - **Search across your documents** from the home screen, indexed on your PC.
 - **A terminal command (`ieumoffice`), an MCP server and an agent skill**, so a
   coding agent can read, create and edit the same files.
-- **21 interface languages.** Korean and English were written by hand; the
-  other 19 are machine translations.
+- **22 interface languages.** Korean and English were written by hand; the
+  other 20 are machine translations.
 
-Released for **Windows**, with separate **betas for Macs (Apple Silicon and
-Intel) and 64-bit Linux (x64)**. The developer has not been able to check the
-Mac or Linux builds on those machines; please report problems as
-[issues](https://github.com/pblsketch/openoffice/issues).
+Released for **Windows**, **Macs (Apple Silicon and Intel)** and
+**64-bit Linux (x64)**. The developer cannot test the Mac or Linux builds
+directly and confirms them through user reports; please report problems as
+[issues](https://github.com/pblsketch/ieumoffice/issues).
 
 ## Connecting your subscription
 
-IeumOffice does not sign you in to anything. It starts the Claude Code or
-Codex program that is installed on your PC and already signed in by you, hands
-it your request, and reads the answer. What you need:
+IeumOffice does not sign you in to anything. You need one of these:
 
-1. A Claude subscription or a ChatGPT subscription of your own.
-2. **Claude Code** or **Codex** installed on the PC, and signed in.
+1. A Claude subscription of your own, and **Claude Code** installed on the PC
+   and signed in. IeumOffice starts that program, hands it your request, and
+   reads the answer.
+2. A ChatGPT plan of your own. There is no program to install. Press
+   **Continue with ChatGPT** on the ChatGPT card: OpenAI's ChatGPT sign-in page
+   opens in your browser, and once you sign in and allow this app to use your
+   ChatGPT plan, it is connected. Requests go from your PC straight to
+   `api.openai.com`. If you already use the **Codex** program on this PC, you
+   can connect through it instead, the same way as Claude Code.
 
-The first-run guide and **Settings → AI → Subscription connection** show the
-state of each program and offer a button for the step that is missing:
+The first-run guide and **Settings → AI → Subscription connection** (the
+Claude, ChatGPT and Codex cards) show the state of each connection and offer a
+button for the step that is missing. For Claude Code and Codex:
 
 - **Install** runs the vendor's official install command in a terminal window
   you can watch. The app does not download an installer itself.
@@ -115,9 +128,9 @@ state of each program and offer a button for the step that is missing:
   `codex login`). The sign-in page that opens belongs to Anthropic or OpenAI,
   not to this app.
 
-With **AI to use** left on _Automatic_, the app uses Claude when it is
-connected and Codex otherwise. You can pick one yourself in the same place or
-in the model picker of the AI panel. Claude Code 2.1.248 or newer is required;
+With **AI to use** left on _Automatic_, the app uses the connected
+subscriptions in this order: Claude, then ChatGPT, then Codex. You can pick
+one yourself in the same place or in the model picker of the AI panel. Claude Code 2.1.248 or newer is required;
 an older one is reported as needing an update.
 
 ## Using it for free, without a subscription
@@ -147,8 +160,12 @@ refused if the program reports that any tool is still available.
 
 - It never reads, copies or stores your Claude or Codex login: not
   `~/.codex/auth.json`, not the Claude credential store, not a session token.
+- The one sign-in the app keeps is the one OpenAI gives this app when you
+  connect ChatGPT directly. It can only use your ChatGPT plan, and it is not
+  the Codex program's login. Disconnecting asks OpenAI to revoke it and deletes
+  it from your PC; other programs on the PC stay as they are.
 - It has no Claude or ChatGPT sign-in form of its own. Signing in always
-  happens in the vendor's program and on the vendor's page.
+  happens in the vendor's program or on the vendor's page in your browser.
 - It never modifies or wraps the vendor programs. They run as distributed.
 - It never pays for, resells or relays anyone's AI usage. Your usage is billed
   to your own account by Anthropic or OpenAI.
@@ -163,7 +180,7 @@ IeumOffice itself is free. What the AI costs depends on the connection:
 
 | Connection                                                                                     | Cost                                                                     | When it is used                                                 |
 | ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ | --------------------------------------------------------------- |
-| Claude or Codex signed in with a **subscription**                                              | Nothing beyond the subscription; requests count against its usage limits | By default (_Automatic_)                                        |
+| Claude or Codex signed in with a **subscription**, or ChatGPT connected directly in the app    | Nothing beyond the subscription; requests count against its usage limits | By default (_Automatic_)                                        |
 | Claude or Codex signed in in a way that is **billed by usage** (an API key, a metered account) | You pay the vendor for what you use                                      | Only after you read the warning and choose **Use anyway**       |
 | An **API-key provider** set up under **Settings → AI → Advanced**                              | You pay that provider for what you use                                   | Only while you have chosen it yourself under **AI to use**      |
 | OpenRouter or Gemini connected under **Settings → AI → Use for free**                          | Nothing within the free limit                                            | Once connected, or while you have chosen it under **AI to use** |
@@ -182,10 +199,11 @@ OpenAI, and their terms can change.
 
 ## Images, pictures and search
 
-- **Image generation is key-based only in this version.** It works after you
-  enter the key of an image provider under **Settings → AI → Advanced**.
-  Generating images with a Codex subscription is not included. Without an
-  image provider, slides use pictures found by search instead.
+- **Image generation** works when you have entered the key of an image
+  provider under **Settings → AI → Advanced**, or when the Codex program on
+  this PC is signed in with a paid ChatGPT plan; pictures made through Codex
+  are charged to that plan. ChatGPT connected directly in the app does not
+  make images. Without either, slides use pictures found by search instead.
 - **Looking at pictures**: a picture you attach is shown to the AI you are
   using, subscription included. Video and sound analysis need a key-based
   provider that supports video.
@@ -213,7 +231,7 @@ ieumoffice open report.docx
 
 - **Agent skill.** **Settings → Integrations** lists the coding agents found
   on the PC and installs the `ieumoffice` skill into the ones you choose. From
-  a terminal: `npx skills add pblsketch/openoffice`.
+  a terminal: `npx skills add pblsketch/ieumoffice`.
 - **MCP server.** `ieumoffice mcp` serves the same commands as Model Context
   Protocol tools. The same settings page shows ready-made snippets, for
   example `claude mcp add --transport stdio ieumoffice -- ieumoffice mcp`.
@@ -229,7 +247,8 @@ letting a program use a subscription automatically; an account may be
 restricted for it. So **Settings → AI → Advanced → Let automatic requests use
 a subscription** is off by default. While it is off, these requests use a key
 provider if you set one up and are otherwise answered with "unavailable".
-While it is on, they run one at a time, with no hourly limit.
+While it is on, they run one at a time, with no hourly limit. Even then they
+use Claude Code or Codex, never ChatGPT connected directly in the app.
 `ieumoffice capabilities --json` reports what is available and by which route.
 
 IeumOffice can be installed next to GenOffice. It registers only its own names
@@ -238,7 +257,7 @@ IeumOffice can be installed next to GenOffice. It registers only its own names
 ## Download and install
 
 Installers are published on the
-[Releases page](https://github.com/pblsketch/openoffice/releases) as
+[Releases page](https://github.com/pblsketch/ieumoffice/releases) as
 `IeumOffice-Setup-<version>.exe`, for 64-bit Windows 10 and 11. If that page
 is still empty, no release has been published yet; build from source instead.
 
@@ -248,7 +267,7 @@ choose **More info → Run anyway** (the wording differs between Windows
 versions). Download the installer only from the Releases page of this
 repository.
 
-### Mac (beta)
+### Mac
 
 The same Releases page carries two disk images, both for macOS 12 or newer:
 
@@ -277,14 +296,26 @@ xattr -dr com.apple.quarantine /Applications/IeumOffice.app
 
 What differs on a Mac:
 
-- **It does not update itself.** When a new version is out it tells you and
-  opens the download page; install the new dmg over the old app.
-- The AI connection card has **no install button**. Follow its "official
-  install instructions" link to install Claude Code or Codex.
+- **The app installs updates itself.** In the update window, **Update Now**
+  then **Restart & Install** closes the app, swaps in the new version and opens
+  it again; there is no second "Open Anyway". This works for an app moved into
+  Applications. One opened straight from the disk image, or kept in a folder
+  you cannot write to, opens the download page instead. Coming from an older
+  version without this, install the new dmg over the old app once.
+- The AI connection card has **no install button**. Install from Terminal
+  instead: `curl -fsSL https://claude.ai/install.sh | bash` for Claude Code,
+  `npm install -g @openai/codex` for Codex. The card's "official install
+  instructions" link says the same.
+- **A PATH set for your terminal does not reach the app.** An app opened from
+  the Dock or Applications never sees what `~/.zshrc` adds to PATH. The app
+  looks in the places the installers and package managers use instead
+  (`~/.local/bin`, Homebrew, MacPorts, nvm/fnm/volta/asdf/mise, the global npm
+  prefix). If it still cannot find the program, you can type its path under
+  **Settings → AI → Advanced**.
 - Signing in finishes in the browser. If the browser asks you to paste a code,
   run `claude auth login` or `codex login` in Terminal yourself.
 
-### Linux (beta)
+### Linux
 
 The same Releases page carries three 64-bit (x86_64) Linux packages:
 
@@ -304,7 +335,23 @@ What differs on Linux:
   when a new version is out and opens the download page.
 - As on a Mac, the AI connection card has **no install button**, and if a
   sign-in page asks you to paste a code, run `claude auth login` or
-  `codex login` in a terminal yourself.
+  `codex login` in a terminal yourself. The install commands, and the places
+  the app looks for the programs, are the same as on a Mac.
+
+To use only the terminal command without the desktop app (a server without a
+screen, or an AI agent's workspace), use the command-line archive
+`ieumoffice-cli_<version>_linux-x64.tar.gz` from the same release. The script
+below downloads the archive, checks its checksum, fetches Node 22 when no Node
+22 or newer is installed, and writes only under `~/.local`, without
+administrator rights.
+
+```sh
+curl -fsSL https://ieumoffice.com/cli/install.sh | sh
+```
+
+Exporting to PDF, HTML or PNG and `open` / `selection` need the app's renderer,
+so the archive does not offer them. See
+[packaging/cli/README.md](packaging/cli/README.md) for details.
 
 ## Updates
 
@@ -315,7 +362,8 @@ check fails, nothing happens and the app keeps working. To check yourself, use
 **Menu (☰) → Check for Updates…** at the left of the tab bar
 (**Help → Check for Updates…** on a Mac). Pre-release versions are offered
 only when you choose the beta channel under **Settings → About**. The Mac build
-and the Linux `deb` and `rpm` installs only tell you about a new version.
+installs updates itself when it sits in Applications; the Linux `deb` and `rpm`
+installs only tell you about a new version.
 
 ## Building from source
 
@@ -323,8 +371,8 @@ You need Node 22.12 or newer (npm 10 or newer) and a Rust toolchain with
 `cargo` on the PATH (for the spreadsheet engine).
 
 ```bash
-git clone https://github.com/pblsketch/openoffice.git
-cd openoffice
+git clone https://github.com/pblsketch/ieumoffice.git
+cd ieumoffice
 npm install
 npm run dev      # all editors and the shell, against development servers
 npm run shell    # or: build everything, then run the app
@@ -354,13 +402,12 @@ project easy to take.
 
 ## Known limitations
 
-- **Windows, Macs (beta, Apple Silicon and Intel) and 64-bit Linux (beta)
-  only.** The developer cannot check the Mac or Linux builds directly; they are
+- **Windows, Macs (Apple Silicon and Intel) and 64-bit Linux only.** The developer cannot check the Mac or Linux builds directly; they are
   checked through user reports.
 - **Unsigned installers**, as described above. That is also why the Mac build
-  cannot update itself.
-- **A subscription answers a little later than an API key.** Each request
-  starts the vendor's program first, so the first words take a few seconds to
+  swaps in its updates itself instead of using Apple's update mechanism.
+- **Claude Code and Codex answer a little later than an API key.** Each
+  request starts the program first, so the first words take a few seconds to
   appear (about four seconds with Claude on the development PC).
 - **Codex cannot be told to ignore all of your personal Codex settings.** The
   app overrides what it can (your MCP servers, hooks and plugins are switched
@@ -370,14 +417,18 @@ project easy to take.
 - **Any ChatGPT login shows as connected**, a free plan included. What it can
   actually do is decided by that plan.
 - **Usage display for Codex** appears only when Codex reports a five-hour or
-  seven-day limit.
-- **Proxies.** The app's own requests (search, key providers, update checks)
-  follow the proxy environment variables or the Windows proxy setting. Claude
-  Code and Codex are separate programs: they see only the proxy environment
-  variables (`HTTPS_PROXY` and the like), not a proxy that is set in Windows
-  alone.
-- **Image generation needs a key**, as described above.
-- **Translations.** 19 of the 21 interface languages are machine-translated
+  seven-day limit. ChatGPT connected directly has no usage display;
+  **Manage usage** on the ChatGPT card opens the usage page of your ChatGPT
+  settings.
+- **Proxies.** The app's own requests (search, key providers, ChatGPT
+  connected directly, update checks) follow the proxy environment variables or
+  the Windows proxy setting. Claude Code and Codex are separate programs: they
+  see only the proxy environment variables (`HTTPS_PROXY` and the like), not a
+  proxy that is set in Windows alone.
+- **Image generation needs a key or a paid ChatGPT plan**: either the key
+  of an image provider, or the Codex program on this PC signed in with a
+  paid ChatGPT plan (Plus or higher), as described above.
+- **Translations.** 20 of the 22 interface languages are machine-translated
   and have not been reviewed by native speakers.
 - **Hiding does not reach everywhere.** Parts you hid from AI in the
   PowerPoint, Markdown and HTML editors stay hidden when the file is attached
@@ -415,20 +466,41 @@ account settings there. Search queries go to Parallel and DuckDuckGo by
 default, and update checks go to GitHub. When an editor or the app stops
 abnormally, only the time, what stopped, the reason, the editor and the memory
 use at that moment (numbers only) are written to `crash-log.jsonl` in the data
-folder, and the same numbers are written when the PC runs short of memory
-during an AI task; no document text, file names or paths, and it is never sent
+folder, and the same numbers are written when the PC or the app runs short of
+memory. When the app itself stops an AI run that was editing a document, one
+line holds why, as fixed words and counts. To tell when the whole app went down, the running app also writes its
+memory numbers to `crash-heartbeat.json` every 30 seconds; no document text, file names or paths, and it is never sent
 anywhere. The full list is in [PRIVACY.md](PRIVACY.md).
 
 ## Contributing and reporting problems
 
 - Bugs and requests:
-  [GitHub Issues](https://github.com/pblsketch/openoffice/issues).
+  [GitHub Issues](https://github.com/pblsketch/ieumoffice/issues).
 - Security problems: report them privately as described in
   [SECURITY.md](SECURITY.md), not as a public issue.
 - Code: see [CONTRIBUTING.md](CONTRIBUTING.md) and the
   [Code of Conduct](CODE_OF_CONDUCT.md).
 - Trademark and copyright questions, infringement reports:
   pblsketch@gmail.com.
+
+### Contributors
+
+IeumOffice is built with help from many people. See
+[CONTRIBUTORS.md](CONTRIBUTORS.md) for the full list.
+
+- [@CauchyRiemannEquations](https://github.com/CauchyRiemannEquations) — math editing in the HTML editor
+- [@dossamlab](https://github.com/dossamlab) — spreadsheet PDF export
+- [@hahadark](https://github.com/hahadark) — first-run hang under Controlled Folder Access
+- [@HubInSoft](https://github.com/HubInSoft) — paste a capture into a mind map
+- [@hunkim](https://github.com/hunkim) — Upstage Solar provider, test fixes
+- [@jmkim](https://github.com/jmkim) — network-folder saves, faster file opening
+- [@kimisjun](https://github.com/kimisjun) — mind map on the command line and in MCP
+- [@Neosiki](https://github.com/Neosiki) — CLI, HWP and ODT fixes
+- [@ryu982](https://github.com/ryu982) — 5% wheel zoom steps
+- [@thecodinglog](https://github.com/thecodinglog) — spreadsheet formula bar and cell menu
+- [@wlsgur11](https://github.com/wlsgur11) — Markdown export
+- [@wonby1n](https://github.com/wonby1n) — EPUB MCP reads
+- [@yazzang-homelab](https://github.com/yazzang-homelab) — Hangul document reading and checks
 
 ## License and acknowledgement
 
@@ -458,6 +530,13 @@ software made with its published HWP format document, we state:
 > (This product was developed with reference to Hancom's published document
 > on the Hangul document file format (.hwp).)
 
+The diagram editor is built on the web editor of
+[draw.io](https://github.com/jgraph/drawio) (Apache License 2.0). Parts under
+licenses outside the project's allowlist (the PlantUML converter, libavoid and
+ELK) are left out; what was left out and how is listed in the installed
+`THIRD-PARTY-NOTICES.txt`. IeumOffice is not affiliated with or endorsed by
+the company that makes draw.io.
+
 IeumOffice is an independent project. It is not affiliated with, sponsored by
 or endorsed by Genspark / Mainfunc, Inc., Anthropic, OpenAI, Microsoft, Hancom,
 Adobe, XMind Ltd. or Google. "GenOffice" and "Genspark", and their logos, are trademarks of
@@ -472,7 +551,7 @@ it works with and which files it opens.
 ### Official downloads and redistribution
 
 IeumOffice is free. Its only official downloads are the
-[GitHub releases](https://github.com/pblsketch/openoffice/releases) and
+[GitHub releases](https://github.com/pblsketch/ieumoffice/releases) and
 [ieumoffice.com](https://ieumoffice.com); a copy sold for money is not an
 official release.
 

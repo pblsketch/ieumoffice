@@ -6,11 +6,17 @@
  * start (the JS launcher on a Node runtime when that binary is not found).
  */
 import { constants } from 'node:fs'
-import { access, open, readdir, realpath, stat } from 'node:fs/promises'
+import { access, open, readdir, readFile, realpath, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { basename, delimiter, dirname, extname, isAbsolute, join, resolve, sep } from 'node:path'
 import { AiRunError } from '../run-error'
-import type { AiSubscriptionProviderId } from '../types'
+import type { AiSubscriptionCliId, AiSubscriptionProviderId } from '../types'
+import {
+  SUBSCRIPTION_MIN_VERSIONS,
+  subscriptionVersionAtLeast,
+  subscriptionVersionOf,
+} from './contract'
+import { runSubscriptionProgram } from './process'
 
 export type SubscriptionProgramSource =
   /** the path the user set */
@@ -27,7 +33,7 @@ export type SubscriptionProgramSource =
 
 /** A CLI resolved to something `spawn` can start directly */
 export interface SubscriptionProgram {
-  provider: AiSubscriptionProviderId
+  provider: AiSubscriptionCliId
   /** absolute path of the file to start; never a `.cmd` shim */
   command: string
   /** arguments that go before the CLI's own (the JS entry, when `command` is a Node runtime) */
@@ -60,10 +66,16 @@ export interface SubscriptionLocateOptions {
   applicationDirs?: string[] | undefined
   /** extra POSIX bin directories searched after PATH; the usual ones when absent */
   commonDirs?: string[] | undefined
+  /** the version a found Claude Code reports; its own `--version` when absent */
+  readVersion?: SubscriptionVersionReader | undefined
 }
 
+export type SubscriptionVersionReader = (
+  program: SubscriptionProgram,
+) => Promise<string | undefined>
+
 export type SubscriptionLocator = (
-  provider: AiSubscriptionProviderId,
+  provider: AiSubscriptionCliId,
   options?: SubscriptionLocateOptions,
 ) => Promise<SubscriptionProgram | null>
 
@@ -76,13 +88,14 @@ interface ProviderLayout {
   npmEntry: string[]
 }
 
-const LAYOUTS: Record<AiSubscriptionProviderId, ProviderLayout> = {
+const LAYOUTS: Record<AiSubscriptionCliId, ProviderLayout> = {
   'claude-code': {
     name: 'claude',
     npmPackage: ['@anthropic-ai', 'claude-code'],
     npmEntry: ['bin', 'claude.exe'],
   },
   codex: { name: 'codex', npmPackage: ['@openai', 'codex'], npmEntry: ['bin', 'codex.js'] },
+  antigravity: { name: 'agy', npmPackage: [], npmEntry: [] },
 }
 
 const SHIM_READ_LIMIT = 64 * 1024
@@ -103,7 +116,7 @@ async function wingetLinkTarget(file: string): Promise<string> {
 }
 
 interface Context {
-  provider: AiSubscriptionProviderId
+  provider: AiSubscriptionCliId
   layout: ProviderLayout
   env: NodeJS.ProcessEnv
   platform: NodeJS.Platform
@@ -111,6 +124,7 @@ interface Context {
   nodeRuntime: SubscriptionNodeRuntime | undefined
   applicationDirs: string[] | undefined
   commonDirs: string[] | undefined
+  readVersion: SubscriptionVersionReader
 }
 
 function cleanCliPath(value: string | undefined): string {
@@ -166,11 +180,12 @@ function isInside(path: string, root: string, platform: NodeJS.Platform): boolea
  * started by opening a file. `\tools` is absolute to Node, yet Windows
  * completes it from the drive of the working directory.
  */
-function isFullDir(dir: string): boolean {
+export function isFullDir(dir: string): boolean {
   return isAbsolute(dir) && !(sep === '\\' && /^[\\/](?![\\/])/.test(dir))
 }
 
-function pathDirs(env: NodeJS.ProcessEnv, platform: NodeJS.Platform): string[] {
+/** The PATH directories a lookup may use: empty and relative entries are left out (see `isFullDir`) */
+export function pathDirs(env: NodeJS.ProcessEnv, platform: NodeJS.Platform): string[] {
   const value = env.PATH ?? env.Path ?? env.path ?? ''
   if (!value) return []
   return value
@@ -297,6 +312,18 @@ function codexTargetTriple(platform: NodeJS.Platform, arch: string): string | nu
 }
 
 /**
+ * Where a vendor tree keeps the binary, under `vendor/<triple>/`: `bin/` from
+ * 0.133, `codex/` up to 0.137 (the launchers of 0.133 to 0.137 try both, in this
+ * order). On Windows the older one is started directly too: through the JS
+ * launcher, which starts the binary without hiding its console, every status
+ * check opened a window. Elsewhere the launcher stays in between for that
+ * layout, since it also puts the bundled `vendor/<triple>/path` (rg) on PATH.
+ */
+function codexVendorBinDirs(platform: NodeJS.Platform): readonly string[] {
+  return platform === 'win32' ? ['bin', 'codex'] : ['bin']
+}
+
+/**
  * `@openai/codex/bin/codex.js` only picks the platform package's native binary
  * and starts it with two variables set. Doing the same here leaves no Node
  * process between the app and Codex. Null when the layout is not the known one.
@@ -326,12 +353,14 @@ async function codexNativeBehindEntry(
     join(packageRoot, 'vendor'),
   ]
   for (const vendorRoot of vendorRoots) {
-    const candidate = join(vendorRoot, triple, 'bin', executable)
-    if (await fileExists(candidate)) {
-      return native(context, candidate, source, {
-        CODEX_MANAGED_BY_NPM: '1',
-        CODEX_MANAGED_PACKAGE_ROOT: packageRoot,
-      })
+    for (const binDir of codexVendorBinDirs(context.platform)) {
+      const candidate = join(vendorRoot, triple, binDir, executable)
+      if (await fileExists(candidate)) {
+        return native(context, candidate, source, {
+          CODEX_MANAGED_BY_NPM: '1',
+          CODEX_MANAGED_PACKAGE_ROOT: packageRoot,
+        })
+      }
     }
   }
   return null
@@ -478,24 +507,92 @@ async function programInDir(
   return programFromFile(context, candidate, source)
 }
 
+/** nvm installs under `~/.nvm/versions/node/vX.Y.Z`. Prefer higher X.Y.Z first. */
+function compareNvmVersionDirsNewestFirst(a: string, b: string): number {
+  const parts = (name: string): number[] => {
+    const match = /^v?(\d+)\.(\d+)\.(\d+)/i.exec(name.trim())
+    return match ? [Number(match[1]), Number(match[2]), Number(match[3])] : [-1, -1, -1]
+  }
+  const pa = parts(a)
+  const pb = parts(b)
+  for (let i = 0; i < 3; i++) {
+    if (pa[i]! !== pb[i]!) return pb[i]! - pa[i]!
+  }
+  // Equal numeric triples (or both unparsable): keep a stable string order.
+  return a < b ? -1 : a > b ? 1 : 0
+}
+
 /**
  * Finder/Dock-launched Electron inherits a minimal PATH, so the directories
  * npm, Homebrew, version managers and the Claude installer (`~/.local/bin`)
  * install into are probed explicitly.
  */
-async function commonUnixBinDirs(home: string): Promise<string[]> {
-  const dirs = ['/opt/homebrew/bin', '/usr/local/bin']
+export async function commonUnixBinDirs(
+  home: string,
+  env: NodeJS.ProcessEnv,
+  platform: NodeJS.Platform,
+): Promise<string[]> {
+  const dirs = ['/opt/homebrew/bin', '/usr/local/bin', '/opt/local/bin']
   if (home) {
+    // Tool managers that keep their data outside the home directory's dotfiles
+    const dataHome = cleanCliPath(env.XDG_DATA_HOME) || join(home, '.local', 'share')
+    const fnmRoot =
+      cleanCliPath(env.FNM_DIR) ||
+      (platform === 'darwin'
+        ? join(home, 'Library', 'Application Support', 'fnm')
+        : join(dataHome, 'fnm'))
+    const pnpmHome =
+      cleanCliPath(env.PNPM_HOME) ||
+      (platform === 'darwin' ? join(home, 'Library', 'pnpm') : join(dataHome, 'pnpm'))
     dirs.push(
       join(home, '.local', 'bin'),
       join(home, '.npm-global', 'bin'),
       join(home, '.volta', 'bin'),
       join(home, '.bun', 'bin'),
       join(home, '.yarn', 'bin'),
+      join(home, '.asdf', 'shims'),
+      join(dataHome, 'mise', 'shims'),
+      pnpmHome,
+      // the version fnm's `default` alias points at; its per-shell directories
+      // live under a process id and are gone by the next sign-in
+      join(fnmRoot, 'aliases', 'default', 'bin'),
+      ...(await npmPrefixDirs(env, platform, home)),
     )
     const nvmRoot = join(home, '.nvm', 'versions', 'node')
     const versions = await readdir(nvmRoot).catch(() => [] as string[])
-    for (const version of versions.sort().reverse()) dirs.push(join(nvmRoot, version, 'bin'))
+    // Newest first: String.sort is lexicographic, so "v8.x" sorts ahead of "v20.x".
+    for (const version of versions.sort(compareNvmVersionDirsNewestFirst)) {
+      dirs.push(join(nvmRoot, version, 'bin'))
+    }
+  }
+  return dirs
+}
+
+/**
+ * The bin directory of a global npm prefix the user moved (`npm config set
+ * prefix`, `NPM_CONFIG_PREFIX`), which PATH may not list for a GUI app. npm
+ * is not run to read it: `npm config set` writes the value to `~/.npmrc`.
+ */
+async function npmPrefixDirs(
+  env: NodeJS.ProcessEnv,
+  platform: NodeJS.Platform,
+  home: string,
+): Promise<string[]> {
+  const values = [env.npm_config_prefix, env.NPM_CONFIG_PREFIX]
+  if (home) {
+    const npmrc = await readFile(join(home, '.npmrc'), 'utf8').catch(() => '')
+    for (const line of npmrc.split(/\r?\n/)) {
+      const match = /^\s*prefix\s*=\s*(.*)$/.exec(line)
+      if (match) values.push(match[1])
+    }
+  }
+  const dirs: string[] = []
+  for (const value of values) {
+    const prefix = expandHome(cleanCliPath(value), home)
+    if (!isFullDir(prefix)) continue
+    // npm links a global command into `<prefix>/bin`; on Windows into the prefix itself
+    const dir = platform === 'win32' ? prefix : join(prefix, 'bin')
+    if (!dirs.includes(dir)) dirs.push(dir)
   }
   return dirs
 }
@@ -523,9 +620,9 @@ async function wingetCodexPackage(localAppData: string, arch: string): Promise<s
 }
 
 /** Places a CLI can be on Windows without being on the PATH the app inherited */
-function windowsFallbackDirs(
+async function windowsFallbackDirs(
   context: Context,
-): Array<{ dir: string; source: SubscriptionProgramSource }> {
+): Promise<Array<{ dir: string; source: SubscriptionProgramSource }>> {
   const { env, provider } = context
   const home = homeOf(env, 'win32')
   const appData = env.APPDATA ?? (home ? join(home, 'AppData', 'Roaming') : undefined)
@@ -535,11 +632,41 @@ function windowsFallbackDirs(
   if (provider === 'claude-code' && home) {
     dirs.push({ dir: join(home, '.local', 'bin'), source: 'native-installer' })
   }
+  // where `irm https://antigravity.google/cli/install.ps1 | iex` puts agy.exe
+  if (provider === 'antigravity' && localAppData) {
+    dirs.push({ dir: join(localAppData, 'agy', 'bin'), source: 'native-installer' })
+  }
   if (appData) dirs.push({ dir: join(appData, 'npm'), source: 'npm' })
+  for (const dir of await npmPrefixDirs(env, 'win32', home)) dirs.push({ dir, source: 'npm' })
   if (localAppData) {
     dirs.push({ dir: join(localAppData, 'Microsoft', 'WinGet', 'Links'), source: 'winget' })
   }
   return dirs
+}
+
+async function* programsByName(
+  context: Context,
+  name: string,
+  pathSource: SubscriptionProgramSource,
+  fallbackSource?: SubscriptionProgramSource,
+): AsyncGenerator<SubscriptionProgram> {
+  const { env, platform } = context
+  for (const dir of pathDirs(env, platform)) {
+    const program = await programInDir(context, dir, name, pathSource)
+    if (program) yield program
+  }
+  if (platform === 'win32') {
+    for (const { dir, source } of await windowsFallbackDirs(context)) {
+      const program = await programInDir(context, dir, name, fallbackSource ?? source)
+      if (program) yield program
+    }
+    return
+  }
+  const dirs = context.commonDirs ?? (await commonUnixBinDirs(homeOf(env, platform), env, platform))
+  for (const dir of dirs) {
+    const program = await programInDir(context, dir, name, fallbackSource ?? 'path')
+    if (program) yield program
+  }
 }
 
 async function searchByName(
@@ -548,24 +675,70 @@ async function searchByName(
   pathSource: SubscriptionProgramSource,
   fallbackSource?: SubscriptionProgramSource,
 ): Promise<SubscriptionProgram | null> {
-  const { env, platform } = context
-  for (const dir of pathDirs(env, platform)) {
-    const program = await programInDir(context, dir, name, pathSource)
-    if (program) return program
-  }
-  if (platform === 'win32') {
-    for (const { dir, source } of windowsFallbackDirs(context)) {
-      const program = await programInDir(context, dir, name, fallbackSource ?? source)
-      if (program) return program
-    }
-    return null
-  }
-  const dirs = context.commonDirs ?? (await commonUnixBinDirs(homeOf(env, platform)))
-  for (const dir of dirs) {
-    const program = await programInDir(context, dir, name, fallbackSource ?? 'path')
-    if (program) return program
+  for await (const program of programsByName(context, name, pathSource, fallbackSource)) {
+    return program
   }
   return null
+}
+
+const VERSION_TIMEOUT_MS = 5_000
+
+const reportedVersions = new Map<string, Promise<string | undefined>>()
+
+const reportedVersion: SubscriptionVersionReader = async (program) => {
+  const info = await stat(program.entry).catch(() => null)
+  if (!info) return undefined
+  const key = JSON.stringify([program.command, program.entry, info.size, info.mtimeMs])
+  const known = reportedVersions.get(key)
+  if (known) return known
+  const answer = runSubscriptionProgram(program, ['--version'], {
+    signal: new AbortController().signal,
+    timeoutMs: VERSION_TIMEOUT_MS,
+  }).then(
+    (result) => subscriptionVersionOf(result.stdout),
+    () => undefined,
+  )
+  reportedVersions.set(key, answer)
+  const version = await answer
+  if (!version) reportedVersions.delete(key)
+  return version
+}
+
+/** One program per file: PATH and the common directories can lead to the same one */
+async function* distinctFiles(
+  programs: AsyncIterable<SubscriptionProgram>,
+): AsyncGenerator<SubscriptionProgram> {
+  const files = new Set<string>()
+  for await (const program of programs) {
+    const file = await realpath(program.entry).catch(() => program.entry)
+    if (files.has(file)) continue
+    files.add(file)
+    yield program
+  }
+}
+
+/**
+ * A PC can hold several copies (Homebrew, npm, the vendor installer's
+ * `~/.local/bin`), and the one `claude update` refreshes is often not the first
+ * in the search order.
+ */
+async function firstUsableClaude(
+  context: Context,
+  programs: AsyncIterable<SubscriptionProgram>,
+): Promise<SubscriptionProgram | null> {
+  const minimum = SUBSCRIPTION_MIN_VERSIONS['claude-code']
+  const copies = distinctFiles(programs)
+  const { value: first } = await copies.next()
+  if (!first) return null
+  const { value: second } = await copies.next()
+  if (!second || !minimum) return first
+  const newEnough = async (program: SubscriptionProgram) => {
+    const version = await context.readVersion(program)
+    return !!version && subscriptionVersionAtLeast(version, minimum)
+  }
+  for (const program of [first, second]) if (await newEnough(program)) return program
+  for await (const program of copies) if (await newEnough(program)) return program
+  return first
 }
 
 /**
@@ -573,14 +746,15 @@ async function searchByName(
  * installed. Order: the configured path, the Codex desktop app's copy (its bin
  * tree on Windows; on macOS the newer of its bundle and the PATH copy), PATH,
  * then the install locations PATH may not list yet (`%APPDATA%\npm`, the
- * vendor installers' own directories).
+ * vendor installers' own directories). Of several Claude Code copies, the
+ * first one new enough for the app wins.
  *
  * A configured path may name the executable, its directory, an npm shim or a
  * bare command. One that points into the Codex desktop tree (its directories
  * carry a release hash) or no longer exists is treated as automatic.
  */
 export async function locateSubscriptionProgram(
-  provider: AiSubscriptionProviderId,
+  provider: AiSubscriptionCliId,
   options: SubscriptionLocateOptions = {},
 ): Promise<SubscriptionProgram | null> {
   const platform = options.platform ?? process.platform
@@ -594,6 +768,7 @@ export async function locateSubscriptionProgram(
     nodeRuntime: options.nodeRuntime,
     applicationDirs: options.applicationDirs,
     commonDirs: options.commonDirs,
+    readVersion: options.readVersion ?? reportedVersion,
   }
   const { name } = context.layout
   const managedRoot =
@@ -627,7 +802,10 @@ export async function locateSubscriptionProgram(
     const managed = await newestManagedCodex(managedRoot, platform)
     if (managed) return native(context, managed, 'managed')
   }
-  const found = await searchByName(context, name, 'path')
+  const found =
+    provider === 'claude-code'
+      ? await firstUsableClaude(context, programsByName(context, name, 'path'))
+      : await searchByName(context, name, 'path')
   if (provider === 'codex' && platform === 'darwin') {
     const bundled = await newestMacBundledCodex(context)
     if (bundled && (await isNewerFile(bundled, found?.entry))) {
@@ -646,6 +824,8 @@ export async function locateSubscriptionProgram(
 const PROVIDER_LABELS: Record<AiSubscriptionProviderId, string> = {
   'claude-code': 'Claude Code',
   codex: 'Codex',
+  chatgpt: 'ChatGPT',
+  antigravity: 'Antigravity',
 }
 
 /** Display name of a subscription provider, for messages */
@@ -655,7 +835,7 @@ export function subscriptionProviderLabel(provider: AiSubscriptionProviderId): s
 
 /** `locateSubscriptionProgram`, with a missing program reported as the `not-installed` run error */
 export async function resolveSubscriptionProgram(
-  provider: AiSubscriptionProviderId,
+  provider: AiSubscriptionCliId,
   options: SubscriptionLocateOptions = {},
 ): Promise<SubscriptionProgram> {
   const program = await locateSubscriptionProgram(provider, options)

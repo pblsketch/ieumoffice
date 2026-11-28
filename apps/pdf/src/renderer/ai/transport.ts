@@ -1,13 +1,15 @@
 import {
   createIpcTransport,
   type AgentTransport,
+  type IpcContextGate,
   type IpcStreamError,
   type IpcSubscriptionUsage,
 } from '@genoffice/agent-core'
+import { localContextLimit } from '@genoffice/ai-provider/browser'
 import type { AiSettings } from '@genoffice/ai-provider'
 import type { Lang } from '@genoffice/i18n'
-import { aiRunErrorText } from '@genoffice/ui'
-import { t } from '../i18n/locale'
+import { aiContextConfirmText, aiRunErrorText } from '@genoffice/ui'
+import { getLang, t } from '../i18n/locale'
 
 /** What the AI panel learns from a turn besides its text (all optional) */
 export interface ElectronTransportHooks {
@@ -24,6 +26,11 @@ export interface ElectronTransportHooks {
    * media calls (a document job's call; the AI window's Stop ends both)
    */
   cancelScope?: 'request'
+  /**
+   * One document job's confirmation memory: every call of the job shares it,
+   * so a large prompt is confirmed once for the whole job.
+   */
+  contextGate?: IpcContextGate
 }
 
 /** The shared IPC transport wired to the pdf preload bridge (window.pdfApi). */
@@ -44,6 +51,10 @@ export function createElectronTransport(
     creditsErrorText: () => t('aiCreditsExhausted'),
     networkErrorText: () => t('aiNetworkError'),
     overloadedErrorText: () => t('aiOverloadedError'),
+    // a local model's window: the transport warns at 80% and asks once per run
+    contextLimit: (settings) => localContextLimit(settings),
+    confirmContext: (warning) =>
+      window.confirm(aiContextConfirmText(hooks?.lang() ?? getLang(), warning)),
     // the subscription causes are worded once for every editor; the kinds above keep pdf's texts
     ...(hooks
       ? {
@@ -51,6 +62,7 @@ export function createElectronTransport(
           onStreamError: (error) => hooks.onStreamError?.(error),
           onSubscriptionUsage: (usage) => hooks.onSubscriptionUsage?.(usage),
           onInputTruncated: () => hooks.onInputTruncated?.(),
+          ...(hooks.contextGate ? { contextGate: hooks.contextGate } : {}),
         }
       : {}),
   })

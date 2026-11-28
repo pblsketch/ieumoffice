@@ -6,7 +6,8 @@ import {
 } from '@genoffice/agent-core'
 import type { AiSettings } from '@genoffice/ai-provider'
 import type { Lang } from '@genoffice/i18n'
-import { aiRunErrorText } from '@genoffice/ui'
+import { localContextLimit } from '@genoffice/ai-provider/browser'
+import { aiContextConfirmText, aiRunErrorText } from '@genoffice/ui'
 import { t } from '../i18n/locale'
 
 /** What the panel learns from a turn besides its text; every writer shares the one transport, so all of them report here */
@@ -38,6 +39,9 @@ export function createElectronTransport(
     overloadedErrorText: () => t('aiOverloadedError'),
     // the subscription causes are worded once for every editor; the four above stay this app's
     errorText: (cause) => aiRunErrorText(hooks.getLang(), cause),
+    // a local model's window: the transport warns at 80% and asks once per run
+    contextLimit: (settings) => localContextLimit(settings),
+    confirmContext: (warning) => window.confirm(aiContextConfirmText(hooks.getLang(), warning)),
     onStreamError: (error) => hooks.onStreamError(error),
     onSubscriptionUsage: (usage) => hooks.onSubscriptionUsage(usage),
     onInputTruncated: () => hooks.onInputTruncated(),

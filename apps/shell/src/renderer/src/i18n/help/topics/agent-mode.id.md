@@ -4,7 +4,7 @@ Agen memakai satu folder yang Anda pilih sebagai proyek, lalu menjalankan Claude
 
 ## Sebelum mulai
 
-- Langganan Claude atau langganan ChatGPT yang terhubung di **Pengaturan ▸ AI**. Topik "Koneksi langganan" menjelaskan caranya.
+- Program Claude Code atau Codex yang terhubung di **Pengaturan ▸ AI** (masuk dengan langganan Claude atau paket ChatGPT). ChatGPT yang terhubung langsung di aplikasi tidak dipakai oleh agen. Topik "Koneksi langganan" menjelaskan caranya.
 - Folder berisi bahan Anda. Seluruh drive, seluruh folder pengguna Anda, dan folder berisi data login atau data aplikasi tidak dapat dipilih.
 
 ## Memulai sesi

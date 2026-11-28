@@ -1,7 +1,6 @@
 import { Fragment, useEffect, useId, useRef, useState, useSyncExternalStore } from 'react'
 import { createPortal } from 'react-dom'
 import { BooleanNumber, numfmt } from '@univerjs/core'
-import { isMetafileMime, metafileToDataUrl } from '@genoffice/docx-engine/metafile'
 import { Dropdown, shapePreviewPath, useDismissablePopover } from '@genoffice/ui'
 
 import type { createUniver } from './create-univer'
@@ -11,13 +10,15 @@ import {
   chartCategoryFormat,
   chartSupportsDataLabels,
   formatCategoryLabel,
+  isComboChartTypes,
   scatterAxisBounds,
   splitSheetRef,
   valueAxisScale,
 } from '@genoffice/xlsx-gateway/domain/chart-visual'
 import { parseAddress } from '@genoffice/xlsx-gateway/domain/cell-address'
 import { ColorDropdown } from './ColorDropdown'
-import { t } from './i18n/locale'
+import { getLang, t } from './i18n/locale'
+import { numfmtLocaleFor } from './i18n/numfmt-locale'
 import { oleCaption, oleFrameStyle, oleRenderKind } from './ole-visual'
 import { VisualDeleteButton } from './VisualDeleteButton'
 import { shouldShowVisualDeleteButton } from './visual-delete-button'
@@ -41,6 +42,7 @@ import {
   valueAxisLayout,
 } from './chart-text-scale'
 import type { ChartAxisText, ChartTextBox } from './chart-text-scale'
+import { useWorkbookMediaUrl } from './workbook-media'
 
 type UniverRuntime = ReturnType<typeof createUniver>
 type ActiveWorkbook = NonNullable<ReturnType<UniverRuntime['univerAPI']['getActiveWorkbook']>>
@@ -1670,49 +1672,6 @@ function ShapeVisual({
   )
 }
 
-function base64ToBytes(base64: string): Uint8Array {
-  const binary = atob(base64)
-  const bytes = new Uint8Array(binary.length)
-  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i)
-  return bytes
-}
-
-/// Lazily fetches a visual's media bytes as a data URL (metafiles rasterize
-/// to PNG first). Pass an undefined sessionId to skip fetching.
-function useWorkbookMediaUrl(
-  sessionId: string | undefined,
-  visualId: string,
-): { url: string | null; unavailable: boolean } {
-  const [url, setUrl] = useState<string | null>(null)
-  const [unavailable, setUnavailable] = useState(false)
-
-  useEffect(() => {
-    if (sessionId === undefined) return
-    let isCurrent = true
-    void window.desktopApi
-      .readWorkbookMedia({ sessionId, visualId })
-      .then(async (media) => {
-        const next = isMetafileMime(media.mediaType)
-          ? await metafileToDataUrl(base64ToBytes(media.base64), media.mediaType)
-          : `data:${media.mediaType};base64,${media.base64}`
-        if (!isCurrent) return
-        if (next) setUrl(next)
-        else setUnavailable(true)
-      })
-      .catch((reason: unknown) => {
-        // Unsupported or unreadable media degrades to an empty frame; the
-        // grid must never show the failure text.
-        console.warn(`workbook media unavailable (${visualId})`, reason)
-        if (isCurrent) setUnavailable(true)
-      })
-    return () => {
-      isCurrent = false
-    }
-  }, [sessionId, visualId])
-
-  return { url, unavailable }
-}
-
 function ImageVisual({
   file,
   visual,
@@ -1890,10 +1849,13 @@ function withChartEdit(chart: ChartMetadata, edit: ChartEditData | undefined): C
   return applyChartStateEdit(chart, edit) as ChartMetadata
 }
 
-/// A chart converts only when it has exactly one supported plot type.
+/// A chart converts when it is one supported plot type, or a bar+line combo
+/// ('combo' — converting collapses the whole chart onto the target family).
 /// Single-plot column/bar/line/area/pie/doughnut charts convert; everything
-/// else (scatter, combos, 3D) fails closed at save time — reject up front.
+/// else (scatter, radar, richer combos, 3D) fails closed at save time —
+/// reject up front.
 export function convertibleType(chart: ChartMetadata): string | null {
+  if (isComboChartTypes(chart.chartTypes)) return 'combo'
   if (chart.chartTypes.length !== 1) return null
   const only = chart.chartTypes[0]
   if (only === 'lineChart') return 'line'
@@ -2457,16 +2419,7 @@ function VisualContextMenu({
   // Outside press / window blur / shell chrome press — the shared dismissal
   // (the click-through backdrop below stays as belt and braces). The menu is
   // portaled to the body, so the inside guard must be its own element.
-  useDismissablePopover(true, onClose, { inside: () => [menuRef.current] })
-  const closeRef = useRef(onClose)
-  closeRef.current = onClose
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') closeRef.current()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [])
+  useDismissablePopover(true, onClose, { inside: () => [menuRef.current], escape: true })
   // Portal to the body: the float-DOM container clips overflowing children.
   return createPortal(
     <div
@@ -2811,10 +2764,18 @@ function ChartEditor({
             className="chart-editor-type"
             ariaLabel={t('appTypeLabel')}
             value={chartType}
-            options={CHART_TYPE_OPTIONS.map((option) => ({
-              value: option.value,
-              label: t(option.labelKey),
-            }))}
+            options={[
+              // A combo has no single current type: the placeholder labels
+              // the mixed state and is not pickable (picking a real family
+              // converts the whole chart).
+              ...(convertible === 'combo'
+                ? [{ value: 'combo', label: t('appChartCombo'), disabled: true }]
+                : []),
+              ...CHART_TYPE_OPTIONS.map((option) => ({
+                value: option.value,
+                label: t(option.labelKey),
+              })),
+            ]}
             onPick={setChartType}
           />
         </label>
@@ -3013,7 +2974,9 @@ export function BarChart({
 } & ChartElementProps): React.JSX.Element {
   const primary = categorySeries ?? seriesList[0]
   if (!primary || seriesList.length === 0) return <></>
-  const categories = primary.categories.map((value) => formatCategoryLabel(value, categoryFormat))
+  const categories = primary.categories.map((value) =>
+    formatCategoryLabel(value, categoryFormat, numfmtLocaleFor(getLang())),
+  )
   // Every series on the shared category axis sizes it, not just the one that
   // carries the labels.
   const pointCount = Math.max(
@@ -3801,7 +3764,9 @@ type ChartLabelPosition = ChartMetadata['dataLabelPosition']
 function formatPieValue(value: number, formatCode: string | undefined): string {
   if (formatCode && formatCode !== 'General') {
     try {
-      return numfmt.format(formatCode, value, { throws: false }).trim()
+      return numfmt
+        .format(formatCode, value, { throws: false, locale: numfmtLocaleFor(getLang()) })
+        .trim()
     } catch {
       // Unparseable format: fall through to the plain rendering.
     }
@@ -3839,7 +3804,10 @@ function formatLabelValue(
   // Full format codes (currency symbols, literals) go through numfmt like
   // the axis; the digit-count shorthand below only backs up codes it rejects.
   try {
-    const text = numfmt.format(formatCode, value, { throws: false })
+    const text = numfmt.format(formatCode, value, {
+      throws: false,
+      locale: numfmtLocaleFor(getLang()),
+    })
     if (typeof text === 'string' && text.trim() !== '') return text.trim()
   } catch {
     // fall through to the shorthand rendering
@@ -3849,7 +3817,7 @@ function formatLabelValue(
   const fixed = value.toFixed(decimals)
   if (!formatCode.includes(',')) return fixed
   const [whole, fraction] = fixed.split('.')
-  const grouped = Number(whole).toLocaleString('en-US')
+  const grouped = Number(whole).toLocaleString(numfmtLocaleFor(getLang()))
   return fraction ? `${grouped}.${fraction}` : grouped
 }
 
@@ -4029,7 +3997,10 @@ function CategoryGroupBand({
 export function formatAxisValue(value: number, numberFormat: string | undefined): string {
   if (numberFormat && numberFormat !== 'General' && !numberFormat.includes('%')) {
     try {
-      const text = numfmt.format(numberFormat, value, { throws: false })
+      const text = numfmt.format(numberFormat, value, {
+        throws: false,
+        locale: numfmtLocaleFor(getLang()),
+      })
       if (typeof text === 'string' && text !== '') return text
     } catch {
       // fall through to the plain rendering
@@ -4038,7 +4009,7 @@ export function formatAxisValue(value: number, numberFormat: string | undefined)
   if (numberFormat?.includes('%')) return `${Math.round(value * 100)}%`
   // Excel prints full numbers on value axes; abbreviating disagreed with the data labels.
   const clean = Number(value.toPrecision(12))
-  return clean.toLocaleString('en-US', { maximumFractionDigits: 4 })
+  return clean.toLocaleString(numfmtLocaleFor(getLang()), { maximumFractionDigits: 4 })
 }
 
 function VerticalAxis({
@@ -4181,7 +4152,9 @@ export function LineChart({
         isStacked ? 0 : Math.min(...seriesList.flatMap((series) => [...series.values])),
       )
   const span = bounds.max - bounds.min
-  const categories = primary.categories.map((value) => formatCategoryLabel(value, categoryFormat))
+  const categories = primary.categories.map((value) =>
+    formatCategoryLabel(value, categoryFormat, numfmtLocaleFor(getLang())),
+  )
   const count = Math.max(1, primary.values.length - 1)
   // Stacked lines keep the 0 fillers (a blank contributes nothing to the
   // stack); only flat lines honor gap/span.
@@ -4436,7 +4409,9 @@ function AreaChart({
 } & ChartElementProps): React.JSX.Element {
   const primary = seriesList[0]
   if (!primary) return <></>
-  const categories = primary.categories.map((value) => formatCategoryLabel(value, categoryFormat))
+  const categories = primary.categories.map((value) =>
+    formatCategoryLabel(value, categoryFormat, numfmtLocaleFor(getLang())),
+  )
   const count = Math.max(1, primary.values.length - 1)
   const isStacked =
     (grouping === 'stacked' || grouping === 'percentStacked') && seriesList.length > 1
@@ -4649,7 +4624,9 @@ function RadarChart({
 } & ChartElementProps): React.JSX.Element {
   const primary = seriesList[0]
   if (!primary) return <></>
-  const categories = primary.categories.map((value) => formatCategoryLabel(value, categoryFormat))
+  const categories = primary.categories.map((value) =>
+    formatCategoryLabel(value, categoryFormat, numfmtLocaleFor(getLang())),
+  )
   const count = Math.min(Math.max(primary.values.length, 3), 12)
   const cx = 300
   const cy = 168
@@ -4743,7 +4720,7 @@ function RadarChart({
 /// one-decimal rounding would collapse (0.04 → "0.0").
 function formatScatterTick(value: number, format: string | undefined): string {
   if (format !== undefined && format !== 'General') {
-    return formatCategoryLabel(String(value), format)
+    return formatCategoryLabel(String(value), format, numfmtLocaleFor(getLang()))
   }
   if (Number.isInteger(value) || Math.abs(value) >= 1e4) return formatAxisValue(value, undefined)
   return String(Number(value.toPrecision(4)))
@@ -5077,7 +5054,9 @@ function PieChart({
   readonly categoryFormat?: string | undefined
 } & ChartElementProps): React.JSX.Element {
   const { values } = series
-  const categories = series.categories.map((value) => formatCategoryLabel(value, categoryFormat))
+  const categories = series.categories.map((value) =>
+    formatCategoryLabel(value, categoryFormat, numfmtLocaleFor(getLang())),
+  )
   const total = values.reduce((sum, value) => sum + Math.max(0, value), 0) || 1
   const cx = 210
   const cy = 160

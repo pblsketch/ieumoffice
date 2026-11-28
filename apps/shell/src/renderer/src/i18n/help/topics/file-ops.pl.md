@@ -26,9 +26,11 @@ Zasady: rozszerzenie jest zachowywane automatycznie; niedozwolone znaki, kropki 
 ## Zapisz i Zapisz jako
 
 - **⌘S / ctrl+S** zapisuje bieżący plik; plik bez tytułu najpierw pyta o lokalizację i nazwę.
+- W większości edytorów lista typów plików w oknie Zapisz jako zawiera też formaty eksportu (PDF, obrazy, inne formaty dokumentów). Wybranie jednego z nich zapisuje tylko kopię; otwarty dokument i jego karta pozostają przy pliku oryginalnym. Obrazy wielu stron są dzielone na `nazwa-01.png`, `nazwa-02.png`, ….
+- **Docs**: lista Zapisz jako oferuje też .hwp i .hwpx (Plik ▸ Eksportuj jako dokument HWP… działa tak samo). Jeśli czegoś nie da się przenieść, np. komentarzy, równań czy pól tekstowych, dowiesz się o tym przed zapisaniem pliku.
 - **Zapisz jako…** zapisuje nowy plik i pozostawia oryginał nietknięty; późniejsze edycje dotyczą nowego pliku.
 - Każdy zapis jest atomowy (plik tymczasowy + zmiana nazwy); zamknięcie w trakcie zapisu nie może uszkodzić pliku.
-- Autozapis włącza się dopiero po pierwszym zapisaniu ręcznym (patrz [Szybki start](help://getting-started)).
+- Autozapis działa zgodnie z przełącznikiem w każdym edytorze; nowy dokument bez własnego pliku zaczyna działać po pierwszym zapisie (patrz [Szybki start](help://getting-started)).
 
 ## Eksport do PDF
 
@@ -44,7 +46,17 @@ Zasady: rozszerzenie jest zachowywane automatycznie; niedozwolone znaki, kropki 
 
 ## Drukowanie
 
-Plik ▸ Drukuj… w każdym edytorze (⌘P/ctrl+P) otwiera systemowe okno drukowania; pliki PDF drukują się z bieżącą kolejnością stron i obrotami.
+Plik ▸ Drukuj (⌘P/ctrl+P) otwiera okno drukowania z podglądem na żywo w każdym edytorze — Docs, Sheets, Slides, PDF, Markdown, Hangul, HTML, Mind Map, Diagram i Whiteboard. Bez zmian w układzie strony i przy użyciu okna systemowego drukowanie działa jak dotychczas.
+
+- **Miejsce docelowe (drukarka, PDF, obrazy)**: wybierz z jednej listy zainstalowaną drukarkę, **Zapisz jako PDF**, **Zapisz jako obrazy** lub **Systemowe okno drukowania**. Zapis obrazów obsługuje PNG i JPG (Wysoka 90%, Średnia 80%, Mniejszy plik 65%) jako osobne numerowane pliki lub pojedyncze archiwum ZIP. W chronionych PDF-ach zapis do PDF i obrazów jest zablokowany, a drukowanie pozostaje dostępne.
+- **Podgląd wydruku na żywo**: wszystkie dziesięć edytorów pokazuje podgląd przed wyjściem. Gdy układ, skala szarości, znak wodny lub nagłówki/stopki zmieniają wynikowe strony, podgląd renderuje je na żądanie z nawigacją, powiększeniem i przełącznikiem schematu.
+- **Układ**: Jedna strona na arkusz, Wiele stron na arkusz (2, 4, 6, 9 lub 16, z opcjonalnymi obramowaniami), Broszura (oprawa z lewej lub prawej), Plakat (kolumny × wiersze, zakładka, linie cięcia i etykiety kafelków) lub Etykiety (jedna strona na etykietę albo powtórzenie, komórka startowa, szablony A4 lub własne wymiary).
+- **Skala, orientacja, strony i kolejność**: wybierz Rozmiar rzeczywisty (100%), Dopasuj do papieru, Zmniejsz zbyt duże strony lub Skalę niestandardową (10%–400%) oraz orientację Automatyczną, Pionową albo Poziomą. Tylko nieparzyste, parzyste i odwrotna kolejność liczą gotowe strony arkuszy.
+- **Znak wodny, nagłówki/stopki, skala szarości i rozdzielczość**: dodawaj tekstowy lub obrazkowy znak wodny oraz 6 pól nagłówka i stopki (tytuł, data, numer strony lub własny tekst) tylko na wydruku, bez zmiany dokumentu. Skala szarości i DPI (Automatyczna, 150, 300 lub 600 dpi) określają jakość rastra.
+- **Zakresy stron i zaznaczenie**: Docs i Markdown łamią zaznaczony tekst od strony 1; Slides drukuje wybrane slajdy; PDF wybrane strony; Hangul obsługuje Wszystkie, Bieżącą stronę lub Zakres niestandardowy; Sheets drukuje aktywne arkusze, skoroszyt lub zaznaczenie.
+- **Systemowe okno drukowania**: dla broszury włącz druk dwustronny z przewracaniem wzdłuż krótkiej krawędzi i nie zmieniaj zakresu ani liczby stron na arkusz w oknie systemu.
+
+Pliki PDF są drukowane w bieżącej kolejności i orientacji stron.
 
 ## Gdzie trafiają pliki bez tytułu
 

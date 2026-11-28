@@ -1,5 +1,8 @@
 import type {
   AiChatResponse,
+  AiLocalDiscoveryResult,
+  AiLocalInspectionResult,
+  AiLocalTestResult,
   AiMediaProviderConfig,
   AiMediaProviderId,
   AiMediaProviderMeta,
@@ -18,6 +21,8 @@ import type {
 import type { UpdateChannel, UpdateUiState } from './update-api'
 import type { KbFileInfo, KbReadPage, KbSearchHit } from '@genoffice/agent-core'
 import type { AiPanelPrefs } from '@genoffice/ui/ai-panel-prefs'
+import type { SlidesAiFonts } from '@genoffice/ui/slides-ai-fonts'
+import type { FontFamilyInfo } from '@genoffice/ui'
 
 /** UI language; kept self-contained here (mirrors Lang in @genoffice/i18n) */
 
@@ -43,6 +48,7 @@ export type UiLanguage =
   | 'hi'
   | 'zh-TW'
   | 'vi'
+  | 'tr'
 
 /** UI theme preference */
 export type UiTheme = 'light' | 'dark' | 'system'
@@ -53,6 +59,9 @@ export type UiTheme = 'light' | 'dark' | 'system'
  * behavior; 'light'/'dark' pin the paper regardless of the UI theme.
  */
 export type DocTheme = 'follow' | 'light' | 'dark'
+
+/** Format a brand-new Hangul document is first saved as (Settings › General). */
+export type HwpDefaultFormat = 'hwp' | 'hwpx'
 
 /** mirrors AUTHOR_NAME_MAX in @genoffice/electron-utils (the renderer cannot import it) */
 export const AUTHOR_NAME_MAX = 120
@@ -202,6 +211,11 @@ export interface DefaultAppStatus {
   manualOnly: boolean
 }
 
+/** The part of the tool report (`AiToolCapabilities`) Settings reads */
+export interface HomeToolCapabilities {
+  imageGeneration: { available: boolean }
+}
+
 export interface HomeApi {
   /** unified recents across document types, newest first (paged) */
   recents(query?: RecentQuery): Promise<RecentPage>
@@ -231,8 +245,10 @@ export interface HomeApi {
   /** one page of a corpus file's parsed text (path must be in kbList; with `scope`, in the run's group) */
   kbRead(path: string, offset: number, scope?: string): Promise<KbReadPage>
   /** open a run narrowed to one starred group; main mints the scope and keeps the narrowing.
-   *  Rejects when the group has no starred files (the run must not widen to all) */
-  kbOpenScope(group: string): Promise<string>
+   *  Rejects when the group has no starred files (the run must not widen to all).
+   *  With a project chosen in the home ask: `{ group, projectId }`, the project folder
+   *  plus the starred part (null: every starred file) */
+  kbOpenScope(group: string | { group?: string | null; projectId: string }): Promise<string>
   /** the narrowed run is over */
   kbCloseScope(scope: string): Promise<void>
   /** write the AI's markdown as a new .md / .docx in the save folder; resolves to its path */
@@ -266,6 +282,9 @@ export interface HomeApi {
   newHtml(opts?: NewFileOpts): Promise<void>
   /** open a new, untitled mind map tab */
   newMindmap(opts?: NewFileOpts): Promise<void>
+  /** open a new, untitled one-page diagram tab; its first save proposes .drawio */
+  newDiagram(opts?: NewFileOpts): Promise<void>
+  newWhiteboard(opts?: NewFileOpts): Promise<void>
   /** open a blank HWP editor tab; the file is named at its first save */
   newHwp(opts?: NewFileOpts): Promise<void>
   /** create a blank single-page PDF in the default save folder and open it */
@@ -314,8 +333,11 @@ export interface HomeApi {
   getUpdateChannel(): Promise<UpdateChannel>
   /** switch + persist the update channel; triggers an immediate update check */
   setUpdateChannel(channel: UpdateChannel): Promise<void>
+  /** whether the launch and periodic background update checks run (default on) */
+  getAutoUpdateCheck(): Promise<boolean>
+  setAutoUpdateCheck(on: boolean): Promise<void>
   /** a tab asked for the settings modal (composer model chip → AI Model section) */
-  onOpenSettings(handler: (target: { section: string }) => void): () => void
+  onOpenSettings(handler: (target: { section: string; field?: string }) => void): () => void
   /** open the shell's Ollama model manager from first-run setup */
   openOllamaSettings(): Promise<void>
   /** app version (from package.json / electron app.getVersion) */
@@ -368,6 +390,18 @@ export interface HomeApi {
   getDefaultSaveDir(): Promise<string>
   /** directory picker to change the default save folder; resolves to the new folder, or null when canceled or the pick was unusable */
   pickDefaultSaveDir(): Promise<string | null>
+  /** format offered by the first save of a new Hangul document (userData/app-settings.json) */
+  getHwpDefaultFormat(): Promise<HwpDefaultFormat>
+  /** persist the choice; an unknown value is stored as HWP */
+  setHwpDefaultFormat(format: HwpDefaultFormat): Promise<HwpDefaultFormat>
+  /** fonts AI slide generation uses when the request names none (userData/app-settings.json) */
+  getSlidesAiFonts?(): Promise<SlidesAiFonts>
+  /** persist the choice; resolves to the value as stored (unknown parts fall back to the defaults) */
+  setSlidesAiFonts?(fonts: SlidesAiFonts): Promise<SlidesAiFonts>
+  /** Korean names and similar details of installed families, read from the font files */
+  fontFamilyInfo?(
+    families: readonly string[],
+  ): Promise<ReadonlyArray<readonly [string, FontFamilyInfo]>>
   /** who opens .docx/.xlsx/.pptx today (Settings → General "default app" row) */
   getDefaultAppStatus(): Promise<DefaultAppStatus>
   /** claim the Office types (mac/linux) or open the system Default Apps page (win); resolves to the refreshed status */
@@ -401,8 +435,36 @@ export interface HomeApi {
   getCustomModels(baseUrl: string, apiKey?: string): Promise<CodexModelCatalog>
   /** one model's capabilities from Ollama's /api/show; empty capabilities means not checked (not Ollama, offline) */
   getOllamaModelInfo(baseUrl: string, model: string, apiKey?: string): Promise<OllamaModelInfo>
+  /** models a local AI server advertises (Ollama's own API or OpenAI-compatible `/models`) */
+  getLocalModels(input: { baseUrl: string; apiKey?: string }): Promise<AiLocalDiscoveryResult>
+  /** what one model on a local server reports about itself (context window, tools, vision) */
+  inspectLocalModel(input: {
+    baseUrl: string
+    apiKey?: string
+    model: string
+    server?: 'ollama' | 'openai-compatible'
+  }): Promise<AiLocalInspectionResult>
+  /** the four-step connection test of one model on a local server */
+  testLocalModel(input: {
+    baseUrl: string
+    apiKey?: string
+    model: string
+    /** true when the user typed the id instead of picking a listed model */
+    typed?: boolean
+    timeoutMs?: number
+    /** the handle `cancelLocalTest` aborts this test by (letters, digits, `_`, `-`; up to 128) */
+    testId?: string
+  }): Promise<AiLocalTestResult>
+  /** abort the connection test started with this id in the main process; true when one was running */
+  cancelLocalTest(testId: string): Promise<boolean>
   /** one-shot round trip against the given (possibly unsaved) settings — the settings-UI connection test */
   testAiSettings(settings: AiSettings): Promise<AiChatResponse>
+  /**
+   * What the tool report (`ai:tool-capabilities`, answered by the docs main)
+   * says about image generation on the screen path right now; null when it
+   * gave no answer. Only the part Settings reads is passed on.
+   */
+  aiToolCapabilities(): Promise<HomeToolCapabilities | null>
   /** image generation / media analysis provider catalog */
   getAiMediaProviders(): AiMediaProviderMeta[]
   /** credential check for a (possibly unsaved) media provider */
@@ -534,6 +596,8 @@ export const HOME_CHANNELS = {
   newMarkdown: 'home:new-markdown',
   newHtml: 'home:new-html',
   newMindmap: 'home:new-mindmap',
+  newDiagram: 'home:new-diagram',
+  newWhiteboard: 'home:new-whiteboard',
   newHwp: 'home:new-hwp',
   newPdf: 'home:new-pdf',
   removeRecent: 'home:remove-recent',
@@ -556,6 +620,8 @@ export const HOME_CHANNELS = {
   setLanguage: 'home:set-language',
   getUpdateChannel: 'home:get-update-channel',
   setUpdateChannel: 'home:set-update-channel',
+  getAutoUpdateCheck: 'home:get-auto-update-check',
+  setAutoUpdateCheck: 'home:set-auto-update-check',
   openSettings: 'home:open-settings',
   getAppVersion: 'home:get-app-version',
   onboardingSeen: 'home:onboarding-seen',
@@ -579,6 +645,10 @@ export const HOME_CHANNELS = {
   getDefaultAppStatus: 'home:get-default-app-status',
   setDefaultApp: 'home:set-default-app',
   pickDefaultSaveDir: 'home:pick-default-save-dir',
+  getHwpDefaultFormat: 'home:get-hwp-default-format',
+  setHwpDefaultFormat: 'home:set-hwp-default-format',
+  getSlidesAiFonts: 'home:get-slides-ai-fonts',
+  setSlidesAiFonts: 'home:set-slides-ai-fonts',
   openGitHubRepo: 'home:open-github-repo',
   openFeedbackSurvey: 'home:open-feedback-survey',
   openLicenseNotices: 'home:open-license-notices',

@@ -1,6 +1,6 @@
 # Início rápido: a interface e o básico
 
-O GenOffice é um pacote de escritório que funciona na sua máquina: uma janela, uma faixa de guias, com oito editores — Docs (processamento de texto), Sheets (folhas de cálculo), Slides (apresentações), PDF, Markdown e texto simples, HTML, HWP/HWPX (documentos Hangul) e mapas mentais (.xmind). Cada editor abre e guarda ficheiros no seu próprio formato: .docx, .xlsx, .pptx, .pdf, .md, .html, .hwp/.hwpx e .xmind. A edição não precisa de rede; as funções de IA precisam.
+O GenOffice é um pacote de escritório que funciona na sua máquina: uma janela, uma faixa de guias, com oito editores — Docs (processamento de texto), Sheets (folhas de cálculo), Slides (apresentações), PDF, Markdown e texto simples, HTML, HWP/HWPX (documentos Hangul) e mapas mentais (.xmind). Cada editor abre e guarda ficheiros no seu próprio formato: .docx, .xlsx, .pptx, .pdf, .md, .html, .hwp/.hwpx e .xmind. A edição não precisa de rede; as funções de IA precisam. O editor de mapas mentais também importa ficheiros do FreeMind e do Freeplane (.mm) como novos mapas, guardados como .xmind.
 
 ## A interface em resumo
 
@@ -38,7 +38,7 @@ Os arquivos .odt (texto OpenDocument, o formato que o Hancom Office, o LibreOffi
 ## Como funciona o salvamento
 
 - **Salvamento manual**: ⌘S/ctrl+S, ou Arquivo ▸ Salvar / Salvar Como. O primeiro salvamento pede a localização e o nome.
-- O **Salvamento automático** só é ativado depois de ter salvo o ficheiro manualmente pelo menos uma vez — um PDF que se limita a ler nunca é reescrito em silêncio. O salvamento automático dispara pouco depois de o conteúdo mudar.
+- O **Salvamento automático** segue o interruptor de cada editor (e o valor predefinido da aplicação). Um PDF que se limita a ler nunca é reescrito em silêncio, e um documento novo sem ficheiro próprio só começa a ser guardado automaticamente após o primeiro salvamento.
 - Fechar uma guia com alterações não salvas pergunta primeiro Salvar / Descartar / Cancelar.
 - Cada escrita é atómica (ficheiro temporário + mudança de nome), pelo que uma falha de energia não deixa um ficheiro a meio.
 

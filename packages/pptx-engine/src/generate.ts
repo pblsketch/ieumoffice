@@ -10,11 +10,14 @@
  *     (b/i/u/sz + solidFill color).
  *   - Untouched bytes (bodyPr/spPr/geometry/placeholder attributes…) are kept verbatim.
  *
- * If the model's run count doesn't match the original XML's <a:r> count (runs
- * added/removed / paragraph structure changed), fall back to the
- * "rebuild txBody per paragraph" path (still keeping outer bytes like spPr where
- * possible). The Phase 3 editor uses the former (lossless) when only text and
- * formatting change without structural edits; structural changes use the latter.
+ * If the model's run count doesn't match the original XML's <a:r> count, or any
+ * paragraph's run count differs (runs added/removed / paragraph structure
+ * changed), fall back to the "rebuild txBody per paragraph" path (still keeping
+ * outer bytes like spPr where possible). A text edit whose traced paragraph/run
+ * moved (element.textMoved) also rebuilds: the in-place patch would keep the
+ * attributes of the old run now at that position. The Phase 3 editor uses the
+ * former (lossless) when only text and formatting change in place; structural or
+ * reordered edits use the latter.
  */
 import type {
   SlideElement,
@@ -54,15 +57,34 @@ function bulletGlyphXml(b: BulletModel): string {
  */
 export function patchTextElementXml(el: TextElement, originalXml: string): string {
   if (!el.text || !el.text.paragraphs.length) return originalXml
+  // The in-place patch writes each run into the old run at the same position; when a
+  // traced paragraph/run moved, that position holds another run's attributes, so the
+  // model's own paragraphs are rebuilt from their traced runs instead.
+  if (el.textMoved) return rebuildTxBody(el, originalXml)
 
+  const modelParagraphs = el.text.paragraphs
   // Collect all model runs (flattened across paragraphs, incl. "\n" soft-break sentinels),
   // one-to-one with the original XML's <a:r>/<a:br> sequence (parse rewrites <a:br/>
   // as a sentinel run, order preserved)
-  const modelRuns: TextRun[] = el.text.paragraphs.flatMap((p) => p.runs)
+  const modelRuns: TextRun[] = modelParagraphs.flatMap((p) => p.runs)
   const runSpans = findRunSpans(originalXml)
+
+  // The flattened count can line up while the paragraph layout differs (4 one-run
+  // paragraphs vs 2 two-run paragraphs = 4 runs either way); each model run must stay in
+  // its own original paragraph or every run lands in the first <a:p>. Require the
+  // paragraph count and every paragraph's run count to match before patching in place.
+  const paragraphSpans = findParagraphSpans(originalXml)
+  const paragraphsAligned =
+    paragraphSpans.length === modelParagraphs.length &&
+    paragraphSpans.every(
+      (span, index) =>
+        findRunSpans(originalXml.slice(span.start, span.end)).length ===
+        modelParagraphs[index]!.runs.length,
+    )
 
   // Count and kind aligned position by position (sentinel ⇔ <a:br>) → lossless in-place patch of each run, br bytes untouched
   const aligned =
+    paragraphsAligned &&
     runSpans.length === modelRuns.length &&
     runSpans.length > 0 &&
     runSpans.every((s, i) => (s.kind === 'br' || !!s.newlineOnly) === isSoftBreakRun(modelRuns[i]!))
@@ -391,6 +413,12 @@ function patchRunProps(runXml: string, run: TextRun): string {
       run.fontSize != null && !run.fontSizeImplicit ? szAttr(run.fontSize) : undefined,
       /\ssz="[^"]*"/,
     )
+    // Letter spacing: only an edited value is written; normal spacing drops the attribute
+    if (run.letterSpacingEdited) {
+      tag = run.letterSpacing
+        ? setAttr(tag, 'spc', String(Math.round(run.letterSpacing * 100)), /\sspc="[^"]*"/)
+        : tag.replace(/\sspc="[^"]*"/, '')
+    }
     return tag
   }
 
@@ -416,6 +444,7 @@ function patchRunProps(runXml: string, run: TextRun): string {
       runXml = patchRunFont(runXml, run.fontFamily)
     }
     runXml = patchRunHlink(runXml, run)
+    if (run.highlightEdited) runXml = patchRunHighlight(runXml, run.highlight)
     // "Withheld from the model" is not one of the attributes patched above, so an
     // existing mark would be left alone here — which is right for an untouched
     // run. Apply or clear it when the model disagrees, otherwise clearing a mark
@@ -438,11 +467,35 @@ function patchRunProps(runXml: string, run: TextRun): string {
       run.fontFamily && !run.fontImplicit && !run.latinFont && !run.eaFont
         ? fontSlotsXml(escapeXmlAttr(run.fontFamily))
         : ''
-    const inner = color + font + hlinkXml(run) // schema order: fill before the font slots, hlinkClick after
+    const highlight = run.highlight
+      ? `<a:highlight><a:srgbClr val="${hex6(run.highlight)}"/></a:highlight>`
+      : ''
+    // schema order: fill, highlight, the font slots, hlinkClick
+    const inner = color + highlight + font + hlinkXml(run)
     const rpr = inner ? `<a:rPr${attrs}>${inner}</a:rPr>` : `<a:rPr${attrs}/>`
     runXml = runXml.replace(/(<a:r(?:\s[^>]*)?>)/, `$1${rpr}`)
   }
   return runXml
+}
+
+/** Write the run's own <a:highlight> (color) or remove it (undefined), in schema order. */
+function patchRunHighlight(runXml: string, color: string | undefined): string {
+  const rPr = ownRPr(runXml)
+  if (!rPr) return runXml
+  const node = color ? `<a:highlight><a:srgbClr val="${hex6(color)}"/></a:highlight>` : ''
+  if (rPr.selfClosing) {
+    if (!node) return runXml
+    return runXml.slice(0, rPr.start) + `<a:rPr${rPr.attrs}>${node}</a:rPr>` + runXml.slice(rPr.end)
+  }
+  const children = topLevelChildren(runXml, rPr.innerStart, rPr.innerEnd)
+  const existing = children.find((c) => c.name === 'a:highlight')
+  if (existing) return runXml.slice(0, existing.start) + node + runXml.slice(existing.end)
+  if (!node) return runXml
+  // CT_TextCharacterProperties: ln, the fill group and the effect list come before highlight
+  const before = (name: string) =>
+    name === 'a:ln' || FILL_TAGS.has(name) || name === 'a:effectLst' || name === 'a:effectDag'
+  const at = children.filter((c) => before(c.name)).pop()?.end ?? rPr.innerStart
+  return runXml.slice(0, at) + node + runXml.slice(at)
 }
 
 /** <a:hlinkClick> for the model's rId (empty when none). */
@@ -889,11 +942,12 @@ function defRPrXml(d: ParagraphDefaultRunProps): string {
 
 function generateRunXml(r: TextRun): string {
   if (r.rawXml) return r.rawXml
-  // Soft-break sentinel → <a:br/>; embedded "\n" in text (new editor Shift+Enter input) splits into alternating run+br
+  // Soft-break sentinel → <a:br/>; embedded line endings in text (new editor Shift+Enter input) splits into alternating run+br
   if (isSoftBreakRun(r)) return '<a:br/>'
-  if (r.text.includes('\n') && !r.field) {
+  // CRLF (Windows) and a lone CR (old Mac) are line breaks too; a raw CR left in <a:t> reads back as an extra break
+  if (/[\r\n]/.test(r.text) && !r.field) {
     return r.text
-      .split('\n')
+      .split(/\r\n|\r|\n/)
       .map((part) => (part ? generateRunXml({ ...r, text: part }) : ''))
       .join('<a:br/>')
   }

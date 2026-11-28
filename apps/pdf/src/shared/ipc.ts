@@ -1,7 +1,10 @@
-import type { AiPanelPrefs } from '@genoffice/ui'
+import type { AiPanelPrefs, AutoSaveDefault } from '@genoffice/ui'
 import type { Lang } from '@genoffice/i18n'
 import type { AiSettings, AiStreamChunk, AiStreamRequest } from '@genoffice/ai-provider'
 import type { SubscriptionApi } from './subscription-api'
+import type { PrintLayoutBridge } from '@genoffice/electron-utils/print-layout-bridge'
+import type { PrintDuplex, PrintJobOptions, PrinterInfo } from '@genoffice/electron-utils/print-job'
+export type { PrintDuplex, PrintJobOptions, PrinterInfo }
 import type { DocumentTree, InlineRun } from '../../../../packages/pdf-structure/src/tree/types'
 import type { PageFingerprint } from '../../../../packages/pdf-structure/src/tree/extract'
 import type { MarkdownWarning } from '../../../../packages/pdf-structure/src/markdown/write'
@@ -15,6 +18,7 @@ import type {
   JobStatus,
   TranslationBlockEntry,
   TranslationBlockInput,
+  TranslationMode,
 } from '../../../../packages/pdf-structure/src/store/store'
 import type {
   HighlightBlockEntry,
@@ -26,16 +30,43 @@ import type {
   PassageCardInput,
 } from '../../../../packages/pdf-structure/src/store/reading'
 import type { TranslationBlockKey } from '../../../../packages/pdf-structure/src/store/keys'
+import type {
+  SplitBookmarkEntry,
+  SplitFixedKind,
+  SplitMode,
+  SplitNamingPattern,
+  SplitOutputOptions,
+  SplitPartPlan,
+  SplitPlanRequest,
+  SplitRange,
+  SplitSizeUnit,
+} from './split-plan'
+export type {
+  SplitBookmarkEntry,
+  SplitFixedKind,
+  SplitMode,
+  SplitNamingPattern,
+  SplitOutputOptions,
+  SplitPartPlan,
+  SplitPlanRequest,
+  SplitRange,
+  SplitSizeUnit,
+}
 
 /**
  * The PDF tools window's tasks the ribbon's "PDF tools" menu opens with the
  * view's file (decision 0030); the shell checks the name again.
  */
 export const PDF_TOOLS_HANDOFF = [
+  'organize',
+  'interleave',
   'blankPages',
   'duplex',
   'overlay',
   'stripAnnots',
+  'ocr',
+  'pdfToImages',
+  'convertFromPdf',
   'toText',
   'compress',
   'encrypt',
@@ -47,7 +78,11 @@ export type PdfToolsHandoffTool = (typeof PDF_TOOLS_HANDOFF)[number]
 export const PDF_CHANNELS = {
   consumePending: 'pdf:consume-pending',
   readFile: 'pdf:read-file',
+  readFileChunk: 'pdf:read-file-chunk',
+  decryptPdf: 'pdf:decrypt',
   save: 'pdf:save',
+  pickAttachmentFile: 'pdf:pick-attachment-file',
+  exportAttachment: 'pdf:export-attachment',
   requestRedactionCopy: 'pdf:request-redaction-copy',
   autoRename: 'pdf:auto-rename',
   isUntitled: 'pdf:is-untitled',
@@ -64,19 +99,36 @@ export const PDF_CHANNELS = {
   pagePreviewPng: 'pdf:page-preview-png',
   extractPages: 'pdf:extract-pages',
   insertPdf: 'pdf:insert-pdf',
+  copyPages: 'pdf:copy-pages',
+  pastePages: 'pdf:paste-pages',
+  copiedPageCount: 'pdf:copied-page-count',
+  compareReadPdf: 'pdf:compare-read-pdf',
+  compareReadOpen: 'pdf:compare-read-open',
+  reduceFileSize: 'pdf:reduce-file-size',
   insertBlankPage: 'pdf:insert-blank-page',
   splitPdf: 'pdf:split-pdf',
+  splitPdfProgress: 'pdf:split-pdf-progress',
+  splitPdfCancel: 'pdf:split-pdf-cancel',
+  splitDialogRequest: 'pdf:split-dialog-request',
+  takeSplitDialogRequest: 'pdf:take-split-dialog-request',
   mergePdf: 'pdf:merge-pdf',
   mergePages: 'pdf:merge-pages',
   replacePages: 'pdf:replace-pages',
   setPageSize: 'pdf:set-page-size',
   splitPages: 'pdf:split-pages',
   cropPages: 'pdf:crop-pages',
+  restoreFile: 'pdf:restore-file',
   exportImages: 'pdf:export-images',
+  // Save As › PNG page images: the shell picked the name; the renderer draws the pages
+  exportImagesRequest: 'pdf:export-images-request',
   convertOffice: 'pdf:convert-office',
   createDocument: 'pdf:create-document',
   openInPdfTools: 'pdf:open-in-pdf-tools',
   generateImage: 'pdf:generate-image',
+  // a document job of this screen begins / ends (the shell's AI activity); main asks it to stop
+  aiJobBegin: 'pdf:ai-job-begin',
+  aiJobEnd: 'pdf:ai-job-end',
+  aiJobStop: 'pdf:ai-job-stop',
   listDigitalSignatures: 'pdf:list-digital-signatures',
   pickCertificate: 'pdf:pick-certificate',
   listSystemCertificates: 'pdf:list-system-certificates',
@@ -98,8 +150,15 @@ export const PDF_CHANNELS = {
   saveAsRequest: 'pdf:save-as-request',
   saveAsResult: 'pdf:save-as-result',
   saveAsFlow: 'pdf:save-as-flow',
+  // the shell-wide AutoSave default (Settings › General), read by every editor
+  getAutoSaveDefault: 'app:get-auto-save-default',
+  autoSaveDefaultChanged: 'app:auto-save-default-changed',
   printRequest: 'pdf:print-request',
   fileRenamed: 'pdf:file-renamed',
+  // another program changed the open file (issue #405): watch it, notice, reload
+  watchDiskFile: 'pdf:watch-disk-file',
+  diskFileChanged: 'pdf:disk-file-changed',
+  discardForDiskReload: 'pdf:discard-for-disk-reload',
   // crash recovery: copies of unsaved edits in the app data folder (never the file itself)
   recoveryState: 'pdf:recovery-state',
   recoveryWriteCopy: 'pdf:recovery-write-copy',
@@ -146,7 +205,12 @@ export const PDF_CHANNELS = {
   convertDialogRequest: 'pdf:convert-dialog-request',
   convertReleaseTarget: 'pdf:convert-release-target',
   convertOpenResult: 'pdf:convert-open-result',
+  /** before the converter's Markdown dialog: the shell asks while the Markdown editor is off */
+  convertAskBeforeOpen: 'pdf:convert-ask-before-open',
+  /** the annotation list's "Open as Markdown / Word document" (no AI) */
+  annotDocument: 'pdf:annot-document',
   convertRevealResult: 'pdf:convert-reveal-result',
+  authorNameChanged: 'app:author-name-changed',
 } as const
 
 export const VISUAL_SIGNATURE_CONTENT_PREFIX = 'GenOffice visual signature field: '
@@ -311,10 +375,19 @@ export interface SavedSignature {
   data: SignatureData
 }
 
-export type PdfConvertFormat = 'docx' | 'xlsx' | 'pptx'
+export type PdfConvertFormat = 'docx' | 'xlsx' | 'pptx' | 'hwp'
 
 /** the reflowable formats the conversion dialog writes (document-structure jobs) */
 export type PdfReflowFormat = 'md' | 'epub'
+
+/** Shell File menu / Save As → the conversion dialog. `outPath` is a target
+    the shell's own save dialog picked: Save As › Markdown converts to it right
+    away instead of asking for a page range; Save As › EPUB opens the form
+    (page range, book information) with that target already chosen. */
+export interface PdfConvertDialogRequest {
+  format: PdfReflowFormat
+  outPath?: string
+}
 
 /** a converted file and the open PDF it came from (the shell checks the view owns that PDF) */
 export interface PdfConvertOutputRequest {
@@ -340,11 +413,13 @@ export interface CreateDocumentResult {
   /** the created file, when it is written directly (pdf/md); docx opens as a new tab that saves itself */
   path?: string
   error?: string
+  /** the person cancelled (the editor it opens in is off): nothing was made */
+  canceled?: boolean
 }
 
 export type UiTheme = 'light' | 'dark' | 'system'
 
-export type MarkupType = 'highlight' | 'underline' | 'strikeout'
+export type MarkupType = 'highlight' | 'underline' | 'strikeout' | 'squiggly'
 
 /** A text markup to write; quads are 4-point groups in PDF coords (y up) [x1,yTop,x2,yTop,x1,yBottom,x2,yBottom] */
 export interface MarkupInput {
@@ -413,12 +488,14 @@ export type PdfNoteResult =
 
 /** Delete an annotation already saved in the file. Object number is only a lookup
     hint; subtype + rect guard against (and recover from) object renumbering by a rewrite.
-    'note' targets Text (comment) annotations. */
+    'note' targets Text (comment) annotations, 'polygon' Polygon shape annotations. */
 export interface AnnotDeleteInput {
   pageIndex: number
   /** PDF object number (pdf.js annotation id "123R" → 123) */
   objNum: number
-  subtype: MarkupType | 'note'
+  subtype: MarkupType | 'note' | 'polygon'
+  /** Text-markup geometry when rect reflects a synthesized viewer appearance. */
+  quadPoints?: number[]
   /** Annotation /Rect in PDF user space, for fallback matching */
   rect: [number, number, number, number]
   /** /Contents to match. Required identity for notes: every comment of a thread shares
@@ -426,20 +503,26 @@ export interface AnnotDeleteInput {
   contents?: string
 }
 
-/** Reply target: a note (Text) annotation saved in the file. The object number is only a
+/** Reply target: a Text or supported text-markup comment saved in the file. The object number is only a
     lookup hint — pdfium stages that run before pdf-lib may renumber objects — so the
     parent is confirmed by rect + contents at write time. */
 export interface NoteReplyTarget {
+  /** Absent for legacy Text comments. */
+  subtype?: MarkupType | 'note'
+  quadPoints?: number[]
   objNum: number
   rect: [number, number, number, number]
   contents: string
 }
 
-/** Rewrite the /Contents of a note (Text) annotation saved in the file, in place —
+/** Rewrite the /Contents of a Text or supported text-markup comment saved in the file, in place —
     the object keeps its number so saved replies' /IRT chains stay intact (unlike
     delete + re-add). Identity matches like NoteReplyTarget: rect + current contents,
     with the object number as a tie-break hint. */
 export interface NoteEditInput {
+  /** Absent for legacy Text comments. */
+  subtype?: MarkupType | 'note'
+  quadPoints?: number[]
   pageIndex: number
   objNum: number
   rect: [number, number, number, number]
@@ -466,8 +549,46 @@ export type DrawingInput =
     })
   | (DrawBase & { kind: 'rect'; rect: [number, number, number, number] })
   | (DrawBase & { kind: 'ellipse'; rect: [number, number, number, number] })
+  | {
+      /** Hyperlink placed by the user; written as a Link annotation */
+      kind: 'link'
+      pageIndex: number
+      /** PDF user space [x1,y1,x2,y2] */
+      rect: [number, number, number, number]
+      /** External target (http/https/mailto/…); exactly one of url / destPage is set */
+      url?: string
+      /** In-document jump: 1-based page number */
+      destPage?: number
+    }
   | (DrawBase & { kind: 'line'; from: [number, number]; to: [number, number] })
+  | {
+      /** Calibrated measurement: a Line annotation whose label shows the real-world
+          length the session computed (the file stays geometry-only). */
+      kind: 'measure'
+      pageIndex: number
+      color: [number, number, number]
+      width: number
+      from: [number, number]
+      to: [number, number]
+      /** Displayed text, e.g. "2.35 m" — non-empty, ≤ 64 chars */
+      label: string
+    }
   | (DrawBase & { kind: 'arrow'; from: [number, number]; to: [number, number] })
+  | {
+      /** Text insertion mark placed by a click; written as a Caret annotation with
+          its own appearance stream (no viewer synthesises one) */
+      kind: 'caret'
+      pageIndex: number
+      color: [number, number, number]
+      /** PDF user space insertion point */
+      point: [number, number]
+    }
+  | (DrawBase & {
+      /** Closed polygon placed vertex by vertex; stroke-only (no /IC fill) */
+      kind: 'polygon'
+      /** Each corner in PDF user space; at least 3 */
+      vertices: [number, number][]
+    })
   | {
       /** Image signature/stamp placed by the user; written as a Stamp annotation */
       kind: 'image'
@@ -485,7 +606,7 @@ export type DrawingInput =
       color: [number, number, number]
       at: [number, number]
       contents: string
-      /** Annotation author (/T); omitted → 'GenOffice' */
+      /** Annotation author (/T); omitted → the request's annotationAuthor */
       author?: string
       /** Creation time (ms since epoch) → /CreationDate and /M; omitted → save time */
       createdMs?: number
@@ -612,12 +733,37 @@ export interface TextInsertInput {
   align?: 'left' | 'center' | 'right'
   /** Final displayed page rotation; insertion matrix counter-rotates text into screen space. */
   rotate?: number
+  /** Selection-level styles: [start,end) code-unit ranges into text, ascending and
+      non-overlapping (a line break counts as one unit). Each present field overrides the
+      whole-insert value (color / font / fontSize / bold / italic) for its range;
+      each line splits into one text object per distinct style. */
+  styleRuns?: {
+    start: number
+    end: number
+    color?: [number, number, number]
+    font?: string
+    size?: number
+    bold?: boolean
+    italic?: boolean
+  }[]
+  /** Stretch or squeeze every line horizontally to exactly this many pt. The OCR
+      bake fits each run to its recognized box, so selections and search hits sit
+      on the scan's ink instead of a font's natural width. */
+  fitWidth?: number
+  /** PDF text render mode 3 — present, selectable and searchable, never painted.
+      The OCR bake layer's inserts: white glyphs would still show on grey paper,
+      photos and dark headers, and light up under selection. */
+  invisible?: boolean
 }
 
 /** Dry-run match result for one pending text edit */
 export interface TextEditValidation {
   /** null = the edit would apply; string = reason it would be skipped */
   reason: string | null
+  /** The run (or, when it did not match, every text object under the edit rect) is
+      drawn invisible (render mode 3): an OCR layer over a page picture. Rewriting or
+      moving it changes nothing visible, so editors patch the picture instead. */
+  invisible?: true
   /** Ink bounds [x1,y1,x2,y2] of the matched text objects (PDF user space). The renderer's
       edit rect is a pdf.js layout box (font metrics); glyph ink can poke out of it, so the
       preview cover must use the engine's real bounds or remnants of the old run show through */
@@ -630,6 +776,19 @@ export interface TextEditValidation {
   /** Base fill color of the matched run (its first object in reading order), for
       display while editing — a uniformly colored run has no colorRuns to seed from */
   baseColor?: [number, number, number]
+  /** Present when oldText is only part of the matched text objects (the edit rect
+      covers a fragment of a larger run). The engine then rewrites the whole run from
+      its own origin: oldText → newText below, so everything after the fragment moves.
+      [start, oldEnd) is the fragment in oldText, [start, newEnd) its replacement in
+      newText; bounds are the run's ink bounds. Absent for whole-run matches. */
+  run?: {
+    bounds: [number, number, number, number]
+    oldText: string
+    newText: string
+    start: number
+    oldEnd: number
+    newEnd: number
+  }
 }
 
 /** Curated fonts selectable for rebuilt text runs. Single-face .ttf on every platform we
@@ -667,6 +826,10 @@ export type ImageEditInput =
       /** Final display rotation of the page (0/90/180/270); the image content is
           counter-rotated so it shows upright on rotated pages */
       rotate?: number
+      /** Place it right above the topmost picture under rect, whatever the page
+          draws before or after that picture (a scan's ink patch: over the scan,
+          under any text). `layer` applies when no picture lies under rect. */
+      overPicture?: true
     }
   | {
       kind: 'transformImage'
@@ -821,6 +984,36 @@ export interface BlankPageInput {
   height: number
 }
 
+/** What a reader may do with a protected document (§7.6.3.2 Table 24, grouped) */
+export interface PdfPermissions {
+  printing: boolean
+  modifying: boolean
+  annotating: boolean
+  copying: boolean
+}
+
+/** Password protection carried on a save: the source is opened with the user
+    password and the output is written back under the same configuration. */
+export interface PdfEncryptionInput {
+  userPassword: string
+  /** who may lift the limits; defaults to the user password in the UI */
+  ownerPassword: string
+  permissions: PdfPermissions
+}
+
+/** An embedded file to add on the next save */
+export interface PdfAttachmentAdd {
+  name: string
+  bytesBase64: string
+  description?: string
+}
+
+/** Embedded-file edits for the next save: removals run first, then additions */
+export interface PdfAttachmentOps {
+  add?: PdfAttachmentAdd[]
+  remove?: string[]
+}
+
 export interface SavePdfRequest {
   path: string
   /**
@@ -837,7 +1030,24 @@ export interface SavePdfRequest {
    * `strip` leaves comment annotations out (links and form fields stay).
    */
   annotations?: 'keep' | 'flatten' | 'strip'
+  /** Present while the session works on a password-protected document: the source
+      bytes are opened with the user password and the output is re-protected. */
+  encryption?: PdfEncryptionInput
+  /**
+   * true when this save writes the protection in `encryption` (a dialog change),
+   * false when the source file's own /Encrypt entries are kept: the session
+   * usually holds only one of the two passwords, and re-deriving the key would
+   * replace both. Omitted by callers that always write `encryption`.
+   */
+  protectionDirty?: boolean
+  /** Password of the file currently on disk, when it is protected — needed even when
+      this save writes plain (protection removed): a password change makes it differ
+      from `encryption.userPassword`. */
+  decryption?: { userPassword: string }
   markups: MarkupInput[]
+  /** Author (/T) of the markups and drawings this save adds; a note keeps its own
+      author when it has one. Omitted → 'GenOffice' */
+  annotationAuthor?: string
   /** Saved markup annotations to remove (applied before every other stage) */
   annotDeletes?: AnnotDeleteInput[]
   drawings: DrawingInput[]
@@ -875,6 +1085,24 @@ export interface SavePdfRequest {
    * direct save omits this and asks.
    */
   auto?: boolean
+  /** Full bookmark-tree replacement, written when the user edited the outline.
+   * Every entry must carry an explicit page target (0-based index); entries
+   * the writer cannot rebuild exactly make the save refuse the replacement
+   * (the file's own /Outlines stay untouched). */
+  outline?: OutlineEntryInput[]
+
+  /** Embedded-file edits, applied after every content stage */
+  attachments?: PdfAttachmentOps
+}
+
+/** One bookmark of a replacement outline; children nest one level deeper */
+export interface OutlineEntryInput {
+  title: string
+  /** 0-based page index the bookmark jumps to */
+  pageIndex: number
+  /** Vertical position on the page, PDF user space; null keeps the default */
+  top?: number | null
+  children?: OutlineEntryInput[]
 }
 
 /** Outcome of one recovery copy write ('failed' makes the renderer skip a few rounds) */
@@ -935,6 +1163,29 @@ export interface InsertPdfRequest {
 export type InsertPdfResult =
   { ok: true; insertedCount: number } | { ok: true; canceled: true } | { ok: false; error: string }
 
+/** Copy pages of the open document into the app's page clipboard (main process); no file is written */
+export interface CopyPagesRequest {
+  /** The view's file with its pending edits, as a save would send them */
+  source: SavePdfRequest
+  /** Positions in the document as displayed (after the pending order and deletions) */
+  pages: number[]
+}
+
+/** `protected`: a password-protected document's pages are not copied */
+export type CopyPagesResult =
+  { ok: true; count: number } | { ok: false; error: string; protected?: true }
+
+/** Insert the copied pages after a page of the current file and write back immediately — no dialog */
+export interface PastePagesRequest {
+  path: string
+  /** Insert after this page index of the file as saved; -1 means front of the document */
+  afterPageIndex: number
+}
+
+/** insertedCount 0: nothing has been copied */
+export type PastePagesResult =
+  { ok: true; insertedCount: number } | { ok: false; error: string; protected?: true }
+
 /** Insert a blank page (sized like the neighboring page) and write back immediately — no dialog */
 export interface InsertBlankPageRequest {
   path: string
@@ -944,16 +1195,27 @@ export interface InsertBlankPageRequest {
 
 export type InsertBlankPageResult = { ok: true } | { ok: false; error: string }
 
-/** Split the file into chunks of chunkSize pages: main shows a folder picker and writes one PDF per chunk */
+/** Split the file by plan (ranges, fixed, bookmarks, maxSize) or legacy chunkSize */
 export interface SplitPdfRequest {
   path: string
-  chunkSize: number
-  /** Base for output file names: <baseName>-1.pdf, <baseName>-2.pdf, … */
+  /** Legacy fixed chunk size (kept for AI tool and backwards compatibility) */
+  chunkSize?: number
+  /** Structured split plan (ranges, fixed, bookmarks, maxSize) */
+  plan?: SplitPlanRequest
+  /** Base for output file names */
   baseName: string
+  /** Output naming pattern and subfolder options */
+  output?: SplitOutputOptions
 }
 
 export type SplitPdfResult =
-  | { ok: true; savedDir: string; count: number }
+  | {
+      ok: true
+      savedDir: string
+      count: number
+      firstPath?: string
+      oversizedPages?: number[]
+    }
   | { ok: true; canceled: true }
   | { ok: false; error: string }
 
@@ -995,6 +1257,14 @@ export type ReplacePagesResult =
   | { ok: true; canceled: true }
   | { ok: false; error: string }
 
+/** The file put back as it was around a change written in place (Undo and Redo of that change) */
+export interface RestoreFileRequest {
+  path: string
+  bytes: ArrayBuffer
+}
+
+export type RestoreFileResult = { ok: true } | { ok: false; error: string }
+
 /** Resize all pages to a target paper size (points), content scaled to fit; written back in place */
 export interface SetPageSizeRequest {
   path: string
@@ -1025,13 +1295,18 @@ export interface CropPagesRequest {
 
 export type CropPagesResult = { ok: true } | { ok: false; error: string }
 
-/** Export pages as PNG: renderer rasterizes the bitmaps, main process shows a dialog and writes to disk */
+/** Export pages as PNG or JPEG: renderer rasterizes the bitmaps, main process shows a dialog and writes to disk */
 export interface ExportImagesRequest {
-  /** base64 PNGs (without the data: prefix), in page order */
+  /** base64 PNGs or JPEGs (without the data: prefix), in page order, matching format */
   images: string[]
   /** 1-based page numbers, same length as images, used for file names */
   pageNumbers: number[]
   baseName: string
+  /** Image encoding; anything other than 'jpg' falls back to png */
+  format: 'png' | 'jpg'
+  /** Save As › PNG page images: write to the name the shell's save dialog picked
+      for this view (numbered per page) instead of asking for a folder */
+  saveAs?: boolean
 }
 
 export type ExportImagesResult =
@@ -1158,6 +1433,8 @@ export interface PdfStructureEpubOptions {
   uiLanguage?: string
   /** alt text of a page kept as a picture; `{page}` is replaced by the page number */
   pageImageAlt?: string
+  /** start each original page on a new screen (one XHTML file per page) */
+  pageBreaks?: boolean
 }
 
 export interface PdfStructureConvertRequest extends PdfStructureSource, PdfStructureJobRef {
@@ -1261,6 +1538,9 @@ export interface PdfStructureApi {
 // ── result store (window.pdfApi.store) ──
 // Document hashes are accepted only after the main process computed them for
 // this view (docHash, migrate, or a structure job's answer).
+// A translation call or write takes an optional `mode` (TranslationMode):
+// left out it is 'translate' and reaches the plain translation as before;
+// 'easy' reaches the easy explanation kept apart in the same store.
 
 /** a translation as stored, blocks in a plain list */
 export interface PdfStoredTranslation {
@@ -1279,13 +1559,39 @@ export type PdfStoreWriteRequest =
       provider?: string
       model?: string
     }
-  | { kind: 'translationMeta'; docHash: string; lang: string; provider: string; model: string }
-  | { kind: 'translationBlocks'; docHash: string; lang: string; blocks: TranslationBlockInput[] }
-  | { kind: 'deleteTranslation'; docHash: string; lang: string }
-  /** the record is found by (kind, key): `lang`, or `runId` for 'highlight' (JobRecordInput) */
+  | {
+      kind: 'translationMeta'
+      docHash: string
+      lang: string
+      provider: string
+      model: string
+      mode?: TranslationMode
+    }
+  | {
+      kind: 'translationBlocks'
+      docHash: string
+      lang: string
+      blocks: TranslationBlockInput[]
+      mode?: TranslationMode
+    }
+  | { kind: 'deleteTranslation'; docHash: string; lang: string; mode?: TranslationMode }
+  /**
+   * the record is found by (kind, key): `lang`, or `runId` for 'highlight'
+   * (JobRecordInput); `job.mode` 'easy' keeps an easy explanation's record apart
+   */
   | { kind: 'job'; docHash: string; job: JobRecordInput }
-  /** `lang` for translate / translate-page / summary, `runId` for highlight, neither for ai-read */
-  | { kind: 'heartbeat'; docHash: string; job: JobKind; lang?: string; runId?: string }
+  /**
+   * `lang` for translate / translate-page / summary, `runId` for highlight,
+   * neither for ai-read; `mode` 'easy' for an easy explanation's job
+   */
+  | {
+      kind: 'heartbeat'
+      docHash: string
+      job: JobKind
+      lang?: string
+      runId?: string
+      mode?: TranslationMode
+    }
   /** write (or replace) a passage card; the store stamps savedAt */
   | { kind: 'passage'; docHash: string; card: PassageCardInput }
   | { kind: 'deletePassage'; docHash: string; id: string }
@@ -1310,9 +1616,15 @@ export type PdfStoreWriteRequest =
       lang: string
       key: TranslationBlockKey
       text: string
+      mode?: TranslationMode
     }
   /** "translate again from the start" keeping the edits; answers `removed` */
-  | { kind: 'deleteTranslationExceptEdited'; docHash: string; lang: string }
+  | {
+      kind: 'deleteTranslationExceptEdited'
+      docHash: string
+      lang: string
+      mode?: TranslationMode
+    }
 
 /** what a store write answers besides `ok` */
 export interface PdfStoreWriteResult {
@@ -1341,11 +1653,15 @@ export interface PdfStoreMigrateResult {
   highlightBlocks?: number
   /** insights entries moved; present only when some were */
   insights?: number
+  /** easy explanation blocks moved; present only when some were */
+  easyBlocks?: number
+  /** easy explanation languages that received anything; present only when some did */
+  easyLanguages?: string[]
 }
 
 /** what deleting the document's stored results also removes (the confirmation names it) */
 export interface PdfStoreDeleteCounts {
-  /** translation blocks a person edited, in every language */
+  /** blocks a person edited, in every language, of the translations and the easy explanations */
   editedTranslationBlocks: number
   passages: number
 }
@@ -1367,12 +1683,20 @@ export interface PdfStoreApi {
   /** result-store key of the open file's current bytes */
   docHash(path: string): Promise<PdfStructureOutcome<{ docHash: string }>>
   aiReadPages(docHash: string): Promise<PdfStructureOutcome<{ pages: AiReadPageEntry[] }>>
-  translations(docHash: string): Promise<PdfStructureOutcome<{ langs: string[] }>>
+  /** languages of the stored translations, or of the easy explanations with `mode` 'easy' */
+  translations(
+    docHash: string,
+    mode?: TranslationMode,
+  ): Promise<PdfStructureOutcome<{ langs: string[] }>>
   translation(
     docHash: string,
     lang: string,
+    mode?: TranslationMode,
   ): Promise<PdfStructureOutcome<{ translation: PdfStoredTranslation | null }>>
-  /** not complete (stopped, or running elsewhere): the source of the resume offer */
+  /**
+   * not complete (stopped, or running elsewhere): the source of the resume
+   * offer. Easy explanations' records come too, each with `mode: 'easy'`.
+   */
   unfinishedJobs(docHash: string): Promise<PdfStructureOutcome<{ jobs: JobStatus[] }>>
   write(request: PdfStoreWriteRequest): Promise<PdfStructureOutcome<PdfStoreWriteResult>>
   /** after an in-app save: carry results and job records to the new hash */
@@ -1406,9 +1730,10 @@ export interface PdfStoreApi {
   pageFingerprints(
     request: PdfStorePageFingerprintsRequest,
   ): Promise<PdfStructureOutcome<{ docHash: string; fingerprints: string[] }>>
-  /** stored translation languages, most recently written first */
+  /** stored translation languages (easy explanations' with `mode` 'easy'), most recently written first */
   translationRecency(
     docHash: string,
+    mode?: TranslationMode,
   ): Promise<PdfStructureOutcome<{ langs: PdfTranslationRecency[] }>>
 }
 
@@ -1422,9 +1747,19 @@ export const AI_CHANNELS = {
   streamChunk: 'ai:stream-chunk',
   streamCancel: 'ai:stream-cancel',
   imageSearch: 'ai:image-search',
+  webSearch: 'ai:web-search',
   readUrl: 'ai:read-url',
   fetchImage: 'ai:fetch-image',
 } as const
+
+/** One web search for the AI (the shared ai:web-search handler) */
+export interface WebSearchResult {
+  answer?: string
+  results: Array<{ title: string; url: string; snippet: string }>
+  method: string
+  /** failure reason when method === 'error' */
+  error?: string
+}
 
 export interface ImageSearchResponse {
   images: Array<{
@@ -1458,6 +1793,31 @@ export type ReadUrlResult =
   | { ok: false; error: string; errorCode: string }
 
 /** API exposed by preload to the renderer (window.pdfApi) */
+/** Another program changed the open file (`unchanged` clears an earlier notice) */
+export interface PdfDiskFileChange {
+  path: string
+  kind: 'changed' | 'missing' | 'unchanged'
+}
+
+/**
+ * The PDF editor's part of an advanced print request (`pdf:print-layout-*`):
+ * which saved file, which 1-based pages (null: all), and whether annotations
+ * are baked in or left out.
+ */
+export interface PdfPrintLayoutEditor {
+  path: string
+  pages: number[] | null
+  includeAnnotations: boolean
+}
+
+/**
+ * The error `pdf:print-layout-save` answers for a file with permission
+ * restrictions: its arranged result would be a copy without them, so it is
+ * never saved (printing it stays allowed). The screen shows its own wording.
+ */
+export const PDF_PRINT_SAVE_RESTRICTED =
+  'pdf: a PDF with permission restrictions cannot be saved as an arranged PDF'
+
 export interface PdfApi {
   /** Take the pdf path pending for this view (queued at tab creation); null if none */
   consumePending(): Promise<string | null>
@@ -1465,6 +1825,77 @@ export interface PdfApi {
   openSourcePath(path: string): Promise<void>
   /** Read pdf bytes. Only paths granted to this view are allowed */
   readFile(path: string): Promise<ArrayBuffer>
+  /** one slice of a granted file, with the file's size so the reader loop
+   *  needs no separate stat: a 42 MB one-shot ArrayBuffer over IPC has
+   *  killed renderers before first paint on Windows (genoffice#2366) */
+  readFileChunk(
+    path: string,
+    start: number,
+    end: number,
+  ): Promise<{ data: Uint8Array; fileSize: number }>
+  /** Open a password-protected document for editing: plain bytes, the /P the file
+      carried, whether a password was needed at all (false: owner-only file) and
+      which password opened it (the owner's ignores the /P limits) */
+  decryptPdf(
+    bytes: Uint8Array,
+    password: string,
+  ): Promise<
+    | {
+        ok: true
+        bytes: Uint8Array
+        permissions: PdfPermissions
+        neededPassword: boolean
+        unlockedAs: 'user' | 'owner'
+      }
+    | { ok: false; reason: 'wrong-password' | string }
+  >
+  /** Pick a second document for Compare and read its per-page text (the pick is
+      main-side; no grant and no bytes travel to the render side) */
+  compareReadPdf(): Promise<
+    | { ok: true; name: string; pageCount: number; pages: string[] }
+    | { ok: false; canceled: true }
+    | { ok: false; reason: string }
+  >
+  /** The open document's own per-page text, extracted main-side by the same
+      pdfium engine as the picked side — two engines break lines differently,
+      and the diff would report phantom changes on identical files */
+  compareReadOpen(
+    path: string,
+    password?: string,
+  ): Promise<
+    { ok: true; name: string; pageCount: number; pages: string[] } | { ok: false; reason: string }
+  >
+  /** Ask for a file to embed (open dialog); the bytes come back base64-encoded */
+  pickAttachmentFile(): Promise<
+    | { ok: true; name: string; bytesBase64: string }
+    | { ok: false; cancelled: true }
+    | { ok: false; reason: string }
+  >
+  /** Save an embedded file's bytes to a user-chosen path (save dialog defaults to its name) */
+  exportAttachment(
+    path: string,
+    name: string,
+    bytesBase64: string,
+  ): Promise<
+    | { ok: true; targetPath: string }
+    | { ok: false; cancelled: true }
+    | { ok: false; reason: string }
+  >
+  /** Reduce file size: re-compress streams and downsample oversized Flate images.
+      The picked save target (main-side dialog) receives the shrunk copy; the open
+      document is untouched and reloads from the target when the caller asks. */
+  reduceFileSize(path: string): Promise<
+    | {
+        ok: true
+        targetPath: string
+        bytesBefore: number
+        bytesAfter: number
+        streamsRecompressed: number
+        imagesDownsampled: number
+      }
+    | { ok: false; canceled: true }
+    | { ok: false; reason: string }
+  >
   /** Write markups/form values/page ops back to the original file (pdf-lib, content streams untouched); path grants same as readFile. With targetPath set (Save As), the original is only read and the result goes to targetPath */
   save(request: SavePdfRequest): Promise<SavePdfResult>
   /** Creates a redacted working copy on first apply; subsequent applies save that copy in place. */
@@ -1474,7 +1905,7 @@ export interface PdfApi {
       untitled name, so user-chosen names are never touched. */
   autoRename(path: string, baseName: string): Promise<PdfAutoRenameResult>
   /** Whether the file is a shell-created blank still carrying its untitled name
-      (gates the after-AI-run silent save; a PDF the user merely opened must never auto-write) */
+      (gates the after-AI-run silent save) */
   isUntitled(path: string): Promise<boolean>
   /** Whether the file is an untitled copy (a skill template's): its first save asks where */
   isUntitledCopy?(path: string): Promise<boolean>
@@ -1514,39 +1945,72 @@ export interface PdfApi {
   pagePreviewPng(request: PagePreviewRequest): Promise<PagePreviewResult | null>
   extractPages(request: ExtractPagesRequest): Promise<ExtractPagesResult>
   insertPdf(request: InsertPdfRequest): Promise<InsertPdfResult>
+  /** Page clipboard of the thumbnail sidebar; absent in a build without it */
+  copyPages?(request: CopyPagesRequest): Promise<CopyPagesResult>
+  pastePages?(request: PastePagesRequest): Promise<PastePagesResult>
+  /** How many pages the page clipboard holds (0 = nothing copied) */
+  copiedPageCount?(): Promise<number>
   insertBlankPage(request: InsertBlankPageRequest): Promise<InsertBlankPageResult>
   splitPdf(request: SplitPdfRequest): Promise<SplitPdfResult>
+  cancelSplitPdf?(): Promise<void>
+  onSplitPdfProgress?(handler: (progress: { done: number; total: number }) => void): () => void
+  onSplitDialogRequest?(handler: () => void): () => void
+  takeSplitDialogRequest?(): Promise<boolean>
   mergePdf(request: MergePdfRequest): Promise<MergePdfResult>
   mergePages(request: MergePagesRequest): Promise<MergePagesResult>
   replacePages(request: ReplacePagesRequest): Promise<ReplacePagesResult>
   setPageSize(request: SetPageSizeRequest): Promise<SetPageSizeResult>
   splitPages(request: SplitPagesRequest): Promise<SplitPagesResult>
   cropPages(request: CropPagesRequest): Promise<CropPagesResult>
+  restoreFile(request: RestoreFileRequest): Promise<RestoreFileResult>
   exportImages(request: ExportImagesRequest): Promise<ExportImagesResult>
+  /** Shell Save As › PNG page images → draw every page and export it with `saveAs: true` */
+  onExportImagesRequest(handler: () => void): () => void
   /** Convert the current PDF to Word / Excel / PowerPoint via the shell's local conversion flows */
   convertOffice(format: PdfConvertFormat): Promise<void>
-  /** Shell File menu → open the Markdown / EPUB conversion dialog */
-  onConvertDialogRequest(handler: (format: PdfReflowFormat) => void): () => void
+  /** Shell File menu / Save As → open the Markdown / EPUB conversion dialog */
+  onConvertDialogRequest(handler: (request: PdfConvertDialogRequest) => void): () => void
   /** Before a Markdown job writes: close a Markdown tab showing that file (its unsaved-changes guard applies). False = still open */
   releaseConvertTarget(request: PdfConvertOutputRequest): Promise<boolean>
+  /**
+   * The converter's Markdown entry, before its dialog opens: the shell asks
+   * while the editor the result opens in is off ('cancel' = do nothing; a
+   * result made with 'file-only' is shown in its folder). 'open' without a shell.
+   */
+  askBeforeConvert(request: {
+    source: string
+    format: PdfReflowFormat
+  }): Promise<'open' | 'file-only' | 'cancel'>
   /** Open a converted Markdown file in a Markdown tab (same routing as File > Open) */
   openConvertResult(request: PdfConvertOutputRequest): Promise<boolean>
   /** Show a converted file (or an export folder's first file) in the system file manager */
   revealConvertResult(request: PdfConvertOutputRequest): Promise<boolean>
   /** AI create_document: build a new standalone file in the default folder and open it in a new tab */
   createDocument(request: CreateDocumentRequest): Promise<CreateDocumentResult>
+  /**
+   * The annotation list's "Open as Markdown / Word document": not an AI
+   * document. While the editor it opens in is off the shell asks first
+   * (editor choice spec 7.3); "create the file only" writes it and shows it
+   * in its folder.
+   */
+  openAnnotDocument(request: CreateDocumentRequest): Promise<CreateDocumentResult>
   /** open the shell's PDF tools window on `tool` with this view's file picked (false: no host) */
   openInPdfTools(path: string, tool: PdfToolsHandoffTool): Promise<boolean>
   /** Web image search for AI tools (app-wide ai:image-search handler) */
   imageSearch(query: string, maxResults?: number): Promise<ImageSearchResponse>
+  /** Web search for AI tools (app-wide ai:web-search handler) */
+  webSearch(query: string, maxResults?: number): Promise<WebSearchResult>
   /** Read one web page as text for AI tools (app-wide ai:read-url handler), paged by offset */
   readUrl(url: string, offset?: number): Promise<ReadUrlResult>
   /** Download an image URL in the main process (SSRF-guarded, avoids CORS); null on failure */
   fetchImage(url: string): Promise<{ base64: string; mime: string } | null>
-  /** AI image generation (Codex subscription or a media API key); returns a downloadable URL or an error message */
-  generateImage(op: { prompt: string; aspectRatio?: string }): Promise<{
+  /** AI image generation (Codex subscription or a media API key); returns a downloadable URL or an error message.
+      model: only when the user named one; the main process uses it if the image route offers it */
+  generateImage(op: { prompt: string; aspectRatio?: string; model?: string }): Promise<{
     url?: string
     error?: string
+    /** something the request asked for that the app passes on to the model with the URL */
+    note?: string
   }>
   /** Read and verify the digital (certificate) signatures embedded in a granted PDF */
   listDigitalSignatures(path: string): Promise<PdfSignatureInfo[]>
@@ -1570,7 +2034,7 @@ export interface PdfApi {
   addSavedSignature(data: SignatureData): Promise<SavedSignature[]>
   /** Delete one saved signature by id; returns the updated list */
   removeSavedSignature(id: string): Promise<SavedSignature[]>
-  /** OS account name, used as the default author of new note comments; '' when unavailable */
+  /** Settings → General user name (the OS account name when unset), used as the default author of new note comments */
   getUsername(): Promise<string>
   /** The /Subj of the markup annotations in a granted file (accepted AI highlights' categories) */
   annotSubjects(path: string): Promise<PdfAnnotSubject[]>
@@ -1580,6 +2044,7 @@ export interface PdfApi {
   noteInsert(request: PdfNoteInsertRequest): Promise<PdfNoteResult>
   /** this view's PDF has no path the person saved yet (a new blank before its first save): the note buttons wait */
   noteUnsaved(): Promise<boolean>
+  onUsernameChanged(handler: (name: string) => void): () => void
   /** Mirror unsaved-changes state to the main process; drives the save prompt before closing a tab/window */
   setDirty(dirty: boolean): void
   /** Main process asks for a save (close prompt, menu Save, export flows) and waits for sendCloseSaveResult.
@@ -1592,10 +2057,21 @@ export interface PdfApi {
   sendSaveAsResult(ok: boolean | 'cancelled'): void
   /** True while the shell's Save As flow (dialog included) is open — the renderer pauses autosave, since the dialog's window blur would otherwise trigger a save into the original */
   onSaveAsFlow(handler: (inFlight: boolean) => void): () => void
+  /** The shell-wide AutoSave default; a per-window override is kept in localStorage */
+  getAutoSaveDefault(): Promise<AutoSaveDefault>
+  onAutoSaveDefaultChanged(handler: (value: AutoSaveDefault) => void): () => void
   /** Shell menu Print → renderer runs its print flow (save, rasterize, system dialog) */
   onPrintRequest(handler: () => void): () => void
+  /** Advanced print: arranged preview, print and PDF save, built in the main process from the saved file */
+  printLayout: PrintLayoutBridge<PdfPrintLayoutEditor>
   /** The file was renamed or moved from the shell (home Folders / Files pane); the viewer follows the new path */
   onFileRenamed(handler: (newPath: string) => void): () => void
+  /** Watch the file this view just read; another program's change arrives via onDiskFileChanged */
+  watchDiskFile?(path: string): Promise<boolean>
+  /** The watched file changed, went missing, or is back to what the view shows */
+  onDiskFileChanged?(handler: (change: PdfDiskFileChange) => void): () => void
+  /** Before reloading from disk: drop the restored recovery copy that stands in for the file */
+  discardForDiskReload?(path: string): Promise<boolean>
   /** Whether the view shows `path` from a recovery copy not saved since (the tab starts with unsaved changes) */
   recoveryState?(path: string): Promise<{ unsaved: boolean }>
   /** Write the recovery copy: what a save of these edits would write, into the app data folder only */
@@ -1642,4 +2118,19 @@ export interface PdfApi {
    */
   aiStreamCancel(requestId: string, scope?: 'request'): Promise<void>
   onAiStream(handler: (chunk: AiStreamChunk) => void): () => void
+  /** a document job tells the main process it runs (absent in an older preload) */
+  aiJob?: ScreenAiJobBridge
+}
+
+/**
+ * How a document job of this screen tells the main process it runs, so the
+ * shell can count it and stop it when AI is turned off.
+ */
+export interface ScreenAiJobBridge {
+  /** a job begins: null to go on, or the refusal to show (AI is turned off) */
+  begin(jobId: string): Promise<string | null>
+  /** the job ended however it ended */
+  end(jobId: string): void
+  /** the main process asks the job `jobId` to stop */
+  onStop(handler: (jobId: string) => void): () => void
 }

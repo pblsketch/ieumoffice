@@ -16,7 +16,9 @@ import { normalizeOllamaServers } from './ollama-servers'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 
-import { AI_SUBSCRIPTION_PROVIDERS, readUrlSettingsOf } from './providers'
+import { localEndpointFieldsOf } from './local-profile'
+import { aiEffortOf, aiModelEffortsOf } from './effort'
+import { AI_SUBSCRIPTION_PROVIDERS, readUrlSettingsOf, sanitizeSubscriptionOff } from './providers'
 import { AI_PROVIDER_ADAPTERS, normalizeBaseUrl } from './registry'
 import { connectTimeoutMsOf } from './watchdog'
 import type {
@@ -95,10 +97,12 @@ function sanitizeProviderConfig(input: unknown): AiProviderConfig {
   }
   const cliPath = sanitizeCliPath(raw.cliPath)
   if (cliPath !== undefined) config.cliPath = cliPath
-  const effort = raw.effort
-  if (effort === 'low' || effort === 'medium' || effort === 'high') {
-    config.effort = effort
-  }
+  // a level of the fixed list or nothing: the Claude bridge hands it to `--effort`
+  const effort = aiEffortOf(raw.effort)
+  if (effort !== undefined) config.effort = effort
+  // known levels only; the request path reads it, and a save takes the file's table instead
+  const modelEfforts = aiModelEffortsOf(raw.modelEfforts)
+  if (modelEfforts !== undefined) config.modelEfforts = modelEfforts
   const connectTimeoutMs = connectTimeoutMsOf(raw.connectTimeoutMs)
   if (connectTimeoutMs !== undefined) config.connectTimeoutMs = connectTimeoutMs
   if (typeof raw.vision === 'boolean') config.vision = raw.vision
@@ -152,7 +156,6 @@ function sanitizeCustomEndpoints(raw: unknown): AiCustomEndpoint[] {
           .slice(0, MAX_ENDPOINT_MODELS)
           .map((m) => m.slice(0, MAX_MODEL_LENGTH))
       : undefined
-    const effort = e.effort
     out.push({
       id,
       name: String(e.name ?? '').slice(0, MAX_ENDPOINT_NAME_LENGTH),
@@ -160,7 +163,9 @@ function sanitizeCustomEndpoints(raw: unknown): AiCustomEndpoint[] {
       apiKey: config.apiKey,
       model: config.model,
       ...(models && models.length > 0 ? { models } : {}),
-      ...(effort === 'low' || effort === 'medium' || effort === 'high' ? { effort } : {}),
+      ...(config.effort ? { effort: config.effort } : {}),
+      // local-only fields: bounded, and dropped rather than rejecting the endpoint
+      ...localEndpointFieldsOf(e),
       ...(config.connectTimeoutMs !== undefined
         ? { connectTimeoutMs: config.connectTimeoutMs }
         : {}),
@@ -213,6 +218,10 @@ export function sanitizeAiSettings(input: unknown): AiSettings | null {
     }
     settings.meteredAccepted = accepted
   }
+  // what a renderer read from the file rides on its run requests and can only stop more;
+  // a save keeps the stored value (decision 0114: only the main process turns a CLI off or on)
+  const subscriptionOff = sanitizeSubscriptionOff(raw.subscriptionOff)
+  if (subscriptionOff) settings.subscriptionOff = subscriptionOff
   if (typeof raw.headlessSubscriptionEnabled === 'boolean') {
     settings.headlessSubscriptionEnabled = raw.headlessSubscriptionEnabled
   }
@@ -226,6 +235,20 @@ export function sanitizeAiSettings(input: unknown): AiSettings | null {
   }
   if (typeof raw.subscriptionNoticeSeen === 'boolean') {
     settings.subscriptionNoticeSeen = raw.subscriptionNoticeSeen
+  }
+  if (
+    typeof raw.subscriptionNoticeVersion === 'number' &&
+    Number.isInteger(raw.subscriptionNoticeVersion) &&
+    raw.subscriptionNoticeVersion >= 0
+  ) {
+    settings.subscriptionNoticeVersion = raw.subscriptionNoticeVersion
+  }
+  if (
+    typeof raw.pdfSendNoticeSeen === 'number' &&
+    Number.isInteger(raw.pdfSendNoticeSeen) &&
+    raw.pdfSendNoticeSeen > 0
+  ) {
+    settings.pdfSendNoticeSeen = raw.pdfSendNoticeSeen
   }
   // only an explicit false is kept: anything else is the default, on
   if (raw.internetTools === false) settings.internetTools = false

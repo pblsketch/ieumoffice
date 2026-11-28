@@ -1,6 +1,8 @@
 import type { zh } from './zh'
 
 export const de = {
+  appLegacyDocImported:
+    'Die .{ext}-Datei wurde als konvertierte .docx-Kopie geöffnet. Das Original bleibt unverändert; beim Speichern entsteht eine neue .docx-Datei.',
   appScTitle: 'Tastenkombinationen',
   appScFilter: 'Tastenkombination suchen',
   appScNone: 'Keine passenden Tastenkombinationen',
@@ -55,6 +57,7 @@ export const de = {
     'Dieses Dokument enthält vertikalen Text (vorerst horizontal angezeigt; das Speichern ist nicht betroffen)',
   appNewDocCreated:
     'Leeres Dokument erstellt. Beschreiben Sie im KI-Bereich links, was generiert werden soll',
+  appNewDocCreatedNoAi: 'Leeres Dokument erstellt.',
   appNewFailed: 'Erstellen des Dokuments fehlgeschlagen: {error}',
   appSaveFailed: 'Speichern fehlgeschlagen: {error}',
   appAutoSavedAt: 'Automatisch gespeichert ({time})',
@@ -97,6 +100,9 @@ export const de = {
   appPrintRangeAll: 'Alle Seiten',
   appPrintRangeCurrent: 'Aktuelle Seite',
   appPrintRangeCustom: 'Benutzerdefinierter Bereich',
+  appPrintRangeSelection: 'Markierung',
+  appPrintSelectionPreparing: 'Markierung wird auf Seiten verteilt…',
+  appPrintSelectionFailed: 'Die Markierung konnte nicht auf Seiten verteilt werden: {error}',
   appPrintRangeHint: 'z. B. 1,3,5-8',
   appPrintPageCount: '{n} Seiten',
   appPrintNoPages: 'Keine Seiten zum Drucken',
@@ -362,6 +368,9 @@ export const de = {
   appAiBadgeTip: 'Verwendet KI',
   appTranslate: 'Übersetzen',
   appTranslateTo: 'In {lang} übersetzen',
+  appEasyWords: 'In einfachen Worten erklären',
+  appEasyWordsPrompt:
+    'Erkläre den markierten Text auf Deutsch so, dass ihn auch Menschen verstehen, die einfache Sprache brauchen (Kinder, ältere Menschen, Menschen, die Deutsch lernen). Verwende Alltagswörter und kurze Sätze und behalte alle Fakten, Zahlen und Bedingungen bei. Das Dokument nicht ändern: „{text}“',
   redactMenuLabel: 'Auswahl vor der KI verbergen',
   redactDialogDesc:
     'Die Wörter bleiben im Dokument und in der Datei; das Modell sieht nur den Platzhalter. Geben Sie ihm einen Namen.',
@@ -392,6 +401,7 @@ export const de = {
   appLangHindi: 'Hindi',
   appLangTraditionalChinese: 'Traditionelles Chinesisch',
   appLangVietnamese: 'Vietnamesisch',
+  appLangTurkish: 'Türkisch',
   appWrapTextMenu: 'Textumbruch',
   appViewImage: 'Bild anzeigen',
   appSaveImageAs: 'Bild speichern unter…',
@@ -485,6 +495,12 @@ export const de = {
   appLatexPlaceholder: 'z. B. x = \\frac{-b \\pm \\sqrt{b^2-4ac}}{2a}',
   appLatexPreviewHint: 'LaTeX eingeben, um eine Vorschau anzuzeigen',
   appPreviewUnavailable: 'Vorschau kann nicht erstellt werden',
+  appMathTypeConvertNote:
+    'MathType-Formel — beim Speichern wird sie in eine native Word-Formel (OMML) umgewandelt.',
+  appMathTypeConvertOnlyNote:
+    'Diese MathType-Formel enthält Strukturen außerhalb der LaTeX-Teilmenge. Sie kann unter Beibehaltung des Layouts direkt in eine native Word-Formel (OMML) umgewandelt werden.',
+  appMathTypeConvertAction: 'Umwandeln & aktualisieren',
+  appMathTypeEditHint: 'MathType-Formel (Doppelklick zum Bearbeiten oder Umwandeln)',
   appInlineEquationToggle: 'Eingebettete Formel (wird am Cursor eingefügt und fließt mit dem Text)',
   appInsertNewEquation: 'π Neue Formel einfügen (LaTeX)…',
   appEqCircleArea: 'Kreisfläche',
@@ -593,4 +609,13 @@ export const de = {
   appOdtLabelObject: 'Objekt (in Hancom sichtbar)',
   appOdtLabelNotice:
     'Als beschriftete Kästen gezeichnete Objekte können anders aussehen als in Hancom Office.',
+  appMergeSourceLoaded: '{name} geladen ({n} Datensätze)',
+  appMergeWritten: '{n} Dokumente geschrieben',
+  appMergeNothingToWrite: 'Es gibt nichts zu schreiben',
+  appExportingHwp: 'HWP-Dokument wird exportiert…',
+  appExportedHwp: 'HWP-Dokument exportiert: {path}',
+  appExportHwpFailed: 'HWP-Export fehlgeschlagen: {error}',
+  appExportHwpCanceled: 'HWP-Export abgebrochen',
+  appExportHwpReadback:
+    'Dieses Dokument konnte nicht genau als .hwp geschrieben werden. Speichern Sie es als .hwpx.',
 } satisfies Record<keyof typeof zh, string>

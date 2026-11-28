@@ -9,7 +9,8 @@ import type {
   ReadUrlResult,
 } from '../../shared/ipc'
 import { t } from '../i18n/locale'
-import { MIND_MAP_LIMITS, MIND_MAP_TOOL, parseMindMapTree } from './mind-map'
+import { MIND_MAP_LIMITS, MIND_MAP_TOOL, parseMindMapTree } from '@genoffice/agent-core/mind-map'
+import { undoDoubledEscapes } from '@genoffice/agent-core/doubled-escapes'
 import { executeOps, opNames } from './ops'
 import { odtGuardRefusalText, odtToolRefusal, startOdtToolCall } from './odt-tools'
 import { clipExcerpt, repliesOf, resolveCommentAnchor } from './comment-ops'
@@ -508,14 +509,17 @@ export const AGENT_TOOLS: AgentToolDef[] = [
   {
     name: 'insert_image',
     description:
-      'Download a direct image link (an imageUrl from image_search) and insert it into the document (at the cursor / end of document).',
+      'Insert a picture into the document (at the cursor / end of document). Give either url (a direct image link, usually an imageUrl from image_search) or attachment (the exact name of an image file attached to this chat, e.g. one the user made with another tool).',
     inputSchema: {
       type: 'object',
       properties: {
         url: { type: 'string', description: 'direct image link' },
+        attachment: {
+          type: 'string',
+          description: 'exact name of an image file attached to this chat',
+        },
         maxWidthPx: { type: 'integer', description: 'maximum width (px), default 480' },
       },
-      required: ['url'],
     },
   },
   {
@@ -532,6 +536,11 @@ export const AGENT_TOOLS: AgentToolDef[] = [
         aspectRatio: {
           type: 'string',
           description: 'e.g. "1:1", "16:9", "4:3"; omit for the default',
+        },
+        model: {
+          type: 'string',
+          description:
+            'image model name, only when the user named a model; the app uses it if the current image route offers it, otherwise it answers with the models it can use',
         },
         maxWidthPx: { type: 'integer', description: 'maximum width (px), default 480' },
       },
@@ -687,6 +696,18 @@ export interface AiHeaderFooterAccess {
 export interface AiDocExtras {
   styles?: AiStyleAccess
   watermark?: AiWatermarkAccess
+}
+
+/**
+ * Files the person attached to this conversation. The model names one by the exact name
+ * the attachment list shows; only the panel decides which paths exist, so a name the
+ * person did not attach has no path. Used by insert_image to take a picture made by an
+ * outside tool (another CLI, a screenshot, a generator).
+ */
+export interface AiAttachmentAccess {
+  pathOf(name: string): string | null
+  /** exact names of the image files in this chat, for the prompt */
+  names(): string[]
 }
 
 export interface AiCommentsAccess {
@@ -918,6 +939,7 @@ async function executeAsyncTool(
   editor: Editor,
   call: AgentToolCall,
   signal?: AbortSignal,
+  attachments?: AiAttachmentAccess,
 ): Promise<ToolExecution> {
   switch (call.name) {
     case 'web_search': {
@@ -1010,8 +1032,34 @@ async function executeAsyncTool(
     case 'insert_picture':
       return insertPicture(editor, call, signal)
     case 'insert_image': {
+      const attachment = String(call.input.attachment ?? '').trim()
+      if (attachment) {
+        const path = attachments?.pathOf(attachment) ?? null
+        if (!path) {
+          return fail(
+            t('aiSumInsertImage'),
+            `there is no file named "${attachment}" attached to this chat. Attach the image first (or give a direct image link as url).`,
+          )
+        }
+        const read = await window.desktop.readAttachmentImage(path)
+        if (signal?.aborted)
+          return fail(t('aiSumInsertImage'), 'stopped by the user; the image was not inserted')
+        if (!read.ok || !read.base64)
+          return fail(t('aiSumInsertImage'), read.error ?? 'the attached image could not be read')
+        return insertImageBytes(editor, read.base64, Number(call.input.maxWidthPx) || 480, signal, {
+          failLabel: t('aiSumInsertImage'),
+          doneLabel: t('aiSumInsertAttachedImage'),
+          blockLabel: 'Image (attached)',
+        })
+      }
       const url = String(call.input.url ?? '')
-      if (!/^https?:\/\//.test(url)) return fail(t('aiSumInsertImage'), 'invalid url')
+      // file:// = a locally cached/generated image in the app's validated store (the main process only resolves its own UUID files)
+      if (!/^(https?|file):\/\//.test(url)) {
+        return fail(
+          t('aiSumInsertImage'),
+          'give either url (a direct image link) or attachment (the exact name of an image attached to this chat)',
+        )
+      }
       return insertImageFromUrl(editor, url, Number(call.input.maxWidthPx) || 480, signal, {
         failLabel: t('aiSumInsertImage'),
         doneLabel: t('aiSumInsertWebImage'),
@@ -1022,16 +1070,18 @@ async function executeAsyncTool(
       const prompt = String(call.input.prompt ?? '').trim()
       if (!prompt) return fail(t('aiSumGenerateImage'), 'prompt must not be empty')
       const aspectRatio = String(call.input.aspectRatio ?? '').trim()
+      const model = String(call.input.model ?? '').trim()
       const generated = await window.desktop.aiGenerateImage({
         prompt,
         ...(aspectRatio ? { aspectRatio } : {}),
+        ...(model ? { model } : {}),
       })
       if (signal?.aborted)
         return fail(t('aiSumGenerateImage'), 'stopped by the user; the image was not inserted')
       if (!generated.url) {
         return fail(t('aiSumGenerateImage'), generated.error ?? 'image generation failed')
       }
-      return insertImageFromUrl(
+      const inserted = await insertImageFromUrl(
         editor,
         generated.url,
         Number(call.input.maxWidthPx) || 480,
@@ -1042,6 +1092,10 @@ async function executeAsyncTool(
           blockLabel: 'Image (AI)',
         },
       )
+      // the shared tool's remark (e.g. Codex picked the image model) reaches the model
+      return generated.note
+        ? { ...inserted, output: `${inserted.output}\nNote: ${generated.note}` }
+        : inserted
     }
     case 'create_document': {
       const typeRaw = call.input.type === undefined ? 'docx' : String(call.input.type)
@@ -1145,8 +1199,8 @@ async function insertPicture(
 ): Promise<ToolExecution> {
   const summary = t('aiSumInsertPicture')
   const url = String(call.input.url ?? '')
-  if (!/^https?:\/\/|^data:image\//.test(url))
-    return fail(summary, 'url must be an http(s) or data: image URL')
+  if (!/^(https?|file):\/\/|^data:image\//.test(url))
+    return fail(summary, 'url must be an http(s), local cached file:, or data: image URL')
   let float: FloatSpec | undefined
   if (call.input.float !== undefined) {
     const r = resolveFloat(call.input.float)
@@ -1205,14 +1259,25 @@ async function insertImageFromUrl(
   if (signal?.aborted)
     return fail(labels.failLabel, 'stopped by the user; the image was not inserted')
   if (!fetched) return fail(labels.failLabel, 'download failed (the image may not be accessible)')
-  const mime = sniffImageMime(fetched.base64)
+  return insertImageBytes(editor, fetched.base64, maxW, signal, labels)
+}
+
+/** The insertion half, shared by a downloaded picture and one attached to the chat. */
+async function insertImageBytes(
+  editor: Editor,
+  base64: string,
+  maxW: number,
+  signal: AbortSignal | undefined,
+  labels: { failLabel: string; doneLabel: string; blockLabel: string },
+): Promise<ToolExecution> {
+  const mime = sniffImageMime(base64)
   if (!mime) {
     return fail(
       labels.failLabel,
       'unsupported image format (only png/jpg/gif can be embedded) — pick a different image',
     )
   }
-  const dataUrl = `data:${mime};base64,${fetched.base64}`
+  const dataUrl = `data:${mime};base64,${base64}`
   try {
     const natural = await imageSizeOf(dataUrl)
     if (signal?.aborted)
@@ -1220,14 +1285,18 @@ async function insertImageFromUrl(
     const scale = Math.min(1, maxW / natural.width)
     const w = Math.round(natural.width * scale)
     const h = Math.round(natural.height * scale)
-    // The download can take long: user edits made meanwhile must keep the
+    // A download can take long: user edits made meanwhile must keep the
     // freshness baseline stale, so only our own insertion may mark the doc
     // seen. Checked right before the write — there is no async gap after.
     const userEditedDuringFetch = editedExternally(editor)
+    // The editor leaves a picture it just placed selected, and the user may have text
+    // selected: inserting over a selection would replace it (a second AI picture used to
+    // wipe out the first). A non-empty selection is kept and the picture goes after it.
+    const { selection } = editor.state
     editor
       .chain()
       .focus()
-      .insertContent({
+      .insertContentAt(selection.empty ? selection.from : selection.to, {
         type: 'docProtected',
         attrs: {
           docxIndex: null,
@@ -1236,7 +1305,7 @@ async function insertImageFromUrl(
           imageDataUrl: dataUrl,
           imageWidthPx: w,
           imageHeightPx: h,
-          genImage: { base64: fetched.base64, mime, widthPx: w, heightPx: h },
+          genImage: { base64, mime, widthPx: w, heightPx: h },
         },
       })
       .run()
@@ -1249,6 +1318,30 @@ async function insertImageFromUrl(
   } catch {
     return fail(labels.failLabel, 'the image could not be decoded')
   }
+}
+
+/**
+ * The plain-text argument each tool writes as new text, where a line break starts a new
+ * paragraph or line. The text a call looks for (a comment's anchor `text`, `afterText`,
+ * `find`) and HTML arguments are left out: see `undoDoubledEscapes`.
+ */
+const NEW_PLAIN_TEXT: Readonly<Record<string, string>> = {
+  add_comment: 'comment',
+  reply_comment: 'text',
+  insert_footnote: 'text',
+  insert_endnote: 'text',
+  edit_note: 'replace',
+  set_header_footer: 'text',
+  insert_text_box: 'text',
+}
+
+/** The call with a line break the model escaped twice turned back into one. */
+function withDoubledEscapesUndone(call: AgentToolCall): AgentToolCall {
+  const key = NEW_PLAIN_TEXT[call.name]
+  const value = key ? call.input[key] : undefined
+  if (!key || typeof value !== 'string') return call
+  const text = undoDoubledEscapes(value)
+  return text === value ? call : { ...call, input: { ...call.input, [key]: text } }
 }
 
 export function executeTool(
@@ -1264,6 +1357,7 @@ export function executeTool(
   pageSetup?: AiPageSetupAccess,
   extras?: AiDocExtras,
   notes?: AiNotesAccess,
+  attachments?: AiAttachmentAccess,
 ): ToolExecution | Promise<ToolExecution> {
   // an ODT document: switched-off features are refused, and so are edits the
   // editor guard turned away (protected cells, locked placeholders)
@@ -1272,7 +1366,7 @@ export function executeTool(
   startOdtToolCall()
   const result = executeToolUnguarded(
     editor,
-    call,
+    withDoubledEscapesUndone(call),
     numIds,
     track,
     signal,
@@ -1283,6 +1377,7 @@ export function executeTool(
     pageSetup,
     extras,
     notes,
+    attachments,
   )
   const settleOdt = (exec: ToolExecution): ToolExecution => {
     const refused = odtGuardRefusalText()
@@ -1304,6 +1399,7 @@ function executeToolUnguarded(
   pageSetup?: AiPageSetupAccess,
   extras?: AiDocExtras,
   notes?: AiNotesAccess,
+  attachments?: AiAttachmentAccess,
 ): ToolExecution | Promise<ToolExecution> {
   const scope = frozen && frozen.doc === editor.state.doc ? frozen.scope : null
   const staleSummary = staleSummaryOf(call)
@@ -1327,7 +1423,7 @@ function executeToolUnguarded(
     call.name === 'analyze_media' ||
     call.name === 'create_document'
   ) {
-    return executeAsyncTool(editor, call, signal)
+    return executeAsyncTool(editor, call, signal, attachments)
   }
   if (call.name === 'write_document')
     return writeDocument(editor, call, numIds, track, signal, writer)

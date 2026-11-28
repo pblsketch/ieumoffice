@@ -28,7 +28,7 @@ npm run format:check                    # 포맷 확인
 npm run check:theme-colors
 npm run check:no-genspark
 npm run check:english-comments
-npm run check:help-langs                # 21개 언어 문구 대조
+npm run check:help-langs                # 22개 언어 문구 대조
 ```
 
 ## 설치 파일 빌드
@@ -83,5 +83,5 @@ node tools/gen-brand-assets.mjs
 
 - **제품명·정체성**: `packages/i18n/src/product.ts`에서만 바꿉니다.
 - **정보 팝업 문구**: `packages/electron-utils/src/app-menu.ts`의 `ABOUT_TAGLINE`.
-- **첫 실행 Ollama 안내 문구**: `apps/shell/src/renderer/src/i18n/ollama/<언어>.ts`(21개 언어).
+- **첫 실행 Ollama 안내 문구**: `apps/shell/src/renderer/src/i18n/ollama/<언어>.ts`(22개 언어).
 - **업데이트 배포**: `.claude/skills/release-ieumoffice/SKILL.md`와 `docs/releasing.ko.md` 참고.

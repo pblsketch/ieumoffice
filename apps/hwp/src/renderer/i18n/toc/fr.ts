@@ -1,0 +1,115 @@
+import type { zh } from './zh'
+
+export const fr = {
+  tocMenuCreate: 'Créer une table des matières…',
+  tocMenuRefresh: 'Mettre à jour la table des matières',
+  indexMenuMark: 'Marquer une entrée d’index…',
+  indexMenuCreate: 'Créer un index…',
+  indexMenuRefresh: 'Mettre à jour l’index',
+  tocDialogCancel: 'Annuler',
+  tocDialogClose: 'Fermer',
+  tocLayoutLabel: 'Disposition',
+  tocLayoutDottedTab: 'Points de suite',
+  tocLayoutTable: 'Tableau sans bordure',
+  tocCreateTitle: 'Créer une table des matières',
+  tocCreateConfirm: 'Créer',
+  tocKindLabel: 'Type',
+  tocKindBody: 'Contenu du document',
+  tocKindTable: 'Liste des tableaux',
+  tocKindFigure: 'Liste des figures',
+  tocKindEquation: 'Liste des équations',
+  tocTitleLabel: 'Titre',
+  tocTitlePlaceholder: 'Laisser vide pour omettre le titre',
+  tocDefaultTitleBody: 'Table des matières',
+  tocDefaultTitleTable: 'Liste des tableaux',
+  tocDefaultTitleFigure: 'Liste des figures',
+  tocDefaultTitleEquation: 'Liste des équations',
+  tocMaxLevelLabel: 'Niveau maximal',
+  tocLevelOption: 'Jusqu’au niveau {level}',
+  tocLinksLabel: 'Inclure des liens vers les titres',
+  tocLegacyConfirmTitle: 'Remplacer la table des matières existante',
+  tocLegacyConfirmMessage:
+    'Une table des matières créée par un autre programme existe déjà. La remplacer par une nouvelle ?',
+  tocLegacyConfirmHint: 'La zone sélectionnée dans le document sera remplacée.',
+  tocLegacyReplaceConfirm: 'Remplacer',
+  tocExistsConfirmTitle: 'Remplacer la table des matières',
+  tocExistsConfirmMessage:
+    'Une table des matières de ce type existe déjà. La remplacer par une nouvelle ?',
+  manualEditConfirmTitle: 'Écraser les modifications manuelles',
+  manualEditConfirmMessage:
+    'Certaines lignes ont été modifiées manuellement. Les écraser et mettre à jour ?',
+  manualEditOverwriteConfirm: 'Écraser et mettre à jour',
+  manualEditBeforeLabel: 'Original',
+  manualEditAfterLabel: 'Modifié',
+  manualEditMoreLines: 'et {count} autre(s) ligne(s) modifiée(s)',
+  tocCreatedToast: 'Table des matières créée ({count} entrées).',
+  tocRefreshedToast: 'Table des matières mise à jour ({count} entrées).',
+  tocObjectCaptionsUnavailable:
+    'Impossible de lire les légendes d’objets ; les paragraphes de légende du corps ont été utilisés.',
+  tocRefreshNotFound: 'Aucune table des matières à mettre à jour.',
+  tocErrorInTable:
+    'Impossible d’insérer une table des matières dans un tableau. Placez le curseur dans le corps du texte.',
+  tocErrorUnsupportedPlace:
+    'Impossible d’insérer une table des matières ici. Placez le curseur dans le corps du texte.',
+  tocErrorHasObjects:
+    'Impossible de remplacer la table des matières car elle contient des objets utilisateur (notes de bas de page, images ou tableaux).',
+  tocErrorMultiSection:
+    'Impossible de mettre à jour automatiquement car la table des matières s’étend sur plusieurs sections.',
+  tocErrorNoHeadings: 'Aucun titre correspondant trouvé.',
+  tocErrorNoCaptions: 'Aucune légende correspondante trouvée.',
+  tocErrorGeneric: 'Impossible de mettre à jour la table des matières : {error}',
+  indexMarkTitle: 'Marquer une entrée d’index',
+  indexMarkConfirm: 'Marquer',
+  indexMarkTermLabel: 'Entrée principale',
+  indexMarkTermPlaceholder: 'Saisir le terme à indexer',
+  indexMarkSubTermLabel: 'Sous-entrée (facultatif)',
+  indexMarkSubTermPlaceholder: 'Laisser vide pour l’entrée principale seule',
+  indexMarkAllLabel: 'Marquer toutes les occurrences identiques',
+  indexMarkAllPreviewTitle: 'Confirmer le marquage de toutes les occurrences',
+  indexMarkAllPreviewMessage:
+    'Marquer les {count} occurrence(s) trouvée(s) dans le corps du document ?',
+  indexMarkAllPreviewParticlesNote: 'Les formes suivies de particules grammaticales sont incluses.',
+  indexMarkAllPreviewSkippedNote:
+    '{count} occurrence(s) dans les tableaux, zones de texte ou notes seront ignorées.',
+  indexMarkAllPreviewConfirm: 'Tout marquer',
+  indexMarkAllPreviewMore: 'et {count} autre(s) occurrence(s)',
+  indexMarksListTitle: 'Entrées d’index existantes ({count})',
+  indexMarksListEmpty: 'Aucune entrée d’index dans ce document pour le moment.',
+  indexMarkPageBadge: 'p. {page}',
+  indexMarkDeleteBtn: 'Supprimer',
+  indexMarkErrorEmpty: 'Veuillez saisir une entrée principale.',
+  indexMarkErrorUnsupportedPlace:
+    'Les entrées d’index ne peuvent être placées que dans les paragraphes du corps.',
+  indexMarkAddedToast: '« {term} » marqué pour l’index.',
+  indexMarkAllAddedToast: '{added} occurrence(s) marquée(s) dans le corps du texte.',
+  indexMarkAllSkippedToast:
+    '{added} occurrence(s) marquée(s) dans le corps ({skipped} ignorée(s) dans les tableaux, zones de texte ou notes).',
+  indexMarkAllNotFound: 'Aucun mot correspondant trouvé dans le corps du document.',
+  indexMarkRemovedToast: 'Entrée d’index supprimée.',
+  indexCreateTitle: 'Créer un index',
+  indexCreateConfirm: 'Créer',
+  indexTitleLabel: 'Titre',
+  indexTitlePlaceholder: 'Laisser vide pour omettre le titre',
+  indexDefaultTitle: 'Index',
+  indexColumnsLabel: 'Colonnes',
+  indexColumnsOption: '{count} colonne(s)',
+  indexGroupHeadingsLabel: 'Inclure les en-têtes de groupe alphabétiques',
+  indexPageSplitConfirmTitle: 'Confirmer le saut de page de l’index multicolonne',
+  indexPageSplitConfirmMessage:
+    'Des sauts de page seront insérés avant et après l’index multicolonne. Continuer ?',
+  indexPageSplitConfirmAction: 'Continuer',
+  indexCreatedToast: 'Index créé ({count} entrées).',
+  indexRefreshedToast: 'Index mis à jour ({count} entrées).',
+  indexRefreshNotFound: 'Aucun index à mettre à jour.',
+  indexErrorNoMarks:
+    'Aucune entrée d’index trouvée. Utilisez d’abord « Marquer une entrée d’index ».',
+  indexErrorInTable:
+    'Impossible d’insérer un index dans un tableau. Placez le curseur dans le corps du texte.',
+  indexErrorUnsupportedPlace:
+    'Impossible d’insérer un index ici. Placez le curseur dans le corps du texte.',
+  indexErrorHasObjects:
+    'Impossible de remplacer l’index car il contient des objets utilisateur (notes de bas de page, images ou tableaux).',
+  indexErrorAlreadyExists:
+    'Un index existe déjà dans ce document. Utilisez « Mettre à jour l’index ».',
+  indexErrorGeneric: 'Impossible de mettre à jour l’index : {error}',
+} satisfies Record<keyof typeof zh, string>

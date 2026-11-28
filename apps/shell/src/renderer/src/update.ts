@@ -105,7 +105,10 @@ function render(state: UpdateUiState): void {
   // the notes take the generic line's place; failure and manual guidance
   // always stay (their text explains what to do)
   desc.style.display = hasNotes ? 'none' : ''
-  desc.classList.toggle('error', state.phase === 'error' || state.phase === 'manual')
+  desc.classList.toggle(
+    'error',
+    state.phase === 'error' || state.phase === 'manual' || state.phase === 'install-failed',
+  )
   // in the manual phase the main button already opens the same release page
   notesMore.style.display = state.phase === 'manual' ? 'none' : ''
 
@@ -126,11 +129,23 @@ function render(state: UpdateUiState): void {
       percentText.textContent = `${pct}%`
       break
     }
-    case 'downloaded':
-      desc.textContent = s.desc
+    case 'downloaded': {
+      // say what the restart does before it happens: an installer window (and
+      // its administrator prompt), then the app and its documents come back
+      const restartDesc = state.visibleInstall ? s.visibleInstallDesc : s.restartDesc
+      desc.textContent = restartDesc || s.desc
+      if (restartDesc) desc.style.display = ''
       progress.style.display = 'none'
       action.style.display = ''
       action.textContent = s.install
+      break
+    }
+    case 'install-failed':
+      desc.textContent = s.installFailedDesc
+      desc.style.display = ''
+      progress.style.display = 'none'
+      action.style.display = ''
+      action.textContent = s.download
       break
     case 'error':
       desc.textContent = s.failed

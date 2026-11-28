@@ -1,6 +1,8 @@
 import type { zh } from './zh'
 
 export const ko = {
+  appLegacyPptImported:
+    '.ppt 파일을 .pptx 사본으로 바꿔 열었습니다. 원본은 그대로 두고, 저장하면 새 .pptx 파일로 저장됩니다. 슬라이드 노트와 애니메이션은 옮겨지지 않습니다.',
   redactMenuLabel: '선택한 부분을 AI에서 숨기기',
   redactDialogDesc:
     '선택한 내용은 그대로 두고 AI에게는 아래 자리표시자만 보냅니다. 이름을 붙이면 AI가 무엇을 뜻하는지 알 수 있습니다.',
@@ -168,6 +170,9 @@ export const ko = {
   appPrintLandscape: '가로',
   appPrintFrame: '슬라이드에 테두리 표시',
   appPrintHidden: '숨겨진 슬라이드 인쇄',
+  appPrintRangeSelected: '고른 슬라이드',
+  appPrintLayoutBlocked:
+    '유인물과 슬라이드 노트는 한 장에 한 쪽씩 인쇄합니다. 배치 방식을 고르려면 레이아웃을 "전체 페이지 슬라이드"로 바꾸세요.',
   appPrintPageCount: '총 {n}페이지',
   appPrintNoPages: '인쇄할 슬라이드가 없습니다',
   appPrintRendering: '미리 보기 생성 중…',
@@ -177,6 +182,7 @@ export const ko = {
   appCtxSendToBack: '맨 뒤로 보내기',
   appCtxBringForward: '앞으로 가져오기',
   appCtxSendBackward: '뒤로 보내기',
+  appCtxRotate: '회전',
   appCtxRotateLeft90: '왼쪽으로 90° 회전',
   appCtxRotateRight90: '오른쪽으로 90° 회전',
   appCtxFlipH: '좌우 대칭',
@@ -216,6 +222,8 @@ export const ko = {
   appMasterFillNone: '채우기 없음',
   appMasterStroke: '윤곽선 색…',
   appMasterStrokeNone: '윤곽선 없음',
+  appMasterInsertTextBox: '텍스트 상자',
+  appMasterInsertShape: '도형',
   appStartOpening: '여는 중…',
   appReadingSlideTitle: '클릭하면 다음 페이지로 이동(Esc 키로 읽기용 보기 종료)',
   appReadingPrev: '‹ 이전 페이지',
@@ -251,4 +259,12 @@ export const ko = {
   appStatusSummaryZoomInserted: '타일 {count}개가 있는 요약 확대/축소 슬라이드 삽입됨',
   appSectionSummary: '요약 구역',
   appSectionN: '구역 {n}',
+  appStatusAnimPainterNone: '선택한 요소에 애니메이션이 없습니다',
+  appStatusAnimPainterOnce:
+    '애니메이션을 적용할 요소를 클릭하세요. 단추를 두 번 클릭하면 연속 모드로 전환됩니다',
+  appStatusAnimPainterContinuous: '연속 애니메이션 복사 모드입니다. Esc 키로 종료',
+  appStatusAnimPainted: '애니메이션을 적용했습니다',
+  appStatusMergeUnsupported:
+    '이 도형은 병합할 수 없습니다(선, 그림, 표, 차트와 일부 도형은 제외됩니다)',
+  appStatusMergeEmpty: '병합한 결과가 비어 있습니다(겹치는 부분이 없습니다)',
 } satisfies Record<keyof typeof zh, string>

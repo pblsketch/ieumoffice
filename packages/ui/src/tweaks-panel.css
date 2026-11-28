@@ -1,0 +1,112 @@
+/* Shared styles for No-AI visual editor Tweaks panels (T14). Uses tokens.css variables only. */
+
+.ieum-tweaks-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px 14px;
+  border-left: 1px solid var(--border);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  width: 280px;
+  max-width: 100%;
+  box-shadow: var(--shadow-sm);
+  overflow-y: auto;
+}
+
+.ieum-tweaks-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ieum-tweaks-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-strong);
+}
+
+.ieum-tweaks-sub {
+  margin: 0;
+  font-size: 11px;
+  color: var(--text-tertiary);
+  line-height: 1.4;
+}
+
+.ieum-tweaks-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ieum-tweaks-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.ieum-tweaks-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.ieum-tweaks-seg {
+  display: flex;
+  gap: 4px;
+}
+
+.ieum-tweaks-chip {
+  flex: 1;
+  padding: 5px 8px;
+  font-size: 11px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--fill-subtle);
+  color: var(--text-primary);
+  cursor: pointer;
+  text-align: center;
+}
+
+.ieum-tweaks-chip:hover {
+  background: var(--fill-muted);
+}
+
+.ieum-tweaks-chip.is-active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--text-strong);
+  font-weight: 600;
+}
+
+.ieum-tweaks-range {
+  width: 100%;
+  accent-color: var(--accent);
+}
+
+.ieum-tweaks-foot {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.ieum-tweaks-btn {
+  padding: 5px 10px;
+  font-size: 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--fill-subtle);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.ieum-tweaks-btn:hover {
+  background: var(--fill-muted);
+}

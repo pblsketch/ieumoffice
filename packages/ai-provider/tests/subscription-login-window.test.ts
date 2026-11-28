@@ -24,7 +24,7 @@ import {
   type SubscriptionProgram,
   type SubscriptionStatusMap,
 } from '../src/subscription'
-import type { AiSubscriptionProviderId } from '../src/types'
+import type { AiSubscriptionCliId, AiSubscriptionProviderId } from '../src/types'
 
 class FakeChild extends EventEmitter {
   constructor(readonly pid: number) {
@@ -38,7 +38,7 @@ class FakeChild extends EventEmitter {
 
 const WINDOWS = { SystemRoot: 'C:\\Windows' }
 
-function program(provider: AiSubscriptionProviderId): SubscriptionProgram {
+function program(provider: AiSubscriptionCliId): SubscriptionProgram {
   const command = provider === 'codex' ? 'C:\\npm\\codex.exe' : 'C:\\npm\\claude.exe'
   return { provider, command, prefixArgs: [], env: {}, entry: command, source: 'npm' }
 }
@@ -59,11 +59,14 @@ function app(platform: NodeJS.Platform = 'win32'): {
   ended: FakeChild[]
   broadcasts: SubscriptionStatusMap[]
   checks: () => number
+  /** what the next check finds; tests flip it to `ready` to play a finished login */
+  detected: { state: 'signed-out' | 'ready' }
 } {
   const scripts: string[] = []
   const children: FakeChild[] = []
   const ended: FakeChild[] = []
   const broadcasts: SubscriptionStatusMap[] = []
+  const detected = { state: 'signed-out' as 'signed-out' | 'ready' }
   let checks = 0
   const deps = createSubscriptionIpcDeps({
     getSettings: () => defaultAiSettings(),
@@ -71,7 +74,9 @@ function app(platform: NodeJS.Platform = 'win32'): {
     dataDir: dir,
     detect: async (provider) => {
       checks++
-      return { provider, state: 'signed-out' }
+      return detected.state === 'ready'
+        ? { provider, state: 'ready', loginMethod: 'subscription' }
+        : { provider, state: 'signed-out' }
     },
     listModels: async () => undefined,
     locate: async (provider) => program(provider),
@@ -89,7 +94,7 @@ function app(platform: NodeJS.Platform = 'win32'): {
     hiddenLoginTimeoutMs: 1000,
   })
   deps.service.onChange((statuses) => broadcasts.push(statuses))
-  return { deps, scripts, children, ended, broadcasts, checks: () => checks }
+  return { deps, scripts, children, ended, broadcasts, checks: () => checks, detected }
 }
 
 describe('the login started from a card', () => {
@@ -174,6 +179,53 @@ describe('the login started from a card', () => {
     expect(running.children).toHaveLength(1)
     expect(running.ended).toEqual([])
     expect(running.deps.service.getStatuses().codex.signingIn).toBe('browser')
+  })
+
+  it('a press that asks for the window opens it straight away', async () => {
+    const running = app()
+    expect(await running.deps.launchLogin('claude-code', 'window')).toEqual({ ok: true })
+    expect(running.scripts).toHaveLength(1)
+    expect(running.scripts[0]).toContain('-WindowStyle Normal')
+    expect(running.deps.service.getStatuses()['claude-code'].signingIn).toBe('window')
+  })
+
+  it('asks for a window where there is none: the same login as always', async () => {
+    const running = app('linux')
+    await running.deps.launchLogin('codex', 'window')
+    expect(running.children).toHaveLength(1)
+    expect(running.ended).toEqual([])
+    expect(running.deps.service.getStatuses().codex.signingIn).toBe('browser')
+  })
+
+  it('remembers a login that ended without one, until a login starts', async () => {
+    const running = app()
+    await running.deps.launchLogin('claude-code')
+    running.children[0]!.emit('exit', 1, null)
+    await vi.waitFor(() =>
+      expect(running.deps.service.getStatuses()['claude-code'].loginUnfinished).toBe(true),
+    )
+    // the card says so to every window that asks
+    expect(running.broadcasts.at(-1)!['claude-code'].loginUnfinished).toBe(true)
+    // a new login is the way on: the mark goes, the browser sign-in starts again
+    await running.deps.launchLogin('claude-code')
+    expect(running.deps.service.getStatuses()['claude-code'].loginUnfinished).toBeUndefined()
+  })
+
+  it('a check that finds a login clears the mark', async () => {
+    const running = app()
+    running.deps.service.setLoginUnfinished('claude-code', true)
+    expect(running.deps.service.getStatuses()['claude-code'].loginUnfinished).toBe(true)
+    // still signed out: it stays, the card keeps offering the window
+    await running.deps.service.check(['claude-code'])
+    expect(running.deps.service.getStatuses()['claude-code'].loginUnfinished).toBe(true)
+    // signed in (in the browser of an earlier attempt, say): nothing is unfinished
+    running.detected.state = 'ready'
+    await running.deps.service.check(['claude-code'])
+    expect(running.deps.service.getStatuses()['claude-code'].loginUnfinished).toBeUndefined()
+    // and a later sign-out does not bring it back
+    running.detected.state = 'signed-out'
+    await running.deps.service.check(['claude-code'])
+    expect(running.deps.service.getStatuses()['claude-code'].loginUnfinished).toBeUndefined()
   })
 })
 

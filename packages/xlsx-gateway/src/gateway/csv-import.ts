@@ -28,6 +28,42 @@ function decode(bytes: Uint8Array, charset: string, fatal = false): string | nul
   }
 }
 
+// The 700 most frequent Hangul syllables in general Korean prose (Korean Wikipedia
+// articles); they cover over 99% of syllables in real text. GBK or Shift_JIS bytes read
+// as EUC-KR also give Hangul, but mostly rare syllables outside this set.
+const COMMON_HANGUL = new Set(
+  '이다는의에한로을하가서기은대지고사어으국를인도시년과적수자정구제있부리학교전나일주되해스장역경라었화들원아중만공상계와며성관문동등여그보개선' +
+    '유식용세비영민위조명회했게터산분치연소면방반거통된울미발음생업재행법월단진육체간드러운우포피종요것였양르할차무당강모신데실작커후오마심프현료' +
+    '물내트따병표설특남외초야점같른력각타축건권함본또술형출안천립많때준려두류별더래바예록카급입호평금매태근능임크향불추최레목환결약파독루및군노까' +
+    '합말북속않광배석론열격니직히처았언품판컴퓨달험증키받악활령규곳철디련접질편알존람높메족든확집청복습량늘없감변헌승저졌필던율총토난새항채택럽져' +
+    '골쓰버팀름측순페코란쟁네박송림탄올날범번린칙참션볼베줄퍼브온창책투견백맞뒤균쳐황패글겨절색쪽농랑담티플효누억객칭넘픽왔득너뜻워께징률왕써갈찰' +
+    '얻협밀낮탐츠획례앙암벌돌탈테랜념램충큰났검논망혁취응착친밖삼층융잡될완곡궁즈김락갖휘폐킥극널걸넓컵애살럼블침클못맥훈탕꾸케머앞움길찾먹링센떤' +
+    '므막롯텔잔맹빈잠폭닌런털엔혼봉빌옮손슬잘찬허륙팅몇숙압킨템좌뿐염좋떻풍즉렸빠겼핵촉갔놓느잉웨넷끝희켰덕첫틴볶익윤욱켜먼녹턴잇춘씨팔째퇴긴흐둘' +
+    '낸홍힘괄둔흔흥몰맛풋휴척릴맡톤렵슈헤렇괴섭쇄혹씩끼콩뉴캐넣섰릉웃뀌렌븐쳤몽밍벨즘벽떨엄섬냉콘돈옥액읍혈떠묘옛헐눈텍숫덜킹렀붙략귀뉘쿠겪촌녀쓴' +
+    '읽푸틀밝앗랐웠싸값롭뉜갑왜졸랫콜셈킬잎혀룬혜곤슷텐욕랍컨릭큼홈칼얼듬헬셀끌엑님델폴놀십몸칠짓짧춰셔빛좁촬낱삶땅붕맺엇힌빼낙됨썼멘궐죄핑즐돕핸' +
+    '윈뢰짐룹멸탁겸답뤄싱봄켓굴춤롤곽죽흑쇼냈닥낳핀혔섞샤멀꽃흡듣쉬폰뜨쿨굽뛰옐곧맨됐벗돼빚섯늦컬꼽풀칸밤꺼멈팬앤즌튜낼짜깔렬낀눌깊뚜싼찍빨젠뽑톨',
+)
+
+/**
+ * Whether decoded text is clearly Korean: most non-ASCII characters are Hangul
+ * syllables, and most of those are everyday syllables. Chinese or Japanese bytes
+ * read as EUC-KR land on hanja, symbols, or rare syllables instead.
+ */
+export function looksKorean(text: string): boolean {
+  let nonAscii = 0
+  let hangul = 0
+  let common = 0
+  for (const character of text) {
+    const code = character.codePointAt(0) ?? 0
+    if (code < 0x80) continue
+    nonAscii += 1
+    if (code < 0xac00 || code > 0xd7a3) continue
+    hangul += 1
+    if (COMMON_HANGUL.has(character)) common += 1
+  }
+  return hangul >= 6 && hangul / nonAscii >= 0.8 && common / hangul >= 0.75
+}
+
 /** how plausible a decoding is: CJK/ASCII good, replacement chars and control bytes bad */
 function score(text: string): number {
   let value = 0
@@ -90,6 +126,15 @@ export function decodeCsvBuffer(bytes: Uint8Array, preferred?: string): string {
 
   const utf8 = decode(bytes, 'utf-8', true)
   if (utf8 !== null) return utf8
+
+  // Korean Excel CSVs (code page 949) decode as plausible GBK too, so without a
+  // Korean locale they came out as Chinese. Pick Korean from the bytes alone, but
+  // only when the machine's language does not already claim another charset that
+  // reads the bytes cleanly, and the text is overwhelmingly Hangul.
+  if (!preferred || preferred === 'euc-kr' || decode(bytes, preferred, true) === null) {
+    const korean = decode(bytes, 'euc-kr', true)
+    if (korean !== null && looksKorean(korean)) return korean
+  }
 
   let best = decode(bytes, 'utf-8') ?? ''
   let bestScore = score(best)
@@ -231,6 +276,16 @@ export function isNumericCell(value: string): boolean {
   return Number.isFinite(Number(value))
 }
 
+/// The text of a `="..."` cell, the way systems export codes and numbers to
+/// CSV or HTML so Excel keeps them as written ("0123" with its zero, a long
+/// ID without rounding). Excel evaluates that one formula on open and shows
+/// the quoted text, as text; nothing else that looks like a formula is
+/// evaluated here. Null when the value is anything else.
+export function quotedTextFormula(value: string): string | null {
+  const match = /^="((?:[^"]|"")*)"$/.exec(value)
+  return match ? match[1]!.replace(/""/g, '"') : null
+}
+
 function escapeXml(value: string): string {
   return value
     .replaceAll('&', '&amp;')
@@ -250,29 +305,53 @@ function columnLabel(column: number): string {
   return label
 }
 
-export function buildWorksheetXml(rows: readonly (readonly string[])[]): string {
+export function buildWorksheetXml(
+  rows: readonly (readonly string[])[],
+  merges: readonly string[] = [],
+): string {
   const lines: string[] = []
   let maxColumns = 1
+  let maxRows = Math.max(rows.length, 1)
   rows.forEach((row, rowIndex) => {
     const cells: string[] = []
     row.forEach((value, columnIndex) => {
       if (value === '') return
       maxColumns = Math.max(maxColumns, columnIndex + 1)
       const reference = `${columnLabel(columnIndex)}${rowIndex + 1}`
+      const quoted = quotedTextFormula(value)
       cells.push(
-        isNumericCell(value)
+        quoted === null && isNumericCell(value)
           ? `<c r="${reference}"><v>${Number(value)}</v></c>`
-          : `<c r="${reference}" t="inlineStr"><is><t xml:space="preserve">${escapeXml(encodeXlsxEscapes(value))}</t></is></c>`,
+          : `<c r="${reference}" t="inlineStr"><is><t xml:space="preserve">${escapeXml(encodeXlsxEscapes(quoted ?? value))}</t></is></c>`,
       )
     })
     if (cells.length > 0) lines.push(`<row r="${rowIndex + 1}">${cells.join('')}</row>`)
   })
-  const dimension = `A1:${columnLabel(maxColumns - 1)}${Math.max(rows.length, 1)}`
+  // A merge can cover empty cells past the last value, and Excel expects the
+  // sheet dimension to reach its far corner.
+  for (const merge of merges) {
+    const end = merge.slice(merge.lastIndexOf(':') + 1)
+    const match = /^([A-Z]+)([1-9][0-9]*)$/.exec(end)
+    if (!match) continue
+    maxColumns = Math.max(maxColumns, columnIndexFromLabel(match[1]!) + 1)
+    maxRows = Math.max(maxRows, Number(match[2]))
+  }
+  const dimension = `A1:${columnLabel(maxColumns - 1)}${maxRows}`
+  const mergeXml =
+    merges.length > 0
+      ? `<mergeCells count="${merges.length}">${merges.map((ref) => `<mergeCell ref="${ref}"/>`).join('')}</mergeCells>`
+      : ''
   return (
     '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
     '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
-    `<dimension ref="${dimension}"/><sheetData>${lines.join('')}</sheetData></worksheet>`
+    `<dimension ref="${dimension}"/><sheetData>${lines.join('')}</sheetData>${mergeXml}</worksheet>`
   )
+}
+
+function columnIndexFromLabel(label: string): number {
+  let index = 0
+  for (const character of label) index = index * 26 + (character.charCodeAt(0) - 64)
+  return index - 1
 }
 
 export async function csvToXlsxBuffer(csvText: string, sheetName = 'Sheet1'): Promise<Buffer> {
@@ -347,12 +426,33 @@ export async function blankXlsxBuffer(sheetName = 'Sheet1'): Promise<Buffer> {
   return xlsxBufferFromRows([], sheetName)
 }
 
+export interface MinimalWorksheet {
+  readonly name: string
+  readonly rows: readonly (readonly string[])[]
+  /// A1 ranges to merge, e.g. "A1:B2".
+  readonly merges?: readonly string[]
+}
+
 async function xlsxBufferFromRows(
   rows: readonly (readonly string[])[],
   sheetName: string,
 ): Promise<Buffer> {
-  validateSheetName(sheetName)
+  return xlsxBufferFromSheets([{ name: sheetName, rows }])
+}
+
+/** A minimal workbook from plain cell text, shared by CSV and HTML imports. */
+export async function xlsxBufferFromSheets(
+  worksheets: readonly MinimalWorksheet[],
+): Promise<Buffer> {
+  if (worksheets.length === 0) throw new Error('A workbook needs at least one worksheet.')
+  for (const worksheet of worksheets) validateSheetName(worksheet.name)
   const zip = new JSZip()
+  const sheetOverrides = worksheets
+    .map(
+      (_, index) =>
+        `<Override PartName="/xl/worksheets/sheet${index + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`,
+    )
+    .join('')
   zip.file(
     '[Content_Types].xml',
     '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
@@ -360,7 +460,7 @@ async function xlsxBufferFromRows(
       '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
       '<Default Extension="xml" ContentType="application/xml"/>' +
       '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>' +
-      '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>' +
+      sheetOverrides +
       '<Override PartName="/xl/theme/theme1.xml" ContentType="application/vnd.openxmlformats-officedocument.theme+xml"/>' +
       '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>' +
       '</Types>',
@@ -372,23 +472,40 @@ async function xlsxBufferFromRows(
       '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>' +
       '</Relationships>',
   )
+  const sheetEntries = worksheets
+    .map(
+      (worksheet, index) =>
+        `<sheet name="${escapeXml(worksheet.name)}" sheetId="${index + 1}" r:id="rId${index + 1}"/>`,
+    )
+    .join('')
   zip.file(
     'xl/workbook.xml',
     '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
       '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' +
-      `<sheets><sheet name="${escapeXml(sheetName)}" sheetId="1" r:id="rId1"/></sheets></workbook>`,
+      `<sheets>${sheetEntries}</sheets></workbook>`,
   )
+  const sheetRelationships = worksheets
+    .map(
+      (_, index) =>
+        `<Relationship Id="rId${index + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${index + 1}.xml"/>`,
+    )
+    .join('')
   zip.file(
     'xl/_rels/workbook.xml.rels',
     '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
       '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
-      '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>' +
-      '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme" Target="theme/theme1.xml"/>' +
-      '<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>' +
+      sheetRelationships +
+      `<Relationship Id="rId${worksheets.length + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme" Target="theme/theme1.xml"/>` +
+      `<Relationship Id="rId${worksheets.length + 2}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>` +
       '</Relationships>',
   )
   zip.file('xl/theme/theme1.xml', DEFAULT_THEME_XML)
   zip.file('xl/styles.xml', MINIMAL_STYLESHEET_XML)
-  zip.file('xl/worksheets/sheet1.xml', buildWorksheetXml(rows))
+  worksheets.forEach((worksheet, index) => {
+    zip.file(
+      `xl/worksheets/sheet${index + 1}.xml`,
+      buildWorksheetXml(worksheet.rows, worksheet.merges ?? []),
+    )
+  })
   return zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' })
 }

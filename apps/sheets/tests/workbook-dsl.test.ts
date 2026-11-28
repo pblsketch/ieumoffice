@@ -261,6 +261,13 @@ describe('extended operations', () => {
         path: 'https://cdn.example.com/gen/img-1',
         anchorCell: 'B9',
       },
+      {
+        op: 'add_image',
+        sheetId: 's',
+        path: 'C:/Users/me/Pictures/chart.png',
+        attachment: 'chart.png',
+        anchorCell: 'B12',
+      },
       { op: 'add_table', sheetId: 's', range: 'A1:D10' },
       {
         op: 'add_table',

@@ -9,7 +9,7 @@ import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
 import { afterEach, beforeAll, describe, expect, it } from 'vitest'
 import init, { HwpDocument } from '@rhwp/core'
-import { agentPlugin, type AgentPluginHost } from '../studio-plugin/agent-plugin.mjs'
+import { MARKS_EVENT, agentPlugin, type AgentPluginHost } from '../studio-plugin/agent-plugin.mjs'
 
 const require = createRequire(import.meta.url)
 
@@ -101,6 +101,44 @@ function rectsOf(doc: HwpDocument, para: number, start: number, end: number): Re
 const textOf = (doc: HwpDocument, para: number) =>
   doc.getTextRange(0, para, 0, doc.getParagraphLength(0, para))
 
+/** The first table of the body: the paragraph it sits in, and its first control. */
+function firstTable(doc: HwpDocument): { para: number; control: number } {
+  for (let para = 0; para < doc.getParagraphCount(0); para++) {
+    const controls = (JSON.parse(doc.getControlTextPositions(0, para)) as unknown[]).length
+    for (let control = 0; control < controls; control++) {
+      try {
+        doc.getTableBBox(0, para, control)
+        return { para, control }
+      } catch {
+        // not a table
+      }
+    }
+  }
+  throw new Error('no table')
+}
+
+/** A paragraph of a cell of the first table, as engine calls address it. */
+function cellOf(doc: HwpDocument, cell: number, cellPara: number) {
+  const { para, control } = firstTable(doc)
+  const path = JSON.stringify([{ controlIndex: control, cellIndex: cell, cellParaIndex: cellPara }])
+  return {
+    text: () =>
+      doc.getTextInCellByPath(0, para, path, 0, doc.getCellParagraphLengthByPath(0, para, path)),
+    rects: (start: number, end: number): Rect[] =>
+      (
+        JSON.parse(
+          doc.getSelectionRectsInCellByPath(0, para, path, cellPara, start, cellPara, end),
+        ) as Rect[]
+      ).map((r) => ({
+        pageIndex: r.pageIndex,
+        x: Math.round(r.x),
+        y: Math.round(r.y),
+        width: Math.round(r.width),
+        height: Math.round(r.height),
+      })),
+  }
+}
+
 afterEach(() => {
   agentPlugin.deactivate?.()
 })
@@ -146,6 +184,41 @@ describe('marks of changes', () => {
     expect(marksOnPage()).toEqual(rectsOf(doc, 1, 0, 4))
   })
 
+  it('moves the marks below in the same cell when paragraphs are added to a table cell', () => {
+    const { plugin, doc } = open(['첫째'])
+    plugin.insertTable('첫째', null, 'after', [
+      ['알파', '베타'],
+      ['감마', '델타'],
+    ])
+    plugin.insertParagraphs('알파', null, 'after', ['아래'])
+    plugin.clearMarks()
+    plugin.replaceText('아래', '아래쪽', null)
+    plugin.replaceText('베타', '베타칸', null)
+    plugin.insertParagraphs('알파', null, 'after', ['새 줄'])
+    expect(cellOf(doc, 0, 1).text()).toBe('새 줄')
+    expect(cellOf(doc, 0, 2).text()).toBe('아래쪽')
+    expect(marksOnPage()).toEqual([
+      // the paragraph that moved down in the cell, the other cell as it was, the new one
+      ...cellOf(doc, 0, 2).rects(0, 3),
+      ...cellOf(doc, 1, 0).rects(0, 3),
+      ...cellOf(doc, 0, 1).rects(0, 4),
+    ])
+  })
+
+  it('moves the marks below in the same cell up when a paragraph of the cell goes', () => {
+    const { plugin, doc } = open(['첫째'])
+    plugin.insertTable('첫째', null, 'after', [['알파', '베타']])
+    plugin.insertParagraphs('알파', null, 'after', ['가운데', '아래', '끝'])
+    plugin.clearMarks()
+    plugin.replaceText('가운데', '가운데줄', null)
+    plugin.replaceText('아래', '아래쪽', null)
+    plugin.deleteParagraph('가운데줄', null)
+    expect(cellOf(doc, 0, 1).text()).toBe('아래쪽')
+    expect(cellOf(doc, 0, 2).text()).toBe('끝')
+    // the removed paragraph's mark went with it, and none was left on 끝
+    expect(marksOnPage()).toEqual(cellOf(doc, 0, 1).rects(0, 3))
+  })
+
   it('takes the marks off when the panel asks, or when the user edits the document', () => {
     const first = open(['가격 표', '금액'])
     first.plugin.replaceText('금액', '합계', null)
@@ -157,6 +230,54 @@ describe('marks of changes', () => {
     second.plugin.replaceText('금액', '합계', null)
     second.userEdit()
     expect(marksOnPage()).toEqual([])
+  })
+
+  it('tells the app when the pages come to carry marks and when they lose them, so the panel can drop its button', () => {
+    const told: unknown[] = []
+    const listen = (event: Event) => told.push((event as CustomEvent<unknown>).detail)
+    window.addEventListener(MARKS_EVENT, listen)
+    try {
+      const { plugin, userEdit } = open(['가격 표', '금액'])
+      plugin.replaceText('금액', '합계', null)
+      // a second mark changes nothing the app is told of
+      plugin.replaceText('가격', '값', null)
+      expect(told).toEqual([{ shown: true }])
+      userEdit()
+      expect(told).toEqual([{ shown: true }, { shown: false }])
+      // an edit with no marks to take off says nothing
+      userEdit()
+      plugin.replaceText('값', '단가', null)
+      plugin.clearMarks()
+      expect(told).toEqual([{ shown: true }, { shown: false }, { shown: true }, { shown: false }])
+      // a change that marks nothing (a removed paragraph) says nothing
+      plugin.deleteParagraph('합계', null)
+      expect(told).toHaveLength(4)
+    } finally {
+      window.removeEventListener(MARKS_EVENT, listen)
+    }
+  })
+
+  it('draws the marks in the light colours of the shared mark tokens: the page is paper white in every theme', () => {
+    // the first value of each is the light theme's
+    const tokens = readFileSync(require.resolve('@genoffice/ui/tokens.css'), 'utf8')
+    /** the first value of a token, as `rgb(r g b / a%)` writes it */
+    const token = (name: string) => {
+      const at = tokens.indexOf(`${name}:`)
+      return tokens.slice(tokens.indexOf('rgb(', at) + 4, tokens.indexOf(')', at))
+    }
+    const rgba = (value: string) => {
+      const [r, g, b, a] = value
+        .split(/[\s/%]+/)
+        .filter(Boolean)
+        .map(Number)
+      return `rgba(${r}, ${g}, ${b}, ${a! / 100})`
+    }
+    const { plugin } = open(['금액'])
+    plugin.replaceText('금액', '합계', null)
+    const box = document.querySelector<HTMLElement>('.ieum-change-marks > div')!
+    // jsdom keeps the colour as it was set
+    expect(box.style.background).toBe(rgba(token('--color-ai-changed-bg')))
+    expect(box.style.boxShadow).toBe(`inset 0 -2px 0 ${rgba(token('--color-ai-changed-line'))}`)
   })
 
   it('gives the panel no list of marks in what a change returns', () => {

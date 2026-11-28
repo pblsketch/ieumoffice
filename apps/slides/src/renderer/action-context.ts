@@ -21,16 +21,20 @@ import type { BrushFormat } from './format-brush'
 import type { InkTool } from './ink'
 import type { SlidesViewMode } from './components/ribbon-shared'
 import type { CustomShow } from './slideshow-utils'
+import type { TableCellSelection } from './table-selection'
 
 type Set<T> = React.Dispatch<React.SetStateAction<T>>
 
 // ── State payload types shared between App useState declarations and the ctx ──
 
-/** Viewport point the caret lands on when editing starts; select: 'word' picks the word there (double-click). */
+/** Viewport point the caret lands on when editing starts; select: 'word' picks the word there (double-click),
+ * `from` selects the text range from `from` to (x, y), and `place` pins to start/end without coordinates. */
 export interface EditCaret {
-  x: number
-  y: number
+  x?: number
+  y?: number
+  from?: { x: number; y: number }
   select?: 'word'
+  place?: 'start' | 'end'
 }
 
 export interface EditingState {
@@ -48,6 +52,11 @@ export interface EditingCellState {
   sourceId: string
   row: number
   col: number
+  caret?: EditCaret
+  replaceWith?: string
+  selectAll?: boolean
+  /** Monotonic edit-session token so async blur commits never close a newer cell edit */
+  session?: number
 }
 
 export interface SlideShowState {
@@ -86,6 +95,14 @@ export interface EditPointsState {
   vertex: number | null
   /** A vertex/control drag is in progress: its release commit would resurrect a deleted vertex */
   dragging?: boolean
+}
+
+export interface AnimPainterState {
+  /** Slide the animations were copied from (sourceIds are per slide) */
+  slideIndex: number
+  sourceId: string
+  items: AnimationItem[]
+  mode: 'once' | 'continuous'
 }
 
 export interface CutoutTargetState {
@@ -163,6 +180,8 @@ export interface ActionCtx {
   setEditing: Set<EditingState | null>
   editingCell: EditingCellState | null
   setEditingCell: Set<EditingCellState | null>
+  tableSelection: TableCellSelection | null
+  setTableSelection: Set<TableCellSelection | null>
   enteredGroupId: string | null
   setEnteredGroupId: Set<string | null>
   enteredGroupNode: GroupRenderNode | null
@@ -190,6 +209,11 @@ export interface ActionCtx {
   // Animations / transition
   animations: AnimationItem[]
   setAnimations: Set<AnimationItem[]>
+  /** Animation painter: the copied animations of sourceId, armed for one or many targets */
+  animPainter: AnimPainterState | null
+  setAnimPainter: Set<AnimPainterState | null>
+  /** Show/hide the selection pane (Alt+F10) */
+  toggleSelectionPane: () => void
   selAnim: number
   setSelAnim: Set<number>
   setHoverAnim: Set<{ nonce: number; items: AnimationItem[] } | null>

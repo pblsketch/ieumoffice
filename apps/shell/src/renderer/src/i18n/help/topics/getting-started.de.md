@@ -1,6 +1,6 @@
 # Schnellstart: die Oberfläche und die Grundlagen
 
-GenOffice ist ein Office-Paket, das auf Ihrem Rechner läuft: ein Fenster, eine Reihe von Tabs, darin acht Editoren — Docs (Textverarbeitung), Sheets (Tabellenkalkulation), Slides (Präsentationen), PDF, Markdown und reiner Text, HTML, HWP/HWPX (Hangul-Dokumente) und Mindmaps (.xmind). Jeder Editor öffnet und speichert Dateien in seinem Format: .docx, .xlsx, .pptx, .pdf, .md, .html, .hwp/.hwpx und .xmind. Zum Bearbeiten ist kein Netzwerk nötig, für die KI-Funktionen schon.
+GenOffice ist ein Office-Paket, das auf Ihrem Rechner läuft: ein Fenster, eine Reihe von Tabs, darin acht Editoren — Docs (Textverarbeitung), Sheets (Tabellenkalkulation), Slides (Präsentationen), PDF, Markdown und reiner Text, HTML, HWP/HWPX (Hangul-Dokumente) und Mindmaps (.xmind). Jeder Editor öffnet und speichert Dateien in seinem Format: .docx, .xlsx, .pptx, .pdf, .md, .html, .hwp/.hwpx und .xmind. Zum Bearbeiten ist kein Netzwerk nötig, für die KI-Funktionen schon. Der Mindmap-Editor importiert außerdem FreeMind- und Freeplane-Dateien (.mm) als neue Maps, die als .xmind gespeichert werden.
 
 ## Überblick über die Oberfläche
 
@@ -38,7 +38,7 @@ Ein neues Dokument öffnet sich ohne Namen; die Datei auf dem Datenträger entst
 ## Das Speichermodell
 
 - **Manuelles Speichern**: ⌘S/ctrl+S oder Datei ▸ Speichern / Speichern unter. Beim ersten Speichern werden Ort und Name abgefragt.
-- **AutoSpeichern** schaltet sich erst ein, nachdem Sie die Datei mindestens einmal manuell gespeichert haben — eine nur gelesene PDF wird nie stillschweigend neu geschrieben. Das AutoSpeichern greift kurz nach Inhaltsänderungen.
+- **AutoSpeichern** folgt dem Schalter des jeweiligen Editors (und dem appweiten Standard). Eine nur gelesene PDF wird nie stillschweigend neu geschrieben; ein neues Dokument ohne eigene Datei speichert erst nach dem ersten Speichern automatisch.
 - Beim Schließen eines Tabs mit ungespeicherten Änderungen wird zuerst gefragt: Speichern / Verwerfen / Abbrechen.
 - Jeder Schreibvorgang erfolgt atomar (temporäre Datei plus Umbenennung), sodass ein Stromausfall keine halbe Datei hinterlässt.
 

@@ -1,0 +1,4 @@
+target/
+gen/
+plugins/*/android/.tauri/
+plugins/*/android/build/

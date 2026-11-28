@@ -47,7 +47,10 @@ describe('subscription CLI lifetime in the shell main process', () => {
 
   it('ends them on the exits that skip the quit events', () => {
     // app.exit() (the headless export) emits neither before-quit nor will-quit
-    expect(source).toMatch(/process\.on\('exit', \(\) => shutdownSubscriptionChildren\(\)\)/)
+    const onExit = blockAfter("process.on('exit', () => {")
+    expect(onExit).toContain('shutdownSubscriptionChildren()')
+    expect(onExit).toContain('fileIndexer?.stop()')
+    expect(onExit).toContain('stopParseSidecar()')
   })
 
   it('has no crash handler that would leave the CLIs running', () => {
@@ -87,7 +90,11 @@ describe('subscription CLI lifetime in the shell main process', () => {
       source.indexOf('ipcMain.handle(SHELL_SUBSCRIPTION_CHANNELS.openInstallHelp'),
     )
     expect(handler.slice(0, 400)).toContain('isSubscriptionProviderId(provider)')
-    expect(handler.slice(0, 400)).toContain('safeExternalUrl(SUBSCRIPTION_INSTALL_URLS[provider])')
+    expect(handler.slice(0, 600)).toContain('safeExternalUrl(')
+    // ChatGPT installs nothing: its fixed page is where the plan's use is managed
+    expect(handler.slice(0, 600)).toMatch(
+      /provider === 'chatgpt' \? SUBSCRIPTION_CHATGPT_USAGE_URL : SUBSCRIPTION_INSTALL_URLS\[provider\]/,
+    )
     expect(SHELL_SUBSCRIPTION_CHANNELS.openInstallHelp).toBe('home:open-subscription-install-help')
   })
 })

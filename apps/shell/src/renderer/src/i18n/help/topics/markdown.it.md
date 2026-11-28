@@ -8,6 +8,7 @@ L'editor Markdown apre .md / .markdown — e .txt / .json, dritti nella vista so
 - **Salvataggio**: fedele byte per byte — il BOM, i CRLF e la presenza di una riga finale vuota vengono preservati; un salvataggio senza modifiche non riscrive il file.
 - **Trova e sostituisci**: ctrl+F cerca nel sorgente; Sostituisci tutto scrive il risultato.
 - **IA**: i pulsanti predefiniti permettono all'assistente di riscrivere, estendere o tradurre il documento. Una selezione può essere nascosta all'IA (vedi il capitolo del pannello IA).
+- **Aprire i link**: durante la modifica, Ctrl+clic su un link (⌘ su Mac) lo apre nel browser; un clic normale posiziona il cursore nel testo del link per modificarlo. In presentazione (F5), un clic normale lo apre.
 
 ## La barra degli strumenti
 
@@ -36,6 +37,7 @@ Menu File, tutto locale e tutto chiede dove mettere il risultato:
 
 - **Esporta come Word…** e **Esporta come PDF…** scrivono un vero .docx o .pdf.
 - **Esporta come ODT…** scrive un .odt (testo OpenDocument) con la stessa conversione dell'esportazione in Word; se qualcosa cambia o va perso lungo il percorso, vedi l'elenco e confermi prima.
+- **Esporta come documento HWP…** scrive un documento HWP (.hwp o .hwpx) con la stessa conversione; titoli, elenchi e tabelle arrivano come tali nel documento HWP e una tabella lunga prosegue nella pagina successiva. Se qualcosa non può essere trasferito, vedi l'elenco e confermi prima.
 - **Esporta come immagini…** scrive un PNG per pagina in una cartella che scegliete.
 - **Converti e apri in Docs** converte in .docx e lo apre nella scheda Docs integrata qui nell’app: non è un passaggio a qualcosa nel cloud, e la copia convertita resta in una cartella di cache che viene ripulita dopo circa una settimana.
 
@@ -43,6 +45,7 @@ Menu File, tutto locale e tutto chiede dove mettere il risultato:
 
 La barra multifunzione contiene un interruttore **Sorgente** (localizzato con l'app). Attivalo e l'editor viene sostituito dal Markdown grezzo: esattamente il testo che un salvataggio scrive, niente abbellito, niente normalizzato sotto sotto.
 
+- **Tastiera**: Ctrl+E (⌘E su Mac) passa dalla vista sorgente alla schermata di modifica renderizzata. Premi F5 per leggere a tutto schermo.
 - **La modifica è fedele ai byte.** Un salvataggio dalla vista sorgente produce gli stessi byte di un salvataggio dall'editor — BOM, CRLF e la presenza di un a capo finale sopravvivono tutti.
 - **È lo stesso documento.** Passa e ripassa liberamente; il sorgente è il testo stesso dell'editor, non una copia da dover unire.
 - **La barra degli strumenti di formattazione non è disponibile** mentre è aperta, perché la maggior parte di quei pulsanti inserisce costrutti dell'editor che hanno senso solo sul lato renderizzato. Torna quando chiudi la vista.

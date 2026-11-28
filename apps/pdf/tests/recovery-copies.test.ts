@@ -7,18 +7,27 @@
  * keeps the original path and leaves the original alone until it is saved.
  */
 import {
+  constants,
   existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
   rmSync,
   utimesSync,
   writeFileSync,
 } from 'node:fs'
+import { copyFile, open } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { PDFDocument } from 'pdf-lib'
+
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs/promises')>()
+  return { ...actual, copyFile: vi.fn(actual.copyFile), open: vi.fn(actual.open) }
+})
+const actualPromises = await vi.importActual<typeof import('node:fs/promises')>('node:fs/promises')
 
 type IpcHandler = (event: { sender: unknown }, ...args: unknown[]) => unknown
 const handlers = new Map<string, IpcHandler>()
@@ -192,11 +201,15 @@ async function openedView(path: string | null): Promise<FakeWebContents> {
 
 const fileIdentity = (path: string) => ({ kind: 'pdf' as const, filePath: path })
 
+const ALL_PERMISSIONS = { printing: true, modifying: true, annotating: true, copying: true }
+
 beforeEach(() => {
   store = createRecoveryStore({ userDataDir: makeDir('pdf-recovery-data-') })
   setPdfRecoveryStore(store)
   showMessageBox.mockReset()
   showSaveDialog.mockReset()
+  vi.mocked(copyFile).mockReset()
+  vi.mocked(open).mockReset()
 })
 
 afterEach(() => {
@@ -204,7 +217,18 @@ afterEach(() => {
   setPdfRecoveryStore(undefined)
   for (const dir of tempDirs) rmSync(dir, { recursive: true, force: true })
   tempDirs.clear()
+  Object.defineProperty(process, 'platform', hostPlatform)
 })
+
+/**
+ * The mount these tests describe (gvfs SMB, WebDAV) is a POSIX one: on Windows
+ * the copy helpers keep to CopyFileW and never reach the fallback under test.
+ * `node:path` and the rest settled at import, so only the platform checks made
+ * at call time see the change.
+ */
+const hostPlatform = Object.getOwnPropertyDescriptor(process, 'platform')!
+const usePosixMount = () =>
+  Object.defineProperty(process, 'platform', { ...hostPlatform, value: 'linux' })
 
 describe('copies of unsaved edits', () => {
   it('holds what a save would write, in the app data folder, and leaves the file alone', async () => {
@@ -555,6 +579,44 @@ describe('password and encrypted PDFs, checked in the main process', () => {
     configurePdfRuntime({ preloadPath: '' })
     expect(recoveryEditor('pdf')?.isUnprotectable(wc as never)).toBe(true)
   })
+
+  it('get no copy and no template while a save is to protect them', async () => {
+    const path = await makePdfFile()
+    const wc = await openedView(path)
+    const protecting: SavePdfRequest = {
+      ...editedRequest(path),
+      protectionDirty: true,
+      encryption: { userPassword: 'pw', ownerPassword: 'pw', permissions: ALL_PERMISSIONS },
+    }
+
+    expect(await writeCopy(wc, protecting)).toBe('skipped')
+    expect(store.copyInfo(fileIdentity(path))).toBeNull()
+    expect(await invoke(PDF_CHANNELS.templateBytes, wc, protecting)).toBeNull()
+    // the same edits on the plain document still get their copy
+    expect(await writeCopy(wc, editedRequest(path))).toBe('written')
+  })
+
+  it('an untitled document saved with a password keeps no copy of the protected file', async () => {
+    const working = join(makeDir('pdf-recovery-protect-'), 'template.pdf')
+    writeFileSync(working, await pdfBytes())
+    markPdfUntitledCopy(working)
+    const view = await openedView(working)
+    expect(await writeCopy(view, editedRequest(working))).toBe('written')
+    const [before] = store.listCopies({ untitled: true })
+    const plainCopy = await store.readCopy(before!.identity)
+
+    const saved = await save(view, {
+      ...emptyRequest(working),
+      protectionDirty: true,
+      encryption: { userPassword: 'pw', ownerPassword: 'pw', permissions: ALL_PERMISSIONS },
+    })
+    expect(saved).toMatchObject({ ok: true })
+    expect(readFileSync(working).includes('/Encrypt')).toBe(true)
+    // the untitled slot was not refreshed from the protected working file
+    const after = await store.readCopy(before!.identity)
+    expect(after?.equals(plainCopy!)).toBe(true)
+    expect(after?.includes('/Encrypt')).toBe(false)
+  })
 })
 
 describe('working files of restored untitled copies', () => {
@@ -588,6 +650,73 @@ describe('working files of restored untitled copies', () => {
     expect(await invoke(PDF_CHANNELS.adoptUntitledCopy, view, working, 'Draft.pdf')).toBe(target)
     expect(existsSync(target)).toBe(true)
     await vi.waitFor(() => expect(existsSync(working)).toBe(false))
+  })
+
+  const injected = (code: string) => Object.assign(new Error(`${code}: injected`), { code })
+
+  /**
+   * The platform copy into `folder` as libuv runs it on a mount that refuses
+   * fchmod (gvfs SMB, WebDAV): the destination is created or truncated, then
+   * removed, then the error is thrown. Copies elsewhere work as usual.
+   */
+  function failPlatformCopyIn(folder: string): void {
+    vi.mocked(copyFile).mockImplementation(async (source, target, mode) => {
+      const path = String(target)
+      if (dirname(path) !== folder) return actualPromises.copyFile(source, target, mode)
+      if (((mode ?? 0) & constants.COPYFILE_EXCL) !== 0 && existsSync(path))
+        throw injected('EEXIST')
+      writeFileSync(path, '')
+      rmSync(path)
+      throw injected('ENOTSUP')
+    })
+  }
+
+  it('land at a new name in a folder where the platform copy fails', async () => {
+    usePosixMount()
+    const { view, working } = await restoredUntitled()
+    const bytes = readFileSync(working)
+    const folder = makeDir('pdf-recovery-mount-')
+    const target = join(folder, 'picked.pdf')
+    failPlatformCopyIn(folder)
+    showSaveDialog.mockResolvedValueOnce({ canceled: false, filePath: target })
+    expect(await invoke(PDF_CHANNELS.adoptUntitledCopy, view, working, 'Draft.pdf')).toBe(target)
+    expect(readFileSync(target).equals(bytes)).toBe(true)
+    expect(readdirSync(folder)).toEqual(['picked.pdf'])
+  })
+
+  it('replace a file of the picked name in a folder where the platform copy fails', async () => {
+    usePosixMount()
+    const { view, working } = await restoredUntitled()
+    const bytes = readFileSync(working)
+    const folder = makeDir('pdf-recovery-mount-')
+    const target = join(folder, 'picked.pdf')
+    writeFileSync(target, 'an older file')
+    failPlatformCopyIn(folder)
+    showSaveDialog.mockResolvedValueOnce({ canceled: false, filePath: target })
+    expect(await invoke(PDF_CHANNELS.adoptUntitledCopy, view, working, 'Draft.pdf')).toBe(target)
+    expect(readFileSync(target).equals(bytes)).toBe(true)
+    expect(readdirSync(folder)).toEqual(['picked.pdf'])
+  })
+
+  it('leave a file of the picked name as it was when no copy into its folder works', async () => {
+    usePosixMount()
+    const { view, working } = await restoredUntitled()
+    const folder = makeDir('pdf-recovery-mount-')
+    const target = join(folder, 'picked.pdf')
+    writeFileSync(target, 'an older file')
+    failPlatformCopyIn(folder)
+    vi.mocked(open).mockImplementation(async (...args) => {
+      const [path, flags] = args
+      if (dirname(String(path)) === folder && flags !== undefined && flags !== 'r')
+        throw injected('EACCES')
+      return actualPromises.open(...(args as Parameters<typeof actualPromises.open>))
+    })
+    showSaveDialog.mockResolvedValueOnce({ canceled: false, filePath: target })
+    await expect(
+      invoke(PDF_CHANNELS.adoptUntitledCopy, view, working, 'Draft.pdf'),
+    ).rejects.toThrow()
+    expect(readFileSync(target, 'utf8')).toBe('an older file')
+    expect(readdirSync(folder)).toEqual(['picked.pdf'])
   })
 
   it('left over from an earlier run are swept after a day, and only in their folder', async () => {

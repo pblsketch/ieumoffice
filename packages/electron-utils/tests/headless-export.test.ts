@@ -82,27 +82,33 @@ describe('parseHeadlessExportArgv', () => {
 describe('headlessModuleFor', () => {
   it.each([
     ['/x/a.docx', 'docs'],
+    ['/x/a.doc', 'docs'],
+    ['/x/a.odt', 'docs'],
     ['/x/a.xlsx', 'sheets'],
     ['/x/a.XLSM', 'sheets'],
     ['/x/a.xls', 'sheets'],
+    ['/x/a.ods', 'sheets'],
     ['/x/a.csv', 'sheets'],
     ['/x/a.tsv', 'sheets'],
     ['/x/a.pptx', 'slides'],
+    ['/x/a.ppt', 'slides'],
     ['/x/a.md', 'markdown'],
     ['/x/a.markdown', 'markdown'],
+    ['/x/a.txt', 'markdown'],
     ['/x/a.html', 'html'],
     ['/x/a.htm', 'html'],
+    ['/x/a.hwp', 'hwp'],
+    ['/x/a.HWPX', 'hwp'],
+    ['/x/plan.xmind', 'mindmap'],
+    ['/x/plan.mm', 'mindmap'],
+    ['/x/novel.epub', 'epub'],
   ])('routes %s to %s', (path, module) => {
     expect(headlessModuleFor(path)).toBe(module)
   })
 
   it('returns null for an unsupported extension', () => {
     expect(headlessModuleFor('/x/a.pdf')).toBeNull()
-    expect(headlessModuleFor('/x/a.doc')).toBeNull()
-    // a mind map has no headless exporter: the entry reports it as an input it cannot export
-    expect(headlessModuleFor('/x/plan.xmind')).toBeNull()
-    // nor has a book
-    expect(headlessModuleFor('/x/novel.epub')).toBeNull()
+    expect(headlessModuleFor('/x/slides.odp')).toBeNull()
     expect(headlessModuleFor('/x/noext')).toBeNull()
   })
 })

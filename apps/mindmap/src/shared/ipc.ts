@@ -10,8 +10,10 @@
  * calls them.
  */
 import type { AiPanelPrefs } from '@genoffice/ui'
+import type { PrintLayoutBridge } from '@genoffice/electron-utils/print-layout-bridge'
 import type { Lang } from '@genoffice/i18n'
 import type { AiSettings, AiStreamChunk, AiStreamRequest } from '@genoffice/ai-provider'
+import type { AiToolCapabilities } from '@genoffice/ai-search'
 import type { MindmapSubscriptionApi } from './subscription-api'
 
 export const MINDMAP_CHANNELS = {
@@ -22,6 +24,11 @@ export const MINDMAP_CHANNELS = {
   openFile: 'mindmap:open-file',
   /** invoke(`SaveMindmapRequest`) → `SaveMindmapResult` */
   save: 'mindmap:save',
+  /**
+   * invoke(`SaveIntoProjectRequest`) → `SaveIntoProjectResult`: a new map a
+   * create flow handed over, into its panel's project (spec 6)
+   */
+  saveIntoProject: 'mindmap:save-into-project',
   /** main → renderer(`SaveMode`): the menu's Save / Save As */
   saveRequest: 'mindmap:save-request',
   /** renderer → main(boolean): a save request that ended without a save call */
@@ -36,6 +43,8 @@ export const MINDMAP_CHANNELS = {
   fileRenamed: 'mindmap:file-renamed',
   /** invoke(url) → boolean: open a topic's web link in the system browser */
   openLink: 'mindmap:open-link',
+  /** invoke(url) → `LinkPreviewResult`: the picture and title a web page names for itself (decision 0099) */
+  readLinkPreview: 'mindmap:read-link-preview',
 
   // ---- commands from the menu (implemented; the shell menu of T11 sends them) ----
   /** main → renderer(`MindmapMenuCommand`) */
@@ -46,6 +55,8 @@ export const MINDMAP_CHANNELS = {
   exportRequest: 'mindmap:export-request',
   /** invoke(`ExportPngRequest`) → `ExportResult`. T10 */
   exportPng: 'mindmap:export-png',
+  /** invoke(`ExportSvgRequest`) → `ExportResult` */
+  exportSvg: 'mindmap:export-svg',
   /** invoke(`ExportPdfRequest`) → `ExportResult`. T10 */
   exportPdf: 'mindmap:export-pdf',
   /** invoke(`ExportMarkdownRequest`) → `ExportResult`. T10 */
@@ -68,6 +79,10 @@ export const MINDMAP_CHANNELS = {
   filesReadImage: 'mindmap:files-read-image',
   /** renderer → main(title): name an untitled map's tab from the first AI request. T12 */
   provisionalTitle: 'mindmap:provisional-title',
+  /** invoke({prompt, aspectRatio, model}) → `{url?, error?, errorCode?}`: one AI picture */
+  aiGenerateImage: 'mindmap:ai-generate-image',
+  /** invoke(url) → `{base64, mime} | null`: a web image or a file of the generated-image store */
+  fetchImage: 'mindmap:fetch-image',
 
   // ---- questions from the in-app MCP server (T13 sends them; the renderer already answers) ----
   /** main → renderer: "give me the current outline" */
@@ -131,6 +146,8 @@ export const AI_CHANNELS = {
   webSearch: 'ai:web-search',
   readUrl: 'ai:read-url',
   imageSearch: 'ai:image-search',
+  /** () → `AiToolCapabilities | null`, registered by the docs main (shell mode only) */
+  toolCapabilities: 'ai:tool-capabilities',
 } as const
 
 export type UiTheme = 'light' | 'dark' | 'system'
@@ -156,9 +173,14 @@ export type MindmapOpenStatus = 'ok' | 'legacy-format' | 'encrypted' | 'unreadab
  * map opens with unsaved changes. `file`: the file's path stays the save
  * target. `untitled`: the file is gone or no longer opens, so the map has no
  * path and its first save asks where (offering the file's old path).
+ *
+ * `import`: the path is a FreeMind or Freeplane map (`.mm`). The renderer
+ * reads its bytes into a new map named `title`; the `.mm` is never written,
+ * and the first save asks where to put the `.xmind` (offering its folder).
  */
 export type OpenFileResult =
   | { status: 'ok'; bytes: Uint8Array; restored?: 'file' | 'untitled' }
+  | { status: 'import'; importer: 'freemind'; bytes: Uint8Array; title: string }
   | { status: Exclude<MindmapOpenStatus, 'ok'> }
 
 // ---- save ----
@@ -179,8 +201,32 @@ export interface SaveMindmapRequest {
   auto?: boolean
 }
 
+/**
+ * `export`: Save As picked one of the export types. Nothing was written and the
+ * map keeps its file; the renderer writes that copy to `path` through the
+ * export channel, which takes exactly that path once without asking again.
+ */
 export type SaveMindmapResult =
-  { ok: true; path: string } | { ok: true; canceled: true } | { ok: false; error: string }
+  | { ok: true; path: string }
+  | { ok: true; canceled: true }
+  | { ok: true; export: { format: ExportFormat; path: string } }
+  | { ok: false; error: string }
+
+/**
+ * Project folders (spec 6): the run a create flow handed to an untitled map
+ * ended well. The main process picks the project folder and a free name; the
+ * renderer only offers the name the map's file is called by.
+ */
+export interface SaveIntoProjectRequest {
+  /** the whole `.xmind` file, as the engine produced it */
+  bytes: Uint8Array
+  /** file name (no extension) the map is offered under */
+  defaultName?: string
+}
+
+/** `skipped`: no project (or the map has a file already), nothing written */
+export type SaveIntoProjectResult =
+  { ok: true; path: string } | { ok: false; skipped: true } | { ok: false; error: string }
 
 // ---- menu ----
 
@@ -190,6 +236,12 @@ export type SaveMindmapResult =
  * `exportRequest` and Print through `printRequest`, so the main process can
  * wait for their outcome.
  */
+/** What a web page names for itself; the picture is the downloaded bytes, any format. */
+export type LinkPreviewResult =
+  | { ok: true; title: string | null; picture: { base64: string; mime: string } | null }
+  /** not a web address, the page could not be read, or it is not a page */
+  | { ok: false; reason: 'not-web' | 'unreachable' | 'not-page' }
+
 export type MindmapMenuCommand =
   | 'undo'
   | 'redo'
@@ -204,25 +256,36 @@ export type MindmapMenuCommand =
 
 // ---- export and print (T10) ----
 
-export type ExportFormat = 'png' | 'pdf' | 'markdown'
+export type ExportFormat = 'png' | 'svg' | 'pdf' | 'markdown'
 
 export interface ExportPngRequest {
   /** the picture of the current sheet */
   bytes: Uint8Array
   /** file name (no extension) suggested in the dialog */
   suggestedName: string
+  /** the path Save As picked for this export: written without a dialog (`SaveMindmapResult`) */
+  path?: string
+}
+
+export interface ExportSvgRequest {
+  /** the current sheet as one self-contained SVG document (pictures as `data:` addresses) */
+  svg: string
+  suggestedName: string
+  path?: string
 }
 
 export interface ExportPdfRequest {
   /** self-contained print HTML; the main process prints it in a hidden window */
   html: string
   suggestedName: string
+  path?: string
 }
 
 export interface ExportMarkdownRequest {
   /** the outline text */
   text: string
   suggestedName: string
+  path?: string
 }
 
 export type ExportResult =
@@ -235,6 +298,21 @@ export interface PrintMindmapRequest {
 
 /** A cancelled job is the user closing the system dialog: an outcome, not a failure. */
 export type PrintResult = { ok: true } | { ok: true; canceled: true } | { ok: false; error: string }
+
+/**
+ * The advanced print layout's channels (decision 0141) are
+ * `mindmap:print-layout-preview|print|save|cancel` and the progress event
+ * `mindmap:print-layout-progress`, named by the shared print layout from this prefix.
+ */
+export const MINDMAP_PRINT_LAYOUT_PREFIX = 'mindmap'
+
+/** What a print layout request carries as its `editor` part: the page Print would print. */
+export interface MindmapPrintJob {
+  /** the same self-contained print HTML `print` is given (`snapshotPage`) */
+  html: string
+  /** file name (no extension) the save dialog of the arranged PDF suggests */
+  suggestedName: string
+}
 
 // ---- chat attachments (T12; same shapes as the other editors) ----
 
@@ -358,6 +436,8 @@ export interface MindmapCoreApi {
    * untitled maps and mode 'saveAs' go through a main-process save dialog first.
    */
   save(request: SaveMindmapRequest): Promise<SaveMindmapResult>
+  /** a new map a create flow handed over, into its panel's project (spec 6); absent in older preloads */
+  saveIntoProject?(request: SaveIntoProjectRequest): Promise<SaveIntoProjectResult>
   /** Mirror unsaved-changes state to the main process; drives the save prompt before closing */
   setDirty(dirty: boolean): void
   /** Shell menu Save / Save As → the renderer produces the bytes and calls save() */
@@ -371,6 +451,11 @@ export interface MindmapCoreApi {
   onFileRenamed(handler: (newPath: string) => void): () => void
   /** Ask the main process to open a web link; false when the address is not one it opens */
   openLink(url: string): Promise<boolean>
+  /**
+   * Reads the web page at `url` once for its picture and title. Only when the
+   * person asked for a preview in the link dialog: this reaches the page's site.
+   */
+  readLinkPreview(url: string): Promise<LinkPreviewResult>
   /** Commands from the menu (undo, redo, zoom, …) */
   onMenuCommand(handler: (command: MindmapMenuCommand) => void): () => void
   getLanguage(): Promise<Lang>
@@ -388,9 +473,16 @@ export interface MindmapExportApi {
   onExportRequest(handler: (format: ExportFormat) => void): () => void
   onPrintRequest(handler: () => void): () => void
   exportPng(request: ExportPngRequest): Promise<ExportResult>
+  exportSvg(request: ExportSvgRequest): Promise<ExportResult>
   exportPdf(request: ExportPdfRequest): Promise<ExportResult>
   exportMarkdown(request: ExportMarkdownRequest): Promise<ExportResult>
   print(request: PrintMindmapRequest): Promise<PrintResult>
+  /**
+   * The advanced print layout: the page `print` would print, made into a
+   * landscape A4 PDF the way the PDF export makes it, then arranged and
+   * previewed, printed or saved by the shared print layout
+   */
+  printLayout: PrintLayoutBridge<MindmapPrintJob>
 }
 
 /** The AI panel's bridge. The panel and the attachment handlers are T12's. */
@@ -421,6 +513,18 @@ export interface MindmapAiApi {
   /** Read one web page as text (the shared ai:read-url handler), paged by character offset */
   readUrl(url: string, offset?: number): Promise<ReadUrlResult>
   imageSearch(query: string, maxResults?: number): Promise<ImageSearchResult>
+  /** AI image generation (mindmap-owned channel; the main process picks the backend) */
+  generateImage(op: { prompt: string; aspectRatio?: string; model?: string }): Promise<{
+    url?: string
+    error?: string
+    errorCode?: string
+    /** the shared tool's remark for the model (e.g. Codex picked the image model) */
+    note?: string
+  }>
+  /** Download an image URL (or a file of the generated-image store) in the main process */
+  fetchImage(url: string): Promise<{ base64: string; mime: string } | null>
+  /** which search/media tools can run right now — gates generate_image */
+  aiToolCapabilities(): Promise<AiToolCapabilities | null>
 }
 
 /** Answers to the in-app MCP server. The renderer answers already; T13 asks from the main process. */

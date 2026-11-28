@@ -1,46 +1,54 @@
 # Alat PDF
 
-Tetingkap untuk tugas PDF harian yang bermula daripada tugas itu. Hasilnya sentiasa disimpan sebagai fail baharu dan fail asal tidak berubah. Alat dalam tetingkap ini hanya berfungsi pada PC ini dan tidak menggunakan AI.
+Tetingkap khas untuk tugasan PDF harian, bermula daripada tugas yang ingin dilakukan. Hasil sentiasa disimpan sebagai fail baharu dan fail asal tidak diubah. Semua alat dalam tetingkap ini hanya berjalan pada PC ini dan tidak menggunakan AI.
 
-## Cara ia berfungsi
+## Cara menggunakan
 
-1. Di Laman Utama, klik kad **Alat PDF**. Tetingkap berasingan akan dibuka.
-2. Pilih tugas, fail yang diperlukan dan pilihannya, kemudian klik **Simpan sebagai fail baharu**.
-3. Selepas disimpan, **Buka dalam tab** terus menunjukkan hasilnya dan **Tunjukkan dalam folder** membuka foldernya.
+1. Di Laman Utama, klik kad **Alat PDF**, atau buka **Alat PDF** daripada tab **Halaman** dalam editor PDF. Tetingkap berasingan akan dibuka.
+2. Pilih tugas (atau cari mengikut nama), pilih atau lepaskan fail yang diperlukan, tetapkan pilihan dan klik **Simpan sebagai fail baharu**.
+3. Selepas disimpan, **Buka dalam tab** membuka hasil serta-merta, **Tunjukkan dalam folder** membuka foldernya, dan **Teruskan dengan fail ini** menghantar hasil terus ke alat seterusnya.
 
-## Senarai alat
+## Alat-alat
 
-| Kumpulan             | Alat                                                                                                             |
-| -------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| Susun halaman        | Gabungkan PDF, Pisahkan PDF, Ekstrak halaman sebagai PDF, Terbalikkan susunan, Putar semua, Buang halaman kosong |
-| Sedia untuk cetak    | Sedia untuk cetakan dua muka, Gabung halaman, Saiz halaman, Pisahkan halaman                                     |
-| Hias                 | Tambah latar                                                                                                     |
-| Kemas                | Buang anotasi                                                                                                    |
-| Tukar                | Imej ke PDF, Simpan sebagai teks                                                                                 |
-| Saiz dan keselamatan | Kecilkan saiz, Tambah kata laluan, Buang kata laluan, Baiki fail                                                 |
-| Dalam editor PDF     | Tera air & pengepala/pengaki, Pangkas halaman, Eksport imej, Tukar PDF, Edit, tandatangan, tapis                 |
+| Kumpulan             | Alat                                                                                                                                                   |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Susun halaman        | Gabungkan PDF, Pisahkan PDF, Ekstrak halaman sebagai PDF, Susun halaman, Gabung berselang-seli, Terbalikkan susunan, Putar semua, Buang halaman kosong |
+| Sedia untuk cetak    | Sedia untuk cetakan dua muka, Gabung halaman, Saiz halaman, Pisahkan halaman                                                                           |
+| Hias                 | Tambah latar                                                                                                                                           |
+| Kemas                | Buang anotasi                                                                                                                                          |
+| Tukar                | Imej ke PDF, Dokumen ke PDF, Eksport imej, Tukar PDF, Simpan sebagai teks, OCR PDF imbasan                                                             |
+| Saiz dan keselamatan | Kecilkan saiz, Tambah kata laluan, Buang kata laluan, Baiki fail                                                                                       |
+| Dalam editor PDF     | Tera air & pengepala/pengaki, Pangkas halaman, Edit, tandatangan, tapis                                                                                |
 
-Kad dalam kumpulan **Dalam editor PDF** membuka PDF yang dipilih dalam tab editor. Pilih arahan itu pada reben di sana.
+Kad dalam **Dalam editor PDF** membuka PDF yang dipilih dalam tab editor. Pilih perintahnya daripada reben di situ.
 
 ## Perlu diketahui
 
-- Anda tidak boleh menyimpan di atas fail sumber atau fail yang dibuka dengan perubahan yang belum disimpan.
-- PDF yang dilindungi kata laluan hanya boleh digunakan dalam alat lain selepas **Buang kata laluan**. Fail yang kata laluannya tidak anda ketahui tidak dapat dibuka.
-- **Baiki fail** hanya mengembalikan bahagian yang masih boleh dibaca. Buka fail baharu dan semak bahawa tiada halaman yang hilang.
-- **Buang halaman kosong** hanya menunjukkan calon. Hanya halaman yang anda pilih dibuang, dan halaman yang ada walau satu aksara tidak pernah menjadi calon.
-- **Buang anotasi** mengekalkan medan borang dan hanya membuang pautan jika anda menandanya. Kandungan anotasi yang dibuang tidak kekal dalam fail baharu.
-- **Simpan sebagai teks** hanya membaca lapisan teks. Halaman yang teksnya ialah imej, seperti halaman imbasan, akan kosong.
+- Anda tidak boleh menulis ganti fail sumber atau fail yang terbuka dengan perubahan belum disimpan.
+- Anda boleh seret dan lepas fail terus ke dalam tetingkap. Alat PDF tunggal turut menyokong **Mod kelompok** untuk memproses beberapa PDF ke dalam satu folder output (kecuali Pisahkan PDF).
+- Jika anda menambah PDF berkatalaluan, masukkan kata laluannya terus di panel untuk membuka salinan tanpa penyulitan bagi tugasan ini. Fail yang kata laluannya tidak diketahui tidak dapat dibuka.
+- **Kecilkan saiz** memaparkan pecahan ruang (imej, fon, strim, metadata) serta menyokong pratetap, saiz sasaran, skala kelabu, pengoptimuman web dan pembuangan metadata.
+- **Susun halaman** membolehkan anda menyusun semula, memutar, menduplikasi, memadam atau menyisipkan halaman kosong melalui lakaran kecil, serta menggabungkan halaman daripada beberapa PDF.
+- **Dokumen ke PDF** menukar fail Word, Excel, PowerPoint, HWP, Markdown, HTML, peta minda dan EPUB kepada PDF (berasingan atau digabungkan). Apabila menukar HTML atau Markdown yang merujuk imej web jauh, URL imej tersebut mungkin dimuat turun semasa pemaparan, sama seperti eksport PDF biasa.
+- **OCR PDF imbasan** menambah lapisan teks halimunan yang boleh dicari pada PDF imbasan menggunakan enjin OCR luar talian terbina dalam.
+- **Baiki fail** hanya memulihkan bahagian yang masih boleh dibaca. Buka fail baharu dan pastikan tiada halaman yang hilang.
+- **Buang halaman kosong** hanya menunjukkan calon. Hanya halaman yang anda tanda akan dibuang, dan halaman yang mempunyai walau satu aksara tidak akan dicadangkan.
+- **Buang anotasi** mengekalkan medan borang dan membuang pautan hanya apabila ditanda. Kandungan anotasi yang dibuang tidak kekal dalam fail baharu.
+- **Pisahkan PDF** menyokong pemisahan mengikut julat tersuai (boleh digabungkan), bilangan halaman, penanda buku, atau saiz maksimum dengan pilihan penamaan dan subfolder.
 
-## Sesuai untuk
+## Cuba untuk
 
-| Situasi                                                                              | Alat                                          |
-| ------------------------------------------------------------------------------------ | --------------------------------------------- |
-| Mencetak beberapa dokumen dua muka sekali gus, setiap satu bermula pada muka hadapan | Sedia untuk cetakan dua muka → Gabung halaman |
-| Dokumen imbasan tersusun terbalik atau halamannya mengiring                          | Terbalikkan susunan, Putar semua              |
-| Halaman kosong terselit antara halaman berkas imbasan                                | Buang halaman kosong                          |
-| Meletakkan kepala surat syarikat atau organisasi pada setiap halaman                 | Tambah latar                                  |
-| Mengemas ulasan sebelum menghantar dokumen yang telah disemak                        | Buang anotasi                                 |
-| Menghantar beberapa foto sebagai satu PDF                                            | Imej ke PDF                                   |
-| Menggunakan teks PDF dalam dokumen lain                                              | Simpan sebagai teks                           |
-| PDF terlalu besar untuk dilampirkan pada e-mel                                       | Kecilkan saiz                                 |
-| PDF yang muat turunnya terputus di tengah jalan tidak dapat dibuka                   | Baiki fail                                    |
+| Situasi                                                                                    | Alat untuk digunakan                          |
+| ------------------------------------------------------------------------------------------ | --------------------------------------------- |
+| Mencetak beberapa dokumen dua muka serentak supaya setiap satu bermula di bahagian hadapan | Sedia untuk cetakan dua muka → Gabung halaman |
+| Menggabungkan halaman ganjil dan genap daripada pengimbas satu sisi ke dalam satu PDF      | Gabung berselang-seli                         |
+| Menyusun semula halaman, memadam halaman lebihan atau menyisipkan halaman pemisah kosong   | Susun halaman                                 |
+| Menjadikan PDF imbasan boleh dicari teksnya                                                | OCR PDF imbasan                               |
+| Menukar fail Office, HWP, Markdown, HTML, peta minda atau EPUB kepada PDF                  | Dokumen ke PDF                                |
+| Menyimpan halaman PDF sebagai imej PNG atau JPG (atau arkib ZIP)                           | Eksport imej                                  |
+| Menukar PDF kepada Word, Excel, PowerPoint, HWPX, Markdown atau EPUB                       | Tukar PDF                                     |
+| Mengecilkan PDF supaya muat had lampiran e-mel                                             | Kecilkan saiz                                 |
+| Meletakkan kepala surat syarikat atau organisasi pada setiap halaman                       | Tambah latar                                  |
+| Membersihkan ulasan sebelum menghantar dokumen yang telah disemak                          | Buang anotasi                                 |
+| Menghimpunkan beberapa foto menjadi satu PDF dengan putaran dan kualiti pilihan            | Imej ke PDF                                   |
+| PDF yang muat turunnya terhenti di tengah jalan tidak dapat dibuka                         | Baiki fail                                    |

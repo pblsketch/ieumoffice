@@ -21,7 +21,7 @@ vi.mock('electron', () => ({
   },
 }))
 
-import { setUiLang } from '@genoffice/i18n'
+import { LANGS, setUiLang } from '@genoffice/i18n'
 import {
   aboutMenuItem,
   appMenuLabels,
@@ -30,34 +30,14 @@ import {
   editMenuTemplate,
   helpCheckUpdatesItems,
   helpMenuTemplate,
+  macAppMenuTemplate,
+  setOpenSettingsInvoker,
+  settingsMenuItem,
   setUpdateCheckInvoker,
   viewMenuTemplate,
   windowMenuTemplate,
   type AppMenuLabels,
 } from '../src/index'
-
-const LANGS = [
-  'zh',
-  'en',
-  'ja',
-  'ko',
-  'fr',
-  'de',
-  'es',
-  'th',
-  'id',
-  'ru',
-  'ar',
-  'pt',
-  'it',
-  'pl',
-  'cs',
-  'nl',
-  'ms',
-  'he',
-  'hi',
-  'zh-TW',
-] as const
 
 const en = appMenuLabels('en')
 
@@ -67,10 +47,11 @@ const submenuOf = (tpl: { submenu?: unknown }): Item[] => tpl.submenu as Item[]
 beforeEach(() => {
   vi.clearAllMocks()
   setUpdateCheckInvoker(null)
+  setOpenSettingsInvoker(null)
 })
 
 describe('appMenuLabels', () => {
-  it('covers all 20 languages with every key non-empty', () => {
+  it('covers every UI language with every key non-empty', () => {
     const keys = Object.keys(en) as (keyof AppMenuLabels)[]
     for (const lang of LANGS) {
       const labels = appMenuLabels(lang)
@@ -214,11 +195,31 @@ describe('checkUpdatesMenuItem / manual update check wiring', () => {
     expect(helpCheckUpdatesItems(en, 'darwin').map((i) => i.label)).toEqual([en.checkUpdates])
   })
 
-  it('shows only the window menus in the ☰ popup, with no update item', () => {
+  it('ends the ☰ popup with Settings… on its own, after the window menus, with no update item', () => {
     const menus = [{ label: 'File', submenu: [] }, helpMenuTemplate(en, [], 'win32')]
     const popup = appMenuPopupTemplate(menus, en)
-    expect(popup).toEqual(menus)
+    expect(popup.slice(0, 2)).toEqual(menus)
+    expect(popup[2]).toEqual({ type: 'separator' })
+    expect(popup[3]!.label).toBe(en.settings)
+    // the popup only prints Ctrl+,; the shell's key handler takes the press
+    expect(popup[3]).toMatchObject({ accelerator: 'CmdOrCtrl+,', registerAccelerator: false })
+    expect(popup).toHaveLength(4)
     expect(popup.map((i) => i.label)).not.toContain(en.checkUpdates)
+
+    const open = vi.fn()
+    setOpenSettingsInvoker(open)
+    ;(popup[3] as { click: () => void }).click()
+    expect(open).toHaveBeenCalledOnce()
+  })
+
+  it('prints no settings chord in the ☰ popup of the Word tab', () => {
+    const popup = appMenuPopupTemplate([], en, 'none')
+    expect(popup[1]!.label).toBe(en.settings)
+    expect(popup[1]!.accelerator).toBeUndefined()
+    // never registers from a popup, even when asked to
+    expect(appMenuPopupTemplate([], en, 'register')[1]).toMatchObject({
+      registerAccelerator: false,
+    })
   })
 
   it('invokes the shell-registered check on click, and no-ops unregistered', () => {
@@ -271,5 +272,52 @@ describe('checkUpdatesMenuItem / manual update check wiring', () => {
     } finally {
       setUiLang('zh')
     }
+  })
+})
+
+describe('macAppMenuTemplate / Settings… and the update check where Mac users look', () => {
+  const items = (tpl: ReturnType<typeof macAppMenuTemplate>) =>
+    tpl.submenu as { role?: string; type?: string; label?: string; accelerator?: string }[]
+
+  it('is the app menu with About and Settings… (⌘,) above the system items, no update check', () => {
+    const tpl = macAppMenuTemplate(en)
+    expect(tpl.role).toBe('appMenu')
+    expect(items(tpl).map((i) => i.label ?? i.role ?? i.type)).toEqual([
+      en.about,
+      'separator',
+      en.settings,
+      'separator',
+      'services',
+      'separator',
+      'hide',
+      'hideOthers',
+      'unhide',
+      'separator',
+      'quit',
+    ])
+    const settings = items(tpl)[2] as { accelerator?: string; registerAccelerator?: boolean }
+    expect(settings.accelerator).toBe('CmdOrCtrl+,')
+    expect(settings.registerAccelerator).toBeUndefined()
+  })
+
+  it("leaves ⌘, to the page and adds the tab's own items after Settings…", () => {
+    const tpl = macAppMenuTemplate(en, {
+      settingsShortcut: 'none',
+      extraItems: [{ label: 'Word Preferences…' }],
+    })
+    const list = items(tpl)
+    expect(list[2]!.label).toBe(en.settings)
+    expect(list[2]!.accelerator).toBeUndefined()
+    expect(list[3]!.label).toBe('Word Preferences…')
+    expect(list[4]!.type).toBe('separator')
+  })
+
+  it('runs the shell-registered opener on click, and no-ops unregistered', () => {
+    const item = settingsMenuItem(en) as { click: () => void }
+    expect(() => item.click()).not.toThrow()
+    const open = vi.fn()
+    setOpenSettingsInvoker(open)
+    item.click()
+    expect(open).toHaveBeenCalledOnce()
   })
 })

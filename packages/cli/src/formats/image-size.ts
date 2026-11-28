@@ -31,6 +31,9 @@ export function imageSize(
     let i = 2
     while (i + 9 < b.length) {
       if (b[i] !== 0xff) return null
+      // T.81 B.1.1.2 permits any number of FF fill bytes before a marker.
+      while (b[i + 1] === 0xff) i++
+      if (i + 9 >= b.length) return null
       const marker = b[i + 1]!
       // Standalone markers carry no length word (RSTn, SOI, EOI, TEM):
       // skipping blindly would land mid-frame and misparse the dims.
@@ -39,7 +42,7 @@ export function imageSize(
         continue
       }
       const size = (b[i + 2]! << 8) | b[i + 3]!
-      if (size < 2) return null
+      if (size < 2 || i + 2 + size > b.length) return null
       // SOF0..SOF15 except DHT (C4), JPG (C8), DAC (CC) carry the frame size
       if (
         marker >= 0xc0 &&
@@ -48,6 +51,7 @@ export function imageSize(
         marker !== 0xc8 &&
         marker !== 0xcc
       ) {
+        if (size < 8) return null
         const height = (b[i + 5]! << 8) | b[i + 6]!
         const width = (b[i + 7]! << 8) | b[i + 8]!
         return validDims(width, height) ? { width, height, mime: 'image/jpeg' } : null

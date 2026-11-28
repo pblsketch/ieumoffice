@@ -101,9 +101,20 @@ export const TOOLS: ToolSpec[] = [
     name: 'convert',
     command: 'convert',
     description:
-      'Convert a document to another format with the GenOffice engines (pdf, docx, odt, xlsx, pptx, md, html, csv, epub; the `to` description lists the routes). Targets that need layout (to pdf, docx to html, html to docx) start a hidden GenOffice process for 1-6 s. pdf to md/epub reflows the text (pictures in assets/ beside the .md) and uses pages read by pdf_ai_read. Output defaults to the input name with the new extension.',
+      'Convert a document to another format with the GenOffice engines (pdf, docx, odt, xlsx, pptx, md, html, csv, epub, hwp; the `to` description lists the routes). Targets that need layout (to pdf, docx to html, html to docx, diagram to pdf/png/svg) start a hidden GenOffice process for 1-6 s. pdf to md/epub reflows the text (pictures in assets/ beside the .md) and uses pages read by pdf_ai_read. A diagram makes one PDF, or a PNG/SVG per page (<name>-p<n>, out is a folder) unless page picks one. Output defaults to the input name with the new extension.',
     positionals: [{ key: 'file', description: 'path of the source document' }],
-    options: ['to', 'out', 'force', 'password', 'sheet', 'pages', 'title', 'author', 'no-cover'],
+    options: [
+      'to',
+      'out',
+      'force',
+      'password',
+      'sheet',
+      'pages',
+      'title',
+      'author',
+      'no-cover',
+      { key: 'page', kind: 'string', description: 'diagram page id or name' },
+    ],
   },
   {
     name: 'create_docx',
@@ -267,7 +278,7 @@ export const TOOLS: ToolSpec[] = [
     name: 'merge',
     command: 'merge',
     description:
-      'Fill {{key}} placeholders in a .docx, .pptx or .xlsx template with values from a JSON object and write the result to out (nested objects flatten to dotted keys; whitespace inside the braces is tolerated; a whole-cell placeholder in xlsx takes the value type). The result lists used_keys, unused_keys and unresolved_placeholders with their location (block / slide + element / sheet + cell) and reason (no_key; split_placeholder when the template stores the braces across differently formatted runs; unreachable_nested inside a nested pptx group); strict makes an unresolved placeholder an error. ' +
+      'Fill {{key}} placeholders in a .docx, .pptx or .xlsx template with values from a JSON object and write the result to out (nested objects flatten to dotted keys; whitespace inside the braces is tolerated; a whole-cell placeholder in xlsx takes the value type). The result lists used_keys, unused_keys and unresolved_placeholders with their location (block / slide + element / sheet + cell) and reason (no_key; split_placeholder when the braces sit where a flat text match cannot reach them, such as across a line break or a block boundary; unreachable_nested inside a nested pptx group); strict makes an unresolved placeholder an error. ' +
       GUI_OPEN,
     positionals: [{ key: 'file', description: 'path of the template (.docx, .pptx or .xlsx)' }],
     options: [
@@ -385,6 +396,206 @@ export const TOOLS: ToolSpec[] = [
       'Text of a Hangul (HWP / HWPX) document, read locally: paragraphs as lines, table rows as "a | b". Clipped to 20000 characters; next_offset is the offset to go on from. Read-only.',
     positionals: [{ key: 'file', description: '.hwp or .hwpx path' }],
     options: ['offset', 'full', 'max-chars'],
+  },
+  {
+    name: 'hwp_apply',
+    command: 'hwp',
+    verb: 'apply',
+    description:
+      'Edit a Hangul (.hwp / .hwpx) document locally with a batch of ops, the tools the in-app AI uses (op reference: guide hwp, or the ieumoffice://guide/hwp resource). Text is found by what it says; an anchor that occurs more than once is refused with the places listed (pass occurrence). An op that would drop a table, picture, form field or memo is refused. Read ops answer in detail.results; a batch of reads writes nothing. Written back in its own format (out: .hwp or .hwpx picks one); an overwritten file is kept as <name>.bak. Atomic by default. ' +
+      GUI_OPEN,
+    positionals: [{ key: 'file', description: 'path of the .hwp or .hwpx' }],
+    options: [
+      {
+        key: 'ops',
+        kind: OPS_JSON,
+        typed: 'hwp-ops',
+        description: 'JSON array of ops, every entry with "op" and the fields of that op',
+        required: true,
+      },
+      'dry-run',
+      'bibliography',
+      'best-effort',
+      'stop-on-error',
+      'out',
+      'force',
+    ],
+  },
+  {
+    name: 'create_hwp',
+    command: 'create',
+    description:
+      'Create a new Hangul document (.hwp or .hwpx, by the out extension) from the hwp_apply ops run on a blank A4 page: insert_paragraphs with where "end", insert_table, format_text, format_paragraph ...',
+    options: [
+      {
+        key: 'type',
+        choices: ['hwp', 'hwpx'],
+        description: 'hwp or hwpx; must match the out extension',
+        required: true,
+      },
+      {
+        key: 'ops',
+        kind: OPS_JSON,
+
+        description: 'JSON array of ops in the hwp_apply shape, every entry with "op"',
+        required: true,
+      },
+      'bibliography',
+      { key: 'out', description: 'output .hwp or .hwpx path (required)', required: true },
+      'force',
+    ],
+  },
+  {
+    name: 'diagram_read',
+    command: 'diagram',
+    verb: 'read',
+    readOnly: true,
+    description:
+      'Shapes and edges of a draw.io diagram (.drawio, .dio, .drawio.svg, .drawio.png), read locally: detail.pages[] { id, name, shapes, edges }.',
+    positionals: [{ key: 'file', description: 'path of the diagram' }],
+    options: [{ key: 'page', kind: 'string', description: 'page id or name (default: all)' }],
+  },
+  {
+    name: 'diagram_apply',
+    command: 'diagram',
+    verb: 'apply',
+    description:
+      'Edit a draw.io diagram with the in-app AI ops (guide diagram). Ids come from diagram_read; new ids come back in detail.results[].created. .drawio/.dio run locally, untouched pages kept byte for byte; insert_mermaid and .drawio.svg/.png start a hidden GenOffice. Reads write nothing. Atomic by default. ' +
+      GUI_OPEN,
+    positionals: [{ key: 'file', description: 'path of the diagram' }],
+    options: [
+      {
+        key: 'ops',
+        kind: OPS_JSON,
+        typed: 'diagram-ops',
+        description: 'JSON array of ops, every entry with "op"',
+        required: true,
+      },
+      { key: 'page', kind: 'string', description: 'default page id or name (else the first)' },
+      'best-effort',
+      'stop-on-error',
+      'out',
+      'force',
+    ],
+  },
+  {
+    name: 'create_drawio',
+    command: 'create',
+    fixed: ['--type', 'drawio'],
+    description:
+      'Create a draw.io diagram: Mermaid drawn by draw.io (a hidden GenOffice process), then diagram_apply ops, on an empty page. The out name picks .drawio, .dio, .drawio.svg or .drawio.png.',
+    options: [
+      {
+        key: 'mermaid',
+        kind: 'inline-md',
+        description: 'Mermaid source',
+      },
+      {
+        key: 'ops',
+        kind: OPS_JSON,
+        description: 'diagram_apply ops',
+      },
+      {
+        key: 'out',
+        description: 'output path (required)',
+        required: true,
+      },
+      'force',
+    ],
+  },
+  {
+    name: 'map_read',
+    command: 'map',
+    verb: 'read',
+    readOnly: true,
+    description:
+      'Outline of an .xmind mind map, one `# ` heading per sheet; detail.sheets[].topics[] gives every topic (id, title, note, link, children ids) for map_apply. No app process.',
+    positionals: [{ key: 'file', description: 'path of the .xmind' }],
+  },
+  {
+    name: 'map_apply',
+    command: 'map',
+    verb: 'apply',
+    description:
+      'Edit an .xmind mind map with the map ops (guide map): add_topic, rename_topic, move_topic, delete_topic, set_note, set_link, on the ids map_read lists; new ids come back in detail.results[].created. Local, untouched parts of the file kept byte for byte; delete_topic refuses when it would take preserved elements and reports how many. Atomic by default. ' +
+      GUI_OPEN,
+    positionals: [{ key: 'file', description: 'path of the .xmind' }],
+    options: [
+      {
+        key: 'ops',
+        kind: OPS_JSON,
+        typed: 'map-ops',
+        description: 'JSON array of ops, every entry with "op"',
+        required: true,
+      },
+      { key: 'best-effort', description: 'apply what can apply; report the rest' },
+      { key: 'stop-on-error', description: 'apply in order up to the first refusal' },
+      { key: 'out', description: 'write here instead of in place' },
+      { key: 'force', description: 'overwrite an existing --out' },
+    ],
+  },
+  {
+    name: 'map_create',
+    command: 'map',
+    verb: 'create',
+    description:
+      "Create an .xmind mind map from a markdown outline (`# ` heading per sheet, `- ` item per topic; labels, links and notes come back). out is required: the outline text becomes a file in this server's scratch directory, which is deleted with the call, so a map written beside it would not survive.",
+    options: [
+      {
+        key: 'outline',
+        kind: 'inline-md',
+        description: 'the outline text',
+        required: true,
+      },
+      { key: 'out', description: 'output .xmind path (required)', required: true },
+      { key: 'force', description: 'overwrite an existing output' },
+    ],
+  },
+  {
+    name: 'whiteboard_read',
+    command: 'whiteboard',
+    verb: 'read',
+    readOnly: true,
+    description:
+      'Read pages and objects of a .whiteboard file via Rust WASM (no app). Returns structured page/object tables for whiteboard_apply.',
+    positionals: [{ key: 'file', description: 'path of the .whiteboard' }],
+    options: [{ key: 'page', kind: 'string', description: 'page id, title, or 1-based index' }],
+  },
+  {
+    name: 'whiteboard_apply',
+    command: 'whiteboard',
+    verb: 'apply',
+    description:
+      'Edit a .whiteboard with ops (guide whiteboard): add, update, move, delete, add_page, rename_page, delete_page, set_page_format. Local WASM, atomic by default. ' +
+      GUI_OPEN,
+    positionals: [{ key: 'file', description: 'path of the .whiteboard' }],
+    options: [
+      {
+        key: 'ops',
+        kind: OPS_JSON,
+        typed: 'whiteboard-ops',
+        description: 'JSON array of ops',
+        required: true,
+      },
+      { key: 'page', kind: 'string', description: 'default page id or title' },
+      'best-effort',
+      'stop-on-error',
+      'out',
+      'force',
+    ],
+  },
+  {
+    name: 'create_whiteboard',
+    command: 'create',
+    fixed: ['--type', 'whiteboard'],
+    description:
+      'Create a new .whiteboard file locally from a declarative layout template and/or whiteboard_apply ops.',
+    options: [
+      { key: 'template', kind: OPS_JSON, description: 'TemplateDocument v1 JSON' },
+      { key: 'ops', kind: OPS_JSON, description: 'whiteboard_apply ops' },
+      { key: 'out', description: 'output .whiteboard path (required)', required: true },
+      'force',
+    ],
   },
   {
     name: 'sheet_read',
@@ -536,7 +747,7 @@ export const TOOLS: ToolSpec[] = [
     readOnly: true,
     images: true,
     description:
-      'One PNG per page of a document (docx, xlsx, pptx, pdf, md, html) as the GenOffice renderer lays it out, written to a directory and returned as images. Starts a hidden GenOffice process. page renders one page; grid adds a contact sheet of every page.',
+      'One PNG per page of a document (docx, xlsx, pptx, pdf, md, html, hwp, hwpx) as the app prints it, written to a directory and returned as images. Starts a hidden GenOffice process. page renders one page; grid adds a contact sheet of every page.',
     positionals: [{ key: 'file', description: 'path of the document' }],
     options: [
       { key: 'out', description: 'directory for the PNGs (required)', required: true },
@@ -555,9 +766,9 @@ export const TOOLS: ToolSpec[] = [
     readOnly: true,
     plainText: true,
     description:
-      'The op reference an agent reads before writing ops: guide("docs"), guide("sheets") or guide("slides") list the groups; topic narrows to one group or one op. guide("slides", "design") is the staged deck workflow and guide("slides", "spec") the outline and page spec format (deck_start returns both). guide("slides", "templates") lists the built-in design templates; guide("slides", "templates", "<id>") prints one as a ready-made style sheet to save as style.md. Also available as ieumoffice://guide/* resources.',
+      'The op reference an agent reads before writing ops: guide("docs"), guide("sheets"), guide("slides"), guide("hwp"), guide("diagram"), guide("map") or guide("whiteboard") list the groups; topic narrows to one group or one op. guide("slides", "design") is the staged deck workflow and guide("slides", "spec") the outline and page spec format (deck_start returns both). guide("slides", "templates") lists the built-in design templates; guide("slides", "templates", "<id>") prints one as a ready-made style sheet to save as style.md. Also available as ieumoffice://guide/* resources.',
     positionals: [
-      { key: 'domain', description: 'slides | docs | sheets' },
+      { key: 'domain', description: 'slides | docs | sheets | hwp | diagram | map | whiteboard' },
       {
         key: 'topic',
         description: 'a group, an op name, or for slides: design | spec | templates',
@@ -603,7 +814,7 @@ export const TOOLS: ToolSpec[] = [
     command: 'image',
     openWorld: true,
     description:
-      'Generate an image from a prompt with the image provider configured in GenOffice and save it; the result names the real format. ref images steer an edit (key providers only). A failure names its cause in detail.errorCode (unavailable: not configured, do not retry; rate-limit: the subscription limit is used up, wait until detail.resetsAt when it is given).',
+      'Generate an image from a prompt with the image provider configured in GenOffice and save it; the result names the real format. ref images steer an edit. A failure names its cause in detail.errorCode (unavailable: not configured, do not retry; rate-limit: the subscription limit is used up, wait until detail.resetsAt when it is given).',
     positionals: [{ key: 'prompt', description: 'what to draw' }],
     options: ['out', 'aspect', 'size', 'ref', 'model', 'force'],
   },
@@ -685,7 +896,7 @@ export function stripVerbPrefix(description: string): string {
 export type ZodShape = Record<string, z.ZodTypeAny>
 
 /** Parameters that name a document on disk; a remote client passes URLs here instead. */
-export const PATH_KEYS = new Set(['file', 'from', 'outline'])
+export const PATH_KEYS = new Set(['file', 'from', 'outline', 'bibliography'])
 
 const REMOTE_PATH_NOTE = '; or an http(s) URL, such as the one POST /files returned for an upload'
 const REMOTE_OUT_NOTE = '; omit it and the file comes back in the result as a download URL'

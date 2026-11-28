@@ -36,9 +36,16 @@ Di panel AI editor Docs, Sheets, Slides, Hangul, HTML, dan peta pikiran, Anda da
 - Jika dua dokumen bernama sama tetapi berada di folder berbeda, nama folder tepat di atasnya ikut ditambahkan, seperti `@rencana.docx(Semester 2)`, dan nama folder itu juga diberikan kepada AI.
 - Editor PDF dan Markdown belum memiliki lampiran, jadi kedua cara itu tidak tersedia di sana.
 
+## Proyek
+
+- Klik nama proyek di sebelah kiri, di bawah kotak masukan, untuk memilih proyek (satu folder di PC Anda). AI lalu menjawab dengan mengetahui file, instruksi, dan memori folder itu, dan obrolannya disimpan di folder tersebut sehingga bisa dilanjutkan di editor lain. Lihat [Proyek](help://projects).
+- Setelah proyek dipilih, judul obrolan yang sedang berjalan tampil di bagian atas panel. Klik untuk melihat daftar obrolan proyek ini dan **Obrolan baru**.
+- Daftar `@` di kotak masukan menampilkan "File di proyek ini" setelah dokumen yang terbuka.
+- Permintaan dengan proyek terpilih juga mengirim instruksi (bersama `AGENTS.md` dan `CLAUDE.md` di puncak folder, yang bisa dimatikan di halaman proyek), memori, dan daftar nama file proyek itu, cuplikan singkat dari setiap file yang ditemukan AI saat mencari di folder, serta teks file apa pun yang dibaca AI, ke AI yang Anda pakai.
+
 ## Pengembalian dan keamanan
 
-- Panel Docs menyimpan **daftar versi**: satu snapshot per putaran, Anda bisa mundur ke mana pun, dan rollback itu sendiri bisa dibatalkan dengan Ctrl+Z. Snapshot tetap ada setelah dokumen ditutup lalu dibuka kembali.
+- Putaran saat AI mengubah dokumen mendapat kartu **Perubahan pada dokumen: N** di bawah balasannya, dan bagian yang diubah ditandai kuning di dokumen. Tanda itu hanya ada di layar — tidak pernah ikut disimpan, dicetak, atau diekspor — dan hilang saat Anda mengirim permintaan berikutnya atau menekan **Sembunyikan tanda**. **Batalkan perubahan ini** membatalkan seluruh putaran sekaligus. Di Docs, Markdown, HTML, Slides, peta pikiran, dan diagram, membatalkan putaran yang lebih awal juga membatalkan putaran sesudahnya; di Hangul, Sheets, PDF, dan EPUB hanya putaran terakhir yang bisa dibatalkan, dan hanya jika dokumen tidak disunting setelahnya. Jika tidak bisa dibatalkan, gunakan Urungkan milik editor itu sendiri (Ctrl+Z).
 - suntingan AI melewati alur penyuntingan yang sama dengan suntingan manual (bisa di-undo, dan tunduk pada simpan) — tidak ada yang melewati konfirmasi simpan Anda.
 
 ## Menyembunyikan seleksi dari AI

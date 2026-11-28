@@ -1,18 +1,32 @@
 import type { AiPanelPrefs } from '@genoffice/ui'
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import { driveAiBridge } from '@genoffice/electron-utils/drive-ai-bridge'
+import { mcpToolsBridge } from '@genoffice/electron-utils/mcp-tools-bridge'
 import { outboundBridge } from '@genoffice/electron-utils/outbound-bridge'
+import { ACP_TOOL_BRIDGE_KEY } from '@genoffice/electron-utils/acp-tool-channels'
+import { acpToolBridge } from '@genoffice/electron-utils/acp-tool-bridge'
 import { userSkillsBridge } from '@genoffice/electron-utils/user-skills-bridge'
+import {
+  PROJECT_FOLDER_BRIDGE_KEY,
+  projectFolderBridge,
+} from '@genoffice/electron-utils/project-folder-bridge'
 import { USER_SKILLS_BRIDGE_KEY } from '@genoffice/electron-utils/user-skills-channels'
 import { docAttachBridge } from '@genoffice/electron-utils/doc-attach-bridge'
 import { DOC_ATTACH_BRIDGE_KEY } from '@genoffice/electron-utils/doc-attach-channels'
+import { connectorAttachBridge } from '@genoffice/electron-utils/connector-attach-bridge'
+import { CONNECTOR_ATTACH_BRIDGE_KEY } from '@genoffice/electron-utils/connector-attach-channels'
 import { splitPaneBridge } from '@genoffice/electron-utils/split-pane-bridge'
+import { createPrintLayoutBridge } from '@genoffice/electron-utils/print-layout-bridge'
+import { APP_CHOICE_BRIDGE_KEY, appChoiceBridge } from '@genoffice/electron-utils/app-choice-bridge'
+import { VERSION_TIMELINE_BRIDGE_KEY } from '@genoffice/electron-utils/version-timeline-channels'
+import { versionTimelineBridge } from '@genoffice/electron-utils/version-timeline-bridge'
+import { generateEditorBridge } from '@genoffice/electron-utils/generate-editor-bridge'
 import type { IpcRendererEvent } from 'electron'
-import type { RenderSlide } from '@genoffice/pptx-render'
 import type { ProjectApi } from '@genoffice/project-store'
 import { installDropOpenBridge } from '@genoffice/electron-utils/drop-open'
 import type { TemplateSelectionInput } from '../shared/template-selection'
 import type {
+  DeckChange,
   AddChartOp,
   AddElementOp,
   AiRunFailure,
@@ -94,6 +108,7 @@ import type {
   MasterEditFillOp,
   MasterEditStrokeOp,
   MasterDeleteElementOp,
+  MasterAddElementOp,
   ExportImagesOp,
   SavePictureOp,
   ExportPdfOp,
@@ -107,6 +122,7 @@ import type {
 } from '../shared/ipc'
 import { SUBSCRIPTION_IPC_CHANNELS } from '@genoffice/ai-provider/browser'
 import {
+  SUBSCRIPTION_USAGE_CHANNEL,
   subscriptionLaunchResultOf,
   subscriptionStatusMapOf,
   type SubscriptionApi,
@@ -127,9 +143,12 @@ const subscriptionApi: SubscriptionApi = {
       ),
     )
   },
-  async login(provider) {
+  async login(provider, mode) {
     return subscriptionLaunchResultOf(
-      await ipcRenderer.invoke(SUBSCRIPTION_IPC_CHANNELS.login, { provider }),
+      await ipcRenderer.invoke(
+        SUBSCRIPTION_IPC_CHANNELS.login,
+        mode ? { provider, mode } : { provider },
+      ),
     )
   },
   async install(provider) {
@@ -160,6 +179,11 @@ const subscriptionApi: SubscriptionApi = {
       handler(subscriptionStatusMapOf(statuses))
     ipcRenderer.on(SUBSCRIPTION_IPC_CHANNELS.changed, listener)
     return () => ipcRenderer.removeListener(SUBSCRIPTION_IPC_CHANNELS.changed, listener)
+  },
+  onUsage(handler) {
+    const listener = (_event: unknown, usage: unknown) => handler(Array.isArray(usage) ? usage : [])
+    ipcRenderer.on(SUBSCRIPTION_USAGE_CHANNEL, listener)
+    return () => ipcRenderer.removeListener(SUBSCRIPTION_USAGE_CHANNEL, listener)
   },
 }
 
@@ -215,7 +239,7 @@ const api: SlidesApi = {
   consumeHeadlessExport: () => ipcRenderer.invoke('slides:consume-headless-export'),
   headlessExportDone: (result: { ok: boolean; error?: string }) =>
     ipcRenderer.send('slides:headless-export-done', result),
-  newBlank: (fitWidthPx) => ipcRenderer.invoke('slides:new-blank', fitWidthPx),
+  newBlank: (fitWidthPx, size) => ipcRenderer.invoke('slides:new-blank', fitWidthPx, size),
   landGeneratedPages: (
     pageMarkers: string[],
     fitWidthPx: number,
@@ -231,7 +255,7 @@ const api: SlidesApi = {
       atIndex,
       deckName,
     ),
-  localGeneratePage: (op: { specJson: string }) =>
+  localGeneratePage: (op: { specJson: string; defaultFonts?: { title: string; body: string } }) =>
     ipcRenderer.invoke('slides:local-page-generate', op),
   editText: (op: EditTextOp) => ipcRenderer.invoke('slides:edit-text', op),
   setElementFont: (op: SetElementFontOp) => ipcRenderer.invoke('slides:set-element-font', op),
@@ -304,6 +328,7 @@ const api: SlidesApi = {
   masterEditStroke: (op: MasterEditStrokeOp) => ipcRenderer.invoke('slides:master-edit-stroke', op),
   masterDeleteElement: (op: MasterDeleteElementOp) =>
     ipcRenderer.invoke('slides:master-delete-element', op),
+  masterAddElement: (op: MasterAddElementOp) => ipcRenderer.invoke('slides:master-add-element', op),
   editFill: (op: EditFillOp) => ipcRenderer.invoke('slides:edit-fill', op),
   editStroke: (op: EditStrokeOp) => ipcRenderer.invoke('slides:edit-stroke', op),
   flipElements: (op: FlipElementOp) => ipcRenderer.invoke('slides:flip-elements', op),
@@ -320,6 +345,10 @@ const api: SlidesApi = {
   deleteSlides: (op: DeleteSlidesOp) => ipcRenderer.invoke('slides:delete-slides', op),
   duplicateSlides: (op: DuplicateSlidesOp) => ipcRenderer.invoke('slides:duplicate-slides', op),
   reorderElement: (op: ReorderElementOp) => ipcRenderer.invoke('slides:reorder-element', op),
+  setElementHidden: (op: { slideIndex: number; sourceId: string; hidden: boolean }) =>
+    ipcRenderer.invoke('slides:set-element-hidden', op),
+  setElementName: (op: { slideIndex: number; sourceId: string; name: string }) =>
+    ipcRenderer.invoke('slides:set-element-name', op),
   editTableCell: (op: EditTableCellOp) => ipcRenderer.invoke('slides:edit-table-cell', op),
   tableStructure: (op: TableStructureIpcOp) => ipcRenderer.invoke('slides:table-structure', op),
   tableMerge: (op: TableMergeIpcOp) => ipcRenderer.invoke('slides:table-merge', op),
@@ -394,6 +423,7 @@ const api: SlidesApi = {
   applyEditScript: (op: ApplyEditScriptOp) => ipcRenderer.invoke('slides:apply-edit-script', op),
   applyTxn: (op: ApplyTxnOp) => ipcRenderer.invoke('slides:apply-txn', op),
   aiSnapshotRestore: (id: number) => ipcRenderer.invoke('slides:ai-snapshot-restore', id),
+  aiSnapshotAlive: (ids: number[]) => ipcRenderer.invoke('slides:ai-snapshot-alive', ids),
   undo: () => ipcRenderer.invoke('slides:undo'),
   redo: () => ipcRenderer.invoke('slides:redo'),
   pickExportDir: () => ipcRenderer.invoke('slides:pick-export-dir'),
@@ -403,8 +433,10 @@ const api: SlidesApi = {
   savePicture: (op: SavePictureOp) => ipcRenderer.invoke('slides:save-picture', op),
   exportPdf: (op: ExportPdfOp) => ipcRenderer.invoke('slides:export-pdf', op),
   printSlides: (op: PrintSlidesOp) => ipcRenderer.invoke('slides:print', op),
+  printLayout: createPrintLayoutBridge<PrintSlidesOp>(ipcRenderer, 'slides'),
   save: (auto?: boolean) => ipcRenderer.invoke('slides:save', auto === true),
   saveAs: (defaultName: string) => ipcRenderer.invoke('slides:save-as', defaultName),
+  saveIntoProject: () => ipcRenderer.invoke('slides:save-into-project'),
   onCloseSaveRequest: (handler: () => void) => {
     const listener = () => handler()
     ipcRenderer.on('slides:close-save-request', listener)
@@ -416,13 +448,8 @@ const api: SlidesApi = {
     ipcRenderer.on('slides:history-changed', listener)
     return () => ipcRenderer.removeListener('slides:history-changed', listener)
   },
-  onDeckChanged: (
-    handler: (state: { slides: RenderSlide[]; size: { cx: number; cy: number } }) => void,
-  ) => {
-    const listener = (
-      _e: IpcRendererEvent,
-      state: { slides: RenderSlide[]; size: { cx: number; cy: number } },
-    ) => handler(state)
+  onDeckChanged: (handler: (state: DeckChange) => void) => {
+    const listener = (_e: IpcRendererEvent, state: DeckChange) => handler(state)
     ipcRenderer.on('slides:deck-changed', listener)
     return () => ipcRenderer.removeListener('slides:deck-changed', listener)
   },
@@ -508,6 +535,8 @@ const api: SlidesApi = {
   listStyleTemplates: () => ipcRenderer.invoke('ai:list-style-templates'),
   loadStyleTemplate: (name: string) => ipcRenderer.invoke('ai:load-style-template', name),
   getTemplateSelection: () => ipcRenderer.invoke('slides:ai-template-selection-get'),
+  getAiDefaultFonts: (lang: string) => ipcRenderer.invoke('slides:ai-default-fonts', lang),
+  openFontSettings: () => ipcRenderer.invoke('slides:open-font-settings'),
   setTemplateSelection: (selection: TemplateSelectionInput | null) =>
     ipcRenderer.invoke('slides:ai-template-selection-set', selection),
   presenterStart: () => ipcRenderer.invoke('slides:presenter-start'),
@@ -538,16 +567,22 @@ const api: SlidesApi = {
     ipcRenderer.invoke('slides:handoff-run-started', attachedPaths),
   // the open deck as edited, for a skill's template (spec 5.6)
   templateBytes: () => ipcRenderer.invoke('slides:template-bytes'),
+  restoreTimelineBytes: (bytes: Uint8Array) =>
+    ipcRenderer.invoke('slides:timeline-restore-bytes', bytes),
 }
 
 contextBridge.exposeInMainWorld('slidesApi', api)
 // Google Drive for this editor's AI: search and read only (decision 0033)
 contextBridge.exposeInMainWorld('aiOfficeDriveAi', driveAiBridge())
 contextBridge.exposeInMainWorld('aiOfficeOutbound', outboundBridge())
+contextBridge.exposeInMainWorld(ACP_TOOL_BRIDGE_KEY, acpToolBridge())
+// the person's MCP servers for this editor's AI: list and call approved tools (the shell checks each)
+contextBridge.exposeInMainWorld('aiOfficeMcpTools', mcpToolsBridge())
 // the person's skills: the AI panel's `/` list and skill reads, skill cards (shell main checks each)
 contextBridge.exposeInMainWorld(USER_SKILLS_BRIDGE_KEY, userSkillsBridge())
 // The shell's document picker, for this editor's AI attach button
 contextBridge.exposeInMainWorld(DOC_ATTACH_BRIDGE_KEY, docAttachBridge())
+contextBridge.exposeInMainWorld(CONNECTOR_ATTACH_BRIDGE_KEY, connectorAttachBridge())
 
 // Chat attachment bridge: method names/signatures match the window.desktop attachment subset in docs, so the renderer's files-skill is copied over wholesale
 const filesApi: DesktopFilesApi = {
@@ -570,9 +605,19 @@ const projectApi: ProjectApi = {
   rebindChat: (args) => ipcRenderer.invoke('project:rebindChat', args),
 }
 contextBridge.exposeInMainWorld('projectApi', projectApi)
+// project folders (decision 0088): main identifies this window, the bridge forwards ids only
+contextBridge.exposeInMainWorld(PROJECT_FOLDER_BRIDGE_KEY, projectFolderBridge(ipcRenderer))
 
 // The shell's split panes: which pane this view is, and focus requests for it
 contextBridge.exposeInMainWorld('aiOfficeSplit', splitPaneBridge(ipcRenderer))
+// Settings' AI switch: the screen only reads it and hears changes (hides its AI parts)
+const appChoice = appChoiceBridge()
+contextBridge.exposeInMainWorld(APP_CHOICE_BRIDGE_KEY, {
+  get: appChoice.get,
+  onChange: appChoice.onChange,
+})
+contextBridge.exposeInMainWorld(VERSION_TIMELINE_BRIDGE_KEY, versionTimelineBridge())
+contextBridge.exposeInMainWorld('aiOfficeGenerateEditor', generateEditorBridge())
 
 // open documents dragged from the OS onto this tab as a new shell tab
 installDropOpenBridge()

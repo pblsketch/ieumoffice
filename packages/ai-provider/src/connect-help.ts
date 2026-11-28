@@ -6,13 +6,15 @@
 import { PRODUCT_WEBSITE } from '@genoffice/i18n'
 import type { AiSubscriptionProviderId } from './types'
 
-/** A way to connect the guide offers: one of the two subscriptions, or the free connections */
+/** A way to connect the guide offers: one of the subscriptions, or the free connections */
 export type SubscriptionConnectHelpPath = AiSubscriptionProviderId | 'free'
 
 /** The page's section for each path; the site keeps these anchors */
 const CONNECT_HELP_SECTIONS: Record<SubscriptionConnectHelpPath, string> = {
   'claude-code': 'claude',
   codex: 'codex',
+  chatgpt: 'chatgpt',
+  antigravity: 'antigravity',
   free: 'free',
 }
 

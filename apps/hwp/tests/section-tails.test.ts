@@ -147,10 +147,11 @@ describe('what is kept of an opened file', () => {
   })
 })
 
-describe('why the lists have to be put back', () => {
-  it('the engine writes a changed section without a master page it read', () => {
-    // When this fails, rhwp keeps the lists itself (edwardkim/rhwp#7899): see whether
-    // section-tails.ts can go.
+describe('whether the lists still have to be put back', () => {
+  it('the engine now writes a changed section with the master page it read', () => {
+    // rhwp 0.8.7 left it out; devel keeps the lists itself (edwardkim/rhwp#7899, #7908), so
+    // putting them back finds nothing missing. The module stays for the engines that do not,
+    // and for equation captions (decision 0028).
     const first = exported('본문')
     const file = restoreSectionTails(first, sectionTailsOf(withTail(first, masterPage(4)))!).bytes
     expect(sectionTailsOf(file)?.tails.get(0)).toHaveLength(1)
@@ -160,7 +161,8 @@ describe('why the lists have to be put back', () => {
     doc.insertText(0, 0, 0, '또 ')
     const saved = doc.exportHwp()
     doc.free()
-    expect(sectionTailsOf(saved)).toBeNull()
+    expect(sectionTailsOf(saved)?.tails.get(0)).toHaveLength(1)
+    expect(restoreSectionTails(saved, sectionTailsOf(file)!).restored).toBe(0)
   })
 })
 
@@ -183,7 +185,7 @@ describe('saving a document whose file had lists after the body', () => {
     const saved = exported('본문', '새 문단')
     const result = restoreSectionTails(saved, sectionTailsOf(opened)!)
     expect(result.restored).toBe(1)
-    expect(streamNames(result.bytes)).toEqual(streamNames(saved))
+    expect([...streamNames(result.bytes)].sort()).toEqual([...streamNames(saved)].sort())
     expect(streamNames(result.bytes).join(' ')).not.toContain('Sh33tJ5')
   })
 

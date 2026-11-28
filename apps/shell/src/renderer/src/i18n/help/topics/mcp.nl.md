@@ -6,7 +6,7 @@ GenOffice spreekt het Model Context Protocol, zodat een coding agent je document
 
 **Instellingen ▸ Integraties** is de plek waar dit gebeurt. Het paneel heeft twee helften, en je kunt een van beide gebruiken of allebei.
 
-**De skill.** Eén rij per coding agent die op deze computer is gevonden — Claude Code, Codex, Cursor, Gemini CLI, Copilot CLI, OpenCode, Windsurf —, elk met **Installeren**, **Bijwerken** en **Verwijderen**, plus **In een andere map installeren…**, **Skill downloaden (zip)** en **Pad kopiëren**. Staat je assistent er niet bij, wijs GenOffice dan een map aan waaruit hij `SKILL.md` leest, of sla de zip op en laat de assistent hem installeren. Skill en MCP kunnen naast elkaar staan: de assistent kiest er één, en ze doen precies hetzelfde.
+**De skill.** Eén rij per coding agent die op deze computer is gevonden — Claude Code, de gedeelde map `~/.agents` (die Codex, Cursor, Gemini CLI, Copilot CLI en OpenCode lezen), Windsurf —, elk met **Installeren**, **Bijwerken** en **Verwijderen**, plus **In een andere map installeren…**, **Skill downloaden (zip)** en **Pad kopiëren**. Staat je assistent er niet bij, wijs GenOffice dan een map aan waaruit hij `SKILL.md` leest, of sla de zip op en laat de assistent hem installeren. Skill en MCP kunnen naast elkaar staan: de assistent kiest er één, en ze doen precies hetzelfde. Een kopie die eerder in de eigen map van een van die vijf tools is geïnstalleerd, blijft onder de rij van de gedeelde map staan en wordt verder bijgewerkt; zodra de gedeelde map de skill heeft, kun je die kopie verwijderen.
 
 **MCP.** Er worden twee routes aangeboden: **Gestart door de assistent (aanbevolen)**, waarbij je de getoonde configuratie aan je client toevoegt en de assistent de server zelf start, en de **Lokale HTTP-server**, die de app voor je draait. Hoe dan ook eindigt de assistent tegen GenOffice te praten en typ je nooit een commando.
 
@@ -58,7 +58,7 @@ Elke opdracht is een tool. De interessantste:
 Een verzoek van de opdracht `ieumoffice` of van een MCP-client heb je niet zelf in de app getypt, dus GenOffice gaat er voorzichtig mee om.
 
 - **Zoeken** werkt altijd en is standaard gratis. Een sleutel van een zoekprovider wordt alleen gebruikt als je er een hebt geselecteerd.
-- **Een afbeelding genereren** vraagt een sleutel van een afbeeldingsprovider. In deze versie genereert een abonnement geen afbeeldingen.
+- **Een afbeelding genereren** volgt de keuze voor afbeeldingen genereren in de instellingen. De standaardkeuze, ChatGPT-abonnement (Codex-programma), gebruikt je ChatGPT-abonnement via het Codex-programma en wordt **niet gebruikt tenzij je het toestaat** (zie hieronder). Anders wordt de sleutel van een ingestelde afbeeldingsprovider gebruikt. Een model dat de agent noemt, wordt gebruikt als die route het aanbiedt.
 - **Een afbeelding beschrijven** gebruikt een provider met een sleutel als die is ingesteld. Je Claude- of Codex-abonnement wordt **niet gebruikt tenzij je dat toestaat**.
 - **Video en audio** hebben een provider met een sleutel nodig die video ondersteunt.
 

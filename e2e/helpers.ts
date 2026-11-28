@@ -12,6 +12,7 @@ import { existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { createRequire } from 'node:module'
+import { createServer } from 'node:net'
 
 export const SHELL_DIR = resolve(__dirname, '../apps/shell')
 export const ARTIFACTS_DIR = resolve(__dirname, 'artifacts')
@@ -24,7 +25,12 @@ const SHELL_MAIN = join(SHELL_DIR, 'out/main/index.js')
  * one is read as predating the provider settings and falls back to the
  * defaults, which would drop the flag.
  */
-const AI_SETTINGS_NOTICE_SEEN = { providers: {}, subscriptionNoticeSeen: true }
+const AI_SETTINGS_NOTICE_SEEN = {
+  providers: {},
+  subscriptionNoticeSeen: true,
+  subscriptionNoticeVersion: 2,
+  pdfSendNoticeSeen: 1,
+}
 
 interface LaunchOptions {
   /** reuse a previous scratch dir to simulate a second launch */
@@ -33,6 +39,12 @@ interface LaunchOptions {
   lang?: string
   /** pre-seed app-settings.json with onboardingSeen=true to start at the home screen */
   onboardingSeen?: boolean
+  /**
+   * with `onboardingSeen`, also seed editorPickSeen=true (default true) so the
+   * one-time editor picker for existing users does not cover the home screen.
+   * Pass false to see that picker.
+   */
+  editorPickSeen?: boolean
   /** extra app-settings.json keys (e.g. defaultSaveDir) written before launch */
   settings?: Record<string, unknown>
   /**
@@ -73,6 +85,9 @@ export async function launchShell(options: LaunchOptions): Promise<LaunchedApp> 
       join(userDataDir, 'app-settings.json'),
       JSON.stringify({
         ...(options.onboardingSeen ? { onboardingSeen: true } : {}),
+        ...(options.onboardingSeen && options.editorPickSeen !== false
+          ? { editorPickSeen: true }
+          : {}),
         ...options.settings,
       }),
     )
@@ -104,15 +119,20 @@ export async function launchShell(options: LaunchOptions): Promise<LaunchedApp> 
       ...hostEnv,
       GENOFFICE_USER_DATA: userDataDir,
       GENOFFICE_NO_SPARE_VIEW: '1',
+      // e2e drives open-path channels with fixture paths that were never
+      // picked or listed: production read/open checks key off this flag
+      GENOFFICE_E2E: '1',
       GENOFFICE_LANG: options.lang ?? 'en',
       ...(options.env ?? {}),
       ...(process.platform === 'linux' ? { ELECTRON_DISABLE_SANDBOX: '1' } : {}),
     },
-    // Playwright's Electron screencast wedges the page CDP session on Linux
-    // (page.url() stays empty, no lifecycle events, evaluate hangs) — record
-    // only where it works
+    // Playwright's Electron screencast wedges the page CDP session on Linux,
+    // and since Playwright 1.62 on macOS too (page.url() stays empty, no
+    // lifecycle events, evaluate hangs, so every spec times out at launch) —
+    // record only where it works
     recordVideo:
       process.platform === 'linux' ||
+      process.platform === 'darwin' ||
       options.recordVideo === false ||
       process.env.E2E_NO_VIDEO === '1'
         ? undefined
@@ -267,4 +287,18 @@ export async function stubAiReady(app: ElectronApplication): Promise<void> {
       if (!wc.isDestroyed()) realSend.call(wc, 'ai:subscription-changed', statuses)
     }
   })
+}
+
+// Below the ephemeral range: an outbound connection could otherwise take the probed port before the app listens.
+export async function freeMcpPort(): Promise<number> {
+  for (let attempt = 0; attempt < 50; attempt++) {
+    const port = 20000 + Math.floor(Math.random() * 12000)
+    const free = await new Promise<boolean>((resolve) => {
+      const server = createServer()
+      server.once('error', () => resolve(false))
+      server.listen(port, '127.0.0.1', () => server.close(() => resolve(true)))
+    })
+    if (free) return port
+  }
+  throw new Error('no free port found below the ephemeral range')
 }

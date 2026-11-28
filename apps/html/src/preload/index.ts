@@ -1,23 +1,45 @@
 import type { AiPanelPrefs } from '@genoffice/ui'
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import { driveAiBridge } from '@genoffice/electron-utils/drive-ai-bridge'
+import { mcpToolsBridge } from '@genoffice/electron-utils/mcp-tools-bridge'
 import { outboundBridge } from '@genoffice/electron-utils/outbound-bridge'
+import { ACP_TOOL_BRIDGE_KEY } from '@genoffice/electron-utils/acp-tool-channels'
+import { acpToolBridge } from '@genoffice/electron-utils/acp-tool-bridge'
 import { userSkillsBridge } from '@genoffice/electron-utils/user-skills-bridge'
+import {
+  PROJECT_FOLDER_BRIDGE_KEY,
+  projectFolderBridge,
+} from '@genoffice/electron-utils/project-folder-bridge'
 import { USER_SKILLS_BRIDGE_KEY } from '@genoffice/electron-utils/user-skills-channels'
 import { docAttachBridge } from '@genoffice/electron-utils/doc-attach-bridge'
 import { DOC_ATTACH_BRIDGE_KEY } from '@genoffice/electron-utils/doc-attach-channels'
+import { connectorAttachBridge } from '@genoffice/electron-utils/connector-attach-bridge'
+import { CONNECTOR_ATTACH_BRIDGE_KEY } from '@genoffice/electron-utils/connector-attach-channels'
 import type { Lang } from '@genoffice/i18n'
 import type { AiStreamChunk } from '@genoffice/ai-provider'
 import { SUBSCRIPTION_IPC_CHANNELS } from '@genoffice/ai-provider/browser'
 import type { ProjectApi } from '@genoffice/project-store'
 import { installDropOpenBridge } from '@genoffice/electron-utils/drop-open'
 import { splitPaneBridge } from '@genoffice/electron-utils/split-pane-bridge'
+import { createPrintLayoutBridge } from '@genoffice/electron-utils/print-layout-bridge'
+import { APP_CHOICE_BRIDGE_KEY, appChoiceBridge } from '@genoffice/electron-utils/app-choice-bridge'
+import { VERSION_TIMELINE_BRIDGE_KEY } from '@genoffice/electron-utils/version-timeline-channels'
+import { versionTimelineBridge } from '@genoffice/electron-utils/version-timeline-bridge'
+import { generateEditorBridge } from '@genoffice/electron-utils/generate-editor-bridge'
 import { AI_CHANNELS, HTML_CHANNELS } from '../shared/ipc'
 import { HTML_HANDOFF_CHANNELS } from '../shared/ipc'
-import type { AutoSaveDefault, ExportFormat, HtmlApi, SaveMode, UiTheme } from '../shared/ipc'
+import type {
+  AutoSaveDefault,
+  ExportFormat,
+  HtmlApi,
+  HtmlPrintJob,
+  SaveMode,
+  UiTheme,
+} from '../shared/ipc'
 import {
   SUBSCRIPTION_CONNECT_HELP_CHANNEL,
   SUBSCRIPTION_INSTALL_HELP_CHANNEL,
+  SUBSCRIPTION_USAGE_CHANNEL,
   subscriptionLaunchResultOf,
   subscriptionMeteredResultOf,
   subscriptionStatusMapOf,
@@ -37,9 +59,12 @@ const subscription: HtmlSubscriptionApi = {
         providers ? { providers } : undefined,
       ),
     ),
-  login: async (provider) =>
+  login: async (provider, mode) =>
     subscriptionLaunchResultOf(
-      await ipcRenderer.invoke(SUBSCRIPTION_IPC_CHANNELS.login, { provider }),
+      await ipcRenderer.invoke(
+        SUBSCRIPTION_IPC_CHANNELS.login,
+        mode ? { provider, mode } : { provider },
+      ),
     ),
   install: async (provider) =>
     subscriptionLaunchResultOf(
@@ -62,6 +87,11 @@ const subscription: HtmlSubscriptionApi = {
       handler(subscriptionStatusMapOf(statuses))
     ipcRenderer.on(SUBSCRIPTION_IPC_CHANNELS.changed, listener)
     return () => ipcRenderer.removeListener(SUBSCRIPTION_IPC_CHANNELS.changed, listener)
+  },
+  onUsage: (handler) => {
+    const listener = (_e: unknown, usage: unknown) => handler(Array.isArray(usage) ? usage : [])
+    ipcRenderer.on(SUBSCRIPTION_USAGE_CHANNEL, listener)
+    return () => ipcRenderer.removeListener(SUBSCRIPTION_USAGE_CHANNEL, listener)
   },
   openInstallHelp: async (provider) => {
     await ipcRenderer.invoke(SUBSCRIPTION_INSTALL_HELP_CHANNEL, provider)
@@ -142,6 +172,12 @@ const api: HtmlApi = {
   exportHtml: (request) => ipcRenderer.invoke(HTML_CHANNELS.exportHtml, request),
   printHtml: (request) => ipcRenderer.invoke(HTML_CHANNELS.printHtml, request),
   renderPrintPreview: (request) => ipcRenderer.invoke(HTML_CHANNELS.printPreview, request),
+  printJobPages: (request) =>
+    ipcRenderer.invoke(HTML_CHANNELS.printJobPages, request).catch((err: unknown) => ({
+      ok: false as const,
+      error: err instanceof Error ? err.message : String(err),
+    })),
+  printLayout: createPrintLayoutBridge<HtmlPrintJob>(ipcRenderer, 'html'),
   getLanguage: () => ipcRenderer.invoke(HTML_CHANNELS.getLanguage),
   onLanguageChanged: (handler) => {
     const listener = (_e: Electron.IpcRendererEvent, lang: Lang) => handler(lang)
@@ -193,6 +229,7 @@ const api: HtmlApi = {
   imageSearch: (query, maxResults) =>
     ipcRenderer.invoke(AI_CHANNELS.imageSearch, query, maxResults),
   fetchImage: (url) => ipcRenderer.invoke(HTML_CHANNELS.fetchImage, url),
+  aiToolCapabilities: () => ipcRenderer.invoke(AI_CHANNELS.toolCapabilities),
   aiGenerateImage: (op) => ipcRenderer.invoke(HTML_CHANNELS.aiGenerateImage, op),
   // the generate hand-off (8.5): no handler (standalone, older shell) rejects; the panel reads that as "nothing"
   takeGenerateHandoff: () => ipcRenderer.invoke(HTML_HANDOFF_CHANNELS.take),
@@ -211,14 +248,29 @@ const projectApi: Pick<ProjectApi, 'resolveChat' | 'appendChat' | 'loadChat' | '
 contextBridge.exposeInMainWorld('htmlApi', api)
 // The split-pane role and focus calls the shell drives this pane with
 contextBridge.exposeInMainWorld('aiOfficeSplit', splitPaneBridge(ipcRenderer))
+// Settings › Editors and AI: the screen reads and hears the choice (hides its AI parts
+// while AI is off); changing it or stopping AI jobs is the shell's alone
+const editorChoice = appChoiceBridge()
+contextBridge.exposeInMainWorld(APP_CHOICE_BRIDGE_KEY, {
+  get: editorChoice.get,
+  onChange: editorChoice.onChange,
+})
 // Google Drive for this editor's AI: search and read only (decision 0033)
 contextBridge.exposeInMainWorld('aiOfficeDriveAi', driveAiBridge())
 contextBridge.exposeInMainWorld('aiOfficeOutbound', outboundBridge())
+contextBridge.exposeInMainWorld(ACP_TOOL_BRIDGE_KEY, acpToolBridge())
+// the person's MCP servers for this editor's AI: list and call approved tools (the shell checks each)
+contextBridge.exposeInMainWorld('aiOfficeMcpTools', mcpToolsBridge())
 // the person's skills: the AI panel's `/` list and skill reads, skill cards (shell main checks each)
 contextBridge.exposeInMainWorld(USER_SKILLS_BRIDGE_KEY, userSkillsBridge())
 // The shell's document picker, for this editor's AI attach button
 contextBridge.exposeInMainWorld(DOC_ATTACH_BRIDGE_KEY, docAttachBridge())
+contextBridge.exposeInMainWorld(CONNECTOR_ATTACH_BRIDGE_KEY, connectorAttachBridge())
 contextBridge.exposeInMainWorld('projectApi', projectApi)
+// project folders (decision 0088): main identifies this window, the bridge forwards ids only
+contextBridge.exposeInMainWorld(PROJECT_FOLDER_BRIDGE_KEY, projectFolderBridge(ipcRenderer))
+contextBridge.exposeInMainWorld(VERSION_TIMELINE_BRIDGE_KEY, versionTimelineBridge())
+contextBridge.exposeInMainWorld('aiOfficeGenerateEditor', generateEditorBridge())
 
 // open documents dragged from the OS onto this tab as a new shell tab
 installDropOpenBridge()

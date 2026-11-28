@@ -17,8 +17,12 @@ const COLORS: FrameColors = {
   nightPaper: 'var-night-paper',
   nightInk: 'var-night-ink',
   nightLink: 'var-night-link',
+  sepiaPaper: 'var-sepia-paper',
+  sepiaInk: 'var-sepia-ink',
   hitBg: 'var-hit-bg',
   hitInk: 'var-hit-ink',
+  aiChangedBg: 'var-ai-bg',
+  aiChangedLine: 'var-ai-line',
 }
 
 describe('view settings', () => {

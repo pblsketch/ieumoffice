@@ -4,10 +4,13 @@ import type {
   AgentToolDef,
   IpcStreamErrorKind,
 } from '@genoffice/agent-core'
+import type { AiEffort, AiModelEffort } from './effort'
 
 export type AiProviderId =
   | 'codex'
   | 'claude-code'
+  | 'chatgpt'
+  | 'antigravity'
   | 'anthropic'
   | 'gemini'
   | 'deepseek'
@@ -25,23 +28,40 @@ export type AiProviderId =
   | 'xai'
   | 'mistral'
   | 'upstage'
+  | 'exaone'
   | 'openrouter'
   | 'requesty'
   | 'opper'
   | 'cheaperinference'
   | 'atlascloud'
+  | 'runcrate'
+  | 'cloudgpu'
+  | 'siliconflow'
+  | 'ppio'
   | 'opencode-zen'
   | 'opencode-go'
+  | 'commandcode'
   | 'custom'
 
-/** Providers reached through the locally installed, already signed-in vendor CLI (a subscription, not a key) */
-export type AiSubscriptionProviderId = 'claude-code' | 'codex'
+/**
+ * Providers that run on the user's own subscription, never on a key: the two
+ * locally installed, already signed-in vendor CLIs, and the ChatGPT plan
+ * reached directly with the app's own sign-in (decision 0081)
+ */
+export type AiSubscriptionProviderId = 'claude-code' | 'codex' | 'chatgpt' | 'antigravity'
+
+/** The subscription providers behind a vendor CLI: found, installed, updated and signed in through the program */
+export type AiSubscriptionCliId = 'claude-code' | 'codex' | 'antigravity'
 
 /** What the provider setting holds: `auto` (first ready subscription) or one provider id */
 export type AiProviderSelection = 'auto' | AiProviderId
 
+/**
+ * `off`: the person turned the program off in this app (decision 0114). The
+ * app then asks the program nothing, so there is nothing detected to report.
+ */
 export type AiSubscriptionState =
-  'checking' | 'not-installed' | 'signed-out' | 'ready' | 'metered' | 'error'
+  'checking' | 'not-installed' | 'signed-out' | 'ready' | 'metered' | 'error' | 'off'
 
 /** how the CLI is signed in; `unknown` is handled as `metered` */
 export type AiSubscriptionLoginMethod = 'subscription' | 'metered' | 'unknown'
@@ -66,6 +86,10 @@ export interface AiSubscriptionModel {
   resolved?: string | undefined
   /** this is the model an empty selection runs on */
   isDefault?: boolean | undefined
+  /** the effort levels the CLI takes for this model; absent when it takes none or does not tell */
+  efforts?: AiEffort[] | undefined
+  /** the level the CLI runs this model at when none is chosen, when it tells */
+  defaultEffort?: AiEffort | undefined
 }
 
 /**
@@ -102,6 +126,80 @@ export interface AiSubscriptionStatus {
   programPath?: string | undefined
   /** a login the app started is under way; absent otherwise */
   signingIn?: AiSubscriptionSigningIn | undefined
+  /**
+   * A login the app started has ended without signing the CLI in: it exited,
+   * or ran past the limit for a browser sign-in nobody finished. `signed-out`
+   * only, in memory only. The card uses it to offer the CLI's window (where a
+   * code the browser handed back can be pasted) instead of repeating the same
+   * browser sign-in. Gone when a login starts, is cancelled, or a check finds
+   * a sign-in.
+   */
+  loginUnfinished?: boolean | undefined
+  /**
+   * Why the app's own ChatGPT sign-in ended without a connection (decision
+   * 0081), beside `loginUnfinished`. Fixed names only: no token, code or text
+   * OpenAI sent. In memory only, like `loginUnfinished`.
+   */
+  loginFailure?: AiSubscriptionLoginFailure | undefined
+}
+
+/** timeout: nobody finished in time; denied: OpenAI refused or its answer did not check out; no-plan: signed in without allowing the plan; network: OpenAI could not be reached */
+export const AI_SUBSCRIPTION_LOGIN_FAILURE_REASONS = [
+  'timeout',
+  'denied',
+  'no-plan',
+  'network',
+] as const
+
+export type AiSubscriptionLoginFailureReason =
+  (typeof AI_SUBSCRIPTION_LOGIN_FAILURE_REASONS)[number]
+
+/**
+ * Which step of the app's ChatGPT sign-in failed, for the help text a user
+ * copies: fixed names, never anything OpenAI or the browser sent.
+ */
+export const AI_SUBSCRIPTION_LOGIN_FAILURE_STEPS = [
+  /** no browser took the sign-in page */
+  'browser',
+  /** the waiting server could not start */
+  'loopback',
+  /** the browser came back with an `error` */
+  'callback-error',
+  /** the browser came back without a code or a client id */
+  'callback-incomplete',
+  /** signing an issued client id in again, the browser came back naming another one */
+  'callback-client-mismatch',
+  /** the token endpoint refused the code (400, 401, 403) */
+  'token-refused',
+  /** the code went out twice (the first try failed on the way) and was refused as used */
+  'token-resent',
+  /** the token endpoint answered another failing status */
+  'token-http',
+  /** the token endpoint could not be reached */
+  'token-unreachable',
+  /** the token answer lacked the access or refresh token, or was no JSON */
+  'token-unreadable',
+  /** the token answer had no ID token */
+  'id-token-missing',
+  /** OpenAI's signing keys could not be read */
+  'signing-keys',
+  /** the ID token failed a check: signature, issuer, audience, expiry or nonce */
+  'id-token-invalid',
+  /** the token answer named no scope at all */
+  'scope-missing',
+  /** the token answer named scopes, without the plan's */
+  'plan-scope-missing',
+] as const
+
+export type AiSubscriptionLoginFailureStep = (typeof AI_SUBSCRIPTION_LOGIN_FAILURE_STEPS)[number]
+
+export interface AiSubscriptionLoginFailure {
+  reason: AiSubscriptionLoginFailureReason
+  step?: AiSubscriptionLoginFailureStep | undefined
+  /** the token endpoint's HTTP status, when it answered with a failure */
+  httpStatus?: number | undefined
+  /** the token endpoint's OAuth error code, identifier-shaped */
+  oauthError?: string | undefined
 }
 
 export type AiSubscriptionStatuses = Partial<Record<AiSubscriptionProviderId, AiSubscriptionStatus>>
@@ -121,7 +219,12 @@ export interface AiSubscriptionUsage {
 /** Machine-readable cause of a failed run; one union shared with the renderer transport */
 export type AiRunErrorKind = IpcStreamErrorKind
 
-export type AiModelEffort = 'low' | 'medium' | 'high'
+/**
+ * Ollama context/sampling preset of a registered model (PosidOffice). Stored in
+ * the same `effort` field as the reasoning level; only these three values turn
+ * on the preset's temperature, num_ctx and num_predict.
+ */
+export type OllamaEffortPreset = 'low' | 'medium' | 'high'
 
 export interface AiProviderConfig {
   apiKey: string
@@ -130,8 +233,25 @@ export interface AiProviderConfig {
   baseUrl?: string | undefined
   /** optional Codex CLI override; empty means auto-detect the current authenticated install */
   cliPath?: string | undefined
-  /** optional reasoning/context effort preset (used by Ollama and OpenAI-compatible endpoints) */
-  effort?: AiModelEffort | undefined
+  /**
+   * key providers: the chat models the vendor listed for this key, newest first
+   * where it dates them (decision 0087). Written by the main process only; the
+   * pickers show it after the fixed catalog.
+   */
+  models?: string[] | undefined
+  /**
+   * how hard the model thinks (`AI_EFFORTS`, decision 0096). Absent or empty
+   * runs the program's or vendor's own default; a level the model does not
+   * take is not handed on. On `custom`, `low`/`medium`/`high` also pick the
+   * Ollama preset (OllamaEffortPreset).
+   */
+  effort?: string | undefined
+  /**
+   * key providers: the levels each listed model takes, by model id, as the
+   * vendor's list reported them. Written by the main process with `models`;
+   * on `custom`, mirrored from the active local server's model profile.
+   */
+  modelEfforts?: Record<string, AiModelEffort> | undefined
   /** connect timeout until the first response byte; unset falls back to AI_CONNECT_TIMEOUT_MS */
   connectTimeoutMs?: number | undefined
   /**
@@ -139,6 +259,36 @@ export interface AiProviderConfig {
    * unset means not checked — the request path assumes images are accepted
    */
   vision?: boolean | undefined
+}
+
+/** Where one value of a local model profile came from */
+export type AiLocalValueSource = 'server' | 'user' | 'test'
+
+/**
+ * What the user, a local server or a connection test reported about one model
+ * of a local endpoint. Every field is optional: absent means unknown, which is
+ * never the same as `false`.
+ */
+export interface AiLocalModelProfile {
+  /** context tokens the model can be given (1..10,000,000) */
+  contextLength?: number | undefined
+  /** the server's advertised ceiling when it differs from the running context; display only */
+  maxContextLength?: number | undefined
+  /** tool calling, when known */
+  tools?: boolean | undefined
+  /** image input, when known */
+  vision?: boolean | undefined
+  contextSource?: AiLocalValueSource | undefined
+  toolsSource?: AiLocalValueSource | undefined
+  visionSource?: AiLocalValueSource | undefined
+  /** epoch milliseconds of the last check */
+  checkedAt?: number | undefined
+  /** license, model card address and other notes (trimmed, max 500 characters) */
+  notes?: string | undefined
+  /** the effort levels the server reports for the model (Ollama's `thinking.values`) */
+  efforts?: AiEffort[] | undefined
+  /** the level the server runs the model at when none is sent */
+  defaultEffort?: AiEffort | undefined
 }
 
 /** One user-hosted OpenAI-compatible server; the active one is mirrored into `providers.custom` */
@@ -150,7 +300,14 @@ export interface AiCustomEndpoint {
   model: string
   /** ids the server advertised on the last `/models` probe, so the composer chip can list them offline */
   models?: string[] | undefined
-  effort?: AiModelEffort | undefined
+  /** only servers added by the local AI card; a server saved before this field existed has none */
+  kind?: 'local' | undefined
+  /** per-model profiles, by model id (at most 2,000 entries, keys at most 256 characters) */
+  modelProfiles?: Record<string, AiLocalModelProfile> | undefined
+  /** first-response limit in milliseconds (60,000..600,000); absent means the 300,000 default */
+  timeoutMs?: number | undefined
+  /** how hard the model thinks on this server (`AI_EFFORTS`); mirrored into `providers.custom` */
+  effort?: string | undefined
   /** connect timeout until the first response byte; Ollama endpoints default to OLLAMA_CONNECT_TIMEOUT_MS */
   connectTimeoutMs?: number | undefined
   /** image input probed via Ollama `/api/show` at registration; unset means not checked */
@@ -196,7 +353,18 @@ export interface AiProviderMeta {
 
 /** Image generation / media analysis backends (separate from the chat provider) */
 export type AiMediaProviderId =
-  'openai' | 'gemini' | 'doubao' | 'glm' | 'xai' | 'qwen' | 'minimax' | 'deepseek' | 'custom'
+  | 'openai'
+  | 'gemini'
+  | 'doubao'
+  | 'glm'
+  | 'xai'
+  | 'qwen'
+  | 'minimax'
+  | 'deepseek'
+  | 'stability'
+  | 'bfl'
+  | 'microsoft'
+  | 'custom'
 
 /** Media backends configured with a key (or a base URL): every entry of the AI_MEDIA_PROVIDERS catalog */
 export type AiMediaKeyProviderId = AiMediaProviderId
@@ -209,7 +377,8 @@ export type AiAnalysisProviderSelection = 'chat' | AiMediaProviderId
 export type AiVideoAnalysisProviderSelection = 'none' | AiMediaProviderId
 
 /** wire shape of the image endpoint */
-export type AiImageProtocol = 'openai-images' | 'gemini' | 'dashscope' | 'minimax'
+export type AiImageProtocol =
+  'openai-images' | 'gemini' | 'dashscope' | 'minimax' | 'stability' | 'bfl' | 'mai'
 /** wire shape of the understanding endpoint */
 export type AiAnalysisProtocol = 'openai-chat' | 'gemini'
 
@@ -313,6 +482,12 @@ export interface AiSettings {
   /** per subscription provider: the user accepted a metered (pay-as-you-go) CLI login; absent = false */
   meteredAccepted?: Partial<Record<AiSubscriptionProviderId, boolean>> | undefined
   /**
+   * The vendor CLIs the person turned off in this app (decision 0114): the app
+   * neither checks nor runs them, and the program stays signed in for the rest
+   * of the PC. Absent or no entry = on. Only the main process writes it.
+   */
+  subscriptionOff?: Partial<Record<AiSubscriptionCliId, true>> | undefined
+  /**
    * headless callers (terminal commands, MCP) may use subscription providers; absent = false.
    * Reads as false unless `headlessSubscriptionConsentVersion` is the current consent version.
    */
@@ -324,6 +499,19 @@ export interface AiSettings {
   headlessSubscriptionConsentVersion?: number | undefined
   /** the first-connection notice has been shown; absent = false */
   subscriptionNoticeSeen?: boolean | undefined
+  /**
+   * Which version of the first-connection notice was acknowledged. The notice
+   * is shown again when its wording gains something new (the PDF sentence is
+   * version 2); old files that only carry `subscriptionNoticeSeen` read as the
+   * previous version, so those users see the addition once.
+   */
+  subscriptionNoticeVersion?: number | undefined
+  /**
+   * Which version of the PDF editor's extra sentence was acknowledged. It is
+   * kept separately because the general notice may have been acknowledged in
+   * another editor, where that sentence is not shown.
+   */
+  pdfSendNoticeSeen?: number | undefined
   /**
    * "Let AI use internet tools" (decision 0062): only false turns the editors'
    * outbound tools off; absent = on. The terminal command and MCP do not read it.
@@ -367,6 +555,10 @@ export interface AiStreamRequest {
 export interface AiTokenUsage {
   inputTokens?: number
   outputTokens?: number
+  /** share of inputTokens served from the provider's prompt cache */
+  cacheReadTokens?: number
+  /** share of inputTokens written to the prompt cache this turn (Anthropic bills it at a premium) */
+  cacheWriteTokens?: number
 }
 
 export interface AiStreamChunk {
@@ -379,6 +571,7 @@ export interface AiStreamChunk {
     | 'delta'
     | 'reasoning'
     | 'tool-call'
+    | 'acp-tool-call'
     | 'usage'
     | 'subscription-usage'
     | 'input-truncated'
@@ -388,6 +581,10 @@ export interface AiStreamChunk {
   text?: string
   /** complete parsed tool call (emitted once its arguments finish streaming) */
   toolCall?: AgentToolCall
+  /** correlation id for an 'acp-tool-call' chunk; echoed back over ai:acp-tool-result */
+  callId?: string
+  /** true on 'done' when an ACP-native session already executed its own tool loop */
+  acpNative?: boolean
   error?: string
   /** machine-readable error cause ('timeout', exhausted 'credits', 'network' connectivity failure, 'overloaded' capacity/rate limit, or a subscription cause); lets the renderer localize the message */
   errorCode?: AiRunErrorKind

@@ -7,6 +7,7 @@
  */
 import { type Block, type TableCell, type TableModel, parseDocx } from '@genoffice/docx-engine'
 import { describe, expect, it } from 'vitest'
+import JSZip from 'jszip'
 import { type TableExt, mapSequence } from '../src/table'
 import { editorSave, odtToBridge, writeBack } from './helpers/bridge'
 import { buildOdt } from './helpers/build-odt'
@@ -164,6 +165,51 @@ describe('columns', () => {
     )
     expect(frameStyleOf(styles)).toContain('fo:min-width="4.604cm"')
   })
+})
+
+describe('blank rows and columns inserted together', () => {
+  for (const row of [0, 1, 3]) {
+    for (const col of [0, 1, 3]) {
+      for (const locked of [false, true]) {
+        it(`keeps the grid with a new row ${row}, column ${col}, locked=${locked}`, async () => {
+          const doc = gridDoc(3, 3)
+          if (locked) {
+            const cell = hCell(hPara('r0c0'), { style: 'Table6.A1' })
+            doc.options.body = doc.body.replace(
+              cell,
+              cell.replace('<table:table-cell ', '<table:table-cell table:protected="true" '),
+            )
+          }
+          const o = await open(doc)
+          const { wb } = await restructure(o, 1, (model) => {
+            insertRow(model, row, ['', '', ''])
+            insertColumn(model, col, ['', '', '', ''])
+          })
+          const zip = await JSZip.loadAsync(await buildOdt(doc.options))
+          zip.file('content.xml', wb.content)
+          zip.file('styles.xml', wb.styles)
+          const reopened = await odtToBridge(
+            await zip.generateAsync({ type: 'uint8array' }),
+            tableRegistry(),
+          )
+          const parsed = await parseDocx(reopened.docx)
+          const table = parsed.blocks.find((block) => block.table)!
+          const expected = Array.from({ length: 3 }, (_, r) =>
+            Array.from({ length: 3 }, (_, c) => `r${r}c${c}`),
+          )
+          expected.splice(row, 0, ['', '', ''])
+          expected.forEach((cells) => cells.splice(col, 0, ''))
+          expect(tableTexts(table)).toEqual(expected)
+          if (locked) {
+            const ext = reopened.map.ext.table as unknown as TableExt
+            expect(ext.protectedCells).toEqual([
+              expect.objectContaining({ row: row === 0 ? 1 : 0, col: col === 0 ? 1 : 0 }),
+            ])
+          }
+        })
+      }
+    }
+  }
 })
 
 describe('merging and splitting', () => {

@@ -137,6 +137,38 @@ interface PrintCellStyle {
 /// prints thin at 0.75pt (1px @ 96dpi), medium at 1.5pt and thick at
 /// 2.25pt — the same 1 : 2 : 3 ladder the grid draws. Dash patterns keep
 /// printing solid (unchanged); only the weight is mapped here.
+/// A NONE edge is the row/column-default blocker (NO_BORDER_STYLE), not a line.
+function borderEdge(
+  style: PrintCellStyle | null | undefined,
+  key: 't' | 'b' | 'l' | 'r',
+): NonNullable<NonNullable<PrintCellStyle['bd']>['t']> | undefined {
+  const edge = style?.bd?.[key]
+  return edge == null || edge.s === BorderStyleTypes.NONE ? undefined : edge
+}
+
+/// A merged cell prints its bottom and right edges from the cells along those
+/// edges: Excel and Univer store a merge's borders on every cell they run
+/// along, so the anchor (top-left) cell holds no right edge for a merge that
+/// spans columns, nor a bottom edge for one that spans rows. The anchor's
+/// own edge still stands in when the edge cell says nothing about it.
+function mergedEdges(
+  anchor: PrintCellStyle | null,
+  bottomLeft: PrintCellStyle | null,
+  topRight: PrintCellStyle | null,
+): PrintCellStyle | null {
+  const bottom = bottomLeft?.bd?.b
+  const right = topRight?.bd?.r
+  if (bottom === undefined && right === undefined) return anchor
+  return {
+    ...anchor,
+    bd: {
+      ...anchor?.bd,
+      ...(bottom === undefined ? {} : { b: bottom }),
+      ...(right === undefined ? {} : { r: right }),
+    },
+  }
+}
+
 export function printBorderWidthPt(style: number | undefined): number {
   switch (style) {
     case BorderStyleTypes.MEDIUM:
@@ -401,23 +433,29 @@ export function layoutSheetPrint(
     span: string,
     heightPt: number,
     near: Neighbours,
+    last: { readonly row: number; readonly column: number } = { row, column },
   ): string => {
-    const style = styleAt(row, column)
+    const style = mergedEdges(
+      styleAt(row, column),
+      last.row === row ? null : styleAt(last.row, column),
+      last.column === column ? null : styleAt(row, last.column),
+    )
     const text = displayAt(data, row, column)
     const align = style?.vt === 1 ? 'flex-start' : style?.vt === 2 ? 'center' : 'flex-end'
     const custom = (r: number | null, c: number | null, edge: 't' | 'b' | 'l' | 'r'): boolean =>
-      r !== null && c !== null && styleAt(r, c)?.bd?.[edge] != null
+      r !== null && c !== null && borderEdge(styleAt(r, c), edge) !== undefined
     const edges = {
       top:
-        style?.bd?.t != null
+        borderEdge(style, 't') !== undefined
           ? near.above === null || !custom(near.above, column, 'b')
           : gridlines && near.above === null && !headings,
       left:
-        style?.bd?.l != null
+        borderEdge(style, 'l') !== undefined
           ? near.leftOf === null || !custom(row, near.leftOf, 'r')
           : gridlines && near.leftOf === null && !headings,
-      bottom: style?.bd?.b != null || (gridlines && !custom(near.below, column, 't')),
-      right: style?.bd?.r != null || (gridlines && !custom(row, near.rightOf, 'l')),
+      bottom:
+        borderEdge(style, 'b') !== undefined || (gridlines && !custom(near.below, column, 't')),
+      right: borderEdge(style, 'r') !== undefined || (gridlines && !custom(row, near.rightOf, 'l')),
     }
     return (
       `<td${span} style="${cellCss(style, rawAt(data, row, column), gridlines, edges)}">` +
@@ -490,6 +528,7 @@ export function layoutSheetPrint(
               ` rowspan="${spannedRows.length}" colspan="${spannedColumns.length}"`,
               spanned,
               { ...near, below: rowAfter(lastRow), rightOf: columnAfter(lastColumn) },
+              { row: lastRow, column: lastColumn },
             ),
           )
           return
@@ -975,7 +1014,7 @@ function cellCss(
     draw: boolean,
     offset: (width: number) => string,
   ): void => {
-    const border = style?.bd?.[key]
+    const border = borderEdge(style, key)
     if (border && draw) {
       shadows.push(
         `inset ${offset(printBorderWidthPt(border.s))} 0 ${cssColor(border.cl?.rgb ?? '#000000')}`,

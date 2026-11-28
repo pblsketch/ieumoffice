@@ -3,16 +3,24 @@
 // active entry is copied into that slot on every change: nothing downstream
 // learns about endpoints, and a settings file from before the list existed
 // still works because its single slot becomes the first entry.
-import type { AiCustomEndpoint, AiModelEffort, AiProviderConfig, AiSettings } from './types'
+import { aiEffortOf, aiModelEffortOf } from './effort'
+import { localEndpointFieldsOf } from './local-profile'
+import type { AiCustomEndpoint, AiProviderConfig, AiSettings, OllamaEffortPreset } from './types'
 import { connectTimeoutMsOf, OLLAMA_CONNECT_TIMEOUT_MS } from './watchdog'
 
+/** PosidOffice: the sampling/context preset each Ollama effort level turns on */
 export const OLLAMA_EFFORT_PRESETS: Record<
-  AiModelEffort,
+  OllamaEffortPreset,
   { temperature: number; num_ctx: number; num_predict: number }
 > = {
   low: { temperature: 0.2, num_ctx: 8192, num_predict: 1024 },
   medium: { temperature: 0.5, num_ctx: 16384, num_predict: 2048 },
   high: { temperature: 0.8, num_ctx: 32768, num_predict: 3072 },
+}
+
+/** The Ollama preset a stored effort names, or undefined for any other level */
+export function ollamaEffortPresetOf(effort: unknown): OllamaEffortPreset | undefined {
+  return effort === 'low' || effort === 'medium' || effort === 'high' ? effort : undefined
 }
 
 export function prettyModelName(model: string): string {
@@ -55,9 +63,6 @@ function normalizeEndpoints(raw: unknown): AiCustomEndpoint[] {
           ),
         ].filter(Boolean)
       : undefined
-    const effortRaw = e.effort
-    const effort =
-      effortRaw === 'low' || effortRaw === 'medium' || effortRaw === 'high' ? effortRaw : undefined
     const connectTimeoutMs = connectTimeoutMsOf(e.connectTimeoutMs)
     out.push({
       id,
@@ -66,7 +71,9 @@ function normalizeEndpoints(raw: unknown): AiCustomEndpoint[] {
       apiKey: str(e.apiKey),
       model: str(e.model),
       ...(models && models.length > 0 ? { models } : {}),
-      ...(effort ? { effort } : {}),
+      ...(aiEffortOf(e.effort) ? { effort: aiEffortOf(e.effort) } : {}),
+      // local-only fields survive a read/write round trip; malformed ones are dropped
+      ...localEndpointFieldsOf(e),
       ...(connectTimeoutMs !== undefined ? { connectTimeoutMs } : {}),
       ...(typeof e.vision === 'boolean' ? { vision: e.vision } : {}),
     })
@@ -77,7 +84,10 @@ function normalizeEndpoints(raw: unknown): AiCustomEndpoint[] {
 /**
  * The endpoint list and the `custom` slot made consistent. A file with a slot
  * but no list gets a one-entry list; a stale active id falls to the first
- * entry; the active entry is copied into the slot. Pure: returns a new object.
+ * entry; the active entry is copied into the slot. An explicit empty
+ * `customEndpoint` means "no active server": the list stays, but the slot is
+ * cleared so the deleted server is not called and no first entry takes over.
+ * Pure: returns a new object.
  */
 export function resolveCustomEndpoints(settings: AiSettings): AiSettings {
   let endpoints = normalizeEndpoints(settings.customEndpoints)
@@ -95,11 +105,28 @@ export function resolveCustomEndpoints(settings: AiSettings): AiSettings {
   }
   if (endpoints.length === 0) {
     const { customEndpoints: _list, customEndpoint: _active, ...rest } = settings
-    return rest
+    // an explicit "no active server" survives an empty list; a file that never
+    // carried the field is left without it, as before
+    return settings.customEndpoint === '' ? { ...rest, customEndpoint: '' } : rest
   }
-  const active =
-    endpoints.find((e) => e.id === str(settings.customEndpoint)) ??
-    (endpoints[0] as AiCustomEndpoint)
+  const storedActive = settings.customEndpoint
+  const noActiveServer = typeof storedActive === 'string' && storedActive.trim() === ''
+  const active = noActiveServer
+    ? undefined
+    : (endpoints.find((e) => e.id === str(storedActive)) ?? (endpoints[0] as AiCustomEndpoint))
+  if (!active) {
+    return {
+      ...settings,
+      customEndpoints: endpoints,
+      customEndpoint: '',
+      providers: {
+        ...settings.providers,
+        // clear the mirror: isKeyProviderConfigured must read false, so a
+        // server the user removed is not called through the old slot
+        custom: { apiKey: '', model: '', baseUrl: '' },
+      },
+    }
+  }
   // Ollama endpoints keep the longer connect timeout so a slow local model
   // load does not trip the default; registered before the field existed, they
   // fall back to the Ollama default through their owning server list.
@@ -116,11 +143,28 @@ export function resolveCustomEndpoints(settings: AiSettings): AiSettings {
         apiKey: active.apiKey,
         model: active.model,
         baseUrl: active.baseUrl,
-        ...(active.effort ? { effort: active.effort } : {}),
+        ...effortOf(active),
         ...(connectTimeoutMs !== undefined ? { connectTimeoutMs } : {}),
         ...(active.vision !== undefined ? { vision: active.vision } : {}),
       },
     },
+  }
+}
+
+/**
+ * The active server's level and what its model profile says the model takes,
+ * in the shape the request path reads from `providers.custom` (decision 0096).
+ */
+function effortOf(endpoint: AiCustomEndpoint): Pick<AiProviderConfig, 'effort' | 'modelEfforts'> {
+  const effort = aiEffortOf(endpoint.effort)
+  const profile = endpoint.modelProfiles?.[endpoint.model]
+  const taken = aiModelEffortOf({
+    efforts: profile?.efforts,
+    defaultEffort: profile?.defaultEffort,
+  })
+  return {
+    ...(effort ? { effort } : {}),
+    ...(taken && endpoint.model ? { modelEfforts: { [endpoint.model]: taken } } : {}),
   }
 }
 
@@ -150,13 +194,36 @@ export function upsertCustomEndpoint(
   })
 }
 
-export function removeCustomEndpoint(settings: AiSettings, id: string): AiSettings {
-  const customEndpoints = (settings.customEndpoints ?? []).filter((e) => e.id !== id)
+export interface RemoveCustomEndpointOptions {
+  /**
+   * What happens when the removed entry was the active one: `true` (default)
+   * activates the next entry, `false` leaves the selection explicitly empty so
+   * no other server is used without the user choosing it.
+   */
+  fallback?: boolean | undefined
+}
+
+export function removeCustomEndpoint(
+  settings: AiSettings,
+  id: string,
+  options?: RemoveCustomEndpointOptions,
+): AiSettings {
+  const fallback = options?.fallback ?? true
+  const list = settings.customEndpoints ?? []
+  const storedActive = settings.customEndpoint
+  const explicitEmpty = typeof storedActive === 'string' && storedActive.trim() === ''
+  // the resolver's own rule: no explicit empty id means the first entry is in use
+  const activeId = explicitEmpty
+    ? ''
+    : (list.find((e) => e.id === str(storedActive))?.id ?? list[0]?.id ?? '')
+  const removedActive = activeId === id
+  const customEndpoints = list.filter((e) => e.id !== id)
   // the slot mirrored the removed entry; cleared first or it would be re-seeded as a new entry
   const blank: AiProviderConfig = { apiKey: '', model: '', baseUrl: '' }
   return resolveCustomEndpoints({
     ...settings,
     customEndpoints,
+    ...(!fallback && removedActive ? { customEndpoint: '' } : {}),
     providers: { ...settings.providers, custom: blank },
   })
 }

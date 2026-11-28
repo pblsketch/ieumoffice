@@ -1,6 +1,8 @@
 import type { zh } from './zh'
 
 export const ar = {
+  appLegacyPptImported:
+    'تم فتح ملف ‎.ppt كنسخة ‎.pptx محوَّلة. يبقى الملف الأصلي كما هو، ويؤدي الحفظ إلى كتابة ملف ‎.pptx جديد. لا تُنقل ملاحظات المتحدث والحركات.',
   redactMenuLabel: 'إخفاء التحديد عن الذكاء الاصطناعي',
   redactDialogDesc:
     'يبقى ما تختاره في المستند وفي الملف؛ يرى النموذج العلامة أدناه. سمِّها ليعرف ما تمثّله.',
@@ -169,6 +171,9 @@ export const ar = {
   appPrintLandscape: 'أفقي',
   appPrintFrame: 'إحاطة الشرائح بإطار',
   appPrintHidden: 'طباعة الشرائح المخفية',
+  appPrintRangeSelected: 'الشرائح المحددة',
+  appPrintLayoutBlocked:
+    'تُطبع النشرات وصفحات الملاحظات بصفحة واحدة لكل ورقة. لترتيب الصفحات، اختر شرائح بحجم الصفحة.',
   appPrintPageCount: '{n} صفحات',
   appPrintNoPages: 'لا توجد شرائح للطباعة',
   appPrintRendering: 'جارٍ إنشاء المعاينة…',
@@ -178,6 +183,7 @@ export const ar = {
   appCtxSendToBack: 'إرسال إلى الخلفية',
   appCtxBringForward: 'إحضار للأمام',
   appCtxSendBackward: 'إرسال للخلف',
+  appCtxRotate: 'تدوير',
   appCtxRotateLeft90: 'تدوير 90° لليسار',
   appCtxRotateRight90: 'تدوير 90° لليمين',
   appCtxFlipH: 'انعكاس أفقي',
@@ -217,6 +223,8 @@ export const ar = {
   appMasterFillNone: 'بلا تعبئة',
   appMasterStroke: 'لون الحد…',
   appMasterStrokeNone: 'بلا حد',
+  appMasterInsertTextBox: 'مربع نص',
+  appMasterInsertShape: 'أشكال',
   appStartOpening: 'جارٍ الفتح…',
   appReadingSlideTitle: 'انقر للانتقال إلى الشريحة التالية (اضغط على Esc للخروج من عرض القراءة)',
   appReadingPrev: '‹ السابق',
@@ -252,4 +260,12 @@ export const ar = {
   appStatusSummaryZoomInserted: 'تم إدراج شريحة تكبير/تصغير الملخص مع {count} مربعات',
   appSectionSummary: 'مقطع الملخص',
   appSectionN: 'المقطع {n}',
+  appStatusAnimPainterNone: 'لا توجد حركات على العنصر المحدد',
+  appStatusAnimPainterOnce:
+    'انقر على العنصر المراد تطبيق الحركات عليه؛ انقر نقرًا مزدوجًا فوق الزر للوضع المستمر',
+  appStatusAnimPainterContinuous: 'وضع نسخ الحركة المستمر؛ اضغط على Esc للخروج',
+  appStatusAnimPainted: 'تم تطبيق الحركات',
+  appStatusMergeUnsupported:
+    'لا يمكن دمج هذه الأشكال (تُستثنى الخطوط والصور والجداول والمخططات وبعض الأشكال)',
+  appStatusMergeEmpty: 'لم يتبقَّ شيء بعد الدمج (الأشكال لا تتداخل)',
 } satisfies Record<keyof typeof zh, string>

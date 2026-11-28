@@ -1,6 +1,7 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
-import { nextSheetName, planFromOps } from '../src/renderer/op-executor'
+import { planFromOps, prefetchOpImages } from '../src/renderer/op-executor'
+import { nextSheetName } from '../src/renderer/new-sheet-name'
 
 const workbook = {
   getSheetBySheetId: (id: string) => (id === 'sh1' ? { getSheetName: () => 'Data' } : undefined),
@@ -39,5 +40,49 @@ describe('planFromOps', () => {
     expect(plan.formatChanges).toHaveLength(1)
     expect(plan.cellChanges).toHaveLength(0)
     expect(plan.transactionId).toMatch(/^ui-/)
+  })
+})
+
+describe('prefetchOpImages', () => {
+  it('reads a chat attachment through the attachment channel, not the local-file channel', async () => {
+    const readAttachmentImage = vi.fn(async () => ({
+      ok: true,
+      base64: 'iVBORw0KGgoAAAAA',
+      mime: 'image/png',
+    }))
+    const readLocalImage = vi.fn()
+    vi.stubGlobal('window', { desktopApi: { readAttachmentImage, readLocalImage } })
+    const savedImage = globalThis.Image
+    class FakeImage {
+      naturalWidth = 40
+      naturalHeight = 20
+      onload: (() => void) | null = null
+      onerror: (() => void) | null = null
+      set src(_value: string) {
+        queueMicrotask(() => this.onload?.())
+      }
+    }
+    globalThis.Image = FakeImage as unknown as typeof Image
+    try {
+      const data = await prefetchOpImages([
+        {
+          op: 'add_image',
+          sheetId: 's',
+          path: 'C:/Users/me/Pictures/chart.png',
+          attachment: 'chart.png',
+          anchorCell: 'B2',
+        },
+      ])
+      expect(readAttachmentImage).toHaveBeenCalledWith('C:/Users/me/Pictures/chart.png')
+      expect(readLocalImage).not.toHaveBeenCalled()
+      expect(data.get('C:/Users/me/Pictures/chart.png')).toMatchObject({
+        mediaType: 'image/png',
+        width: 40,
+        height: 20,
+      })
+    } finally {
+      globalThis.Image = savedImage
+      vi.unstubAllGlobals()
+    }
   })
 })

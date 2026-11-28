@@ -1,6 +1,8 @@
 import type { zh } from './zh'
 
 export const it = {
+  appLegacyDocImported:
+    'Il file .{ext} è stato aperto come copia .docx convertita. L’originale resta invariato; il salvataggio crea un nuovo file .docx.',
   appScTitle: 'Scelte rapide da tastiera',
   appScFilter: 'Cerca scelta rapida',
   appScNone: 'Nessuna scelta rapida corrispondente',
@@ -54,6 +56,7 @@ export const it = {
   appVerticalTextNotice:
     'Questo documento contiene testo verticale (mostrato orizzontalmente per ora; il salvataggio non è interessato)',
   appNewDocCreated: 'Documento vuoto creato. Descrivi cosa generare nel pannello IA a sinistra.',
+  appNewDocCreatedNoAi: 'Documento vuoto creato.',
   appNewFailed: 'Creazione del documento non riuscita: {error}',
   appSaveFailed: 'Salvataggio non riuscito: {error}',
   appAutoSavedAt: 'Salvato automaticamente ({time})',
@@ -96,6 +99,9 @@ export const it = {
   appPrintRangeAll: 'Tutte le pagine',
   appPrintRangeCurrent: 'Pagina corrente',
   appPrintRangeCustom: 'Intervallo personalizzato',
+  appPrintRangeSelection: 'Selezione',
+  appPrintSelectionPreparing: 'Impaginazione della selezione…',
+  appPrintSelectionFailed: 'Impossibile impaginare la selezione: {error}',
   appPrintRangeHint: 'es. 1,3,5-8',
   appPrintPageCount: '{n} pagine',
   appPrintNoPages: 'Nessuna pagina da stampare',
@@ -356,6 +362,9 @@ export const it = {
   appAiBadgeTip: "Usa l'IA",
   appTranslate: 'Traduci',
   appTranslateTo: 'Traduci in {lang}',
+  appEasyWords: 'Spiega con parole semplici',
+  appEasyWordsPrompt:
+    "Spiega il testo selezionato in italiano in modo che lo capisca anche chi ha bisogno di un testo facile (bambini, persone anziane, chi sta imparando l'italiano). Usa parole di tutti i giorni e frasi brevi, e mantieni tutti i fatti, i numeri e le condizioni. Non modificare il documento: «{text}»",
   redactMenuLabel: 'Nascondi la selezione all’IA',
   redactDialogDesc:
     'Le parole restano nel documento e nel file; il modello vede solo il segnaposto. Dai un nome perché sappia cosa rappresenta.',
@@ -386,6 +395,7 @@ export const it = {
   appLangHindi: 'hindi',
   appLangTraditionalChinese: 'cinese tradizionale',
   appLangVietnamese: 'vietnamita',
+  appLangTurkish: 'turco',
   appWrapTextMenu: 'Disponi testo',
   appViewImage: 'Visualizza immagine',
   appSaveImageAs: 'Salva immagine con nome…',
@@ -479,6 +489,12 @@ export const it = {
   appLatexPlaceholder: 'ad es. x = \\frac{-b \\pm \\sqrt{b^2-4ac}}{2a}',
   appLatexPreviewHint: "Digita LaTeX per vedere l'anteprima",
   appPreviewUnavailable: "Impossibile generare l'anteprima",
+  appMathTypeConvertNote:
+    'Equazione MathType — il salvataggio la converte in un’equazione Word nativa (OMML).',
+  appMathTypeConvertOnlyNote:
+    'Questa equazione MathType utilizza strutture esterne al sottoinsieme LaTeX. Puoi convertirla direttamente in un’equazione Word nativa (OMML) mantenendo il layout.',
+  appMathTypeConvertAction: 'Converti e aggiorna',
+  appMathTypeEditHint: 'Equazione MathType (doppio clic per modificare o convertire)',
   appInlineEquationToggle: 'Equazione in linea (inserita al cursore, scorre con il testo)',
   appInsertNewEquation: 'π Inserisci nuova equazione (LaTeX)…',
   appEqCircleArea: 'Area del cerchio',
@@ -586,4 +602,13 @@ export const it = {
   appOdtLabelObject: 'Oggetto (visibile in Hancom)',
   appOdtLabelNotice:
     'Gli oggetti disegnati come riquadri con etichetta possono apparire diversi da come li mostra Hancom Office.',
+  appMergeSourceLoaded: '{name} caricato ({n} record)',
+  appMergeWritten: '{n} documenti scritti',
+  appMergeNothingToWrite: "Non c'è nulla da scrivere",
+  appExportingHwp: 'Esportazione del documento HWP…',
+  appExportedHwp: 'Documento HWP esportato: {path}',
+  appExportHwpFailed: 'Esportazione HWP non riuscita: {error}',
+  appExportHwpCanceled: 'Esportazione HWP annullata',
+  appExportHwpReadback:
+    'Non è stato possibile scrivere questo documento esattamente come .hwp. Prova a salvarlo come .hwpx.',
 } satisfies Record<keyof typeof zh, string>

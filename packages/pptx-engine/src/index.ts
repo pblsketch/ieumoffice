@@ -7,7 +7,7 @@
 import { stripRedactExt, syncRedactExt } from './redaction-xml'
 import JSZip from 'jszip'
 import { PackageArchive, relsPathFor, resolveTarget, type Relationship } from './zip'
-import { parseClrMap, parseTheme, type Theme } from './theme'
+import { parseClrMap, parseTheme, themeWithOverride, type Theme } from './theme'
 import {
   parseSlide,
   parseDecorations,
@@ -183,6 +183,7 @@ export {
   addElement,
   addPicture,
   addImageMediaAndRel,
+  isSupportedImageExt,
   deleteElement,
   buildSpXml,
   buildTableXml,
@@ -383,6 +384,21 @@ export interface OpenedPptx {
   archive: PackageArchive
 }
 
+/**
+ * A slide's own themeOverride part (keep-source-formatting pastes) replaces the master
+ * theme's clrScheme/fontScheme for that slide: PowerPoint resolves every schemeClr on it,
+ * background included, against the override.
+ */
+function slideTheme(archive: PackageArchive, slidePath: string, theme: Theme): Theme {
+  for (const rel of archive.readRels(slidePath).values()) {
+    if (rel.type.endsWith('/themeOverride') && rel.targetMode !== 'External') {
+      const xml = archive.readText(resolveTarget(slidePath, rel.target))
+      if (xml) return themeWithOverride(theme, xml)
+    }
+  }
+  return theme
+}
+
 /** Parse one slide from the archive (assembling the inheritance-chain ctx); shared by openPptx and duplicateSlide. */
 function parseSlideFromArchive(archive: PackageArchive, slidePath: string): Slide | null {
   const slideXml = archive.readText(slidePath)
@@ -396,7 +412,7 @@ function parseSlideFromArchive(archive: PackageArchive, slidePath: string): Slid
   if (chain.themePath) {
     const themeXml = archive.readText(chain.themePath)
     if (themeXml) {
-      ctx.theme = parseTheme(themeXml)
+      ctx.theme = slideTheme(archive, slidePath, parseTheme(themeXml))
       // Dark masters remap schemeClr names (bg1→dk1 …); must be in place before any color resolution below
       ctx.theme.clrMap = parseClrMap(masterXml, layoutXml, slideXml)
       ctx.themeMediaRels = partMediaRels(archive, chain.themePath)
@@ -752,6 +768,11 @@ export async function savePptx(opened: OpenedPptx): Promise<Uint8Array> {
  * time. JSZip throws stream errors from inside its own scheduled callbacks, so the
  * stream's 'error' event — not just the returned promise — has to be handled or the
  * throw escapes as an uncaught exception and takes the process down.
+ *
+ * The stream truncates `filePath` before its first chunk lands, so a caller that
+ * replaces an existing deck hands this a sibling temp path and renames it over the
+ * deck once the promise resolves (Slides does so through atomicWriteVia); given the
+ * deck's own path, a save that dies mid-stream leaves it cut off.
  */
 export async function savePptxToFile(opened: OpenedPptx, filePath: string): Promise<void> {
   const { createWriteStream } = await import('node:fs')
@@ -1117,7 +1138,7 @@ function slideInheritanceCtx(archive: PackageArchive, slidePath: string) {
   if (chain.themePath) {
     const themeXml = archive.readText(chain.themePath)
     if (themeXml) {
-      theme = parseTheme(themeXml)
+      theme = slideTheme(archive, slidePath, parseTheme(themeXml))
       theme.clrMap = parseClrMap(masterXml, layoutXml, archive.readText(slidePath) ?? undefined)
     }
   }
@@ -1464,7 +1485,8 @@ export interface EffectsPatch {
 
 /** #RRGGBB / #RRGGBBAA → <a:srgbClr> (alpha channel becomes an <a:alpha> child in 1000ths of a percent). */
 function effectColorXml(hex: string): string {
-  const m = /^#?([0-9a-fA-F]{6})([0-9a-fA-F]{2})?$/.exec(hex)
+  const t = (hex ?? '').trim()
+  const m = /^#?([0-9a-fA-F]{6})([0-9a-fA-F]{2})?$/.exec(t)
   const val = (m?.[1] ?? '000000').toUpperCase()
   const alpha = m?.[2] != null ? Math.round((parseInt(m[2], 16) / 255) * 100000) : 100000
   return alpha < 100000
@@ -3085,6 +3107,53 @@ export function markChartEditable(slide: Slide, elementId: string): boolean {
   return true
 }
 
+/**
+ * Rewrite one attribute of a top-level element's OWN <p:cNvPr> (the first one in its
+ * bytes: a group's nvGrpSpPr precedes its children). value undefined removes it.
+ * Returns false when the element or its cNvPr is missing; unchanged bytes stay as is.
+ */
+function patchOwnCNvPrAttr(
+  slide: Slide,
+  elementId: string,
+  name: string,
+  value: string | undefined,
+): boolean {
+  const el = slide.elements.find((e) => e.id === elementId)
+  const xml = el?.anchor?.originalXml
+  if (!el || !xml) return false
+  const m = /<p:cNvPr\b[^>]*?\/?>/.exec(xml)
+  if (!m) return false
+  const re = new RegExp(`\\s${name}="[^"]*"`)
+  const tag =
+    value === undefined
+      ? m[0].replace(re, '')
+      : re.test(m[0])
+        ? m[0].replace(re, ` ${name}="${escapeXmlAttr(value)}"`)
+        : m[0].replace(/(\s*\/?>)$/, ` ${name}="${escapeXmlAttr(value)}"$1`)
+  if (tag === m[0]) return true
+  el.anchor.originalXml = xml.slice(0, m.index) + tag + xml.slice(m.index + m[0].length)
+  slide.structureDirty = true
+  return true
+}
+
+/**
+ * Show or hide a top-level element (<p:cNvPr hidden="1">, PowerPoint's Selection Pane eye).
+ * Only the element's own cNvPr changes. A hidden element parses as a silent passthrough
+ * (never drawn), so the caller rematerializes the slide afterwards (materializeSlide) to
+ * bring the model in line — which also renews every element id on the slide.
+ */
+export function setElementHidden(slide: Slide, elementId: string, hidden: boolean): boolean {
+  return patchOwnCNvPrAttr(slide, elementId, 'hidden', hidden ? '1' : undefined)
+}
+
+/** Rename a top-level element (<p:cNvPr name>, the name the Selection Pane shows). */
+export function setElementName(slide: Slide, elementId: string, name: string): boolean {
+  if (!patchOwnCNvPrAttr(slide, elementId, 'name', name)) return false
+  const el = slide.elements.find((e) => e.id === elementId)!
+  el.name = name
+  return true
+}
+
 /** Escape RegExp special characters. */
 function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
@@ -3130,6 +3199,10 @@ export interface ElementFontPatch {
   underline?: boolean
   /** #RRGGBB (explicit color: clears theme-link/inheritance flags) */
   color?: string
+  /** Text highlight #RRGGBB; null removes it */
+  highlight?: string | null
+  /** Letter spacing in points (negative = tighter); null or 0 = normal spacing */
+  letterSpacingPt?: number | null
 }
 
 /** Per-run size rewrite (relative grow/shrink); undefined = the run inherits its size. */
@@ -3192,6 +3265,16 @@ function applyFontPatch(
         delete r.colorFollowsTheme
         delete r.colorInherited
         delete r.colorNodeXml
+      }
+      if (patch.highlight !== undefined) {
+        if (patch.highlight) r.highlight = patch.highlight
+        else delete r.highlight
+        r.highlightEdited = true
+      }
+      if (patch.letterSpacingPt !== undefined) {
+        if (patch.letterSpacingPt) r.letterSpacing = patch.letterSpacingPt
+        else delete r.letterSpacing
+        r.letterSpacingEdited = true
       }
     }
   }
@@ -4123,7 +4206,9 @@ export interface ElementClipboardItem {
   contentTypes?: Readonly<Record<string, string>>
 }
 
-const RID_ATTR_RE = /\br:(?:embed|link|id)="(rId\d+)"/g
+// Quote-agnostic like the other relationship scanners: a slide written by a
+// producer that prefers single quotes still names its rIds.
+const RID_ATTR_RE = /\br:(?:embed|link|id)\s*=\s*(["'])(rId\d+)\1/g
 
 /** Copy: grab the element's current XML and the relationships it references (part paths that pictures/charts etc. point at). */
 export function copyElementData(
@@ -4138,7 +4223,7 @@ export function copyElementData(
   const contentTypes: Record<string, string> = {}
   const seen = new Set<string>()
   for (const m of xml.matchAll(RID_ATTR_RE)) {
-    const rid = m[1]!
+    const rid = m[2]!
     if (seen.has(rid)) continue
     seen.add(rid)
     const rel = slideRels.get(rid)

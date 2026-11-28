@@ -1,4 +1,3 @@
-import { randomBytes } from 'node:crypto'
 import {
   chmodSync,
   existsSync,
@@ -21,6 +20,7 @@ import {
   resolve,
   sep,
 } from 'node:path'
+import { tempPathBeside } from '@genoffice/electron-utils/atomic-write'
 import { assertNotOpenInGui } from './gui'
 import { assertPackageWithinLimits } from './limits'
 import { CliError, EXIT, type ErrorHints } from './result'
@@ -105,17 +105,25 @@ const RETRYABLE_RENAME = new Set(['EPERM', 'EACCES', 'EBUSY'])
 const RENAME_RETRIES = 4
 
 /**
- * Same-directory temp file + rename: an interrupted `apply` leaves the old
- * file or the new one, never a truncated one. Mirrors the app's atomic-write:
+ * Same-directory temp file + rename. Mirrors the app's atomic-write:
  * the target's mode is kept, a locked target is retried with backoff and,
- * failing that, overwritten in place so a finished edit is never dropped.
+ * failing that, overwritten in place. If that fallback fails, keep the
+ * completed temp as a rescue copy because the target may already be truncated,
+ * and name it in the error (`detail.rescue_path`).
  */
 export function writeOutput(abs: string, bytes: Uint8Array | string): void {
-  const tmp = join(dirname(abs), `.${basename(abs)}.${randomBytes(6).toString('hex')}.tmp`)
+  const tmp = tempPathBeside(abs)
   const mode = existsSync(abs) ? statSync(abs).mode & 0o7777 : undefined
+  let keepTempOnError = false
   try {
     writeFileSync(tmp, bytes, mode === undefined ? {} : { mode })
-    if (mode !== undefined) chmodSync(tmp, mode)
+    if (mode !== undefined) {
+      try {
+        chmodSync(tmp, mode)
+      } catch {
+        // a mount without permissions (gvfs) refuses chmod; the temp was created with this mode, less the umask
+      }
+    }
     for (let attempt = 0; ; attempt++) {
       try {
         renameSync(tmp, abs)
@@ -124,6 +132,7 @@ export function writeOutput(abs: string, bytes: Uint8Array | string): void {
         const code = (err as NodeJS.ErrnoException).code ?? ''
         if (!RETRYABLE_RENAME.has(code)) throw err
         if (attempt >= RENAME_RETRIES) {
+          keepTempOnError = true
           writeFileSync(abs, bytes)
           rmSync(tmp, { force: true })
           return
@@ -132,7 +141,14 @@ export function writeOutput(abs: string, bytes: Uint8Array | string): void {
       }
     }
   } catch (err) {
-    rmSync(tmp, { force: true })
+    if (!keepTempOnError) rmSync(tmp, { force: true })
+    else if (existsSync(tmp)) {
+      // the caller must learn where the finished edit went, or the rescue copy is lost too
+      const why = err instanceof Error ? err.message : String(err)
+      throw new CliError(EXIT.conversion, `${why}; the finished edit is kept in ${tmp}`, {
+        rescue_path: tmp,
+      })
+    }
     throw err
   }
 }
@@ -177,6 +193,47 @@ export function resolveOutput(
 export function readInput(abs: string): Uint8Array {
   const buf = readFileSync(abs)
   return new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength)
+}
+
+/**
+ * UTF-32LE shares the UTF-16LE BOM prefix (FF FE 00 00); UTF-32BE is 00 00 FE FF. Shared by
+ * `decodeText` here and `decodeHtmlBytes` (`formats/html-text.ts`), which read the same BOMs.
+ */
+export function isUtf32Bom(bytes: Uint8Array): boolean {
+  return (
+    bytes.length >= 4 &&
+    ((bytes[0] === 0 && bytes[1] === 0 && bytes[2] === 0xfe && bytes[3] === 0xff) ||
+      (bytes[0] === 0xff && bytes[1] === 0xfe && bytes[2] === 0 && bytes[3] === 0))
+  )
+}
+
+const UTF32_UNSUPPORTED: ErrorHints = { reason: 'unsupported' }
+
+/**
+ * A text file's bytes as text: UTF-16 with a byte order mark (what Windows PowerShell's `>` writes) is
+ * decoded as UTF-16, anything else as UTF-8. A UTF-8 BOM stays for `stripBom`, as before.
+ */
+export function decodeText(bytes: Uint8Array): string {
+  if (isUtf32Bom(bytes)) {
+    throw new CliError(
+      EXIT.usage,
+      'Unsupported text encoding: BOM-declared UTF-32 cannot be decoded (UTF-8 and UTF-16 are supported)',
+      undefined,
+      UTF32_UNSUPPORTED,
+    )
+  }
+  if (bytes[0] === 0xff && bytes[1] === 0xfe) return new TextDecoder('utf-16le').decode(bytes)
+  if (bytes[0] === 0xfe && bytes[1] === 0xff) return new TextDecoder('utf-16be').decode(bytes)
+  return Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength).toString('utf-8')
+}
+
+export function readTextFile(path: string): string {
+  return decodeText(readFileSync(path))
+}
+
+/** Drops one leading UTF-8 BOM that editors put at the start of JSON files; a U+FEFF inside the text stays. */
+export function stripBom(text: string): string {
+  return text.charCodeAt(0) === 0xfeff ? text.slice(1) : text
 }
 
 export function extension(path: string): string {

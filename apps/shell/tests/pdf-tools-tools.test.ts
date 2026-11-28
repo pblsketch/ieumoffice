@@ -4,16 +4,22 @@ import { PDFDict, PDFDocument, PDFName, StandardFonts } from 'pdf-lib'
 import {
   PdfToolRefusal,
   MAX_PASSWORD_BYTES,
+  acceptsFileKind,
   checkOptions,
   encryptedPageCount,
   foundBlankPagesOf,
+  inspectDocument,
   inspectImage,
   inspectPdf,
+  isBatchTool,
+  isChainTarget,
   isPdfToolId,
   jobBytesOf,
   outputNames,
   pagesToText,
+  readBookmarksBytes,
   runPdfTool,
+  runSplitPdfTool,
   toolAccepts,
   toolInputKind,
   toolMinInputs,
@@ -21,8 +27,13 @@ import {
   toolRunsAsJob,
   toolTakesMany,
 } from '../src/main/pdf-tools/tools'
-import { PDF_TOOL_ANNOT_KINDS } from '../src/shared/pdf-tools-api'
+import {
+  PDF_EDITOR_TOOL_IDS,
+  PDF_TOOL_ANNOT_KINDS,
+  PDF_TOOL_IDS,
+} from '../src/shared/pdf-tools-api'
 import { ANNOT_KINDS } from '../../pdf/src/main/annot-strip'
+import { applySaveRequest } from '../../pdf/src/main/save-pdf'
 
 /**
  * The PDF tools window's work: each tool's file is read back (page count,
@@ -284,6 +295,103 @@ describe('running each tool', () => {
     expect(await Promise.all(parts.map(widths))).toEqual([[100, 101], [102, 103], [104]])
   })
 
+  it('splits by custom ranges, merged ranges, equal file count, bookmarks and maxSize', async () => {
+    const source = await pdf(6)
+    expect(checkOptions('split', { splitMode: 'ranges', splitRanges: '1-2, 4-6' }, 6)).toEqual({
+      ok: true,
+      options: {
+        splitMode: 'ranges',
+        splitRanges: '1-2, 4-6',
+        splitMergeRanges: false,
+        splitPattern: 'numbered',
+        splitCreateSubfolder: false,
+      },
+    })
+    expect(checkOptions('split', { splitMode: 'ranges', splitRanges: '1-9' }, 6)).toEqual({
+      ok: false,
+      error: 'range',
+    })
+    expect(checkOptions('split', { splitMode: 'maxSize', splitMaxBytes: 100 }, 6)).toEqual({
+      ok: false,
+      error: 'invalid-size',
+    })
+
+    const rangeOut = await runSplitPdfTool(source, 'Report.pdf', {
+      splitMode: 'ranges',
+      splitRanges: '1-2, 5-6',
+      splitPattern: 'range',
+    })
+    expect(rangeOut.names).toEqual(['Report_p1-2.pdf', 'Report_p5-6.pdf'])
+    expect(await Promise.all(rangeOut.parts.map(widths))).toEqual([
+      [100, 101],
+      [104, 105],
+    ])
+
+    const mergedOut = await runSplitPdfTool(source, 'Report.pdf', {
+      splitMode: 'ranges',
+      splitRanges: '1-2, 5-6',
+      splitMergeRanges: true,
+    })
+    expect(mergedOut.parts).toHaveLength(1)
+    expect(await widths(mergedOut.parts[0]!)).toEqual([100, 101, 104, 105])
+
+    const equalOut = await runSplitPdfTool(source, 'Report.pdf', {
+      splitMode: 'fixed',
+      splitFixedKind: 'fileCount',
+      splitFixedValue: 3,
+      splitPrefix: 'Part',
+    })
+    expect(equalOut.names).toEqual(['Part-1.pdf', 'Part-2.pdf', 'Part-3.pdf'])
+    expect(await Promise.all(equalOut.parts.map(widths))).toEqual([
+      [100, 101],
+      [102, 103],
+      [104, 105],
+    ])
+
+    // Bookmarks refusal when absent, and chapter split when present
+    await expect(
+      runSplitPdfTool(source, 'Plain.pdf', { splitMode: 'bookmarks', splitBookmarkLevel: 1 }),
+    ).rejects.toBeInstanceOf(PdfToolRefusal)
+
+    const withOutline = (
+      await applySaveRequest(source, {
+        path: '',
+        markups: [],
+        drawings: [],
+        formValues: [],
+        stamps: [],
+        outline: [
+          { title: 'Intro', pageIndex: 0 },
+          { title: 'Body', pageIndex: 3 },
+        ],
+      })
+    ).bytes
+    expect(await readBookmarksBytes(withOutline)).toEqual([
+      { title: 'Intro', level: 1, page: 1 },
+      { title: 'Body', level: 1, page: 4 },
+    ])
+    const bmOut = await runSplitPdfTool(withOutline, 'Book.pdf', {
+      splitMode: 'bookmarks',
+      splitBookmarkLevel: 1,
+      splitPattern: 'bookmark',
+    })
+    expect(bmOut.names).toEqual(['1_Intro.pdf', '2_Body.pdf'])
+    expect(await Promise.all(bmOut.parts.map(widths))).toEqual([
+      [100, 101, 102],
+      [103, 104, 105],
+    ])
+
+    // maxSize splits cleanly within a generous cap
+    const sizedOut = await runSplitPdfTool(source, 'Sized.pdf', {
+      splitMode: 'maxSize',
+      splitMaxBytes: 50 * 1024,
+    })
+    expect(sizedOut.parts.length).toBeGreaterThanOrEqual(1)
+    expect(sizedOut.oversizedPages).toEqual([])
+    expect(outputNames('split', 'a.pdf', 12, {})[0]).toBe('a-01.pdf')
+    expect(outputNames('split', 'a.pdf', 12, {})[11]).toBe('a-12.pdf')
+  })
+
   it('extracts the chosen pages', async () => {
     const [out] = await runUntouched('extract', [await pdf(5)], { pages: '2,4,5' })
     expect(await widths(out!)).toEqual([101, 103, 104])
@@ -458,5 +566,135 @@ describe('suggested file names', () => {
     expect(outputNames('encrypt', 'a.pdf', 1, {})).toEqual(['a-locked.pdf'])
     expect(outputNames('decrypt', 'a.pdf', 1, {})).toEqual(['a-unlocked.pdf'])
     expect(outputNames('repair', 'a.pdf', 1, {})).toEqual(['a-repaired.pdf'])
+  })
+})
+
+describe('PDF tools v2 contracts', () => {
+  it('exposes 24 direct tools, 3 editor tools, and excludes split from batch & chaining', () => {
+    expect(PDF_TOOL_IDS).toHaveLength(24)
+    expect(PDF_EDITOR_TOOL_IDS).toEqual(['stamps', 'crop', 'edit'])
+    expect(isBatchTool('split')).toBe(false)
+    expect(isChainTarget('split')).toBe(false)
+    expect(isBatchTool('compress')).toBe(true)
+    expect(isBatchTool('ocr')).toBe(true)
+    expect(isChainTarget('organize')).toBe(true)
+    expect(isChainTarget('decrypt')).toBe(false)
+    expect(isChainTarget('docsToPdf')).toBe(false)
+    expect(toolInputKind('merge')).toBe('mixed')
+    expect(toolInputKind('docsToPdf')).toBe('document')
+    expect(acceptsFileKind('mixed', 'pdf')).toBe(true)
+    expect(acceptsFileKind('mixed', 'image')).toBe(true)
+    expect(acceptsFileKind('mixed', 'document')).toBe(true)
+    expect(acceptsFileKind('pdf', 'image')).toBe(false)
+    expect(acceptsFileKind('document', 'document')).toBe(true)
+  })
+
+  it('validates documents (accepts supported, rejects .odp) and v2 options', () => {
+    expect(inspectDocument('/a/b.docx', 100)).toEqual({ ok: true, pages: 0 })
+    expect(inspectDocument('/a/b.epub', 100)).toEqual({ ok: true, pages: 0 })
+    expect(inspectDocument('/a/b.odp', 100)).toEqual({ ok: false, problem: 'unsupported-document' })
+
+    expect(checkOptions('compress', { compressMode: 'target', targetSizeMb: 0 }, 3)).toEqual({
+      ok: false,
+      error: 'invalid-target-size',
+    })
+    expect(
+      checkOptions(
+        'compress',
+        { compressMode: 'lossless', grayscaleImages: true, linearize: true },
+        3,
+      ),
+    ).toEqual({
+      ok: true,
+      options: {
+        compressLevel: 'medium',
+        compressMode: 'lossless',
+        grayscaleImages: false,
+        linearize: true,
+        stripMetadata: false,
+      },
+    })
+    expect(checkOptions('interleave', { reverseEven: false }, 3)).toEqual({
+      ok: true,
+      options: { reverseEven: false },
+    })
+    expect(checkOptions('pdfToImages', { imageDpi: 300, imageQuality: 'high' }, 3)).toEqual({
+      ok: true,
+      options: {
+        pdfToImagesMode: 'pages',
+        imageFormat: 'jpg',
+        imageDpi: 300,
+        imageQuality: 'high',
+        imageOutMode: 'zip',
+        applyPages: '',
+      },
+    })
+    expect(checkOptions('convertFromPdf', { targetFormat: 'hwpx', applyPages: '1-2' }, 3)).toEqual({
+      ok: true,
+      options: {
+        targetFormat: 'hwpx',
+        applyPages: '1,2',
+        epubCover: true,
+        epubPageBreaks: false,
+      },
+    })
+  })
+
+  it('runs interleave, organize, and merge v2 with per-file ranges and bookmarks', async () => {
+    const [interleaved] = await runUntouched('interleave', [await pdf(2, 100), await pdf(2, 200)], {
+      reverseEven: true,
+    })
+    expect(await widths(interleaved!)).toEqual([100, 201, 101, 200])
+
+    const srcA = await pdf(2, 100)
+    const srcB = await pdf(2, 200)
+    const [mergedV2] = await runPdfTool(
+      'merge',
+      [srcA, srcB],
+      { addBookmarks: true, unifyPaper: 'keep', mergeRanges: { id1: '2', id2: '1' } },
+      { inputIds: ['id1', 'id2'], sourceNames: ['First.pdf', 'Second.pdf'] },
+    )
+    expect(await widths(mergedV2!)).toEqual([101, 200])
+
+    const [organized] = await runPdfTool(
+      'organize',
+      [srcA],
+      {},
+      {
+        sourceMap: new Map([
+          ['a', srcA],
+          ['b', srcB],
+        ]),
+        organizePlan: [
+          { sourceId: 'b', sourcePageIndex: 1, extraRotation: 90 },
+          { sourceId: 'blank', sourcePageIndex: 0, extraRotation: 0, widthPt: 300, heightPt: 400 },
+          { sourceId: 'a', sourcePageIndex: 0, extraRotation: 0 },
+        ],
+      },
+    )
+    expect(await widths(organized!)).toEqual([201, 300, 100])
+  })
+
+  it('suggests v2 output names cleanly', () => {
+    expect(outputNames('organize', 'Plan.pdf', 1, {})).toEqual(['Plan-organized.pdf'])
+    expect(outputNames('interleave', 'Scan.pdf', 1, {})).toEqual(['Scan-interleaved.pdf'])
+    expect(outputNames('ocr', 'Scan.pdf', 1, {})).toEqual(['Scan-ocr.pdf'])
+    expect(outputNames('docsToPdf', 'Memo.docx', 1, { docsOutputMode: 'each' })).toEqual([
+      'Memo.pdf',
+    ])
+    expect(outputNames('docsToPdf', 'Memo.docx', 2, { docsOutputMode: 'merge' })).toEqual([
+      'Memo-merged.pdf',
+    ])
+    expect(outputNames('pdfToImages', 'Deck.pdf', 1, { imageOutMode: 'zip' })).toEqual([
+      'Deck-images.zip',
+    ])
+    expect(outputNames('convertFromPdf', 'Deck.pdf', 1, { targetFormat: 'epub' })).toEqual([
+      'Deck.epub',
+    ])
+    // mixed merge strips image/doc extensions cleanly
+    expect(outputNames('merge', 'photo.jpg', 1, {})).toEqual(['photo-merged.pdf'])
+    expect(outputNames('merge', 'a.docx', 1, {})).toEqual(['a-merged.pdf'])
+    // split keeps non-.pdf/.jpg/.png extensions intact (exact parity with origin/main)
+    expect(outputNames('split', 'scan.2024', 2, {})).toEqual(['scan.2024-1.pdf', 'scan.2024-2.pdf'])
   })
 })

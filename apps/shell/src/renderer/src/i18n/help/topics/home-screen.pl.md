@@ -8,6 +8,7 @@ Strona główna to punkt wyjścia GenOffice: pasek nawigacyjny po lewej, listy p
 - **Ulubione**: pliki oznaczone gwiazdką. Najedź na wiersz pliku i kliknij gwiazdkę, aby dodać lub usunąć plik. **Przenieś do grupy** w menu ⋯ porządkuje pliki z gwiazdką w nazwane grupy; widok Oznaczone filtruje po nich.
 - **Podręcznik użytkownika**: otwiera ten podręcznik.
 - **Ask AI**: panel bazy wiedzy — zadawaj pytania i otrzymuj odpowiedzi z cytatami z plików oznaczonych gwiazdką (patrz niżej).
+- **Projekty**: foldery (projekty), z którymi może pracować AI. Utwórz projekt lub użyj istniejącego folderu i otwórz go, aby zarządzać jego instrukcjami, pamięcią, plikami i rozmowami. Zobacz [Projekty](help://projects).
 - **Foldery**: katalogi dodane do paska bocznego przyciskiem **Dodaj folder…** albo przeciągnięte tam z menedżera plików. Każdy staje się katalogiem głównym, który można otworzyć, utworzyć w nim podfoldery, zmienić jego nazwę i usunąć; ten, który przestanie być dostępny, jest oznaczany jako niedostępny i można go zdjąć z listy. **Nowy folder** tworzy kolejny.
 - **Wiersz na dole**: pokazuje, czy AI jest połączone — **Połącz AI** albo nazwę połączonej subskrypcji — i otwiera Ustawienia.
 
@@ -43,6 +44,8 @@ Karty nad listami tworzą nowy dokument jednym krokiem. Kliknięcie karty tworzy
 
 Nowy plik trafia do folderu aktualnie zaznaczonego na pasku bocznym; jeśli nic nie jest zaznaczone, trafia do folderu domyślnego.
 
+Aby ukryć karty lub zmienić ich kolejność, użyj **Nowe dokumenty na stronie głównej** w Ustawienia → Ogólne. Wyłączony typ znika tylko z kart i z menu Nowy; pliki tego typu nadal się otwierają. Na stronie głównej ⌘N/Ctrl+N tworzy pierwszy wciąż widoczny typ. Wyłączenie edytora w Ustawienia → Edytory i AI to co innego: znikają też jego karty i pozycje menu, a otwarcie jego plików najpierw wywołuje pytanie.
+
 Co robi każda karta:
 
 - **AI Docs** (.docx): pusty dokument tekstowy w edytorze Docs. Plik zostaje zapisany na dysku dopiero przy **pierwszym zapisaniu**; nowe dokumenty otwierają się z rozwiniętym panelem AI (wyłączasz to w Ustawienia → „Otwieraj panel AI w nowych dokumentach”).
@@ -60,5 +63,6 @@ Co robi każda karta:
 - Najpierw oznacz pliki gwiazdką (każdy typ, który aplikacja czyta); nagłówek panelu liczy korpus, a pusta baza podpowiada, by coś oznaczyć.
 - Odpowiedzi cytują pliki źródłowe; kliknięcie cytatu otwiera plik w jego edytorze.
 - Wymaga połączonego AI; zobacz [Połączenie z subskrypcją](help://subscription). Rozmowa żyje tylko w pamięci — zamknięcie aplikacji ją kończy.
+- Wybierz projekt pod polem wpisywania, a pliki z tego folderu też będą przeszukiwane i czytane, rozmowa zaś zostanie zapisana w folderze, więc możesz ją kontynuować w innym edytorze. Bez projektu rozmowa żyje tylko w pamięci, jak opisano wyżej.
 - Wyszukiwanie działa na lokalnym indeksie plików, jak na stronie głównej; zniknięte pliki po cichu wypadają z korpusu.
 - Grupy porządkują tylko listę Oznaczone — baza wiedzy zawsze obejmuje wszystkie pliki z gwiazdką.

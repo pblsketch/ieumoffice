@@ -17,11 +17,15 @@ export const zhTW = {
   cardErrNeedsUpdatePath: '此應用程式執行的檔案：',
   cardErrNeedsUpdateWindows:
     '在 WSL（Ubuntu）或其他資料夾中更新 {provider} 不會變更此檔案。請在 Windows PowerShell 中執行 {command}。',
+  claudeDesktopNote:
+    'Claude 桌面應用程式不是本應用程式執行的 Claude Code。Claude Code 是在終端機中使用的獨立程式，安裝或更新桌面應用程式不會改變它。',
   cardErrTimeout: '{provider} 程式未及時回應。請稍後重新檢查。',
   cardErrFailed: '檢查 {provider} 時發生問題。請重新檢查。',
   actionInstall: '安裝',
   actionLogin: '登入',
   actionLoginWindow: '瀏覽器沒有開啟？',
+  actionLoginWithCode: '瀏覽器顯示了代碼？',
+  actionLoginBrowser: '改在瀏覽器中登入',
   actionRecheck: '重新檢查',
   actionAcceptMetered: '仍要使用',
   actionInstallHelp: '官方安裝說明',
@@ -38,14 +42,17 @@ export const zhTW = {
   meteredMeaning:
     '目前是以 API 金鑰或依用量付費的帳戶登入，或無法確認登入方式。選擇「仍要使用」後，AI 會透過這個連線執行，每次要求都會向該帳戶計費。',
   connectTitle: '連結 AI 即可開始使用',
-  connectBody: 'AI 會以你現有的 Claude 或 Codex 訂閱執行，不需要 API 金鑰。',
+  connectBody: 'AI 會以你現有的 Claude、ChatGPT 或 Google Antigravity 訂閱執行，不需要 API 金鑰。',
   connectProviderTitle: '{provider} 連線目前無法使用',
   connectKeyBody: '{provider} 的設定尚未完成。請在設定中完成，或選擇其他 AI。',
-  errNotConnected: '尚未連結任何 AI。請先連結 Claude 或 Codex 訂閱，或連結免費 AI。',
+  errNotConnected:
+    '尚未連結任何 AI。請先連結 Claude、ChatGPT、Codex 或 Antigravity 訂閱，或連結免費 AI。',
   errNotInstalled: '在這台電腦上找不到 {provider} 程式。',
   errSignedOut: '{provider} 的登入已失效。請重新登入後繼續。',
   errRateLimit: '{provider} 的訂閱額度已用完。',
   errRateLimitReset: '{provider} 的訂閱額度已用完，將於 {time} 重設。',
+  errChatGptAppLimit:
+    '本應用程式可用的 ChatGPT 用量已用完。這可能是整個方案的額度，也可能是為本應用程式設定的額度。請在 ChatGPT 的「設定 → 用量」中查看。',
   errUnsafeTools: '{provider} 程式啟動時帶有自身的工具，為了安全已停止這次執行。',
   errMeteredNotAccepted:
     '{provider} 連線是依用量付費的登入，你尚未允許使用。請在連線設定中選擇「仍要使用」。',
@@ -56,6 +63,8 @@ export const zhTW = {
   actionConnectFree: '連結免費 AI',
   errFreeLimit: '今日免費額度已用完。請明天再試，或在設定中選擇其他 AI。',
   errFreeLimitReset: '今日免費額度已用完。{time} 後可再次使用。',
+  errFreeTierModel:
+    '此模型沒有免費額度，免費金鑰無法使用。請在模型清單中選擇可免費使用的模型（例如 Flash），或在該服務的主控台中開啟付費。',
   continueWith: '改用 {provider} 繼續',
   continueMeteredNote: '{provider} 連線不是訂閱：繼續使用將依用量收費。',
   usageLine: '已用 {percent}% · {time} 重設',
@@ -63,7 +72,7 @@ export const zhTW = {
   usageWindowSevenDay: '7 天額度',
   noticeTitle: '以訂閱使用 AI 之前',
   noticeSend:
-    '文件內容和對話會以你本人的帳戶傳送給 Anthropic 或 OpenAI。每次請求也會附上設為「自動使用」的每個技能的名稱、標題和說明；使用的技能內容和 AI 讀取的技能檔案也會一併傳送。',
+    '文件內容和對話會以你本人的帳戶傳送給 Anthropic、OpenAI 或 Google。每次請求也會附上設為「自動使用」的每個技能的名稱、標題和說明；使用的技能內容和 AI 讀取的技能檔案也會一併傳送。',
   noticeTraining: '這些內容是否用於 AI 訓練，取決於你在該公司帳戶中的設定。',
   noticeCodexHistory:
     '本應用程式會關閉 Codex 的對話記錄儲存，但 Codex 仍可能在這台電腦上保留自己的診斷記錄檔。',
@@ -86,7 +95,7 @@ export const zhTW = {
   guidePathClaudeBody: '需要 Pro 或 Max 方案。免費的 Claude 帳戶無法連線。',
   guidePathCodexTitle: '我在用 ChatGPT',
   guidePathCodexBody: '用你的 ChatGPT 帳戶登入 OpenAI 的 Codex 程式來使用。免費方案可用量很少。',
-  guidePathFreeTitle: '兩者都還沒有',
+  guidePathFreeTitle: '都還沒有',
   guidePathFreeBody:
     '大約一分鐘就能連結免費 AI。免費使用期間，你傳送的內容可能會被該公司用來改進其 AI。',
   guideBack: '選擇其他方式',
@@ -97,11 +106,14 @@ export const zhTW = {
   stepInstall: '安裝程式',
   stepLogin: '登入',
   stepReady: '連線完成',
-  installReturnNote: '在該視窗中安裝完成後，請回到這裡。應用程式會自動重新檢查。',
+  installReturnNote:
+    '下載期間，該視窗可能有幾分鐘不顯示任何內容。請不要關閉它。安裝完成後，請回到這裡。應用程式會自動重新檢查。',
   loginHowNote: '按下後會開啟瀏覽器。用你的 {vendor} 帳戶登入並按下允許，就會自動完成連線。',
   signingInStalledNote:
     '如果瀏覽器中沒有開啟登入頁面，請用下方的按鈕開啟登入視窗。如果你還在瀏覽器中登入，請不要按，先在瀏覽器中完成。按下按鈕會停止目前的登入並重新開始。',
   actionLoginWindowOpen: '開啟登入視窗',
+  loginUnfinishedNote:
+    '登入沒有完成。如果瀏覽器顯示了代碼，需要把代碼貼到登入視窗中：請開啟視窗，並在那裡重新登入。先前顯示的代碼已失效。',
   loginWindowTitle: '{provider} 登入',
   loginWindowIntro: '這是 {provider} 程式的登入視窗。下方的英文內容是 {provider} 程式顯示的說明。',
   loginWindowStepBrowser:
@@ -121,4 +133,48 @@ export const zhTW = {
   actionCopyInfo: '複製求助資訊',
   copyInfoDone: '已複製',
   actionConnectHelp: '查看每一步的畫面示範（韓語頁面）',
+  guidePathChatGptBody:
+    '用你的 ChatGPT 帳戶登入，即可在方案範圍內使用。不需要安裝程式。免費方案可用量很少。',
+  guideUseCodex: '這台電腦上已在使用 Codex 程式？透過 Codex 連線',
+  guideUseDirect: '不用 Codex，直接在應用程式中連線',
+  chatgptLoginNote:
+    '瀏覽器中會開啟 ChatGPT 登入頁面。登入後允許此應用程式使用你的 ChatGPT 方案，就會自動完成連線。',
+  chatgptLoginUnfinishedNote:
+    '登入沒有完成。再按一次會重新開始。必須允許使用你的 ChatGPT 方案才能連線。',
+  chatgptLoginNoPlanNote:
+    '已登入 ChatGPT，但這個應用程式沒有取得使用方案的許可。請再按一次，並在授權頁面允許使用方案。如果已經允許，可能是 OpenAI 沒有對這個帳號（例如公司或學校管理的帳號）或這個方案開放這項使用。這時可以改用 Codex 程式連線。',
+  chatgptLoginDeniedNote:
+    '已在瀏覽器中登入，但 OpenAI 沒有接受這個連線，或傳回的回應沒有通過檢查。請確認這台電腦的日期和時間正確，再按一次重新開始。',
+  chatgptLoginNetworkNote:
+    '無法連上 OpenAI 或沒能開啟瀏覽器，登入沒有完成。請檢查網路連線（包括公司網路、VPN 或 Proxy），再按一次。',
+  chatgptLoginWorkspacePolicyNote:
+    '此 ChatGPT 帳戶屬於公司或學校管理的工作區，OpenAI 不允許應用程式使用工作區的 ChatGPT 方案。工作區管理員沒有可以允許此應用程式的設定，因此重新登入也不會有幫助。請使用個人 ChatGPT 帳戶（Go、Plus 或 Pro）登入，或改用 Codex 卡片連接。',
+  chatgptLoginNotAllowedNote:
+    '你沒有允許這個應用程式使用 ChatGPT 方案，或瀏覽器帶著登入失敗回來了。請再按一次，登入後在授權頁面允許。',
+  chatgptSigningInNote:
+    '請在開啟的瀏覽器中用 ChatGPT 帳戶登入，並允許此應用程式使用你的方案。完成後會自動連線。',
+  chatgptPlanNote:
+    '此應用程式中的 AI 在你的 ChatGPT 方案內執行。中斷連線只影響此應用程式，這台電腦上的其他程式仍會保持登入。',
+  actionContinueWithChatGpt: '使用 ChatGPT 繼續',
+  actionManageUsage: '管理用量',
+  browserPageDoneBody: '可以關閉此分頁並返回應用程式。',
+  browserPageFailedTitle: '未能完成連線',
+  browserPageFailedBody: '請返回應用程式後再試一次。',
+  cardOff: '已在本應用程式中關閉',
+  offNote:
+    '本應用程式不會執行 {provider} 程式，也不會檢查它的狀態。這台電腦上 {provider} 的登入以及在終端機中的使用都維持不變。',
+  offElsewhereNote: '可以在「設定 → AI」中重新使用。',
+  offSwitchNote:
+    '「不在本應用程式中使用」會保留這台電腦上 {provider} 的登入，只在本應用程式中停用。登出則對整台電腦生效。',
+  actionTurnOff: '不在本應用程式中使用',
+  actionTurnOn: '重新使用',
+  connectOffTitle: '{provider} 已在本應用程式中關閉',
+  connectOffBody: '在「設定 → AI」的 {provider} 卡片上按「重新使用」，或選擇其他 AI。',
+  errOffInApp: '{provider} 已在本應用程式中關閉，因此沒有執行。可以在「設定 → AI」中重新使用。',
+  guideBadgeOff: '已關閉',
+  guidePathAntigravityTitle: '我在用 Google Antigravity',
+  guidePathAntigravityBody:
+    '使用 Google 帳號登入 Google 的 Antigravity 程式，即可使用您的 Google AI 方案。',
+  antigravityCardNote:
+    '在 AI 面板與代理模式中透過官方 Antigravity CLI ACP 協定運作。可用模型、資料使用偏好與超額點數設定均遵循您的 Antigravity 設定。',
 } satisfies Record<keyof typeof zh, string>

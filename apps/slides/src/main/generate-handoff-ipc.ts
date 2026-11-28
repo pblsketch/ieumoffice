@@ -40,6 +40,7 @@ export function registerGenerateHandoffIpc(): void {
       id: handoff.id,
       text: handoff.text,
       materials: handoff.materials.map((m) => ({ path: m.path, name: m.name })),
+      ...(handoff.speakerNotesSeparate ? { speakerNotesSeparate: true } : {}),
     }
   })
 

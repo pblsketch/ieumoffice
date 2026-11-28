@@ -2,8 +2,10 @@ import { readFileSync } from 'node:fs'
 import { PDFDict, PDFDocument, PDFName, PDFRawStream, decodePDFRawStream } from 'pdf-lib'
 import { fontCoversText } from './font-cmap'
 import { findFontCovering, findSystemFont, isTruetype } from './font-locate'
+import { similarFontFor } from './font-similar'
 import { identityCffCharset, subsetTtf } from './font-subset'
 import { pdfiumWasmPath } from './wasm-path'
+import { decodeFontName } from '../shared/font-classes'
 import type {
   TextEditFailure,
   TextEditInput,
@@ -14,11 +16,22 @@ import type {
 import { SYNTHETIC_BOLD_STROKE_EM } from '../shared/ipc'
 import { foldRadicals } from '../shared/radicals'
 import { chainLayers } from '../shared/x-layers'
+import {
+  SHARED_TEMPLATE_REASON,
+  chainIsExclusive,
+  formDrawTree,
+  liftOutOfForms,
+  transformRect,
+  walkPageText,
+} from './form-text'
+import type { FormChain, FormDrawTree } from './form-text'
 
 export const FPDF_PAGEOBJ_TEXT = 1
 const FPDF_FONT_TYPE1 = 1
 const FPDF_FONT_TRUETYPE = 2
 const FPDF_TEXTRENDERMODE_FILL_STROKE = 2
+/** Neither filled nor stroked: an OCR layer laid over a page picture */
+const FPDF_TEXTRENDERMODE_INVISIBLE = 3
 const FPDF_TEXTRENDERMODE_FILL_STROKE_CLIP = 6
 const FPDF_LINEJOIN_ROUND = 1
 
@@ -38,6 +51,8 @@ export interface Pdfium {
   _PDFiumExt_CloseFileWriter(writer: number): void
   _FPDF_LoadMemDocument(ptr: number, size: number, password: number): number
   _FPDF_CloseDocument(doc: number): void
+  _FPDFAnnot_CountAttachmentPoints(annot: number): number
+  _FPDFAnnot_GetAttachmentPoints(annot: number, index: number, points: number): number
   _FPDF_LoadPage(doc: number, index: number): number
   _FPDF_ClosePage(page: number): void
   _FPDF_GetPageCount(doc: number): number
@@ -50,7 +65,10 @@ export interface Pdfium {
   _FPDFText_GetTextObject(textPage: number, index: number): number
   _FPDFText_GetLooseCharBox(textPage: number, index: number, rect: number): number
   _FPDFText_GetCharOrigin(textPage: number, index: number, x: number, y: number): number
+  _FPDFText_GetFontSize(textPage: number, index: number): number
+  _FPDFText_IsGenerated(textPage: number, index: number): number
   _FPDFText_LoadFont(doc: number, data: number, size: number, fontType: number, cid: number): number
+  _FPDFText_LoadStandardFont(doc: number, fontName: number): number
   _FPDFText_SetText(textObj: number, text: number): number
   _FPDFPage_CountObjects(page: number): number
   _FPDFPage_GetObject(page: number, index: number): number
@@ -61,6 +79,7 @@ export interface Pdfium {
   _FPDFPageObj_GetType(obj: number): number
   _FPDFFormObj_CountObjects(form: number): number
   _FPDFFormObj_GetObject(form: number, index: number): number
+  _FPDFFormObj_RemoveObject(form: number, obj: number): number
   _FPDFPageObj_Destroy(obj: number): void
   _FPDFPageObj_GetBounds(obj: number, l: number, b: number, r: number, t: number): number
   _FPDFImageObj_GetImageDataRaw(obj: number, buffer: number, buflen: number): number
@@ -86,6 +105,7 @@ export interface Pdfium {
   _FPDFFont_GetGlyphWidth(font: number, glyph: number, fontSize: number, width: number): number
   _FPDFFont_GetBaseFontName(font: number, buffer: number, buflen: number): number
   _FPDFFont_GetFamilyName(font: number, buffer: number, buflen: number): number
+  _FPDFFont_GetFlags(font: number): number
   _FPDFPageObj_Transform(
     obj: number,
     a: number,
@@ -607,11 +627,60 @@ export function mergeEngineCodepoints(engineRaw: string, oldText: string, newTex
 
 interface PageTextObj {
   obj: number
+  /** Page object index; for text inside a Form XObject, its top-level ancestor's */
   index: number
   text: string
   font: number
   /** [x1, y1, x2, y2] */
   bounds: [number, number, number, number]
+  /** Enclosing Form XObjects, outermost first; empty for page-owned text */
+  chain: FormChain
+  ordinals: readonly number[]
+}
+
+/**
+ * The codepoints pdfium puts in place of a hyphen it folded into a line break:
+ * U+FFFE from the textpage read (`FPDFText_GetText`), U+0002 from the per-object
+ * read (`FPDFTextObj_GetText`). Neither can be a painted character.
+ */
+const HYPHEN_MARKERS = ['\u0002', '\uFFFE'] as const
+
+function replaceMarkers(s: string, replacement: string): string {
+  let out = s
+  for (const marker of HYPHEN_MARKERS) out = out.replaceAll(marker, replacement)
+  return out
+}
+
+/**
+ * Restore the hyphen and the break the marker stands for. Every consumer that
+ * reads whole page text — extraction, search, save verification — compares
+ * against the hyphen the page really draws and the line boundary the break
+ * names, and got a noncharacter instead.
+ */
+export const restoreLineHyphens = (s: string): string => replaceMarkers(s, '-\n')
+
+/**
+ * Restore just the hyphen. One object's text ends where its own glyphs end — the
+ * break falls between objects — and the page char list carries one entry for the
+ * hyphen glyph, so keeping one codepoint here is what holds the advance/origin
+ * attribution 1:1 (see `cpLen` below).
+ */
+const restoreObjectHyphens = (s: string): string => replaceMarkers(s, '-')
+
+/** Two-pass read: FPDFTextObj_GetText's length argument and return value are BYTES
+ *  including the 2-byte NUL terminator, and a too-small buffer is left untouched
+ *  (not truncated) — a fixed buffer would silently yield garbage for long runs. */
+function readTextObject(m: Pdfium, obj: number, textPage: number): string {
+  const len = m._FPDFTextObj_GetText(obj, textPage, 0, 0)
+  if (len <= 2) return ''
+  const buf = m._malloc(len)
+  if (!buf) return ''
+  try {
+    m._FPDFTextObj_GetText(obj, textPage, buf, len)
+    return restoreObjectHyphens(Buffer.from(m.HEAPU8.buffer, buf, len - 2).toString('utf16le'))
+  } finally {
+    m._free(buf)
+  }
 }
 
 function collectTextObjects(m: Pdfium, page: number, textPage: number): PageTextObj[] {
@@ -620,32 +689,72 @@ function collectTextObjects(m: Pdfium, page: number, textPage: number): PageText
   const bb = m._malloc(4)
   const br = m._malloc(4)
   const bt = m._malloc(4)
-  const count = m._FPDFPage_CountObjects(page)
-  for (let i = 0; i < count; i++) {
-    const obj = m._FPDFPage_GetObject(page, i)
-    if (m._FPDFPageObj_GetType(obj) !== FPDF_PAGEOBJ_TEXT) continue
-    // Two-pass read: FPDFTextObj_GetText's length argument and return value are BYTES
-    // including the 2-byte NUL terminator, and a too-small buffer is left untouched
-    // (not truncated) — a fixed buffer would silently yield garbage for long runs
-    const len = m._FPDFTextObj_GetText(obj, textPage, 0, 0)
-    let text = ''
-    if (len > 2) {
-      const buf = m._malloc(len)
-      m._FPDFTextObj_GetText(obj, textPage, buf, len)
-      text = Buffer.from(m.HEAPU8.buffer, buf, len - 2).toString('utf16le')
-      m._free(buf)
-    }
-    if (!m._FPDFPageObj_GetBounds(obj, bl, bb, br, bt)) continue
+  walkPageText(m, page, FPDF_PAGEOBJ_TEXT, ({ obj, chain, ordinals, topIndex, toPage }) => {
+    const text = readTextObject(m, obj, textPage)
+    if (!m._FPDFPageObj_GetBounds(obj, bl, bb, br, bt)) return
+    const local: [number, number, number, number] = [
+      m.HEAPF32[bl >> 2]!,
+      m.HEAPF32[bb >> 2]!,
+      m.HEAPF32[br >> 2]!,
+      m.HEAPF32[bt >> 2]!,
+    ]
     out.push({
       obj,
-      index: i,
+      index: topIndex,
       text,
       font: m._FPDFTextObj_GetFont(obj),
-      bounds: [m.HEAPF32[bl >> 2]!, m.HEAPF32[bb >> 2]!, m.HEAPF32[br >> 2]!, m.HEAPF32[bt >> 2]!],
+      bounds: chain.length > 0 ? transformRect(local, toPage) : local,
+      chain,
+      ordinals,
     })
-  }
+  })
   for (const p of [bl, bb, br, bt]) m._free(p)
   return out
+}
+
+/** Lazy per-document census of how often each Form XObject is painted; only built
+    when an edit resolves to template text */
+type FormExclusive = (pageIndex: number, t: PageTextObj) => Promise<boolean>
+
+function formExclusivity(bytes: Uint8Array): FormExclusive {
+  let tree: Promise<FormDrawTree> | null = null
+  return async (pageIndex, t) => {
+    if (t.chain.length === 0) return true
+    tree ??= formDrawTree(bytes)
+    return chainIsExclusive(await tree, pageIndex, t.ordinals)
+  }
+}
+
+/** Pull template-owned matches out to page level so the page-owned edit path can
+    remove/rewrite them. `objects` is in stream order and every lift lands right
+    after the same parent, so lifting back-to-front keeps the original order across
+    all edits. Returns the objects whose lift failed; page indices are refreshed
+    either way, since any lift that did succeed renumbered the page. */
+function liftMatches(
+  m: Pdfium,
+  page: number,
+  matches: Set<PageTextObj>,
+  objects: PageTextObj[],
+): Map<PageTextObj, string> {
+  const failed = new Map<PageTextObj, string>()
+  const lifted = objects.filter((t) => matches.has(t) && t.chain.length > 0)
+  if (lifted.length === 0) return failed
+  for (const t of lifted.reverse()) {
+    try {
+      liftOutOfForms(m, page, t.obj, t.chain)
+      t.chain = []
+    } catch (err) {
+      failed.set(t, errMsg(err))
+    }
+  }
+  const idx = new Map<number, number>()
+  const count = m._FPDFPage_CountObjects(page)
+  for (let i = 0; i < count; i++) idx.set(m._FPDFPage_GetObject(page, i), i)
+  for (const o of objects) {
+    const i = idx.get(o.obj)
+    if (i !== undefined) o.index = i
+  }
+  return failed
 }
 
 type Rect = readonly [number, number, number, number]
@@ -713,6 +822,10 @@ interface PlannedMatch {
   /** True when the matched objects ARE the edited text (not a fragment of a larger
       run); only then may position overrides (origin/lineLeading) be honored */
   whole: boolean
+  /** Fragment matches only: the matched objects' raw text (what the rebuild replaces)
+      and where the spliced replacement sits — [start, oldEnd) in runText became
+      [start, newEnd) in newText */
+  fragment?: { runText: string; start: number; oldEnd: number; newEnd: number }
 }
 
 /** Split same-baseline objects into z-stacked layers: an earlier multi-line edit that
@@ -857,6 +970,12 @@ function matchByText(objects: PageTextObj[], edit: TextEditInput): PlannedMatch 
     matches: set,
     newText: joined.slice(setStart, rawStart) + fragment + joined.slice(rawEnd, setEnd),
     whole: false,
+    fragment: {
+      runText: setRaw,
+      start: rawStart - setStart,
+      oldEnd: rawEnd - setStart,
+      newEnd: rawStart - setStart + fragment.length,
+    },
   }
 }
 
@@ -922,6 +1041,12 @@ function matchEdit(objects: PageTextObj[], edit: TextEditInput): PlannedMatch | 
         matches: [container],
         newText: raw.slice(0, rawStart) + fragment + raw.slice(rawEnd),
         whole: false,
+        fragment: {
+          runText: raw,
+          start: rawStart,
+          oldEnd: rawEnd,
+          newEnd: rawStart + fragment.length,
+        },
       }
     }
   }
@@ -956,18 +1081,69 @@ function embeddedFontData(m: Pdfium, font: number): Buffer | null {
   }
 }
 
-/** UTF-8 string via a two-pass FPDFFont_Get*Name call (returned length includes the NUL) */
+/** Name string via a two-pass FPDFFont_Get*Name call (returned length includes the NUL).
+    PDFium hands back the PDF name's raw bytes, which Korean producers write in CP949. */
 function fontString(m: Pdfium, read: (buf: number, len: number) => number): string {
   const len = read(0, 0)
   if (len <= 1) return ''
   const buf = m._malloc(len)
   try {
     read(buf, len)
-    return Buffer.from(m.HEAPU8.subarray(buf, buf + len - 1)).toString()
+    return decodeFontName(m.HEAPU8.slice(buf, buf + len - 1))
   } finally {
     m._free(buf)
   }
 }
+
+const STANDARD_LATIN_FONTS = new Set([
+  'Helvetica',
+  'Helvetica-Bold',
+  'Helvetica-Oblique',
+  'Helvetica-BoldOblique',
+  'Times-Roman',
+  'Times-Bold',
+  'Times-Italic',
+  'Times-BoldItalic',
+  'Courier',
+  'Courier-Bold',
+  'Courier-Oblique',
+  'Courier-BoldOblique',
+])
+
+const WIN_ANSI_HIGH = '€‚ƒ„…†‡ˆ‰Š‹ŒŽ‘’“”•–—˜™š›œžŸ'
+
+export function winAnsiCovers(text: string): boolean {
+  for (const ch of text) {
+    const cp = ch.codePointAt(0)!
+    if ((cp >= 0x20 && cp <= 0x7e) || (cp >= 0xa0 && cp <= 0xff)) continue
+    if (!WIN_ANSI_HIGH.includes(ch)) return false
+  }
+  return true
+}
+
+export function keptStandardFont(
+  name: string,
+  embedded: boolean,
+  edit: Pick<TextEditInput, 'newFont' | 'newItalic'>,
+  drawn: string,
+): string | null {
+  if (embedded || edit.newFont || edit.newItalic) return null
+  if (!STANDARD_LATIN_FONTS.has(name)) return null
+  return winAnsiCovers(drawn) ? name : null
+}
+
+function loadStandardFont(m: Pdfium, doc: number, name: string): number {
+  const ptr = m._malloc(name.length + 1)
+  try {
+    for (let i = 0; i < name.length; i++) m.HEAPU8[ptr + i] = name.charCodeAt(i)
+    m.HEAPU8[ptr + name.length] = 0
+    return m._FPDFText_LoadStandardFont(doc, ptr)
+  } finally {
+    m._free(ptr)
+  }
+}
+
+class UndrawableTextError extends Error {}
 
 /** Rebuild font plus whether bold must be synthesized by stroking. A bold toggle on
     "keep original" never swaps the face: the same glyphs with a thin same-color
@@ -1065,6 +1241,27 @@ async function resolveRebuildFont(
         }
       }
     }
+    // The document face is neither embedded with these glyphs nor installed: an
+    // installed look-alike of the same script and style (a Korean serif run stays
+    // serif) before the generic fallback, which only looks at coverage. The family
+    // name is not evidence here — for a non-embedded face PDFium reports its own
+    // substitute ("Chrome Serif MM").
+    const similar = similarFontFor(
+      { psName: ps, flags: m._FPDFFont_GetFlags(font), embedded },
+      drawn,
+      { italic: !!edit.newItalic },
+    )
+    if (similar) {
+      try {
+        return {
+          bytes: identityCffCharset(await subsetTtf(similar.bytes, drawn)),
+          // Stroke when bold is wanted (toggle, or a bold source) but the pick is not
+          syntheticBold: (wantBold || similar.sourceBold) && !similar.bold,
+        }
+      } catch {
+        /* charset not rewritable: fall back */
+      }
+    }
   }
   const fallback = fallbackFontFor(drawn)
   // No face covers the text (emoji, rare CJK extensions — or a machine with none of
@@ -1072,7 +1269,7 @@ async function resolveRebuildFont(
   // and block the whole save — reject this one edit instead (it is reported as
   // skipped with this reason, everything else saves)
   if (!fallback) {
-    throw new Error('the replacement contains characters no available font can draw')
+    throw new UndrawableTextError('the replacement contains characters no available font can draw')
   }
   const sub = await subsetTtf(fallback, drawn)
   try {
@@ -1086,6 +1283,37 @@ async function resolveRebuildFont(
     // this reason) instead of embedding bytes that look saved but display nothing.
     if (isTruetype(sub)) return done(sub)
     throw new Error('the fallback font for this text could not be embedded')
+  }
+}
+
+/**
+ * The run's embedded subset (charset made identity) and the codepoints of `text`
+ * it draws — only when it draws some of the visible chars but not all: then those
+ * keep the document's own glyphs and only the rest take the rebuild font, so one
+ * new word does not restyle every untouched char redrawn with it. Null when the
+ * subset draws everything (the rebuild font IS the subset) or nothing visible.
+ */
+function partialEmbeddedCover(
+  m: Pdfium,
+  font: number,
+  text: string,
+): { bytes: Buffer; covered: Set<number> } | null {
+  const embedded = font ? embeddedFontData(m, font) : null
+  if (!embedded) return null
+  const covered = new Set<number>()
+  let missing = false
+  let visible = false
+  for (const ch of new Set(text.replace(/[\r\n]/g, ''))) {
+    if (fontCoversText(embedded, ch)) {
+      covered.add(ch.codePointAt(0)!)
+      visible ||= ch.trim() !== ''
+    } else missing = true
+  }
+  if (!missing || !visible) return null
+  try {
+    return { bytes: identityCffCharset(embedded), covered }
+  } catch {
+    return null
   }
 }
 
@@ -1389,6 +1617,51 @@ function segmentLine(
   return segs
 }
 
+/** Per-code-unit styles of an insert's text from its styleRuns (offsets index the
+    text itself — nothing is re-planned, unlike an edit). Whitespace inside or right
+    after a styled word rides with it, as in an edit. null = uniform insert. */
+export function insertCharStyles(
+  input: Pick<TextInsertInput, 'text' | 'styleRuns'>,
+): (RunStyle | null)[] | null {
+  const runs = input.styleRuns
+  if (!runs || runs.length === 0) return null
+  const out: (RunStyle | null)[] = new Array<RunStyle | null>(input.text.length).fill(null)
+  for (const r of runs) {
+    const style: RunStyle = {
+      color: r.color,
+      font: r.font,
+      size: r.size,
+      bold: r.bold,
+      italic: r.italic,
+    }
+    for (let k = Math.max(0, r.start); k < Math.min(input.text.length, r.end); k++) {
+      if (input.text[k] !== '\n') out[k] = style
+    }
+  }
+  return out.some((s) => s !== null) ? out : null
+}
+
+/** Horizontal stretch that makes one line exactly `fitWidth` pt wide (an OCR layer
+    fitted to the recognized box, so selection and search highlights land on the
+    ink). 1 when there is no target or a char cannot be measured. */
+export function fitStretch(
+  line: string,
+  styles: (RunStyle | null)[] | null,
+  fitWidth: number | undefined,
+  advancePt: (cp: number, style: RunStyle | null) => number | null,
+): number {
+  if (!fitWidth || !(fitWidth > 0)) return 1
+  let width = 0
+  let cu = 0
+  for (const ch of line) {
+    const a = advancePt(ch.codePointAt(0)!, styles?.[cu] ?? null)
+    if (a === null) return 1
+    width += a
+    cu += ch.length
+  }
+  return width > 0 ? fitWidth / width : 1
+}
+
 /** One original text object the rebuild keeps (translated, not redrawn) */
 interface KeepPlanObj {
   src: PageTextObj
@@ -1666,16 +1939,7 @@ async function rebuildRun(
     let font = 0
     let fontSynth = false
     let anyCff = false
-    const loadFont = async (
-      styleEdit: TextEditInput,
-      text: string,
-    ): Promise<{ font: number; synth: boolean }> => {
-      const { bytes: fontBytes, syntheticBold } = await resolveRebuildFont(
-        m,
-        anchor.font,
-        styleEdit,
-        text.trim() ? text : 'x',
-      )
+    const loadBytes = (fontBytes: Buffer): number => {
       const fontPtr = m._malloc(fontBytes.length)
       m.HEAPU8.set(fontBytes, fontPtr)
       const f = m._FPDFText_LoadFont(
@@ -1688,10 +1952,41 @@ async function rebuildRun(
       m._free(fontPtr)
       if (!f) throw new Error('FPDFText_LoadFont failed')
       anyCff = anyCff || !isTruetype(fontBytes)
-      return { font: f, synth: syntheticBold }
+      return f
     }
+    const loadFont = async (
+      styleEdit: TextEditInput,
+      text: string,
+    ): Promise<{ font: number; synth: boolean }> => {
+      const standard = anchor.font
+        ? keptStandardFont(
+            fontString(m, (b, l) => m._FPDFFont_GetBaseFontName(anchor.font, b, l)),
+            !!m._FPDFFont_GetIsEmbedded(anchor.font),
+            styleEdit,
+            (text.trim() ? text : 'x').replace(/\n/g, ''),
+          )
+        : null
+      if (standard) {
+        const f = loadStandardFont(m, doc, standard)
+        if (!f) throw new Error('FPDFText_LoadStandardFont failed')
+        return { font: f, synth: !!styleEdit.newBold && !faceIsBold(m, anchor.font) }
+      }
+      const { bytes: fontBytes, syntheticBold } = await resolveRebuildFont(
+        m,
+        anchor.font,
+        styleEdit,
+        text.trim() ? text : 'x',
+      )
+      return { font: loadBytes(fontBytes), synth: syntheticBold }
+    }
+    // Keep-original edits whose subset draws only part of the redrawn text: the
+    // subset's own glyphs for what it covers, the rebuild font for the rest. Whole-
+    // edit restyles redraw everything in the requested face instead.
+    let own: { font: number; covered: Set<number> } | null = null
     const loadRebuild = async (text: string) => {
       ;({ font, synth: fontSynth } = await loadFont(edit, text))
+      const partial = styleOverride ? null : partialEmbeddedCover(m, anchor.font, text)
+      own = partial ? { font: loadBytes(partial.bytes), covered: partial.covered } : null
     }
     const inherited = readStroke(m, anchor.obj)
     await loadRebuild(keeps ? redrawOnly() : newText)
@@ -1740,10 +2035,14 @@ async function rebuildRun(
     const synthFor = (s: RunStyle | null): boolean =>
       styleFonts.get(faceKeyOf(s))?.synth ?? fontSynth
 
+    /** A base-face char the document's subset draws: it keeps the subset's glyph */
+    const ownGlyph = (cp: number, s: RunStyle | null): boolean =>
+      own !== null && own.covered.has(cp) && faceKeyOf(s) === baseFaceKey
+
     // Advance of one codepoint in text-space pt, measured with the face and size that
     // will draw it (same unicode→charcode mapping FPDFText_SetText uses)
     const advancePt = (cp: number, s: RunStyle | null): number | null =>
-      m._FPDFFont_GetGlyphWidth(fontFor(s), cp, 1, widthPtr)
+      m._FPDFFont_GetGlyphWidth(ownGlyph(cp, s) ? own!.font : fontFor(s), cp, 1, widthPtr)
         ? m.HEAPF32[widthPtr >> 2]! * sizeOf(s)
         : null
 
@@ -1757,8 +2056,18 @@ async function rebuildRun(
     const segAnchors: number[] = []
     let lastKeptObj = 0
 
-    const makeSeg = (text: string, x: number, y: number, style: RunStyle | null) => {
-      const newObj = m._FPDFPageObj_CreateTextObj(doc, fontFor(style), sizeOf(style))
+    const makeObj = (
+      text: string,
+      x: number,
+      y: number,
+      style: RunStyle | null,
+      ownFace: boolean,
+    ) => {
+      const newObj = m._FPDFPageObj_CreateTextObj(
+        doc,
+        ownFace ? own!.font : fontFor(style),
+        sizeOf(style),
+      )
       const textPtr = utf16Ptr(m, text)
       const ok = m._FPDFText_SetText(newObj, textPtr)
       m._free(textPtr)
@@ -1776,12 +2085,40 @@ async function rebuildRun(
         : color
       m._FPDFPageObj_SetFillColor(newObj, c[0], c[1], c[2], c[3])
       const emPt = sizeOf(style) * Math.hypot(matrix[0]!, matrix[1]!)
-      if (synthFor(style)) strokeObject(m, newObj, c, syntheticBoldWidth(emPt))
+      // the subset is the run's own face: never stroked for a substitute's weight
+      if (!ownFace && synthFor(style)) strokeObject(m, newObj, c, syntheticBoldWidth(emPt))
       else if (inherited?.sameAsFill)
         strokeObject(m, newObj, c, syntheticBoldWidth(emPt), inherited.mode)
       else if (inherited) strokeObject(m, newObj, inherited.color, inherited.width, inherited.mode)
       newObjs.push(newObj)
       segAnchors.push(lastKeptObj)
+    }
+
+    /** One drawn segment; split into own-glyph and rebuild-font pieces when mixing.
+        Offsets are text-space advances, mapped through the matrix's x axis. When a
+        piece cannot be measured the whole segment takes the rebuild font, which
+        covers all of it. */
+    const makeSeg = (text: string, x: number, y: number, style: RunStyle | null) => {
+      const pieces: { text: string; ownFace: boolean; offPt: number }[] = []
+      let off = 0
+      for (const ch of own ? text : '') {
+        const cp = ch.codePointAt(0)!
+        const ownFace = ownGlyph(cp, style)
+        const last = pieces[pieces.length - 1]
+        if (last && last.ownFace === ownFace) last.text += ch
+        else pieces.push({ text: ch, ownFace, offPt: off })
+        const a = advancePt(cp, style)
+        if (a === null) {
+          pieces.length = 0
+          break
+        }
+        off += a
+      }
+      if (pieces.length === 0) return makeObj(text, x, y, style, false)
+      for (const p of pieces) {
+        if (!p.text.trim()) continue
+        makeObj(p.text, x + matrix[0]! * p.offPt, y + matrix[1]! * p.offPt, style, p.ownFace)
+      }
     }
 
     // Full redraw: one text object per line (several when selection styles split
@@ -2014,7 +2351,10 @@ let applyChain: Promise<unknown> = Promise.resolve()
 /** Serialize a pdfium operation behind every previously queued one (shared with image-edit) */
 export function chainPdfium<T>(fn: () => Promise<T>): Promise<T> {
   const run = applyChain.then(fn)
-  applyChain = run.catch(() => undefined)
+  applyChain = run.then(
+    () => undefined,
+    () => undefined,
+  )
   return run
 }
 
@@ -2055,6 +2395,30 @@ export function textInsertAxes(rotate = 0): readonly [number, number, number, nu
   }
 }
 
+/**
+ * A strong right-to-left letter: Hebrew (incl. the presentation forms), Arabic
+ * (incl. the presentation forms) and the RTL scripts that sit between them —
+ * Syriac, Thaana, NKo, Samaritan, Mandaic and Arabic Extended-A/B.
+ */
+const RTL_LETTER = /[\u0590-\u08FF\uFB1D-\uFDFF\uFE70-\uFEFF]/u
+
+/**
+ * The line in the order pdfium must be handed it. `FPDFText_SetText` lays a text
+ * object's glyphs out left to right in the order it receives, so a Hebrew phrase
+ * passed in logical order reads mirrored on the page (and extracts mirrored,
+ * which then fails save verification). When every letter of the line is RTL and
+ * the line holds no digits — bidi leaves pure-RTL text as one run, and digits
+ * would stay left-to-right inside it — reverse the grapheme clusters. Mixed
+ * directions and numbers are left untouched: they need a full bidi pass.
+ */
+export function visualLine(line: string): string {
+  const letters = line.match(/\p{L}/gu)
+  if (!letters || !letters.every((ch) => RTL_LETTER.test(ch))) return line
+  if (/\p{N}/u.test(line)) return line
+  const clusters = line.match(/.\p{M}*/gsu) ?? []
+  return clusters.reverse().join('')
+}
+
 /** Insert new searchable text objects without matching/removing existing page content. */
 export function applyTextInserts(
   bytes: Uint8Array,
@@ -2075,111 +2439,250 @@ export function applyTextInserts(
         }
         byPage.set(input.pageIndex, [...(byPage.get(input.pageIndex) ?? []), { input, editIndex }])
       })
-      for (const [pageIndex, pageInserts] of byPage) {
-        const page = m._FPDF_LoadPage(doc, pageIndex)
-        if (!page) throw new Error(`could not load page ${pageIndex + 1}`)
-        let applied = 0
-        try {
-          for (const { input, editIndex } of pageInserts) {
-            const text = input.text.trim()
-            if (!text) {
-              skipped.push({ editIndex, pageIndex, reason: 'empty inserted text' })
-              continue
-            }
-            const pseudoEdit: TextEditInput = {
-              pageIndex,
-              rect: [input.origin[0], input.origin[1], input.origin[0], input.origin[1]],
-              oldText: '',
-              newText: input.text,
-              fontSize: input.fontSize,
-              newFontSize: input.fontSize,
-              newColor: input.color,
-              newFont: input.font,
-              newBold: input.bold,
-              newItalic: input.italic,
-            }
-            const created: number[] = []
-            let font = 0
-            try {
-              const { bytes: fontBytes, syntheticBold } = await resolveRebuildFont(
-                m,
-                0,
-                pseudoEdit,
-                input.text,
-              )
-              const fontPtr = m._malloc(fontBytes.length)
-              m.HEAPU8.set(fontBytes, fontPtr)
-              font = m._FPDFText_LoadFont(
-                doc,
-                fontPtr,
-                fontBytes.length,
-                isTruetype(fontBytes) ? FPDF_FONT_TRUETYPE : FPDF_FONT_TYPE1,
-                1,
-              )
-              m._free(fontPtr)
-              if (!font) throw new Error('FPDFText_LoadFont failed')
-              const matrixPtr = m._malloc(24)
-              try {
-                const leading = input.lineLeading ?? input.fontSize * LINE_GAP
-                const [a, b, c, d] = textInsertAxes(input.rotate)
-                for (const [lineIndex, line] of input.text.split('\n').entries()) {
-                  if (!line) continue
-                  const obj = m._FPDFPageObj_CreateTextObj(doc, font, input.fontSize)
-                  const textPtr = utf16Ptr(m, line)
-                  const ok = m._FPDFText_SetText(obj, textPtr)
-                  m._free(textPtr)
-                  if (!ok) {
-                    m._FPDFPageObj_Destroy(obj)
-                    throw new Error('FPDFText_SetText failed on inserted object')
-                  }
-                  const offset = input.lineXOffsets?.[lineIndex] ?? 0
-                  const drop = lineIndex * leading
-                  m.HEAPF32.set(
-                    [
-                      a,
-                      b,
-                      c,
-                      d,
-                      input.origin[0] + a * offset - c * drop,
-                      input.origin[1] + b * offset - d * drop,
-                    ],
-                    matrixPtr >> 2,
-                  )
-                  m._FPDFPageObj_SetMatrix(obj, matrixPtr)
-                  m._FPDFPageObj_SetFillColor(
-                    obj,
-                    input.color[0],
-                    input.color[1],
-                    input.color[2],
-                    255,
-                  )
-                  if (syntheticBold)
-                    strokeObject(
-                      m,
-                      obj,
-                      [input.color[0], input.color[1], input.color[2], 255],
-                      syntheticBoldWidth(input.fontSize),
-                    )
-                  created.push(obj)
-                }
-              } finally {
-                m._free(matrixPtr)
-              }
-              for (const obj of created) m._FPDFPage_InsertObject(page, obj)
-              embeddedCff = !isTruetype(fontBytes) || embeddedCff
-              applied++
-            } catch (err) {
-              for (const obj of created) m._FPDFPageObj_Destroy(obj)
-              skipped.push({ editIndex, pageIndex, reason: errMsg(err) })
-            }
-          }
-          if (applied > 0 && !m._FPDFPage_GenerateContent(page)) {
-            throw new Error(`could not regenerate page ${pageIndex + 1}`)
-          }
-          appliedTotal += applied
-        } finally {
-          m._FPDF_ClosePage(page)
+      // One resolved face per (font, bold, italic) across the request: the OCR
+      // bake sends hundreds of same-face lines, and resolving per insert
+      // subsetted and loaded a font per line — a 40-page scan wrote on the
+      // order of 2000 font objects. The subset covers the merged text of every
+      // line sharing the face, so each line still has its glyphs.
+      const faceOf = (input: TextInsertInput, s: RunStyle | null) => ({
+        font: s?.font ?? input.font,
+        bold: s?.bold ?? !!input.bold,
+        italic: s?.italic ?? !!input.italic,
+      })
+      const faceKeyOf = (input: TextInsertInput, s: RunStyle | null = null): string => {
+        const f = faceOf(input, s)
+        return `${f.font ?? ''}|${f.bold ? 1 : 0}|${f.italic ? 1 : 0}`
+      }
+      // Every face an insert draws with: its own, plus each one its selection
+      // styles pick; each face's subset covers the text it draws in every insert
+      const charStylesOf = new Map<TextInsertInput, (RunStyle | null)[] | null>()
+      const keysOf = new Map<TextInsertInput, Set<string>>()
+      const faces = new Map<
+        string,
+        {
+          sample: TextInsertInput
+          face: ReturnType<typeof faceOf>
+          text: string
+          entries: Map<number, { input: TextInsertInput; editIndex: number; text: string }>
         }
+      >()
+      for (const pageInserts of byPage.values())
+        for (const { input, editIndex } of pageInserts) {
+          const styles = insertCharStyles(input)
+          charStylesOf.set(input, styles)
+          const keys = new Set<string>([faceKeyOf(input)])
+          if (!faces.has(faceKeyOf(input)))
+            faces.set(faceKeyOf(input), {
+              sample: input,
+              face: faceOf(input, null),
+              text: '',
+              entries: new Map(),
+            })
+          for (let k = 0; k < input.text.length; k++) {
+            const ch = input.text[k]!
+            if (ch === '\n') continue
+            const s = styles?.[k] ?? null
+            const key = faceKeyOf(input, s)
+            keys.add(key)
+            let f = faces.get(key)
+            if (!f)
+              faces.set(
+                key,
+                (f = { sample: input, face: faceOf(input, s), text: '', entries: new Map() }),
+              )
+            f.text += ch
+            let entry = f.entries.get(editIndex)
+            if (!entry) f.entries.set(editIndex, (entry = { input, editIndex, text: '' }))
+            entry.text += ch
+          }
+          keysOf.set(input, keys)
+        }
+      const faceCache = new Map<
+        string,
+        { font: number; truetype: boolean; syntheticBold: boolean; failed?: string }
+      >()
+      const unsupportedInserts = new Set<number>()
+      for (const [key, { sample, face, text: merged, entries }] of faces) {
+        let group = [...entries.values()]
+        const pseudoEdit: TextEditInput = {
+          pageIndex: 0,
+          rect: [0, 0, 0, 0],
+          oldText: '',
+          newText: merged,
+          fontSize: sample.fontSize,
+          newFontSize: sample.fontSize,
+          newColor: sample.color,
+          newFont: face.font,
+          newBold: face.bold,
+          newItalic: face.italic,
+        }
+        try {
+          let resolved: { bytes: Buffer; syntheticBold: boolean }
+          try {
+            resolved = await resolveRebuildFont(m, 0, pseudoEdit, merged)
+          } catch (err) {
+            if (!(err instanceof UndrawableTextError)) throw err
+            // Diagnose coverage only on the failed path. Keep the drawable lines
+            // together so a single unsupported insert does not discard their face.
+            const drawable = group.filter(({ text }) =>
+              canDrawText(text, face.font, face.bold, face.italic),
+            )
+            if (drawable.length === group.length) throw err
+            const drawableIndexes = new Set(drawable.map(({ editIndex }) => editIndex))
+            for (const { input, editIndex } of group) {
+              if (drawableIndexes.has(editIndex)) continue
+              if (!unsupportedInserts.has(editIndex)) {
+                unsupportedInserts.add(editIndex)
+                skipped.push({ editIndex, pageIndex: input.pageIndex, reason: errMsg(err) })
+              }
+            }
+            group = drawable
+            if (!group.length) continue
+            const text = group.map(({ text: t }) => t).join('')
+            resolved = await resolveRebuildFont(m, 0, { ...pseudoEdit, newText: text }, text)
+          }
+          const { bytes: fontBytes, syntheticBold } = resolved
+          const fontPtr = m._malloc(fontBytes.length)
+          m.HEAPU8.set(fontBytes, fontPtr)
+          const font = m._FPDFText_LoadFont(
+            doc,
+            fontPtr,
+            fontBytes.length,
+            isTruetype(fontBytes) ? FPDF_FONT_TRUETYPE : FPDF_FONT_TYPE1,
+            1,
+          )
+          m._free(fontPtr)
+          if (!font) throw new Error('FPDFText_LoadFont failed')
+          faceCache.set(key, { font, truetype: isTruetype(fontBytes), syntheticBold })
+        } catch (err) {
+          faceCache.set(key, { font: 0, truetype: true, syntheticBold: false, failed: errMsg(err) })
+        }
+      }
+      const widthPtr = m._malloc(4)
+      try {
+        for (const [pageIndex, pageInserts] of byPage) {
+          const page = m._FPDF_LoadPage(doc, pageIndex)
+          if (!page) throw new Error(`could not load page ${pageIndex + 1}`)
+          let applied = 0
+          try {
+            for (const { input, editIndex } of pageInserts) {
+              if (unsupportedInserts.has(editIndex)) continue
+              const text = input.text.trim()
+              if (!text) {
+                skipped.push({ editIndex, pageIndex, reason: 'empty inserted text' })
+                continue
+              }
+              const failed = [...(keysOf.get(input) ?? [])]
+                .map((key) => faceCache.get(key)?.failed)
+                .find((reason) => reason !== undefined)
+              if (failed !== undefined) {
+                skipped.push({ editIndex, pageIndex, reason: failed })
+                continue
+              }
+              const styles = charStylesOf.get(input) ?? null
+              const faceFor = (s: RunStyle | null) => faceCache.get(faceKeyOf(input, s))!
+              const sizeOf = (s: RunStyle | null) =>
+                s?.size !== undefined && s.size > 0 ? s.size : input.fontSize
+              // Advance of one codepoint in text-space pt, with the face and size
+              // that draws it (the same measure the edit rebuild positions with)
+              const advancePt = (cp: number, s: RunStyle | null): number | null =>
+                m._FPDFFont_GetGlyphWidth(faceFor(s).font, cp, 1, widthPtr)
+                  ? m.HEAPF32[widthPtr >> 2]! * sizeOf(s)
+                  : null
+              const created: number[] = []
+              try {
+                const matrixPtr = m._malloc(24)
+                try {
+                  const leading = input.lineLeading ?? input.fontSize * LINE_GAP
+                  const [a, b, c, d] = textInsertAxes(input.rotate)
+                  let lineStart = 0
+                  for (const [lineIndex, line] of input.text.split('\n').entries()) {
+                    const lineStyles = styles
+                      ? styles.slice(lineStart, lineStart + line.length)
+                      : null
+                    lineStart += line.length + 1
+                    if (!line) continue
+                    const drawnLine = visualLine(line)
+                    let drawnStyles = lineStyles
+                    if (drawnStyles && drawnLine !== line) {
+                      const clusters = line.match(/.\p{M}*/gsu) ?? []
+                      const reordered: (RunStyle | null)[] = []
+                      let pos = line.length
+                      for (let ci = clusters.length - 1; ci >= 0; ci--) {
+                        const len = clusters[ci]!.length
+                        pos -= len
+                        for (let k = 0; k < len; k++) reordered.push(drawnStyles[pos + k] ?? null)
+                      }
+                      drawnStyles = reordered
+                    }
+                    const segs = segmentLine(drawnLine, drawnStyles, advancePt)
+                    const stretch = fitStretch(drawnLine, drawnStyles, input.fitWidth, advancePt)
+                    const offset = input.lineXOffsets?.[lineIndex] ?? 0
+                    const drop = lineIndex * leading
+                    for (const seg of segs) {
+                      if (!seg.text) continue
+                      const face = faceFor(seg.style)
+                      const size = sizeOf(seg.style)
+                      const color = seg.style?.color ?? input.color
+                      const obj = m._FPDFPageObj_CreateTextObj(doc, face.font, size)
+                      const textPtr = utf16Ptr(m, seg.text)
+                      const ok = m._FPDFText_SetText(obj, textPtr)
+                      m._free(textPtr)
+                      if (!ok) {
+                        m._FPDFPageObj_Destroy(obj)
+                        throw new Error('FPDFText_SetText failed on inserted object')
+                      }
+                      const x = offset + seg.xPt * stretch
+                      m.HEAPF32.set(
+                        [
+                          a * stretch,
+                          b * stretch,
+                          c,
+                          d,
+                          input.origin[0] + a * x - c * drop,
+                          input.origin[1] + b * x - d * drop,
+                        ],
+                        matrixPtr >> 2,
+                      )
+                      m._FPDFPageObj_SetMatrix(obj, matrixPtr)
+                      m._FPDFPageObj_SetFillColor(obj, color[0], color[1], color[2], 255)
+                      if (input.invisible) {
+                        // render mode 3 (invisible): the standard OCR-layer form.
+                        // White fill still shows on grey paper, photos and dark
+                        // headers, and lights up under selection.
+                        m._FPDFTextObj_SetTextRenderMode(obj, 3)
+                      }
+                      if (face.syntheticBold && !input.invisible)
+                        strokeObject(
+                          m,
+                          obj,
+                          [color[0], color[1], color[2], 255],
+                          syntheticBoldWidth(size),
+                        )
+                      created.push(obj)
+                      if (!face.truetype) embeddedCff = true
+                    }
+                  }
+                } finally {
+                  m._free(matrixPtr)
+                }
+                for (const obj of created) m._FPDFPage_InsertObject(page, obj)
+                applied++
+              } catch (err) {
+                for (const obj of created) m._FPDFPageObj_Destroy(obj)
+                skipped.push({ editIndex, pageIndex, reason: errMsg(err) })
+              }
+            }
+            if (applied > 0 && !m._FPDFPage_GenerateContent(page)) {
+              throw new Error(`could not regenerate page ${pageIndex + 1}`)
+            }
+            appliedTotal += applied
+          } finally {
+            m._FPDF_ClosePage(page)
+          }
+        }
+      } finally {
+        m._free(widthPtr)
       }
       if (appliedTotal === 0) return { bytes, skipped }
       const saved = saveDoc(m, doc)
@@ -2201,10 +2704,19 @@ export async function withDocument<T>(
   m: Pdfium,
   bytes: Uint8Array,
   fn: (doc: number) => Promise<T>,
+  password?: string,
 ): Promise<T> {
   const docPtr = m._malloc(bytes.length)
   m.HEAPU8.set(bytes, docPtr)
-  const doc = m._FPDF_LoadMemDocument(docPtr, bytes.length, 0)
+  let pwPtr = 0
+  if (password) {
+    const pw = Buffer.from(password, 'utf8')
+    pwPtr = m._malloc(pw.length + 1)
+    m.HEAPU8.set(pw, pwPtr)
+    m.HEAPU8[pwPtr + pw.length] = 0
+  }
+  const doc = m._FPDF_LoadMemDocument(docPtr, bytes.length, pwPtr)
+  if (pwPtr) m._free(pwPtr)
   if (!doc) {
     m._free(docPtr)
     throw new Error('PDFium could not load the document')
@@ -2242,14 +2754,16 @@ async function applyPageEdits(
   doc: number,
   page: number,
   textPage: number,
+  pageIndex: number,
   pageEdits: TextEditInput[],
   skip: (edit: TextEditInput, reason: string) => void,
+  exclusive: FormExclusive,
 ): Promise<{ applied: number; embeddedCff: boolean }> {
   let embeddedCff = false
   const objects = collectTextObjects(m, page, textPage)
   // Two edits resolving to the same object would double-remove it; first claim wins
   const claimed = new Set<number>()
-  const planned: {
+  let planned: {
     edit: TextEditInput
     matches: PageTextObj[]
     newText: string
@@ -2262,9 +2776,24 @@ async function applyPageEdits(
     } else if (res.matches.some((t) => claimed.has(t.obj))) {
       skip(edit, 'overlaps another pending text edit')
     } else {
+      const verdicts = await Promise.all(res.matches.map((t) => exclusive(pageIndex, t)))
+      if (verdicts.includes(false)) {
+        skip(edit, SHARED_TEMPLATE_REASON)
+        continue
+      }
       for (const t of res.matches) claimed.add(t.obj)
       planned.push({ edit, ...res })
     }
+  }
+  // Template text is lifted before anything is sorted or removed: the lift inserts
+  // page objects, which renumbers everything after the template
+  const unlifted = liftMatches(m, page, new Set(planned.flatMap((p) => p.matches)), objects)
+  if (unlifted.size > 0) {
+    planned = planned.filter((p) => {
+      const bad = p.matches.find((t) => unlifted.has(t))
+      if (bad) skip(p.edit, unlifted.get(bad)!)
+      return !bad
+    })
   }
   // Descending object order keeps pending InsertObjectAtIndex targets valid
   planned.sort((a, b) => b.matches[0]!.index - a.matches[0]!.index)
@@ -2328,13 +2857,24 @@ export async function eraseTextRuns(
   m: Pdfium,
   doc: number,
   page: number,
+  pageIndex: number,
+  bytes: Uint8Array,
   probes: TextEditInput[],
 ): Promise<boolean[]> {
   const textPage = m._FPDFText_LoadPage(page)
   try {
     const edits = probes.map((p) => ({ ...p, newText: '', translate: undefined }))
     const failed = new Set<TextEditInput>()
-    const { applied } = await applyPageEdits(m, doc, page, textPage, edits, (e) => failed.add(e))
+    const { applied } = await applyPageEdits(
+      m,
+      doc,
+      page,
+      textPage,
+      pageIndex,
+      edits,
+      (e) => failed.add(e),
+      formExclusivity(bytes),
+    )
     if (applied > 0) m._FPDFPage_GenerateContent(page)
     return edits.map((e) => !failed.has(e))
   } finally {
@@ -2353,6 +2893,7 @@ async function applyTextEditsInner(
 
   return withDocument(m, bytes, async (doc) => {
     const byPage = groupByPage(m, doc, edits, (e) => skip(e, 'page does not exist'))
+    const exclusive = formExclusivity(bytes)
     let appliedTotal = 0
     let embeddedCff = false
     for (const [pageIndex, pageEdits] of byPage) {
@@ -2360,7 +2901,16 @@ async function applyTextEditsInner(
       if (!page) throw new Error(`could not load page ${pageIndex + 1}`)
       const textPage = m._FPDFText_LoadPage(page)
       try {
-        const res = await applyPageEdits(m, doc, page, textPage, pageEdits, skip)
+        const res = await applyPageEdits(
+          m,
+          doc,
+          page,
+          textPage,
+          pageIndex,
+          pageEdits,
+          skip,
+          exclusive,
+        )
         embeddedCff = res.embeddedCff || embeddedCff
         if (res.applied > 0 && !m._FPDFPage_GenerateContent(page)) {
           throw new Error(`could not regenerate page ${pageIndex + 1}`)
@@ -2401,6 +2951,7 @@ async function validateTextEditsInner(
   return withDocument(m, bytes, async (doc) => {
     const results: TextEditValidation[] = edits.map(() => ({ reason: null }))
     const indexOf = new Map(edits.map((e, i) => [e, i]))
+    const exclusive = formExclusivity(bytes)
     const byPage = groupByPage(m, doc, edits, (e) => {
       results[indexOf.get(e)!] = { reason: 'page does not exist' }
     })
@@ -2415,15 +2966,48 @@ async function validateTextEditsInner(
       const colPtr = m._malloc(16)
       try {
         const objects = collectTextObjects(m, page, textPage)
+        // Text nobody can see (a scanner's or our own OCR layer over a page picture):
+        // rewriting or moving it would change nothing on screen, so the editor turns
+        // the edit into a patch over the picture instead. Told whether or not the
+        // run matches — an unmatched OCR run is still OCR.
+        const invisibleIn = (objs: PageTextObj[]) =>
+          objs.length > 0 &&
+          objs.every(
+            (t) => m._FPDFTextObj_GetTextRenderMode(t.obj) === FPDF_TEXTRENDERMODE_INVISIBLE,
+          )
         for (const e of pageEdits) {
           const res = matchEdit(objects, e)
           if ('reason' in res) {
-            results[indexOf.get(e)!] = { reason: res.reason }
+            const near = objects.filter(
+              (t) =>
+                t.bounds[0] < e.rect[2] &&
+                t.bounds[2] > e.rect[0] &&
+                t.bounds[1] < e.rect[3] &&
+                t.bounds[3] > e.rect[1],
+            )
+            results[indexOf.get(e)!] = {
+              reason: res.reason,
+              ...(invisibleIn(near) ? { invisible: true } : {}),
+            }
             continue
           }
-          // Same gate the apply path enforces: a move must own its objects outright
+          if (invisibleIn(res.matches)) {
+            results[indexOf.get(e)!] = {
+              reason: null,
+              bounds: matchBounds(res.matches),
+              invisible: true,
+            }
+            continue
+          }
+          // Same gates the apply path enforces: a move must own its objects outright,
+          // and template text may only be edited where the template is painted once
           if (e.translate && !res.whole) {
             results[indexOf.get(e)!] = { reason: 'the text block cannot be moved as one unit' }
+            continue
+          }
+          const verdicts = await Promise.all(res.matches.map((t) => exclusive(pageIndex, t)))
+          if (verdicts.includes(false)) {
+            results[indexOf.get(e)!] = { reason: SHARED_TEMPLATE_REASON }
             continue
           }
           // Fragment edits resolve to their whole container object; covering all of it
@@ -2465,6 +3049,21 @@ async function validateTextEditsInner(
           results[indexOf.get(e)!] = {
             reason: null,
             bounds: whole ? b : [e.rect[0], b[1], e.rect[2], b[3]],
+            // The save rewrites the whole container run from its own origin, so the
+            // text after the fragment reflows; callers that preview the edit need the
+            // run's full before/after text to model that
+            ...(res.fragment
+              ? {
+                  run: {
+                    bounds: b,
+                    oldText: res.fragment.runText,
+                    newText: res.newText,
+                    start: res.fragment.start,
+                    oldEnd: res.fragment.oldEnd,
+                    newEnd: res.fragment.newEnd,
+                  },
+                }
+              : {}),
             colorRuns:
               runs.length > 0
                 ? runs.map((r) => ({
@@ -2487,6 +3086,32 @@ async function validateTextEditsInner(
 }
 
 /**
+ * PDFium builds one shared text page for the whole page. When two text objects
+ * paint the same origin and share a prefix, that text page keeps the first
+ * object's string and gives the second only its distinct tail ("abc" + "d" for
+ * a pair of abc/abd objects), so FPDFTextObj_GetText on the shared text page
+ * cannot report what the second object really carries. Reading an object with
+ * the other page-owned objects removed from a temporarily rebuilt page gives the
+ * complete string; every object is put back before returning.
+ */
+function isolatedPageObjectText(m: Pdfium, page: number, objects: readonly number[]): string {
+  let out = ''
+  for (const target of objects) {
+    const others = objects.filter((obj) => obj !== target)
+    for (const obj of others) m._FPDFPage_RemoveObject(page, obj)
+    let isolatedTextPage = 0
+    try {
+      isolatedTextPage = m._FPDFText_LoadPage(page)
+      if (isolatedTextPage) out += readTextObject(m, target, isolatedTextPage)
+    } finally {
+      if (isolatedTextPage) m._FPDFText_ClosePage(isolatedTextPage)
+      for (const obj of others) m._FPDFPage_InsertObject(page, obj)
+    }
+  }
+  return out
+}
+
+/**
  * Read-back verification: confirm every applied edit's replacement text is actually
  * extractable from the produced bytes. Runs on the final output (after the pdf-lib
  * round-trip), before it reaches disk — a failure aborts the save with the original
@@ -2496,10 +3121,15 @@ async function validateTextEditsInner(
 export function verifyTextEdits(
   bytes: Uint8Array,
   edits: { pageIndex: number; newText: string }[],
+  /** the password when the saved output is encrypted again */
+  password?: string,
 ): Promise<{ pageIndex: number; reason: string }[]> {
   return chainPdfium(async () => {
     const m = await loadPdfium()
-    return withDocument(m, bytes, async (doc) => {
+    // the saved output carries its protection again: verification opens it with
+    // the same password the save just wrote, or every edit reads as missing
+    const open = <T>(fn: (doc: number) => Promise<T>) => withDocument(m, bytes, fn, password)
+    return open(async (doc) => {
       const failures: { pageIndex: number; reason: string }[] = []
       const pageCount = m._FPDF_GetPageCount(doc)
       const byPage = new Map<number, string[]>()
@@ -2517,7 +3147,7 @@ export function verifyTextEdits(
             failures.push({ pageIndex, reason: 'page unreadable in saved output' })
           continue
         }
-        const textPage = m._FPDFText_LoadPage(page)
+        let textPage = m._FPDFText_LoadPage(page)
         try {
           // NFC on both sides: ToUnicode CMaps canonicalize singleton codepoints (e.g.
           // compatibility ideograph U+F900 extracts as U+8C48) — the glyph on the page is
@@ -2528,12 +3158,31 @@ export function verifyTextEdits(
           // The object-preserving rebuild can leave a reflowed line contiguous
           // only visually, not in stream order — accept either
           const visualText = canon(joinRows(objects))
+          // Last resort for overlapping objects: only rebuild the page when a
+          // line is genuinely absent from the shared text page, so normal saves
+          // never pay for the per-object reads.
+          let isolated: string | null = null
+          const isolatedCanon = (): string => {
+            if (isolated === null) {
+              m._FPDFText_ClosePage(textPage)
+              textPage = 0
+              const pageOwned = objects.filter((o) => o.chain.length === 0).map((o) => o.obj)
+              isolated = canon(isolatedPageObjectText(m, page, pageOwned))
+            }
+            return isolated
+          }
           for (const newText of texts) {
             // Every non-empty line must be extractable (rebuilt runs are one object per line)
             const missing = newText
               .split('\n')
               .map(canon)
-              .filter((l) => l.length > 0 && !pageText.includes(l) && !visualText.includes(l))
+              .filter(
+                (l) =>
+                  l.length > 0 &&
+                  !pageText.includes(l) &&
+                  !visualText.includes(l) &&
+                  !isolatedCanon().includes(l),
+              )
             if (missing.length > 0) {
               const snippet = missing[0]!.slice(0, 20)
               failures.push({
@@ -2543,7 +3192,7 @@ export function verifyTextEdits(
             }
           }
         } finally {
-          m._FPDFText_ClosePage(textPage)
+          if (textPage) m._FPDFText_ClosePage(textPage)
           m._FPDF_ClosePage(page)
         }
       }

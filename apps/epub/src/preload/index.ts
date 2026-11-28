@@ -3,12 +3,24 @@
  */
 import type { AiPanelPrefs } from '@genoffice/ui'
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
+import { generateEditorBridge } from '@genoffice/electron-utils/generate-editor-bridge'
 import { driveAiBridge } from '@genoffice/electron-utils/drive-ai-bridge'
+import { mcpToolsBridge } from '@genoffice/electron-utils/mcp-tools-bridge'
+import { outboundBridge } from '@genoffice/electron-utils/outbound-bridge'
+import { ACP_TOOL_BRIDGE_KEY } from '@genoffice/electron-utils/acp-tool-channels'
+import { acpToolBridge } from '@genoffice/electron-utils/acp-tool-bridge'
 import { userSkillsBridge } from '@genoffice/electron-utils/user-skills-bridge'
+import {
+  PROJECT_FOLDER_BRIDGE_KEY,
+  projectFolderBridge,
+} from '@genoffice/electron-utils/project-folder-bridge'
 import { USER_SKILLS_BRIDGE_KEY } from '@genoffice/electron-utils/user-skills-channels'
 import { docAttachBridge } from '@genoffice/electron-utils/doc-attach-bridge'
 import { DOC_ATTACH_BRIDGE_KEY } from '@genoffice/electron-utils/doc-attach-channels'
+import { connectorAttachBridge } from '@genoffice/electron-utils/connector-attach-bridge'
+import { CONNECTOR_ATTACH_BRIDGE_KEY } from '@genoffice/electron-utils/connector-attach-channels'
 import { SPLIT_PANE_BRIDGE_KEY, splitPaneBridge } from '@genoffice/electron-utils/split-pane-bridge'
+import { APP_CHOICE_BRIDGE_KEY, appChoiceBridge } from '@genoffice/electron-utils/app-choice-bridge'
 import type { Lang } from '@genoffice/i18n'
 import type { AiStreamChunk } from '@genoffice/ai-provider'
 import { SUBSCRIPTION_IPC_CHANNELS } from '@genoffice/ai-provider/browser'
@@ -29,6 +41,7 @@ import type {
 } from '../shared/ipc'
 import {
   SUBSCRIPTION_INSTALL_HELP_CHANNEL,
+  SUBSCRIPTION_USAGE_CHANNEL,
   subscriptionLaunchResultOf,
   subscriptionMeteredResultOf,
   subscriptionStatusMapOf,
@@ -51,6 +64,8 @@ const core: EpubCoreApi = {
   consumePending: () => ipcRenderer.invoke(EPUB_CHANNELS.consumePending),
   openFile: (path) => ipcRenderer.invoke(EPUB_CHANNELS.openFile, path),
   readChapter: (spineIndex) => ipcRenderer.invoke(EPUB_CHANNELS.readChapter, spineIndex),
+  onFlushRequest: (handler) => listen<[string]>(EPUB_CHANNELS.flushRequest, handler),
+  sendFlushResult: (requestId, ok) => ipcRenderer.send(EPUB_CHANNELS.flushResult, requestId, ok),
   applyEdits: (request) => ipcRenderer.invoke(EPUB_CHANNELS.applyEdits, request),
   replaceRanges: (request) => ipcRenderer.invoke(EPUB_CHANNELS.replaceRanges, request),
   setTranslationLock: (locked) => ipcRenderer.invoke(EPUB_CHANNELS.setTranslationLock, locked),
@@ -80,8 +95,20 @@ const core: EpubCoreApi = {
 // ---- book translation: units, result books, and the result store of this view's book ----
 
 const store: EpubStoreApi = {
-  translations: (docHash) => ipcRenderer.invoke(EPUB_CHANNELS.storeTranslations, docHash),
-  translation: (docHash, lang) => ipcRenderer.invoke(EPUB_CHANNELS.storeTranslation, docHash, lang),
+  // a plain translation call sends no mode, as before
+  translations: (docHash, mode) =>
+    ipcRenderer.invoke(
+      EPUB_CHANNELS.storeTranslations,
+      docHash,
+      ...(mode === undefined ? [] : [mode]),
+    ),
+  translation: (docHash, lang, mode) =>
+    ipcRenderer.invoke(
+      EPUB_CHANNELS.storeTranslation,
+      docHash,
+      lang,
+      ...(mode === undefined ? [] : [mode]),
+    ),
   unfinishedJobs: (docHash) => ipcRenderer.invoke(EPUB_CHANNELS.storeUnfinishedJobs, docHash),
   write: (request) => ipcRenderer.invoke(EPUB_CHANNELS.storeWrite, request),
 }
@@ -94,6 +121,21 @@ const translate: EpubTranslateApi = {
   checkResultPath: (path) => ipcRenderer.invoke(EPUB_CHANNELS.checkResultPath, path),
   writeTranslated: (request) => ipcRenderer.invoke(EPUB_CHANNELS.writeTranslated, request),
   store,
+  aiJob: {
+    begin: async (jobId) => {
+      const answer = (await ipcRenderer.invoke(EPUB_CHANNELS.aiJobBegin, jobId)) as {
+        ok?: unknown
+        error?: unknown
+      } | null
+      if (answer?.ok === true) return null
+      return typeof answer?.error === 'string' ? answer.error : 'refused'
+    },
+    end: (jobId) => ipcRenderer.send(EPUB_CHANNELS.aiJobEnd, jobId),
+    onStop: (handler) =>
+      listen<[unknown]>(EPUB_CHANNELS.aiJobStop, (jobId) => {
+        if (typeof jobId === 'string') handler(jobId)
+      }),
+  },
 }
 
 // ---- the AI panel's bridge ----
@@ -111,9 +153,12 @@ const subscription: EpubSubscriptionApi = {
         providers ? { providers } : undefined,
       ),
     ),
-  login: async (provider) =>
+  login: async (provider, mode) =>
     subscriptionLaunchResultOf(
-      await ipcRenderer.invoke(SUBSCRIPTION_IPC_CHANNELS.login, { provider }),
+      await ipcRenderer.invoke(
+        SUBSCRIPTION_IPC_CHANNELS.login,
+        mode ? { provider, mode } : { provider },
+      ),
     ),
   install: async (provider) =>
     subscriptionLaunchResultOf(
@@ -134,6 +179,10 @@ const subscription: EpubSubscriptionApi = {
   onChanged: (handler) =>
     listen<[unknown]>(SUBSCRIPTION_IPC_CHANNELS.changed, (statuses) =>
       handler(subscriptionStatusMapOf(statuses)),
+    ),
+  onUsage: (handler) =>
+    listen<[unknown]>(SUBSCRIPTION_USAGE_CHANNEL, (usage) =>
+      handler(Array.isArray(usage) ? usage : []),
     ),
   openInstallHelp: async (provider) => {
     await ipcRenderer.invoke(SUBSCRIPTION_INSTALL_HELP_CHANNEL, provider)
@@ -183,13 +232,28 @@ const projectApi: Pick<ProjectApi, 'resolveChat' | 'appendChat' | 'loadChat' | '
 contextBridge.exposeInMainWorld('epubApi', api)
 // Google Drive for this editor's AI: search and read only (decision 0033)
 contextBridge.exposeInMainWorld('aiOfficeDriveAi', driveAiBridge())
+// the internet-tools switch and the address question before the AI reaches off the PC (decision 0062)
+contextBridge.exposeInMainWorld('aiOfficeOutbound', outboundBridge())
+contextBridge.exposeInMainWorld(ACP_TOOL_BRIDGE_KEY, acpToolBridge())
+// the person's MCP servers for this editor's AI: list and call approved tools (the shell checks each)
+contextBridge.exposeInMainWorld('aiOfficeMcpTools', mcpToolsBridge())
 // the person's skills: the AI panel's `/` list and skill reads, skill cards (shell main checks each)
 contextBridge.exposeInMainWorld(USER_SKILLS_BRIDGE_KEY, userSkillsBridge())
 // The shell's document picker, for this editor's AI attach button
 contextBridge.exposeInMainWorld(DOC_ATTACH_BRIDGE_KEY, docAttachBridge())
+contextBridge.exposeInMainWorld(CONNECTOR_ATTACH_BRIDGE_KEY, connectorAttachBridge())
 // The shell's split panes: this view's pane role, and its way to ask for focus
 contextBridge.exposeInMainWorld(SPLIT_PANE_BRIDGE_KEY, splitPaneBridge(ipcRenderer))
 contextBridge.exposeInMainWorld('projectApi', projectApi)
+// whether AI features are on (Settings): read and follow only, this tab never changes it
+const appChoice = appChoiceBridge()
+contextBridge.exposeInMainWorld(APP_CHOICE_BRIDGE_KEY, {
+  get: appChoice.get,
+  onChange: appChoice.onChange,
+})
+// project folders (decision 0088): main identifies this window, the bridge forwards ids only
+contextBridge.exposeInMainWorld(PROJECT_FOLDER_BRIDGE_KEY, projectFolderBridge(ipcRenderer))
 
+contextBridge.exposeInMainWorld('aiOfficeGenerateEditor', generateEditorBridge())
 // open documents dragged from the OS onto this tab as a new shell tab
 installDropOpenBridge()

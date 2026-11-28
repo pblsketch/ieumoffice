@@ -1,15 +1,24 @@
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import {
   AiMark,
+  QuickPrintButton,
   RibbonCollapseButton,
   RibbonExpandButton,
   aiSubscriptionText,
   useDismissablePopover,
   useRibbonCollapse,
+  type PrintPrinterInfo,
+  type QuickPrintPrefStore,
 } from '@genoffice/ui'
 import { useI18n } from '../i18n/locale'
+import { htmlTemplatesText, practicalTemplateLabel } from '../i18n/strings-templates'
+import { useAiVisible } from '../ai-visibility'
 import type { StringKey } from '../i18n/locale'
 import type { InsertKind, InsertOptions } from '../document/insert-presets'
+import {
+  PRACTICAL_HTML_TEMPLATES,
+  type PracticalHtmlTemplateId,
+} from '../templates/practical-templates'
 import {
   IconBullets,
   IconButton,
@@ -29,9 +38,11 @@ import {
   IconSave,
   IconSearch,
   IconSection,
+  IconSigma,
   IconSplitView,
   IconSummarize,
   IconTable,
+  IconTemplate,
   IconUndo,
   IconWand,
 } from './icons'
@@ -79,14 +90,23 @@ interface Props {
   canInsert: boolean
   /** images come from a picked file by default; `url` places a remote image instead; tables take the picker's rows × cols */
   onInsert: (kind: InsertKind, opts?: InsertOptions) => void
+  onMath?: () => void
   /** replace a still-blank page with the document skeleton, in the UI language */
   onInsertSkeleton: () => void
   /** false once the page has content: a skeleton would only duplicate the document */
   canInsertSkeleton: boolean
+  /** load one of the 5 offline 1-page practical templates (works in AI-OFF mode too) */
+  onApplyTemplate?: (id: PracticalHtmlTemplateId) => void
   /** page-wide AI actions: send this instruction to the assistant right away */
   onAiPreset: (text: string) => void
   canvasMode: CanvasMode
   onPresent: (kind: PresentKind) => void
+  onOpenPrintDialog: (initialDestination?: string) => void
+  onQuickPrint: (printerLabel: string) => void | Promise<void>
+  listPrinters?: () => Promise<readonly PrintPrinterInfo[]>
+  quickPrintPrefStore?: QuickPrintPrefStore
+  getPrintPageCount?: () => number | null | Promise<number | null>
+  onQuickPrintNotice?: (message: string) => void
 }
 
 export type CanvasMode = 'edit' | 'present'
@@ -124,8 +144,8 @@ const MORE_KINDS: Array<{ kind: InsertKind; Icon: InsertIcon }> = [
   { kind: 'divider', Icon: IconDivider },
 ]
 
-/** which insert popover is open: the image-URL form, the table size grid or the "More" menu */
-type InsertPopover = 'imageUrl' | 'table' | 'more'
+/** which insert popover is open: the image-URL form, the table size grid, templates, or "More" */
+type InsertPopover = 'imageUrl' | 'table' | 'more' | 'templates'
 
 const TABLE_PICKER_ROWS = 8
 const TABLE_PICKER_COLS = 10
@@ -134,6 +154,8 @@ const ICON = 20
 
 export function Ribbon(p: Props) {
   const { t, lang } = useI18n()
+  // Settings › Editors and AI: while AI is off the band has no AI entry at all
+  const aiOn = useAiVisible()
   const collapse = useRibbonCollapse('htmlapp.ribbonCollapsed', {
     collapse: t('ribbonCollapse'),
     expand: t('ribbonExpand'),
@@ -142,28 +164,14 @@ export function Ribbon(p: Props) {
   const themeRef = useRef<HTMLDivElement>(null)
   useDismissablePopover(themeOpen, () => setThemeOpen(false), {
     inside: () => [themeRef.current],
+    escape: true,
   })
-  useEffect(() => {
-    if (!themeOpen) return
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setThemeOpen(false)
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [themeOpen])
   const [presentOpen, setPresentOpen] = useState(false)
   const presentRef = useRef<HTMLDivElement>(null)
   useDismissablePopover(presentOpen, () => setPresentOpen(false), {
     inside: () => [presentRef.current],
+    escape: true,
   })
-  useEffect(() => {
-    if (!presentOpen) return
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setPresentOpen(false)
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [presentOpen])
 
   const [insertPop, setInsertPop] = useState<InsertPopover | null>(null)
   const [imageUrl, setImageUrl] = useState('')
@@ -172,6 +180,7 @@ export function Ribbon(p: Props) {
   const imageRef = useRef<HTMLDivElement>(null)
   const tableRef = useRef<HTMLDivElement>(null)
   const moreRef = useRef<HTMLDivElement>(null)
+  const templatesRef = useRef<HTMLDivElement>(null)
   const closeInsert = () => {
     setInsertPop(null)
     setImageUrl('')
@@ -180,16 +189,9 @@ export function Ribbon(p: Props) {
   const toggleInsert = (pop: InsertPopover) =>
     insertPop === pop ? closeInsert() : setInsertPop(pop)
   useDismissablePopover(insertPop !== null, closeInsert, {
-    inside: () => [imageRef.current, tableRef.current, moreRef.current],
+    inside: () => [imageRef.current, tableRef.current, moreRef.current, templatesRef.current],
+    escape: true,
   })
-  useEffect(() => {
-    if (insertPop === null) return
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') closeInsert()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [insertPop])
   const submitImageUrl = () => {
     const url = imageUrl.trim()
     if (!url) return
@@ -262,6 +264,16 @@ export function Ribbon(p: Props) {
         >
           <IconSearch size={16} />
         </button>
+        <QuickPrintButton
+          lang={lang}
+          disabled={off}
+          listPrinters={p.listPrinters}
+          prefStore={p.quickPrintPrefStore}
+          getPageCount={p.getPrintPageCount}
+          onOpenDialog={p.onOpenPrintDialog}
+          onQuickPrint={p.onQuickPrint}
+          onNoPrinter={p.onQuickPrintNotice}
+        />
         <label className={`autosave-toggle${p.autoSave ? ' on' : ''}`} data-tip={t('autoSaveTip')}>
           <span className="autosave-knob" />
           <span className="autosave-text">{t('autoSave')}</span>
@@ -275,93 +287,97 @@ export function Ribbon(p: Props) {
       </div>
 
       <div className="ribbon-body" data-ribbon-body="">
-        <div className="ribbon-group">
-          <div className="ribbon-group-items">
-            <button
-              type="button"
-              className={`rb-big ai-entry${p.aiOpen ? ' active' : ''}`}
-              data-tip={t('aiOpenAssistant')}
-              aria-pressed={p.aiOpen}
-              disabled={off}
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={p.onToggleAi}
-            >
-              <span className="rb-big-icon">
-                <AiMark size={26} />
-              </span>
-              <span>{aiSubscriptionText(lang, 'aiAssistant')}</span>
-            </button>
-            <button
-              type="button"
-              className="rb-big ai-entry"
-              data-tip={t('aiRestyleBtn')}
-              disabled={off}
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => p.onAiPreset(t('aiRestylePrompt'))}
-            >
-              <span className="rb-big-icon">
-                <span className="ai-feature-icon" aria-hidden="true">
-                  <IconWand size={24} />
-                </span>
-              </span>
-              <span>{t('aiRestyleBtn')}</span>
-            </button>
-            <div className="rb-menu-wrap" ref={themeRef}>
-              <button
-                type="button"
-                className={`rb-big ai-entry${themeOpen ? ' active' : ''}`}
-                data-tip={t('aiThemeBtn')}
-                aria-haspopup="menu"
-                aria-expanded={themeOpen}
-                disabled={off}
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => setThemeOpen((v) => !v)}
-              >
-                <span className="rb-big-icon">
-                  <span className="ai-feature-icon" aria-hidden="true">
-                    <IconPalette size={24} />
+        {aiOn && (
+          <>
+            <div className="ribbon-group">
+              <div className="ribbon-group-items">
+                <button
+                  type="button"
+                  className={`rb-big ai-entry${p.aiOpen ? ' active' : ''}`}
+                  data-tip={t('aiOpenAssistant')}
+                  aria-pressed={p.aiOpen}
+                  disabled={off}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={p.onToggleAi}
+                >
+                  <span className="rb-big-icon">
+                    <AiMark size={26} />
                   </span>
-                </span>
-                <span>{t('aiThemeBtn')}</span>
-              </button>
-              {themeOpen && (
-                <div className="rb-menu" role="menu">
-                  {THEME_DIRECTIONS.map((key) => (
-                    <button
-                      key={key}
-                      type="button"
-                      role="menuitem"
-                      onMouseDown={(e) => e.preventDefault()}
-                      onClick={() => {
-                        setThemeOpen(false)
-                        p.onAiPreset(t('aiThemePrompt', { direction: t(key) }))
-                      }}
-                    >
-                      {t(key)}
-                    </button>
-                  ))}
+                  <span>{aiSubscriptionText(lang, 'aiAssistant')}</span>
+                </button>
+                <button
+                  type="button"
+                  className="rb-big ai-entry"
+                  data-tip={t('aiRestyleBtn')}
+                  disabled={off}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => p.onAiPreset(t('aiRestylePrompt'))}
+                >
+                  <span className="rb-big-icon">
+                    <span className="ai-feature-icon" aria-hidden="true">
+                      <IconWand size={24} />
+                    </span>
+                  </span>
+                  <span>{t('aiRestyleBtn')}</span>
+                </button>
+                <div className="rb-menu-wrap" ref={themeRef}>
+                  <button
+                    type="button"
+                    className={`rb-big ai-entry${themeOpen ? ' active' : ''}`}
+                    data-tip={t('aiThemeBtn')}
+                    aria-haspopup="menu"
+                    aria-expanded={themeOpen}
+                    disabled={off}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => setThemeOpen((v) => !v)}
+                  >
+                    <span className="rb-big-icon">
+                      <span className="ai-feature-icon" aria-hidden="true">
+                        <IconPalette size={24} />
+                      </span>
+                    </span>
+                    <span>{t('aiThemeBtn')}</span>
+                  </button>
+                  {themeOpen && (
+                    <div className="rb-menu" role="menu">
+                      {THEME_DIRECTIONS.map((key) => (
+                        <button
+                          key={key}
+                          type="button"
+                          role="menuitem"
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => {
+                            setThemeOpen(false)
+                            p.onAiPreset(t('aiThemePrompt', { direction: t(key) }))
+                          }}
+                        >
+                          {t(key)}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
-              )}
+                <button
+                  type="button"
+                  className="rb-big ai-entry"
+                  data-tip={t('aiSummarizeBtn')}
+                  disabled={off}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => p.onAiPreset(t('aiSummarizePrompt'))}
+                >
+                  <span className="rb-big-icon">
+                    <span className="ai-feature-icon" aria-hidden="true">
+                      <IconSummarize size={24} />
+                    </span>
+                  </span>
+                  <span>{t('aiSummarizeBtn')}</span>
+                </button>
+              </div>
             </div>
-            <button
-              type="button"
-              className="rb-big ai-entry"
-              data-tip={t('aiSummarizeBtn')}
-              disabled={off}
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => p.onAiPreset(t('aiSummarizePrompt'))}
-            >
-              <span className="rb-big-icon">
-                <span className="ai-feature-icon" aria-hidden="true">
-                  <IconSummarize size={24} />
-                </span>
-              </span>
-              <span>{t('aiSummarizeBtn')}</span>
-            </button>
-          </div>
-        </div>
 
-        <div className="rb-sep" />
+            <div className="rb-sep" />
+          </>
+        )}
 
         <div className="ribbon-group">
           <div className="ribbon-group-items">
@@ -369,6 +385,20 @@ export function Ribbon(p: Props) {
             <span className="rb-group-lead" aria-hidden="true">
               {t('ribbonGroupInsert')}
             </span>
+            {p.onMath && (
+              <button
+                type="button"
+                className="rb-btn rb-view"
+                data-tip={t('mathInsert')}
+                aria-label={t('mathInsert')}
+                disabled={insertOff}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={p.onMath}
+              >
+                <IconSigma size={ICON} />
+                <span>{t('mathInsert')}</span>
+              </button>
+            )}
             <button
               type="button"
               className="rb-btn rb-view"
@@ -527,6 +557,56 @@ export function Ribbon(p: Props) {
                 </div>
               )}
             </div>
+            {p.onApplyTemplate && (
+              <div className="rb-menu-wrap" ref={templatesRef}>
+                <button
+                  type="button"
+                  className={`rb-btn rb-view${insertPop === 'templates' ? ' active' : ''}`}
+                  data-tip={htmlTemplatesText(lang, 'templatesTitle')}
+                  data-testid="html-ribbon-templates-btn"
+                  aria-haspopup="menu"
+                  aria-expanded={insertPop === 'templates'}
+                  disabled={insertOff}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => toggleInsert('templates')}
+                >
+                  <IconTemplate size={ICON} />
+                  <span>{htmlTemplatesText(lang, 'templatesBtn')}</span>
+                  <IconChevronDown size={14} />
+                </button>
+                {insertPop === 'templates' && (
+                  <div
+                    className="rb-menu rb-template-menu"
+                    role="menu"
+                    aria-label={htmlTemplatesText(lang, 'templatesTitle')}
+                  >
+                    <div className="rb-template-menu-head">
+                      {htmlTemplatesText(lang, 'templatesSubtitle')}
+                    </div>
+                    {PRACTICAL_HTML_TEMPLATES.map((tpl) => {
+                      const label = practicalTemplateLabel(lang, tpl.id)
+                      return (
+                        <button
+                          key={tpl.id}
+                          type="button"
+                          role="menuitem"
+                          className="rb-template-item"
+                          data-template-id={tpl.id}
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => {
+                            closeInsert()
+                            p.onApplyTemplate?.(tpl.id)
+                          }}
+                        >
+                          <span className="rb-template-item-title">{label.title}</span>
+                          <span className="rb-template-item-summary">{label.summary}</span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
 

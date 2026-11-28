@@ -16,6 +16,7 @@ export const ms = {
   cvTargetNone: 'Belum dipilih',
   cvTargetChoose: 'Pilih…',
   cvCover: 'Gunakan halaman pertama sebagai kulit buku',
+  cvPageBreaks: 'Mulakan setiap halaman asal pada skrin baharu',
   cvBookTitle: 'Tajuk',
   cvBookAuthor: 'Pengarang',
   cvBookLanguage: 'Bahasa',
@@ -66,6 +67,9 @@ export const ms = {
   cvErrFailed: 'Penukaran gagal.',
   cvPageImageAlt: 'Halaman {page}',
   imgExportWholePages: 'Halaman penuh',
+  imgExportCurrentPage: 'Halaman semasa sahaja',
+  imgExportCurrentPageTip: 'Eksport halaman yang sedang dilihat sebagai satu fail PNG',
+  imgExportCurrentPageJpgTip: 'Eksport halaman yang sedang dilihat sebagai satu fail JPG',
   imgExportEmbedded: 'Gambar dalam halaman sahaja',
   imgExportEmbeddedTip:
     'Simpan gambar yang diletakkan dalam halaman sebagai fail PNG pada resolusi asalnya',

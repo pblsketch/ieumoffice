@@ -4,7 +4,7 @@ L'agente prende come progetto una cartella che scegli tu ed esegue in quella car
 
 ## Prima di iniziare
 
-- Un abbonamento Claude o un abbonamento ChatGPT collegato in **Impostazioni ▸ IA**. L'argomento «Connessione con abbonamento» spiega come fare.
+- Il programma Claude Code o Codex collegato in **Impostazioni ▸ IA** (con l'accesso effettuato con un abbonamento Claude o un piano ChatGPT). L'agente non usa ChatGPT collegato direttamente nell'app. L'argomento «Connessione con abbonamento» spiega come fare.
 - Una cartella con il tuo materiale. Non si possono scegliere un'intera unità, tutta la tua cartella utente né le cartelle con dati di accesso o delle app.
 
 ## Avviare una sessione

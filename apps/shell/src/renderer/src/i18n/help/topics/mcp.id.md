@@ -6,7 +6,7 @@ GenOffice berbicara dalam Model Context Protocol, jadi agen pemrograman dapat me
 
 Inilah tempatnya: **Pengaturan ▸ Integrasi**. Panel ini punya dua bagian, dan Anda bisa memakai salah satunya atau keduanya.
 
-**Skill-nya.** Satu baris per agen pemrograman yang ditemukan di komputer ini — Claude Code, Codex, Cursor, Gemini CLI, Copilot CLI, OpenCode, Windsurf —, masing-masing dengan **Pasang**, **Perbarui**, dan **Hapus**, ditambah **Pasang ke folder lain…**, **Unduh skill (zip)**, dan **Salin path**. Jika asisten Anda tidak ada di daftar, tunjukkan folder tempat ia membaca `SKILL.md` kepada GenOffice, atau simpan zip-nya dan biarkan asisten yang memasangnya. Skill dan MCP bisa berdampingan: asisten memilih salah satu, dan keduanya melakukan hal yang persis sama.
+**Skill-nya.** Satu baris per agen pemrograman yang ditemukan di komputer ini — Claude Code, folder bersama `~/.agents` (dibaca oleh Codex, Cursor, Gemini CLI, Copilot CLI, dan OpenCode), Windsurf —, masing-masing dengan **Pasang**, **Perbarui**, dan **Hapus**, ditambah **Pasang ke folder lain…**, **Unduh skill (zip)**, dan **Salin path**. Jika asisten Anda tidak ada di daftar, tunjukkan folder tempat ia membaca `SKILL.md` kepada GenOffice, atau simpan zip-nya dan biarkan asisten yang memasangnya. Skill dan MCP bisa berdampingan: asisten memilih salah satu, dan keduanya melakukan hal yang persis sama. Salinan yang dulu dipasang di folder milik salah satu dari kelima alat itu tetap tercantum di bawah baris folder bersama dan terus diperbarui; setelah folder bersama berisi skill, Anda dapat menghapus salinan itu.
 
 **MCP.** Ada dua jalur yang ditawarkan: **Dijalankan oleh asisten (disarankan)**, tempat Anda menambahkan konfigurasi yang ditampilkan ke klien dan asisten menjalankan servernya sendiri, serta **Server HTTP lokal**, yang dijalankan aplikasi untuk Anda. Cara mana pun, asisten akhirnya berbicara dengan GenOffice dan Anda tidak pernah mengetik satu perintah pun.
 
@@ -58,7 +58,7 @@ Setiap perintah adalah sebuah alat. Yang menarik:
 Permintaan dari perintah `ieumoffice` atau dari klien MCP tidak Anda ketik sendiri di aplikasi, jadi GenOffice memperlakukannya dengan hati-hati.
 
 - **Pencarian** selalu berfungsi dan gratis secara bawaan. Kunci penyedia pencarian hanya dipakai jika Anda memilihnya.
-- **Membuat gambar** memerlukan kunci penyedia gambar. Pada versi ini langganan tidak membuat gambar.
+- **Membuat gambar** mengikuti pilihan pembuatan gambar di Pengaturan. Pilihan bawaan, Paket ChatGPT (program Codex), memakai paket ChatGPT Anda melalui program Codex dan **tidak dipakai kecuali Anda mengizinkannya** (lihat di bawah). Jika tidak, kunci penyedia gambar yang sudah disiapkan yang dipakai. Model yang disebut agen dipakai bila jalur itu menyediakannya.
 - **Mendeskripsikan gambar** memakai penyedia berbasis kunci bila ada yang disiapkan. Langganan Claude atau Codex Anda **tidak dipakai kecuali Anda mengizinkannya**.
 - **Video dan audio** memerlukan penyedia berbasis kunci yang mendukung video.
 

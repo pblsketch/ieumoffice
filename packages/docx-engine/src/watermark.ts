@@ -24,9 +24,9 @@ export const WATERMARK_NS =
 /** read the watermark text from a header part; null when it has none */
 export function readWatermarkText(headerXml: string): string | null {
   if (!headerXml.includes('<v:textpath')) return null
-  const m = /<v:textpath[^>]*\bstring="([^"]*)"/.exec(headerXml)
+  const m = /<v:textpath[^>]*\bstring\s*=\s*(?:"([^"]*)"|'([^']*)')/.exec(headerXml)
   if (!m) return null
-  const text = m[1]
+  const text = (m[1] ?? m[2] ?? '')
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"')
@@ -46,16 +46,21 @@ export function readWatermarkShape(pictXml: string): HfImage | null {
   const body = pictXml.replace(/<v:shapetype\b[\s\S]*?<\/v:shapetype>/g, '')
   const shapeTag = /<v:shape\b[^>]*>/.exec(body)?.[0]
   if (!shapeTag) return null
-  const attr = (tag: string, key: string): string | undefined =>
-    new RegExp(`\\s${key}="([^"]*)"`).exec(tag)?.[1]
+  const attr = (tag: string, key: string): string | undefined => {
+    const m = new RegExp(`\\s${key}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`).exec(tag)
+    return m ? (m[1] ?? m[2]) : undefined
+  }
   const style = attr(shapeTag, 'style') ?? ''
   const widthPx = vmlStyleDimPx(style, 'width')
   const heightPx = vmlStyleDimPx(style, 'height')
   if (!widthPx || !heightPx) return null
   const fillTag = /<v:fill\b[^>]*>/.exec(body)?.[0]
-  const tpTag = /<v:textpath\b[^>]*\bstring="[^>]*>/.exec(body)?.[0] ?? ''
+  const tpTag = /<v:textpath\b[^>]*\bstring\s*=\s*(?:"[^"]*"|'[^']*')[^>]*>/.exec(body)?.[0] ?? ''
   const tpStyle = (attr(tpTag, 'style') ?? '').replace(/&quot;/g, '"').replace(/&amp;/g, '&')
   const family = vmlStyleProp(tpStyle, 'font-family')?.replace(/^"|"$/g, '')
+  const rawOpacity =
+    (fillTag ? vmlFraction(attr(fillTag, 'opacity')) : undefined) ??
+    vmlFraction(attr(shapeTag, 'opacity'))
   const img: HfImage = {
     dataUrl: '',
     widthPx,
@@ -66,17 +71,16 @@ export function readWatermarkShape(pictXml: string): HfImage | null {
       colorHex:
         attr(shapeTag, 'filled') === 'f'
           ? 'FFFFFF'
-          : (vmlColorHex(attr(shapeTag, 'fillcolor')) ?? '000000'),
-      opacity: Math.max(
-        0,
-        Math.min(1, (fillTag ? vmlFraction(attr(fillTag, 'opacity')) : undefined) ?? 1),
-      ),
+          : (vmlColorHex(attr(shapeTag, 'fillcolor')) ??
+            vmlColorHex(fillTag ? attr(fillTag, 'color') : undefined) ??
+            '000000'),
+      opacity: Math.max(0, Math.min(1, rawOpacity ?? 1)),
       ...(family ? { fontFamily: family } : {}),
       ...(/font-weight:\s*bold/.test(tpStyle) ? { bold: true } : {}),
       ...(/font-style:\s*italic/.test(tpStyle) ? { italic: true } : {}),
     },
   }
-  if (/z-index:\s*-/.test(style)) img.behind = true
+  if (/z-index:\s*-/.test(style) || !/z-index\s*:/.test(style)) img.behind = true
   const rot = vmlRotationDeg(style)
   if (rot != null) img.rotationDeg = rot
   vmlFloatAnchor(style, img)
@@ -95,6 +99,10 @@ export interface WatermarkSpec {
   diagonal?: boolean
   bold?: boolean
   italic?: boolean
+  /** shape box for an explicit font size (Word's Size != Auto); absent = Word's auto box */
+  boxPt?: { widthPt: number; heightPt: number }
+  /** the Size `boxPt` was measured at, so the dialog reopens on it (not written to the file) */
+  sizePt?: number
 }
 
 /** Picture watermark as written by set_watermark / Word's Design tab. */
@@ -160,6 +168,39 @@ export function pictureWatermarkPreviewImage(
     posHRel: 'margin',
     posVRel: 'margin',
     ...(spec.washout !== false ? { washout: { gain: 0.3, blackLevel: 0.35 } } : {}),
+  }
+}
+
+/** Box of the text watermark shape in points (explicit size, or Word's auto box per layout). */
+export function textWatermarkBoxPt(spec: WatermarkSpec): { widthPt: number; heightPt: number } {
+  if (spec.boxPt) return spec.boxPt
+  return spec.diagonal !== false
+    ? { widthPt: 412.4, heightPt: 247.45 }
+    : { widthPt: 527.85, heightPt: 131.95 }
+}
+
+/** The header image a pending text watermark parses back as (see readWatermarkShape). */
+export function textWatermarkPreviewImage(spec: WatermarkSpec): HfImage {
+  const box = textWatermarkBoxPt(spec)
+  return {
+    dataUrl: '',
+    widthPx: Math.round((box.widthPt * 96) / 72),
+    heightPx: Math.round((box.heightPt * 96) / 72),
+    floating: true,
+    behind: true,
+    posH: 'center',
+    posV: 'center',
+    posHRel: 'margin',
+    posVRel: 'margin',
+    ...(spec.diagonal !== false ? { rotationDeg: 315 } : {}),
+    wordArt: {
+      text: spec.text,
+      colorHex: (spec.colorHex ?? 'C0C0C0').replace(/^#/, '').toUpperCase(),
+      opacity: Math.max(0, Math.min(1, spec.opacity ?? 0.5)),
+      fontFamily: spec.fontFamily ?? 'DengXian',
+      ...(spec.bold ? { bold: true } : {}),
+      ...(spec.italic ? { italic: true } : {}),
+    },
   }
 }
 
@@ -271,9 +312,8 @@ export function pictureWatermarkParagraphXml(
 export function watermarkParagraphXml(spec: string | WatermarkSpec): string {
   const wm = typeof spec === 'string' ? { text: spec } : spec
   const diagonal = wm.diagonal !== false
-  const box = diagonal
-    ? 'width:412.4pt;height:247.45pt;rotation:315;'
-    : 'width:527.85pt;height:131.95pt;'
+  const { widthPt, heightPt } = textWatermarkBoxPt(wm)
+  const box = `width:${widthPt}pt;height:${heightPt}pt;${diagonal ? 'rotation:315;' : ''}`
   const opacity = Math.max(0, Math.min(1, wm.opacity ?? 0.5))
   const fill = wm.colorHex ? `#${wm.colorHex.replace(/^#/, '')}` : 'silver'
   const font = escapeXmlAttr(wm.fontFamily ?? 'DengXian')

@@ -56,7 +56,7 @@ export const readUrlCommand: CommandDef = {
 function offsetOf(args: ParsedArgs): number {
   const raw = args.flags.offset
   if (raw === undefined) return 0
-  if (typeof raw !== 'string' || !/^\d+$/.test(raw.trim())) {
+  if (typeof raw !== 'string' || !/^\d+$/.test(raw.trim()) || !Number.isSafeInteger(Number(raw))) {
     throw new CliError(
       EXIT.usage,
       `--offset must be a non-negative integer (got ${raw === true ? 'nothing' : raw})`,

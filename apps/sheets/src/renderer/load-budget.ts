@@ -1,5 +1,6 @@
 import {
   FORMULA_MODE_MAX_CELLS,
+  FORMULA_MODE_MAX_STORED_CELLS,
   FULL_LOAD_MAX_CELLS,
   FULL_LOAD_MAX_GRID_CELLS,
   FULL_LOAD_MAX_STORED_CELLS,
@@ -41,9 +42,14 @@ export function workbookCellCounts(sheets: readonly CellCountedSheet[]): Workboo
 }
 
 /// Formula mode preloads the whole workbook at open, so it is bounded like
-/// Full Load and additionally by the formulas the engine must hold.
+/// Full Load and additionally by the formulas the engine must hold (value
+/// cells) and by the preload's own cost (stored cells, style-only blanks too).
 export function opensInFormulaMode(counts: WorkbookCellCounts): boolean {
-  return counts.storedCells <= FORMULA_MODE_MAX_CELLS && fitsFullLoad(counts)
+  return (
+    counts.valueCells <= FORMULA_MODE_MAX_CELLS &&
+    counts.storedCells <= FORMULA_MODE_MAX_STORED_CELLS &&
+    fitsFullLoad(counts)
+  )
 }
 
 /// Full Load makes every stored cell resident and the block install writes

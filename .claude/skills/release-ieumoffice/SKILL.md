@@ -1,6 +1,6 @@
 ---
 name: release-ieumoffice
-description: IeumOffice의 새 버전을 내는 작업(버전 올리기, Windows 설치 파일, GitHub 릴리스와 latest.yml, 베타 채널 예행, Mac 빌드)과 앱의 업데이트 창에 그대로 보이는 릴리스 본문 작성·윤문을 맡을 때 읽는다. Use when cutting a release, shipping a version, publishing an installer, writing or polishing release notes, or rehearsing an update on the beta channel.
+description: IeumOffice의 새 버전을 내는 작업(버전 올리기, Windows 설치 파일, GitHub 릴리스와 latest.yml, Mac·Linux 빌드)과 앱의 업데이트 창에 그대로 보이는 릴리스 본문 작성·윤문을 맡을 때 읽는다. Use when cutting a release, shipping a version, publishing an installer, or writing or polishing release notes.
 ---
 
 # 릴리스 작업
@@ -14,22 +14,30 @@ description: IeumOffice의 새 버전을 내는 작업(버전 올리기, Windows
 ## 사람의 승인 없이는 진행하지 않는다
 
 1. Anthropic 상업 약관 동의 확인(releasing.ko.md 1번). 확인 전에는 아무것도 만들지 않는다.
-2. 이번 버전 번호와 공개 방식 — 프리릴리스 예행인지 정식 공개인지. Windows 설치 파일은 Actions의 **Windows build**로 만들어 출처 증명을 붙이는 것이 기본이다(결정 0056). 손 빌드로 바꾸려면 그 이유와 함께 묻는다.
-3. **GitHub에서 "Publish release"를 누르기 전.**
-4. **예행 릴리스의 프리릴리스 표시를 풀기 전** — 그 순간 모든 사용자에게 나간다.
-5. 게시할 릴리스 본문 최종본.
-6. **소개 사이트 저장소(`ieumoffice-site`)에 push하기 전** — push가 곧 공개다. 바뀐 글과 캡처를 먼저 보여 준다.
+2. 이번 버전 번호. 공개는 프리릴리스를 거치지 않고 바로 정식 공개하는 것이 기본이다(releasing.ko.md 4번). 베타 채널로 혼자 먼저 받아 보는 예행(8번)은 저장소 주인이 고를 때만 한다. Windows 설치 파일은 Actions의 **Windows build**로 만들어 출처 증명을 붙이는 것이 기본이다(결정 0056). 손 빌드로 바꾸려면 그 이유와 함께 묻는다.
+3. **GitHub에서 "Publish release"를 누르기 전** — 정식 공개이므로 Windows 파일이 붙는 순간 모든 사용자에게 나간다. 예행을 고른 경우에는 프리릴리스 표시를 풀기 전에도 묻는다.
+4. 게시할 릴리스 본문 최종본.
+5. **소개 사이트 저장소(`ieumoffice-site`)에 push하기 전** — push가 곧 공개다. 바뀐 글과 캡처를 먼저 보여 준다.
+
+## 본문을 쓰기 전에 모으는 것 — 릴리스 때 할 일
+
+병합한 세션이 "다음 버전 소식에 넣을 것", "공개 뒤 확인할 것"을 미리 적어 둔다. 본문 초안을 쓰기 전에 아래를 모두 읽고, 이번 버전에 든 항목을 본문과 확인 목록에 옮긴다.
+
+- `docs/tracking/status.md`의 `## 남은 것`에서 "릴리스 때", "다음 버전 소식", "공개 뒤", "그다음 판"이 든 항목.
+- 지난 태그 뒤 새로 생긴 결정 기록: `git diff --name-only --diff-filter=A <지난 태그>..HEAD -- docs/tracking/decisions/`. 각 기록의 `## 결과`·`## 확인` 절에서 릴리스·소식·사람 확인에 관한 줄.
+- 이번 버전으로 끝난 항목은 공개 뒤 `status.md`에서 지우거나 "확인함"으로 바꾼다. "그다음 판에서 확인"인 항목은 남겨 둔다.
 
 ## 릴리스 본문 — 사용자가 앱 안에서 읽는 글
 
 설치된 앱의 업데이트 창에 본문이 그대로 보인다. GitHub 웹페이지 전용 글이 아니고, 앱은 본문을 번역하지 않는다.
 
-- 순서: 첫 문단에 **한두 줄 요약** → `## 새로 들어간 것` → `## 고친 것` → (선택) `## 알려진 한계` → **맨 아래 `## 설치`**.
+- 순서: 첫 문단에 **한두 줄 요약** → `## 새로 들어간 것` → `## 고친 것` → (선택) `## 알려진 한계` → (선택) `## 도움 주신 분` → **맨 아래 `## 설치`**.
 - 사용자가 체감하는 변화만 쓴다. 내부 리팩터·테스트·의존성 갱신은 동작이 바뀐 경우에만 한 줄. 과장과 약속은 쓰지 않는다.
 - **초안을 쓴 뒤 humanize-korean 스킬로 윤문한다.** AI 티와 번역투를 걷어낸다. 윤문 전 본문으로 게시하지 않는다.
+- 이번 버전에 직접 기여한 분이 있으면 `## 도움 주신 분`에 GitHub 핸들로 적는다. 실명·이메일은 본인 동의 없이 적지 않는다. 전체 목록은 `CONTRIBUTORS.md`에 있다.
 - 한 화면에 핵심이 보이게 쓴다. 창의 내용 상자는 200px에서 스크롤되고, 상한은 원문 256KB·표시 48,000자·12섹션이다.
 - 한국어로 쓴다.
-- `## 설치`에는 그 릴리스에 올리는 플랫폼을 모두 적는다. 지금은 Windows, Mac(베타, Apple Silicon·Intel 두 dmg), Linux(베타) 셋이다. 도름스 업데이트 소식이나 사이트처럼 본문을 옮겨 쓰는 곳도 같다.
+- `## 설치`에는 그 릴리스에 올리는 플랫폼을 모두 적는다. 지금은 Windows, Mac(Apple Silicon·Intel 두 dmg), Linux 셋이다. 도름스 업데이트 소식이나 사이트처럼 본문을 옮겨 쓰는 곳도 같다.
 
 본문 골격:
 
@@ -48,28 +56,34 @@ description: IeumOffice의 새 버전을 내는 작업(버전 올리기, Windows
 
 - …
 
+## 도움 주신 분
+
+- [@handle](https://github.com/handle) — 이번 버전에 기여한 내용
+
 ## 설치
 
 - Windows: …
-- Mac (베타): … (Apple Silicon은 `-arm64.dmg`, Intel은 `-x64.dmg`)
-- Linux (베타): … (AppImage·deb·rpm, README의 "Linux (베타)")
+- Mac: … (Apple Silicon은 `-arm64.dmg`, Intel은 `-x64.dmg`)
+- Linux: … (AppImage·deb·rpm, README의 "Linux")
 ```
 
 ## 릴리스 전에 확인하는 것
 
 - 합치기 전 검사는 `docs/standards.md`의 목록을 따른다.
 - 개발 미리보기: `GENOFFICE_FAKE_UPDATE=9.9.9 npm run dev`로 업데이트 창을 띄운다. 내용 상자, 스크롤, 두 섹션일 때 `vX.Y.Z` 머리글, "GitHub에서 전체 보기"를 본다.
-- 베타 예행(releasing.ko.md 8번)에서 설치본으로 확인한다.
+- 공개 뒤 옛 버전 설치본에서 ☰ → 업데이트 확인…으로 확인한다(releasing.ko.md 4번의 4). 문제가 보이면 10번대로 더 퍼지지 않게 막는다.
   - 새 버전 번호와 바뀐 점이 함께 보이는가
   - 본문이 스크롤되고 글자가 선택되는가
   - 건너뛴 버전이 있으면 버전 머리글이 붙는가
   - `<p>` 같은 HTML 찌꺼기나 깨진 목록이 없는가
   - "지금 업데이트" → 진행률 → "다시 시작 및 설치"가 끝까지 되는가
-  - Mac은 "다운로드 페이지 열기"가 릴리스 페이지를 여는가
+  - Mac도 같은 순서로 새 버전이 열리는가(결정 0097, 그 기능이 든 버전에서 올라갈 때부터). 디스크 이미지에서 바로 연 앱은 "다운로드 페이지 열기"가 릴리스 페이지를 여는가
+  - Windows는 바뀐 부분만 받았는가(결정 0166, 그 기능이 든 버전에서 올라갈 때부터). `%APPDATA%\IeumOffice\update-log.txt`에 `Download block maps`가 찍히고 `Cannot download differentially`가 없으면 된 것이다. 그 줄이 있으면 전체 받기로 넘어간 것이니 까닭(보조 파일 404, 이전 설치 파일 없음 등)을 적는다
+- 릴리스에 `IeumOffice-Setup-<버전>.exe.blockmap`이 붙었는가. 빠지면 업데이트는 되지만 모두 전체를 받는다(결정 0166). Windows build가 붙이고, 손으로 올렸다면 직접 확인한다.
 
 ## 하지 않는 것
 
-- 확인 없이 Publish하거나 프리릴리스 표시를 풀지 않는다.
+- 확인 없이 Publish하지 않는다. 예행을 했다면 프리릴리스 표시도 확인 없이 풀지 않는다.
 - 태그·파일 이름을 바꾸거나 낮은 번호로 되돌리지 않는다. 문제가 있으면 번호를 하나 더 올린다(releasing.ko.md 10번).
 - 설치 파일과 `latest.yml`을 다른 빌드에서 섞지 않는다.
 - 구독 로그인 파일을 읽거나 만지지 않는다(AGENTS.md의 절대 규칙).

@@ -205,9 +205,12 @@ export interface PdfAiDeps {
   searchImages(query: string, maxResults: number): Promise<ImageSearchResponse>
   /** live predicate (a connected Codex subscription or a BYOK media key); false hides generate_image */
   imageGenAvailable?(): boolean
-  generateImage(op: { prompt: string; aspectRatio?: string }): Promise<{
+  /** model: only when the user named one; the app uses it if the current image route offers it */
+  generateImage(op: { prompt: string; aspectRatio?: string; model?: string }): Promise<{
     url?: string
     error?: string
+    /** passed on to the model with the URL */
+    note?: string
   }>
   /** Download a URL (main-process, SSRF-guarded) and re-encode as PNG; null on failure */
   fetchImage(url: string): Promise<{ png: string; width: number; height: number } | null>
@@ -305,6 +308,19 @@ export const AGENT_TOOLS: AgentToolDef[] = [
     },
   },
   {
+    name: 'web_search',
+    description:
+      'Search the web for textual information (references/data/facts). Use when you need up-to-date information or are unsure about a fact. Returns titles/links/snippets.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'Search keywords' },
+        maxResults: { type: 'integer', description: 'Maximum number of results, default 6' },
+      },
+      required: ['query'],
+    },
+  },
+  {
     name: 'read_url',
     description:
       "Read the text of a web page (http/https) — an article, a document, or a skill's instructions (SKILL.md on GitHub). HTML is converted to readable text and links are kept. Long pages are cut at 50,000 characters; continue with offset. Downloads (PDF, images, Office files) are not supported: ask the user to attach those. GitHub blob links are converted to the raw (or API) address automatically; private repositories work when the user adds a read-only GitHub token in settings, and a directory list is readable at api.github.com/repos/…/contents/. Relative links inside a skill document resolve against that document's address.",
@@ -329,7 +345,7 @@ export const AGENT_TOOLS: AgentToolDef[] = [
   {
     name: 'markup_text',
     description:
-      'Add a markup (highlight/underline/strikeout) to a text passage on the given page. text must be a verbatim fragment that actually exists on that page (confirm with read_pages or search_text first); by default only the first occurrence is marked, all=true marks every occurrence on that page.',
+      'Add a markup (highlight/underline/squiggly/strikeout) to a text passage on the given page. text must be a verbatim fragment that actually exists on that page (confirm with read_pages or search_text first); by default only the first occurrence is marked, all=true marks every occurrence on that page.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -337,7 +353,7 @@ export const AGENT_TOOLS: AgentToolDef[] = [
         text: { type: 'string', description: 'Verbatim text fragment from the page' },
         type: {
           type: 'string',
-          enum: ['highlight', 'underline', 'strikeout'],
+          enum: ['highlight', 'underline', 'squiggly', 'strikeout'],
           description: 'Markup type',
         },
         all: {
@@ -434,7 +450,7 @@ export const AGENT_TOOLS: AgentToolDef[] = [
         },
         type: {
           type: 'string',
-          enum: ['highlight', 'underline', 'strikeout'],
+          enum: ['highlight', 'underline', 'squiggly', 'strikeout'],
           description: 'Only remove markups of this kind',
         },
       },
@@ -457,7 +473,7 @@ export const AGENT_TOOLS: AgentToolDef[] = [
   {
     name: 'edit_text',
     description:
-      'Replace a short text run on a page (rewrites the PDF content; takes effect on save). old_text must be a verbatim fragment that actually exists on that page (confirm with read_pages or search_text first); only the first occurrence on the page is edited unless occurrence is given. The replacement is drawn from the original position without reflowing the page, so keep it close to the original length. An empty new_text deletes the run outright (the space it occupied stays blank; nothing moves up) — never substitute a placeholder such as "." for deletion. Alignment cannot be changed here (a run keeps its position); use edit_block with align for that.',
+      'Replace a short text run on a page (rewrites the PDF content; takes effect on save). old_text must be a verbatim fragment that actually exists on that page (confirm with read_pages or search_text first); only the first occurrence on the page is edited unless occurrence is given. The replacement is drawn from the original position without reflowing the page, so keep it close to the original length. When old_text is only part of a line, the rest of that line moves to follow the replacement (the line is redrawn from its start). An empty new_text deletes the run outright (the space it occupied stays blank; nothing moves up) — never substitute a placeholder such as "." for deletion. Alignment cannot be changed here (a run keeps its position); use edit_block with align for that.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -730,6 +746,11 @@ export const AGENT_TOOLS: AgentToolDef[] = [
         aspect_ratio: {
           type: 'string',
           description: 'Aspect ratio: 1:1|4:3|16:9|9:16|3:4|2:3|3:2|auto',
+        },
+        model: {
+          type: 'string',
+          description:
+            'Image model name; set it only when the user named a model. The app uses it if the current image route offers it, otherwise it answers with the models you can use. Omit it to use the model chosen in Settings.',
         },
       },
       required: ['prompt'],
@@ -1266,8 +1287,23 @@ export const AGENT_TOOLS: AgentToolDef[] = [
   },
 ]
 
+/**
+ * What the model is told about an encrypted (read-only) document. Only
+ * changing this file is blocked; told just "cannot be modified", a model
+ * refused document translation as well, which works on an encrypted file.
+ */
+export const ENCRYPTED_CONTEXT =
+  'The document is encrypted, so this file is read-only: tools that change it (text, markup, images, pages, forms, saving) refuse. ' +
+  'Everything that only reads it still works: reading and searching its text, summarizing, answering questions, and document translation with start_document_translation (Markdown or EPUB output; a translated PDF cannot be written from an encrypted file). ' +
+  'Do not refuse those because of the encryption.'
+
 const READONLY_OUTPUT =
-  'The document is encrypted and read-only; it cannot be modified. Inform the user.'
+  'The document is encrypted and read-only; this change cannot be made to it. Tell the user that editing is blocked, ' +
+  'and that reading, summarizing and document translation (start_document_translation, Markdown or EPUB output) still work.'
+
+/** what the translation tool adds for an encrypted document: the window offers no translated PDF */
+const ENCRYPTED_TRANSLATION_NOTE =
+  ' The document is encrypted, so the window offers Markdown and EPUB output only; a translated PDF cannot be written from it. Tell the user this.'
 
 /** mirror of the docs tool-echo guard: reject tool-protocol output pasted as document content */
 function contentEchoError(content: string): string | null {
@@ -1586,11 +1622,35 @@ async function readUrl(input: Record<string, unknown>): Promise<ToolExecution> {
   }
 }
 
+/**
+ * Search the web through the shared ai:web-search handler. The input, the
+ * failure wording and the result text match the other editors' web_search.
+ */
+async function webSearch(input: Record<string, unknown>): Promise<ToolExecution> {
+  const query = String(input.query ?? '').trim()
+  if (!query) return err('query must not be empty', t('aiToolWebSearch'))
+  const r = await window.pdfApi.webSearch(query, Number(input.maxResults) || 6)
+  // a backend failure must not read as "no results" — the model would fabricate conclusions
+  if (r.method === 'error') {
+    return err(
+      `web search failed (service error, not an empty result — you may retry): ${r.error ?? 'unknown error'}`,
+      t('aiToolWebSearch'),
+    )
+  }
+  const lines: string[] = []
+  if (r.answer) lines.push(`Direct answer: ${r.answer}\n`)
+  r.results.forEach((it, i) => lines.push(`${i + 1}. ${it.title}\n   ${it.url}\n   ${it.snippet}`))
+  return {
+    output: lines.join('\n') || '(no results)',
+    summary: t('aiToolWebSearchDone', { query, count: r.results.length }),
+  }
+}
+
 async function markupText(deps: PdfAiDeps, input: Record<string, unknown>): Promise<ToolExecution> {
   const type = String(input.type) as MarkupType
   const summary = t('aiToolMarkup', { page: Number(input.page) })
   if (deps.readOnly()) return err(READONLY_OUTPUT, summary)
-  if (!['highlight', 'underline', 'strikeout'].includes(type))
+  if (!['highlight', 'underline', 'squiggly', 'strikeout'].includes(type))
     return err(`Invalid type: ${type}`, summary)
   const r = resolvePage(deps, input.page)
   if ('bad' in r) return err(r.bad, summary)
@@ -1865,7 +1925,7 @@ const countOccurrences = (entry: PageEntry, query: string): number => {
 
 const HEX_COLOR = /^#?([0-9a-f]{6})$/i
 
-const MARKUP_TYPES: MarkupType[] = ['highlight', 'underline', 'strikeout']
+const MARKUP_TYPES: MarkupType[] = ['highlight', 'underline', 'squiggly', 'strikeout']
 
 async function deleteMarkupTool(
   deps: PdfAiDeps,
@@ -3111,13 +3171,18 @@ async function generateImageTool(
   const summary = t('aiToolGenImage')
   const prompt = String(input.prompt ?? '').trim()
   if (!prompt) return err('prompt must not be empty', summary)
+  // a model the user named; the main process decides whether the image route offers it
+  const model = typeof input.model === 'string' ? input.model.trim() : ''
   const r = await deps.generateImage({
     prompt,
     aspectRatio: input.aspect_ratio === undefined ? undefined : String(input.aspect_ratio),
+    ...(model ? { model } : {}),
   })
   if (!r.url) return err(`image generation failed: ${r.error ?? 'unknown error'}`, summary)
   return {
-    output: `Generated image URL: ${r.url}\nInsert it into the document with insert_image.`,
+    output:
+      `Generated image URL: ${r.url}\nInsert it into the document with insert_image.` +
+      (r.note ? `\nNote: ${r.note}` : ''),
     summary,
   }
 }
@@ -3858,6 +3923,8 @@ export async function executePdfTool(
       return readPages(deps, input, signal)
     case 'search_text':
       return searchText(deps, input)
+    case 'web_search':
+      return webSearch(input)
     case 'read_url':
       return readUrl(input)
     case 'goto_page': {
@@ -4072,7 +4139,8 @@ function startDocumentTranslation(deps: PdfAiDeps, input: Record<string, unknown
       'Opened the document-translation window' +
       (lang ? ` with ${lang} preselected` : '') +
       '. The user now picks the pages and output formats and confirms the calls and the provider; nothing has been sent yet and nothing is translated until they press Start. ' +
-      'The translation then runs as a separate job with its own progress bar and saves the chosen files when it finishes. Tell the user briefly what to do in the window; do not wait for it, do not claim the document was translated, and do not translate it yourself.',
+      'The translation then runs as a separate job with its own progress bar and saves the chosen files when it finishes. Tell the user briefly what to do in the window; do not wait for it, do not claim the document was translated, and do not translate it yourself.' +
+      (deps.readOnly() ? ENCRYPTED_TRANSLATION_NOTE : ''),
     summary,
   }
 }

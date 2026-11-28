@@ -36,9 +36,16 @@ Dalam panel AI editor Docs, Sheets, Slides, Hangul, HTML dan peta minda, anda bo
 - Jika dua dokumen mempunyai nama yang sama tetapi berada dalam folder berbeza, nama folder yang betul-betul di atasnya ditambah, seperti `@rancangan.docx(Semester 2)`, dan nama folder itu turut dihantar kepada AI.
 - Editor PDF dan Markdown belum mempunyai lampiran, jadi kedua-dua cara tidak tersedia di situ.
 
+## Projek
+
+- Klik nama projek di sebelah kiri, di bawah kotak input, untuk memilih projek (satu folder pada PC anda). AI kemudian menjawab dengan mengetahui fail, arahan dan ingatan folder itu, dan perbualan disimpan dalam folder tersebut supaya anda boleh meneruskannya dalam editor lain. Lihat [Projek](help://projects).
+- Apabila projek dipilih, tajuk perbualan semasa dipaparkan di bahagian atas panel. Klik tajuk itu untuk senarai perbualan projek ini dan **Perbualan baharu**.
+- Senarai `@` dalam kotak input memaparkan "Fail dalam projek ini" selepas dokumen yang dibuka.
+- Permintaan dengan projek dipilih turut menghantar arahan (bersama `AGENTS.md` dan `CLAUDE.md` di bahagian atas folder, yang boleh dimatikan di halaman projek), ingatan dan senarai nama fail projek itu, petikan pendek setiap fail yang ditemui AI semasa mencari dalam folder, serta teks mana-mana fail yang dibaca oleh AI, kepada AI yang anda gunakan.
+
 ## Berundur dan keselamatan
 
-- Panel dalam Docs menyimpan **senarai versi** dengan satu gambar keadaan bagi setiap pusingan. Anda boleh berundur ke mana-mana versi dalam senarai itu, dan berundur itu sendiri juga boleh dibatalkan. Gambar keadaan itu kekal walaupun dokumen ditutup dan dibuka semula.
+- Pusingan ketika AI mengubah dokumen akan mendapat kad **Perubahan pada dokumen: N** di bawah jawapannya, dan tempat yang diubah ditanda dengan warna kuning pada dokumen. Tanda itu hanya kelihatan pada skrin — tidak pernah disimpan, dicetak atau dieksport — dan hilang apabila anda menghantar permintaan seterusnya atau menekan **Sembunyikan tanda**. **Buat asal perubahan ini** mengembalikan seluruh pusingan itu sekali gus. Dalam Docs, Markdown, HTML, Slides, peta minda dan rajah, membuat asal pusingan yang lebih awal turut membuat asal pusingan selepasnya; dalam Hangul, Sheets, PDF dan EPUB hanya pusingan terakhir boleh dibuat asal, dan hanya jika dokumen tidak disunting selepas itu. Jika tidak boleh dibuat asal, gunakan Buat asal editor itu sendiri (Ctrl+Z).
 - Suntingan AI menggunakan laluan penyuntingan yang sama seperti suntingan manual, jadi semuanya boleh dibatalkan dan tidak disimpan sehingga anda mengesahkannya.
 
 ## Menyembunyikan pemilihan daripada AI

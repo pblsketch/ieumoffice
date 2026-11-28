@@ -58,3 +58,11 @@ A viewport meta is deliberately absent: this renders in a desktop pane with no m
 The `lang` follows the app's UI language, so the skeleton you insert is the one your tooling is already set up for. Edit it freely afterwards.
 
 The item only appears in edit mode, and only while the document is empty — there is nothing to insert a skeleton _into_ once there is content.
+
+## Edit equation
+
+Type visually or edit LaTeX. Saved HTML keeps the source for later editing.
+
+Choose Insert equation in the toolbar. Use the visual field, templates or LaTeX, then apply. Click a saved equation in the preview to edit it again. For inline math, select a paragraph and turn off the separate-line option; the equation is appended to that paragraph.
+
+An expression the typesetter cannot handle is not lost: the equation keeps its LaTeX source and shows the raw text in the page, so you can open it again and correct it.

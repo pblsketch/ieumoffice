@@ -35,6 +35,19 @@ distributed in the python-docx repository (ref/xsd), with one marked local
 amendment (see tools/ooxml-validate/README.md). They are used only by tests
 and development tooling and are not shipped in the application.
 
+A2UI
+
+The AI question card uses the A2UI v1.0 message format
+(https://github.com/a2ui-project/a2ui, Copyright 2024 Google LLC, licensed
+under the Apache License, Version 2.0). Its catalog definition,
+packages/agent-core/src/question-card-catalog.json, copies the Column, Text,
+ChoicePicker, CheckBox, TextField and Slider component definitions and the
+required function definition unchanged from catalogs/basic/v1/catalog.json at
+commit c26be2dd087b541c46e0296c164ae13bf35f7836. The folder
+packages/agent-core/tests/fixtures/a2ui-v1_0 holds copies of the A2UI v1.0
+JSON schemas from the same commit; they are used only by tests and are not
+shipped in the application.
+
 IeumOffice brand artwork
 
 The IeumOffice app icon, logo lockup and AI button mark are original
@@ -95,15 +108,16 @@ Slide design template fonts
 
 packages/ui/template-fonts holds the fonts the design templates use. It
 ships once in the installer as resources/template-fonts. Every file is the
-original distributor's, unmodified, and is licensed under the SIL Open Font
-License, Version 1.1. Each family's license text sits beside its files, and
+original distributor's, unmodified, except the two Noto Serif KR faces, whose
+CFF outlines are converted to TrueType (names and metrics unchanged); all are
+licensed under the SIL Open Font License, Version 1.1. Each family's license text sits beside its files, and
 packages/ui/template-fonts/README.md records the license evidence and the
 exact source of every file. All files were downloaded on 2026-10-14.
 
 - Pretendard 1.309 (release v1.3.9), SIL OFL 1.1 with Reserved Font Name
   "Pretendard", https://github.com/orioncactus/pretendard
-- Noto Serif KR 2.003, SIL OFL 1.1,
-  https://github.com/notofonts/noto-cjk
+- Noto Serif KR 2.003, SIL OFL 1.1 (Reserved Font Name "Source"), outlines
+  converted to TrueType, https://github.com/notofonts/noto-cjk
 - Black Han Sans 1.001, SIL OFL 1.1,
   https://github.com/google/fonts/tree/main/ofl/blackhansans
 - Do Hyeon 1.001, SIL OFL 1.1,
@@ -121,13 +135,25 @@ exact source of every file. All files were downloaded on 2026-10-14.
 - Archivo Black 1.006, SIL OFL 1.1,
   https://github.com/google/fonts/tree/main/ofl/archivoblack
 
+UI fonts
+
+packages/ui/ui-fonts holds the bundled UI typeface shared by every window and
+editor chrome. It ships once in the installer as resources/ui-fonts. Every file
+is the original distributor's, unmodified, under the SIL Open Font License 1.1;
+packages/ui/ui-fonts/README.md records the license evidence and exact source.
+
+- Pretendard Variable 1.309 (release v1.3.9), SIL OFL 1.1 with Reserved Font
+  Name "Pretendard", https://github.com/orioncactus/pretendard
+
 Built-in skills
 
-apps/shell/resources/builtin-skills holds the five skills shipped with the
-app. It ships in the installer as resources/builtin-skills. Each folder is the
-upstream skill as read at the commit below, with its license file beside it;
-builtin-skills.json in the same folder records the same source, path, commit
-and license. Only the files listed for each skill were taken.
+apps/shell/resources/builtin-skills holds the skills shipped with the app. It
+ships in the installer as resources/builtin-skills. Each folder taken from
+another project is the upstream skill as read at the commit below, with its
+license file beside it; builtin-skills.json in the same folder records the
+same source, path, commit and license. Only the files listed for each skill
+were taken. The folders that file lists with the source "ieumoffice" were
+written for IeumOffice and are under this project's license.
 
 - meeting-minutes: https://github.com/github/awesome-copilot, path
   skills/meeting-minutes (SKILL.md), read at commit
@@ -152,10 +178,21 @@ and license. Only the files listed for each skill were taken.
   License, Copyright (c) 2026 Vercel, Inc.; the repository's LICENSE is copied
   as find-skills/LICENSE. Modified: appended a section for IeumOffice
   ("In IeumOffice") at the end of SKILL.md.
+- docx, pptx, xlsx, pdf: https://github.com/anthropics/skills, paths
+  skills/docx, skills/pptx, skills/xlsx and skills/pdf (every file of each
+  folder: SKILL.md, LICENSE.txt, scripts/, and for pdf also forms.md and
+  reference.md), read at commit 2c5958ecac7cee2b583967a2c4981d0f4a75c579.
+  Apache License, Version 2.0, a work of Anthropic, PBC; the full text is
+  LICENSE.txt in each folder (upstream left the copyright line of its
+  appendix unfilled). Unmodified. scripts/office/schemas in docx, pptx and
+  xlsx holds the ISO/IEC 29500-4:2016 (ECMA-376) schema files, the Open
+  Packaging Conventions schemas and the Microsoft Office extension schemas
+  those skills validate against, exactly as upstream ships them; these ship
+  in the installer inside the skill folders.
 
 IeumOffice modifications
 
-IeumOffice (https://github.com/pblsketch/openoffice) is a modified version of
+IeumOffice (https://github.com/pblsketch/ieumoffice) is a modified version of
 GenOffice (https://github.com/genspark-ai/genoffice), the work this file's
 opening notice refers to. Files of the original work have been changed, added
 and removed by the IeumOffice contributors; the repository history records
@@ -177,6 +214,39 @@ published HWP format document:
 
 (This product was developed with reference to Hancom's published document on
 the Hangul document file format (.hwp).)
+
+Hanja dictionary
+
+The HWP/HWPX editor's Convert to Hanja uses data/hanja/hanja.txt from libhangul
+(https://github.com/libhangul/libhangul), cut down at build time. That file is
+distributed under the following license:
+
+Copyright (c) 2005,2006 Choe Hwanjin
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+1. Redistributions of source code must retain the above copyright notice,
+   this list of conditions and the following disclaimer.
+2. Redistributions in binary form must reproduce the above copyright notice,
+   this list of conditions and the following disclaimer in the documentation
+   and/or other materials provided with the distribution.
+3. Neither the name of the author nor the names of its contributors
+   may be used to endorse or promote products derived from this software
+   without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
+LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGE.
 
 Trademarks
 

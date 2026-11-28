@@ -1,0 +1,48 @@
+<!-- IEUM_MOBILE_INTENT_FILTERS_START -->
+<intent-filter android:autoVerify="true">
+    <action android:name="android.intent.action.VIEW" />
+    <category android:name="android.intent.category.DEFAULT" />
+    <category android:name="android.intent.category.BROWSABLE" />
+    <data
+        android:scheme="https"
+        android:host="ieumoffice.com"
+        android:pathPrefix="/mobile/auth/callback" />
+</intent-filter>
+
+<intent-filter>
+    <action android:name="android.intent.action.VIEW" />
+    <category android:name="android.intent.category.DEFAULT" />
+    <category android:name="android.intent.category.BROWSABLE" />
+    <data android:scheme="ieumoffice" />
+</intent-filter>
+
+<intent-filter>
+    <action android:name="android.intent.action.VIEW" />
+    <action android:name="android.intent.action.EDIT" />
+    <category android:name="android.intent.category.DEFAULT" />
+    <category android:name="android.intent.category.BROWSABLE" />
+    <data android:scheme="content" />
+    <data android:scheme="file" />
+    <data android:mimeType="application/x-hwp" />
+    <data android:mimeType="application/haansofthwp" />
+    <data android:mimeType="application/vnd.hancom.hwp" />
+    <data android:mimeType="application/hwp+zip" />
+    <data android:mimeType="application/vnd.hancom.hwpx" />
+    <data android:mimeType="text/markdown" />
+    <data android:mimeType="text/plain" />
+    <data android:mimeType="application/octet-stream" />
+</intent-filter>
+
+<intent-filter>
+    <action android:name="android.intent.action.SEND" />
+    <category android:name="android.intent.category.DEFAULT" />
+    <data android:mimeType="application/x-hwp" />
+    <data android:mimeType="application/haansofthwp" />
+    <data android:mimeType="application/vnd.hancom.hwp" />
+    <data android:mimeType="application/hwp+zip" />
+    <data android:mimeType="application/vnd.hancom.hwpx" />
+    <data android:mimeType="text/markdown" />
+    <data android:mimeType="text/plain" />
+    <data android:mimeType="application/octet-stream" />
+</intent-filter>
+<!-- IEUM_MOBILE_INTENT_FILTERS_END -->

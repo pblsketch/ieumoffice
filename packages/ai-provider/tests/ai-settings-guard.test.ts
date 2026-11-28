@@ -73,6 +73,14 @@ describe('sanitizeAiSettings', () => {
     expect(Object.keys(sanitized!.providers)).toEqual(['openai'])
   })
 
+  it("drops a key provider's live model list: only the main process writes it (decision 0087)", () => {
+    const sanitized = sanitizeAiSettings({
+      ...baseSettings(),
+      providers: { gemini: { apiKey: 'k', model: 'm', models: ['planted'] } },
+    })
+    expect(sanitized!.providers.gemini).toEqual({ apiKey: 'k', model: 'm' })
+  })
+
   it('drops the reported attack payload verbatim shape (cliPath injection, ftp baseUrl)', () => {
     // exactly the payload the reviewer flagged: pre-guard, ai:set-settings
     // persisted this to ai-settings.json unchanged
@@ -221,6 +229,81 @@ describe('sanitizeAiSettings', () => {
     expect(providers.openai.baseUrl).toBeUndefined()
     expect(providers.custom.baseUrl).toBe(normalizeBaseUrl('https://mirror.test/v1/', ''))
     expect(providers.gemini.baseUrl).toBeUndefined()
+  })
+
+  it('keeps local kind, model profiles and timeout on a custom endpoint', () => {
+    const profile = {
+      contextLength: 32_768,
+      maxContextLength: 131_072,
+      tools: true,
+      vision: false,
+      contextSource: 'server',
+      toolsSource: 'test',
+      visionSource: 'user',
+      checkedAt: 1_700_000_000_000,
+      notes: 'Apache-2.0',
+    }
+    const sanitized = sanitizeAiSettings({
+      provider: 'custom',
+      providers: {
+        custom: { apiKey: '', model: 'qwen3:8b', baseUrl: 'http://127.0.0.1:11434/v1' },
+      },
+      customEndpoints: [
+        {
+          id: 'loc',
+          name: 'Ollama',
+          baseUrl: 'http://127.0.0.1:11434/v1',
+          apiKey: '',
+          model: 'qwen3:8b',
+          models: ['qwen3:8b'],
+          kind: 'local',
+          modelProfiles: { 'qwen3:8b': profile },
+          timeoutMs: 300_000,
+        },
+      ],
+      customEndpoint: 'loc',
+    })
+    const endpoint = sanitized!.customEndpoints![0]!
+    expect(endpoint.kind).toBe('local')
+    expect(endpoint.timeoutMs).toBe(300_000)
+    expect(endpoint.modelProfiles).toEqual({ 'qwen3:8b': profile })
+  })
+
+  it('drops malformed local values and keeps only bounded profile data', () => {
+    const sanitized = sanitizeAiSettings({
+      provider: 'custom',
+      providers: {},
+      customEndpoints: [
+        {
+          id: 'loc',
+          name: 'Ollama',
+          baseUrl: 'http://127.0.0.1:11434/v1',
+          apiKey: '',
+          model: 'qwen3:8b',
+          kind: 'remote',
+          timeoutMs: 600_001,
+          modelProfiles: {
+            'qwen3:8b': {
+              contextLength: 0,
+              maxContextLength: -2,
+              tools: 'true',
+              vision: 'no',
+              contextSource: 'server-ish',
+              toolsSource: 3,
+              checkedAt: -1,
+              notes: `  ${'n'.repeat(700)}  `,
+            },
+            ['m'.repeat(300)]: { tools: true },
+          },
+        },
+      ],
+      customEndpoint: 'loc',
+    })
+    const endpoint = sanitized!.customEndpoints![0]!
+    expect(endpoint.kind).toBeUndefined()
+    expect(endpoint.timeoutMs).toBeUndefined()
+    expect(Object.keys(endpoint.modelProfiles!)).toEqual(['qwen3:8b'])
+    expect(endpoint.modelProfiles!['qwen3:8b']).toEqual({ notes: 'n'.repeat(500) })
   })
 })
 

@@ -19,6 +19,7 @@
 import { extname, join } from 'node:path'
 import {
   handoffEditorForFile,
+  handoffEditorTakesAttachments,
   queueSkillHandoffFor,
   takeSkillHandoff,
   type HandoffEditor,
@@ -81,8 +82,19 @@ export interface TemplateTabsDeps {
    * could not. `ownsCopy` true when the editor removes the folder itself.
    */
   openCopy(copy: TemplateCopy): Promise<(OpenedCopyTab & { ownsCopy?: boolean }) | null>
+  /**
+   * The saved document of the tab whose AI panel asked (by its webContents
+   * id): its path when it has one and no unsaved changes, `unsaved` when it
+   * was never saved or has unsaved changes. Absent: nothing is attached.
+   */
+  currentDocumentOf?(openerId: number): Promise<{ path: string } | 'unsaved'>
   /** bring a tab to the front; false when it is gone */
   focusTab(tabId: string): boolean
+  /**
+   * A skill template's copy opened for the panel of `openerId` (spec 6): the
+   * shell lets the new tab follow that panel's project. Not called for a preview.
+   */
+  copyOpenedFor?(contents: CopyTabContents, openerId: number): void
   newId(): string
   now(): number
 }
@@ -156,13 +168,28 @@ export function createTemplateTabs(deps: TemplateTabsDeps) {
   return {
     /**
      * Spec 5.7: the template of the skill a request names, copied into a new
-     * tab of its editor, with the request and every chip handed over.
+     * tab of its editor, with the request and every chip handed over. With
+     * `withCurrent`, the asking tab's saved document goes along for the new
+     * tab to attach; a document never saved or with unsaved changes is
+     * refused (`unsaved`) and nothing opens. `attached` is false when the
+     * template's editor takes no attachments (markdown, PDF).
      */
     async openTemplate(
       input: UserSkillTemplateOpenInput,
-    ): Promise<UserSkillsResult<{ tabId: string }>> {
+      openerId?: number,
+    ): Promise<UserSkillsResult<{ tabId: string; attached: boolean }>> {
       const template = await deps.templateFileOf(input.skillId)
       if (!template.ok) return template
+      const editor = handoffEditorForFile(template.fileName)
+      let attach: string[] | undefined
+      if (input.withCurrent === true && editor && handoffEditorTakesAttachments(editor)) {
+        const current =
+          openerId !== undefined && deps.currentDocumentOf
+            ? await deps.currentDocumentOf(openerId).catch(() => 'unsaved' as const)
+            : ('unsaved' as const)
+        if (current === 'unsaved') return fail('unsaved')
+        attach = [current.path]
+      }
       let bytes: Uint8Array
       try {
         bytes = await deps.readFile(template.path)
@@ -179,10 +206,13 @@ export function createTemplateTabs(deps: TemplateTabsDeps) {
           target,
           text: input.text,
           chips: input.chips,
+          ...(attach ? { attach } : {}),
           createdAt: deps.now(),
         }),
       )
-      return opened.ok ? { ok: true, tabId: opened.tabId } : opened
+      if (!opened.ok) return opened
+      if (openerId !== undefined) deps.copyOpenedFor?.(opened.contents, openerId)
+      return { ok: true, tabId: opened.tabId, attached: attach !== undefined }
     },
 
     /**

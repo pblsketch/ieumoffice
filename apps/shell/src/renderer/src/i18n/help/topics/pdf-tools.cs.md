@@ -1,46 +1,54 @@
 # Nástroje PDF
 
-Okno pro běžné práce s PDF, které začíná úkolem. Výsledek se vždy uloží jako nový soubor a originál se nezmění. Nástroje v tomto okně pracují jen na tomto počítači a nepoužívají AI.
+Okno pro běžné úlohy s PDF, uspořádané podle činnosti. Výsledek se vždy uloží jako nový soubor a původní zůstane beze změny. Všechny nástroje pracují pouze na tomto počítači a nepoužívají AI.
 
 ## Jak to funguje
 
-1. Na domovské obrazovce klikněte na kartu **Nástroje PDF**. Otevře se samostatné okno.
-2. Vyberte úkol, potřebné soubory a možnosti a klikněte na **Uložit jako nový soubor**.
-3. Po uložení **Otevřít na kartě** hned ukáže výsledek a **Zobrazit ve složce** otevře jeho složku.
+1. Na úvodní obrazovce klikněte na kartu **Nástroje PDF**, nebo otevřete **Nástroje PDF** z karty **Stránka** v editoru PDF. Otevře se samostatné okno.
+2. Vyberte úlohu (nebo ji vyhledejte podle názvu), zvolte či přetáhněte potřebné soubory, nastavte možnosti a klikněte na **Uložit jako nový soubor**.
+3. Po uložení **Otevřít na kartě** ihned zobrazí výsledek, **Zobrazit ve složce** otevře složku a **Pokračovat s tímto souborem** předá výsledek rovnou dalšímu nástroji.
 
 ## Nástroje
 
-| Skupina                | Nástroje                                                                                                    |
-| ---------------------- | ----------------------------------------------------------------------------------------------------------- |
-| Uspořádání stránek     | Sloučit PDF, Rozdělit PDF, Extrahovat stránky jako PDF, Obrátit pořadí, Otočit vše, Odebrat prázdné stránky |
-| Příprava k tisku       | Připravit pro oboustranný tisk, Sloučit stránky, Velikost stránky, Rozdělit stránky                         |
-| Zdobení                | Přidat pozadí                                                                                               |
-| Úklid                  | Odebrat poznámky                                                                                            |
-| Převést                | Obrázky do PDF, Uložit jako text                                                                            |
-| Velikost a zabezpečení | Zmenšit, Přidat heslo, Odebrat heslo, Opravit soubor                                                        |
-| V editoru PDF          | Vodoznak a záhlaví/zápatí, Oříznout stránky, Exportovat obrázky, Převodník PDF, Úpravy, podpis, začernění   |
+| Skupina                | Nástroje                                                                                                                                          |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Uspořádání stránek     | Sloučit PDF, Rozdělit PDF, Extrahovat stránky jako PDF, Uspořádat stránky, Střídavé sloučení, Obrátit pořadí, Otočit vše, Odebrat prázdné stránky |
+| Příprava k tisku       | Připravit pro oboustranný tisk, Sloučit stránky, Velikost stránky, Rozdělit stránky                                                               |
+| Zdobení                | Přidat pozadí                                                                                                                                     |
+| Úklid                  | Odebrat poznámky                                                                                                                                  |
+| Převést                | Obrázky do PDF, Dokumenty do PDF, Exportovat obrázky, Převodník PDF, Uložit jako text, OCR naskenovaného PDF                                      |
+| Velikost a zabezpečení | Zmenšit, Přidat heslo, Odebrat heslo, Opravit soubor                                                                                              |
+| V editoru PDF          | Vodoznak a záhlaví/zápatí, Oříznout stránky, Úpravy, podpis, začernění                                                                            |
 
-Karty ve skupině **V editoru PDF** otevřou vybrané PDF na kartě editoru. Tam vyberte příkaz na pásu karet.
+Karty ve skupině **V editoru PDF** otevřou vybrané PDF na kartě editoru. Příkaz pak zvolte na pásu karet.
 
 ## Dobré vědět
 
-- Nelze ukládat přes zdrojový soubor ani přes soubor otevřený s neuloženými změnami.
-- PDF chráněné heslem lze v ostatních nástrojích použít až po **Odebrat heslo**. Soubor, jehož heslo neznáte, otevřít nelze.
-- **Opravit soubor** obnoví jen ty části, které jsou ještě čitelné. Otevřete nový soubor a zkontrolujte, že nechybí žádná stránka.
-- **Odebrat prázdné stránky** jen ukazuje kandidáty. Odeberou se jen vybrané stránky a stránka s jediným znakem nikdy není kandidátem.
-- **Odebrat poznámky** ponechá pole formuláře a odkazy odebere jen po zaškrtnutí. Obsah odebraných poznámek v novém souboru nezůstane.
-- **Uložit jako text** čte jen textovou vrstvu. Stránky, kde je text obrázkem, například naskenované, budou prázdné.
+- Nelze přepsat zdrojový soubor ani soubor otevřený s neuloženými změnami.
+- Soubory lze do okna přímo přetáhnout. Nástroje pro jedno PDF podporují také **Dávkový režim**, které zpracuje více PDF do jedné výstupní složky (kromě Rozdělit PDF).
+- Přidáte-li PDF chráněné heslem, zadejte heslo přímo v okně pro odemknutí nešifrované kopie pro tuto úlohu. Soubor bez známého hesla nelze otevřít.
+- **Zmenšit** zobrazuje rozpis velikosti (obrázky, písma, proudy, metadata) a podporuje úrovně komprese, cílovou velikost, odstíny šedi, optimalizaci pro web i odstranění metadat.
+- **Uspořádat stránky** umožňuje měnit pořadí, otáčet, duplikovat, mazat a vkládat prázdné stránky podle miniatur a kombinovat stránky z více PDF.
+- **Dokumenty do PDF** převádí soubory Word, Excel, PowerPoint, HWP, Markdown, HTML, myšlenkové mapy a EPUB do PDF (jednotlivě nebo sloučené). U souborů HTML nebo Markdown odkazujících na vzdálené webové obrázky mohou být tyto adresy během vykreslení staženy, stejně jako při běžném exportu do PDF.
+- **OCR naskenovaného PDF** přidává do naskenovaných PDF neviditelnou prohledávatelnou textovou vrstvu pomocí vestavěného offline OCR.
+- **Opravit soubor** obnoví pouze části, které lze ještě přečíst. Otevřete nový soubor a zkontrolujte, zda nechybí žádná stránka.
+- **Odebrat prázdné stránky** pouze navrhne kandidáty. Odstraní se jen zaškrtnuté stránky a stránka s byť jediným znakem není nikdy navržena.
+- **Odebrat poznámky** zachová pole formulářů a odkazy smaže jen při zaškrtnutí. Obsah odstraněných poznámek v novém souboru nezůstane.
+- **Rozdělit PDF** umí dělit podle vlastních rozsahů (i sloučit do jednoho souboru), počtu stran, záložek nebo maximální velikosti souboru, s volbou názvů a podsložky.
 
-## Hodí se, když
+## Vyzkoušejte pro
 
-| Situace                                                                           | Nástroje                                         |
-| --------------------------------------------------------------------------------- | ------------------------------------------------ |
-| Tisknete oboustranně několik dokumentů najednou a každý má začít na přední straně | Připravit pro oboustranný tisk → Sloučit stránky |
-| Naskenovaný dokument má obrácené pořadí nebo ležící stránky                       | Obrátit pořadí, Otočit vše                       |
-| Mezi stránkami naskenovaného svazku jsou prázdné stránky                          | Odebrat prázdné stránky                          |
-| Chcete na každou stránku dát hlavičkový papír firmy nebo instituce                | Přidat pozadí                                    |
-| Před odesláním zkontrolovaného dokumentu uklízíte komentáře                       | Odebrat poznámky                                 |
-| Odevzdáváte několik fotek jako jedno PDF                                          | Obrázky do PDF                                   |
-| Chcete použít text z PDF v jiném dokumentu                                        | Uložit jako text                                 |
-| PDF je příliš velké na přílohu e-mailu                                            | Zmenšit                                          |
-| PDF, jehož stahování se přerušilo, nejde otevřít                                  | Opravit soubor                                   |
+| Situace                                                                       | Použité nástroje                                 |
+| ----------------------------------------------------------------------------- | ------------------------------------------------ |
+| Oboustranný tisk více dokumentů najednou, aby každý začínal na lícové straně  | Připravit pro oboustranný tisk → Sloučit stránky |
+| Spojení lichých a sudých stránek z jednostranného skeneru do jednoho PDF      | Střídavé sloučení                                |
+| Změna pořadí stránek, smazání přebytečných nebo vložení prázdného listu       | Uspořádat stránky                                |
+| Převod naskenovaného PDF na prohledávatelné PDF                               | OCR naskenovaného PDF                            |
+| Převod souborů Office, HWP, Markdown, HTML, myšlenkových map nebo EPUB do PDF | Dokumenty do PDF                                 |
+| Uložení stránek PDF jako obrázků PNG nebo JPG (případně ZIP)                  | Exportovat obrázky                               |
+| Převod PDF do Wordu, Excelu, PowerPointu, HWPX, Markdownu nebo EPUB           | Převodník PDF                                    |
+| Zmenšení PDF pro splnění limitu přílohy e-mailu                               | Zmenšit                                          |
+| Přidání hlavičkového papíru firmy či instituce na každou stránku              | Přidat pozadí                                    |
+| Vyčištění komentářů před odesláním zkontrolovaného dokumentu                  | Odebrat poznámky                                 |
+| Spojení několika fotek do jednoho PDF s vlastním otočením a kvalitou          | Obrázky do PDF                                   |
+| Nedostahované PDF nelze otevřít                                               | Opravit soubor                                   |

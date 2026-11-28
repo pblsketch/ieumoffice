@@ -38,8 +38,15 @@ import {
 import { COPY_TYPE, ISheetClipboardService } from '@univerjs/sheets-ui'
 
 import { formatAddress } from '@genoffice/xlsx-gateway/domain/cell-address'
+import {
+  extractExternalHtmlFormulas,
+  resolveExternalFormulaAt,
+  type ExternalHtmlFormulas,
+} from './formula-clipboard'
+import { indexedFormulaText } from './formula-view'
 import { sharedFormulaResolverFor } from './shared-formula-journal'
-import type { UniverRuntime } from './univer-state'
+import { formulaKeepsCache } from './univer-sync'
+import type { LazyWorkbookState, UniverRuntime } from './univer-state'
 
 export const PASTE_SPECIAL_OPEN_SHELL_COMMAND = 'paste-special-open'
 
@@ -85,7 +92,11 @@ export type PasteSpecialSource =
       readonly cols: readonly number[]
       readonly cut: boolean
     }
-  | { readonly kind: 'text'; readonly rows: CellGrid<string> }
+  | {
+      readonly kind: 'text'
+      readonly rows: CellGrid<string>
+      readonly formulas?: ExternalHtmlFormulas
+    }
   | { readonly kind: 'none' }
 
 /// Paste types the dialog disables (Univer has no note/validation-only paste).
@@ -158,8 +169,11 @@ export function pasteSpecialAvailability(source: PasteSpecialSource): PasteSpeci
     }
   }
   if (source.kind === 'text') {
+    const types = new Set<PasteSpecialType>(
+      source.formulas ? ['all', 'formulas', 'values'] : ['all', 'values'],
+    )
     return {
-      types: new Set(['all', 'values']),
+      types,
       operation: false,
       skipBlanks: false,
       transpose: true,
@@ -514,7 +528,18 @@ export async function readPasteSpecialSource(runtime: UniverRuntime): Promise<Pa
   const copyId = /data-copy-id="([^\s"]+)"/.exec(html)?.[1] ?? null
   const internal = internalSource(cache, copyId)
   if (internal) return internal
-  if (text.trim() !== '') return { kind: 'text', rows: parseClipboardText(text) }
+  const externalFormulas = html ? (extractExternalHtmlFormulas(html) ?? undefined) : undefined
+  if (text.trim() !== '') {
+    return externalFormulas
+      ? { kind: 'text', rows: parseClipboardText(text), formulas: externalFormulas }
+      : { kind: 'text', rows: parseClipboardText(text) }
+  }
+  if (externalFormulas) {
+    const rows = Array.from({ length: externalFormulas.rows }, () =>
+      Array.from({ length: externalFormulas.cols }, () => ''),
+    )
+    return { kind: 'text', rows, formulas: externalFormulas }
+  }
   return lastCopy ?? { kind: 'none' }
 }
 
@@ -522,6 +547,7 @@ function readSourceGrid(
   runtime: UniverRuntime,
   source: Extract<PasteSpecialSource, { kind: 'internal' }>,
   workbook: Workbook,
+  lazyWorkbookRef?: { readonly current: LazyWorkbookState | null },
 ): CellGrid<SourceGridCell> | null {
   const worksheet = workbook.getSheetBySheetId(source.subUnitId)
   if (!worksheet) return null
@@ -530,7 +556,17 @@ function readSourceGrid(
     source.cols.map((column) => {
       const raw = worksheet.getCellRaw(row, column)
       const shown = worksheet.getCell(row, column)
-      const f = raw?.f ?? (raw?.si ? resolveShared(row, column, raw.si) : null) ?? null
+      const indexed = indexedFormulaText(
+        lazyWorkbookRef?.current ?? null,
+        source.subUnitId,
+        row,
+        column,
+      )
+      const f =
+        raw?.f ??
+        (raw?.si ? resolveShared(row, column, raw.si) : null) ??
+        (indexed && !formulaKeepsCache(indexed) ? indexed : null) ??
+        null
       const style = worksheet.getComposedCellStyleByCellData(row, column, raw)
       const cell: SourceCell =
         raw || shown
@@ -555,6 +591,7 @@ export async function applyPasteSpecial(
   runtime: UniverRuntime,
   source: PasteSpecialSource,
   options: PasteSpecialOptions,
+  lazyWorkbookRef?: { readonly current: LazyWorkbookState | null },
 ): Promise<PasteSpecialResult> {
   if (source.kind === 'none') return { ok: false, reason: 'nothing' }
   if (!needsOwnLayer(options) || (source.kind === 'internal' && source.cut)) {
@@ -568,26 +605,48 @@ export async function applyPasteSpecial(
   const selection = fWorkbook?.getActiveRange()
   if (!fWorkbook || !fSheet || !selection) return { ok: false, reason: 'no-selection' }
   const targetSheet: Worksheet = fSheet.getSheet()
+  const startRow = selection.getRow()
+  const startColumn = selection.getColumn()
   let grid: CellGrid<SourceGridCell> | null
   let linkSheetName: string | null = null
   if (source.kind === 'internal') {
     const sourceWorkbook = injector.get(IUniverInstanceService).getUnit<Workbook>(source.unitId)
     if (!sourceWorkbook) return { ok: false, reason: 'nothing' }
-    grid = readSourceGrid(runtime, source, sourceWorkbook)
+    grid = readSourceGrid(runtime, source, sourceWorkbook, lazyWorkbookRef)
     const sourceSheet = sourceWorkbook.getSheetBySheetId(source.subUnitId)
     linkSheetName =
       sourceSheet && source.subUnitId !== targetSheet.getSheetId() ? sourceSheet.getName() : null
   } else {
-    grid = source.rows.map((row) =>
-      row.map((text) => ({ cell: textCell(text), row: null, column: null })),
+    const externalFormulas = source.formulas
+    const allowOriginlessRelative =
+      options.type === 'formulas' || options.type === 'formulas-numfmt'
+    const availableSheetNames = new Set(
+      fWorkbook.getSheets().map((sheet) => sheet.getSheetName().toLowerCase()),
+    )
+    grid = source.rows.map((row, rIdx) =>
+      row.map((text, cIdx) => {
+        const baseCell = textCell(text)
+        const formula = externalFormulas
+          ? resolveExternalFormulaAt(
+              externalFormulas,
+              rIdx,
+              cIdx,
+              startRow + rIdx,
+              startColumn + cIdx,
+              startRow + rIdx,
+              startColumn + cIdx,
+              { allowOriginlessRelative, availableSheetNames },
+            )
+          : null
+        const cell: SourceCell = formula ? { ...(baseCell ?? { v: null }), f: formula } : baseCell
+        return { cell, row: null, column: null }
+      }),
     )
   }
   if (!grid) return { ok: false, reason: 'nothing' }
   const lexer = injector.get(LexerTreeBuilder)
   const relocate: RelocateFormula = (formula, rowDelta, columnDelta) =>
     lexer.moveFormulaRefOffset(formula, columnDelta, rowDelta)
-  const startRow = selection.getRow()
-  const startColumn = selection.getColumn()
   const built = buildPasteGrid(
     grid,
     options,

@@ -35,6 +35,13 @@ import type {
 } from '@genoffice/pptx-render'
 import { boxPivotProps, fillToKonva, isConnectorNode, isEditableText } from './konva-adapter'
 import { tableCellAtPoint, tableCellOverlayBox, tableLocalPointFromStage } from './table-hit'
+import {
+  isOnTableBorder,
+  makeTableCellSelection,
+  tableSelectionBounds,
+  type CellCoord,
+  type TableCellSelection,
+} from './table-selection'
 import { EDGE_GRIP_PX, isPromptPlaceholder, textHitAtPoint } from './text-hit-area'
 import type { EditCaret, EditPointsState } from './action-context'
 import {
@@ -45,6 +52,7 @@ import {
   type SpacingIndicator,
 } from './snap'
 import { NodeBody, StaticNode } from './NodeBody'
+import { aiChangedMarkColors, tableCellSelectionColors } from './canvas-colors'
 import { ZOOM_PREVIEW_EVENT } from './zoom-preview'
 import { useI18n } from './i18n/locale'
 import {
@@ -392,12 +400,18 @@ function findNodeDeep(nodes: RenderNode[], id: string): RenderNode | undefined {
 export interface SlideCanvasHandle {
   /** Start dragging a node from a press that landed outside the stage (the text-edit overlay's frame). */
   startNodeDrag: (sourceId: string, ev: MouseEvent) => void
+  /** Hit-test a table cell from viewport client coordinates (zoom/scroll/rotation aware). */
+  tableCellAtClientPoint: (sourceId: string, clientX: number, clientY: number) => CellCoord | null
+  /** Continue a multi-cell range selection drag handed off from an open cell text overlay. */
+  startTableCellDrag: (sourceId: string, anchor: CellCoord, ev: MouseEvent) => void
 }
 
 interface Props {
   ref?: React.Ref<SlideCanvasHandle>
   slide: RenderSlide
   selectedIds: string[]
+  /** Elements the AI panel's last run changed: tinted on this edit canvas only */
+  aiMarkedIds?: readonly string[]
   onSelect: (sourceId: string | null, additive?: boolean) => void
   /** caret = viewport coordinates of the double-click (editor places the caret/selects the word there; defaults to caret at end) */
   onEditText: (sourceId: string, caret?: EditCaret) => void
@@ -409,8 +423,12 @@ interface Props {
     preview?: boolean,
     groupId?: string,
   ) => void
-  /** Double-click a table cell: row/col are model coordinates */
-  onEditTableCell: (sourceId: string, row: number, col: number) => void
+  /** Click/double-click/drag-select a table cell: row/col are model coordinates */
+  onEditTableCell: (sourceId: string, row: number, col: number, caret?: EditCaret) => void
+  /** Currently selected rectangular cell range on a table (null when none) */
+  tableSelection?: TableCellSelection | null
+  /** Update the multi-cell selection on a table (null clears) */
+  onSelectTableCells?: (sel: TableCellSelection | null) => void
   /** Double-click an audio/video element: trigger the playback overlay */
   onPlayMedia?: (sourceId: string) => void
   /** Double-click a non-text object: activate its contextual ribbon tab */
@@ -838,10 +856,13 @@ function AdjustHandles({
 export function SlideCanvas({
   slide,
   selectedIds,
+  aiMarkedIds,
   onSelect,
   onEditText,
   onTransform,
   onEditTableCell,
+  tableSelection,
+  onSelectTableCells,
   onTableColResize,
   onTableRowResize,
   onPlayMedia,
@@ -871,6 +892,25 @@ export function SlideCanvas({
   const layerRef = useRef<Konva.Layer>(null)
   const stageRef = useRef<Konva.Stage>(null)
 
+  const tableDragCleanupRef = useRef<(() => void) | null>(null)
+  useEffect(() => () => tableDragCleanupRef.current?.(), [])
+
+  const clientToTableCell = (
+    tbl: TableRenderNode,
+    clientX: number,
+    clientY: number,
+  ): CellCoord | null => {
+    const stage = stageRef.current
+    if (!stage) return null
+    const rect = stage.container().getBoundingClientRect()
+    if (!rect.width || !rect.height) return null
+    const sx = ((clientX - rect.left) / rect.width) * stage.width()
+    const sy = ((clientY - rect.top) / rect.height) * stage.height()
+    const local = tableLocalPointFromStage({ x: sx, y: sy }, tbl.box, CANVAS_BLEED)
+    const hit = tableCellAtPoint(tbl, local)
+    return hit ? { row: hit.row, col: hit.col } : null
+  }
+
   useImperativeHandle(ref, () => ({
     startNodeDrag(sourceId, ev) {
       const stage = stageRef.current
@@ -880,6 +920,40 @@ export function SlideCanvas({
       // the window mousemove handler starts it once the pointer travels dragDistance
       stage.setPointersPositions(ev)
       n.fire('mousedown', { evt: ev, type: 'mousedown', target: n, currentTarget: n }, false)
+    },
+    tableCellAtClientPoint(sourceId, clientX, clientY) {
+      const tbl = slide.nodes.find((n) => n.sourceId === sourceId)
+      if (!tbl || tbl.type !== 'table') return null
+      return clientToTableCell(tbl as TableRenderNode, clientX, clientY)
+    },
+    startTableCellDrag(sourceId, anchor, initialEv) {
+      const tbl = slide.nodes.find((n) => n.sourceId === sourceId)
+      if (!tbl || tbl.type !== 'table' || !onSelectTableCells) return
+      const table = tbl as TableRenderNode
+      tableDragCleanupRef.current?.()
+      const updateAt = (clientX: number, clientY: number) => {
+        const hit = clientToTableCell(table, clientX, clientY)
+        if (!hit) return
+        onSelectTableCells(makeTableCellSelection(table, anchor, hit))
+      }
+      updateAt(initialEv.clientX, initialEv.clientY)
+      const onMove = (ev: MouseEvent) => {
+        if ((ev.buttons & 1) === 0) {
+          finish()
+          return
+        }
+        updateAt(ev.clientX, ev.clientY)
+      }
+      const finish = () => {
+        tableDragCleanupRef.current?.()
+      }
+      window.addEventListener('mousemove', onMove)
+      window.addEventListener('mouseup', finish)
+      tableDragCleanupRef.current = () => {
+        window.removeEventListener('mousemove', onMove)
+        window.removeEventListener('mouseup', finish)
+        tableDragCleanupRef.current = null
+      }
     },
   }))
 
@@ -1465,6 +1539,9 @@ export function SlideCanvas({
             gestureCancelRef={gestureCancelRef}
             onTransformCancel={onTransformCancel}
             onEditTableCell={onEditTableCell}
+            tableSelection={tableSelection}
+            onSelectTableCells={onSelectTableCells}
+            clientToTableCell={clientToTableCell}
             onPlayMedia={onPlayMedia}
             onOpenContextTab={onOpenContextTab}
             onDragGuides={(g, sp) => {
@@ -1623,6 +1700,9 @@ export function SlideCanvas({
           // rtl tables render mirrored: gridX stays logical, so visual boundary = width − gridX
           const tblGridW = tbl.gridX[tbl.gridX.length - 1] ?? n.box.w
           const visX = (i: number) => (tbl.rtl ? tblGridW - tbl.gridX[i]! : tbl.gridX[i]!)
+          const gripHalf = Math.min(3, 2.5 / Math.max(zoom, 0.1))
+          const gripW = gripHalf * 2
+          const gripDragDist = 3 / Math.max(zoom, 0.1)
           return [
             ...tbl.gridX.slice(1).flatMap((_, col) =>
               spansX(visX(col + 1))
@@ -1630,12 +1710,13 @@ export function SlideCanvas({
                 : [
                     <Rect
                       key={`colgrip_${col}`}
-                      x={n.box.x + visX(col + 1) - 3}
+                      x={n.box.x + visX(col + 1) - gripHalf}
                       y={n.box.y}
-                      width={6}
+                      width={gripW}
                       height={n.box.h}
                       fill="transparent"
                       draggable
+                      dragDistance={gripDragDist}
                       dragBoundFunc={(pos) => ({ x: pos.x, y: n.box.y + CANVAS_BLEED })}
                       onMouseEnter={(e) => {
                         const st = e.target.getStage()
@@ -1650,8 +1731,8 @@ export function SlideCanvas({
                         const newW = Math.max(
                           12,
                           tbl.rtl
-                            ? n.box.x + visX(col) - (e.target.x() + 3)
-                            : e.target.x() + 3 - (n.box.x + tbl.gridX[col]!),
+                            ? n.box.x + visX(col) - (e.target.x() + gripHalf)
+                            : e.target.x() + gripHalf - (n.box.x + tbl.gridX[col]!),
                         )
                         onTableColResize(n.sourceId, col, newW)
                       }}
@@ -1666,11 +1747,12 @@ export function SlideCanvas({
                         <Rect
                           key={`rowgrip_${row}`}
                           x={n.box.x}
-                          y={n.box.y + b - 3}
+                          y={n.box.y + b - gripHalf}
                           width={n.box.w}
-                          height={6}
+                          height={gripW}
                           fill="transparent"
                           draggable
+                          dragDistance={gripDragDist}
                           dragBoundFunc={(pos) => ({ x: n.box.x + CANVAS_BLEED, y: pos.y })}
                           onMouseEnter={(e) => {
                             const st = e.target.getStage()
@@ -1683,7 +1765,7 @@ export function SlideCanvas({
                           onDragEnd={(e) => {
                             const newH = Math.max(
                               10,
-                              e.target.y() + 3 - (n.box.y + tbl.gridY[row]!),
+                              e.target.y() + gripHalf - (n.box.y + tbl.gridY[row]!),
                             )
                             onTableRowResize(n.sourceId, row, newH)
                           }}
@@ -1736,6 +1818,14 @@ export function SlideCanvas({
             )
           })()}
       </Layer>
+      {/* What the AI changed: a tint over each element, on its own layer that takes no
+          pointer events. Only this edit canvas draws it; thumbnails, exports, prints and
+          the slide show render from the deck and never see it. */}
+      {aiMarkedIds && aiMarkedIds.length > 0 && (
+        <Layer x={CANVAS_BLEED} y={CANVAS_BLEED} listening={false}>
+          <AiChangedMarks slide={slide} ids={aiMarkedIds} zoom={zoom} />
+        </Layer>
+      )}
       {/* Selection chrome on its own layer: counter-scaling it during a zoom gesture then
           only redraws these few nodes — redrawing the content layer per frame is what
           made the gesture stutter. The Transformer tracks nodes across layers fine.
@@ -1878,6 +1968,46 @@ export function SlideCanvas({
 }
 
 export { computeSnap }
+
+/** The tint over the elements the AI changed: the shared mark colours, padded a little past the box */
+function AiChangedMarks({
+  slide,
+  ids,
+  zoom,
+}: {
+  slide: RenderSlide
+  ids: readonly string[]
+  zoom: number
+}) {
+  const colors = aiChangedMarkColors()
+  const pad = 2 / Math.max(zoom, 0.1)
+  return (
+    <>
+      {slide.nodes
+        .filter((n) => ids.includes(n.sourceId))
+        .map((n) => (
+          <Rect
+            key={n.sourceId}
+            {...boxPivotProps({
+              ...n.box,
+              x: n.box.x - pad,
+              y: n.box.y - pad,
+              w: n.box.w + pad * 2,
+              h: n.box.h + pad * 2,
+            })}
+            width={n.box.w + pad * 2}
+            height={n.box.h + pad * 2}
+            fill={colors.fill}
+            stroke={colors.stroke}
+            strokeWidth={1.5 / Math.max(zoom, 0.1)}
+            cornerRadius={2 / Math.max(zoom, 0.1)}
+            listening={false}
+            perfectDrawEnabled={false}
+          />
+        ))}
+    </>
+  )
+}
 
 // ── Connector endpoint handles ─────────────────────────────
 
@@ -2031,6 +2161,9 @@ interface NodeProps {
   onEditText: (id: string, caret?: EditCaret) => void
   onTransform: Props['onTransform']
   onEditTableCell: Props['onEditTableCell']
+  tableSelection?: TableCellSelection | null
+  onSelectTableCells?: (sel: TableCellSelection | null) => void
+  clientToTableCell?: (tbl: TableRenderNode, clientX: number, clientY: number) => CellCoord | null
   onPlayMedia?: Props['onPlayMedia']
   onOpenContextTab?: Props['onOpenContextTab']
   onDragGuides: (g: Guide[], spacing?: SpacingIndicator[]) => void
@@ -2077,6 +2210,9 @@ function NodeView({
   onEditText,
   onTransform,
   onEditTableCell,
+  tableSelection,
+  onSelectTableCells,
+  clientToTableCell,
   onPlayMedia,
   onOpenContextTab,
   onDragGuides,
@@ -2128,6 +2264,7 @@ function NodeView({
   /** Window key listeners active during a drag, so pressing/releasing the duplicate modifier with a still
    * pointer still toggles the ghost (drop semantics keep reading it from the mouse event on release). */
   const dupKeyCleanupRef = useRef<(() => void) | null>(null)
+  const cellGestureCleanupRef = useRef<(() => void) | null>(null)
   /** Live drag position: the ghost toggle re-renders mid-drag, and the controlled x/y from
    * boxPivotProps must not teleport the node back to the model position (same idea as gesturePosRef). */
   const dragPosRef = useRef<{ x: number; y: number } | null>(null)
@@ -2135,7 +2272,13 @@ function NodeView({
     const g = groupRef.current
     if (g && dragPosRef.current && g.isDragging()) g.position(dragPosRef.current)
   })
-  useEffect(() => () => dupKeyCleanupRef.current?.(), [])
+  useEffect(
+    () => () => {
+      dupKeyCleanupRef.current?.()
+      cellGestureCleanupRef.current?.()
+    },
+    [],
+  )
 
   // The Transformer's frame/scale basis defaults to getClientRect() (content bounding box). When text
   // overflows the shape box (autofit off and content too tall), overflowing glyphs inflate the bounding
@@ -2199,11 +2342,110 @@ function NodeView({
     // default 3px threshold is too sensitive, and once it becomes a drag, onDragMove snapping amplifies it into a visible 6px+ jump that commits to the model.
     // The threshold's semantics are "6 screen px": Konva compares in canvas coordinates, so divide by the canvas CSS zoom.
     dragDistance: 6 / Math.max(zoom, 0.1),
-    // Over the text of an editable shape the pointer is an I-beam (a click there places the caret);
-    // anywhere else on a movable node it is the move cursor, like PowerPoint/WPS
-    onMouseMove: (e: Konva.KonvaEventObject<MouseEvent>) =>
-      setStageCursor(e, !draggable ? '' : editable && clickOnText() ? 'text' : 'move'),
+    // Over the text of an editable shape or inside a table cell the pointer is an I-beam
+    // (a click places the caret); on borders / anywhere else on a movable node it is the move cursor, like PowerPoint
+    onMouseMove: (e: Konva.KonvaEventObject<MouseEvent>) => {
+      if (!draggable) {
+        setStageCursor(e, '')
+        return
+      }
+      if (node.type === 'table' && !insideGroupId) {
+        const pos = e.target.getStage()?.getPointerPosition()
+        const local = pos ? tableLocalPointFromStage(pos, box, CANVAS_BLEED) : null
+        const edge = EDGE_GRIP_PX / Math.max(zoom, 0.1)
+        const inCell =
+          local && !isOnTableBorder(box, local, edge) && !!tableCellAtPoint(node, local)
+        setStageCursor(e, inCell ? 'text' : 'move')
+        return
+      }
+      setStageCursor(e, editable && clickOnText() ? 'text' : 'move')
+    },
     onMouseLeave: (e: Konva.KonvaEventObject<MouseEvent>) => setStageCursor(e, ''),
+    onMouseDown: (e: Konva.KonvaEventObject<MouseEvent>) => {
+      if (node.type !== 'table' || insideGroupId) return
+      if (e.evt.button !== 0 || isToggleModifier(e.evt)) return
+      const pos = e.target.getStage()?.getPointerPosition()
+      if (!pos) return
+      const local = tableLocalPointFromStage(pos, box, CANVAS_BLEED)
+      const edge = EDGE_GRIP_PX / Math.max(zoom, 0.1)
+      if (isOnTableBorder(box, local, edge)) return
+      const hit = tableCellAtPoint(node, local)
+      if (!hit) return
+
+      // Press landed inside a table cell: prevent Konva from dragging the whole table;
+      // single click enters cell text editing, same-cell drag selects text, cross-cell drag selects cells.
+      e.cancelBubble = true
+      const g = groupRef.current
+      if (g) g.draggable(false)
+      onSelect(node.sourceId, false)
+
+      const shiftAnchor: CellCoord | null =
+        tableSelection?.sourceId === node.sourceId
+          ? tableSelection.anchor
+          : editingText?.sourceId === node.sourceId && editingText.cell
+            ? editingText.cell
+            : null
+      if (e.evt.shiftKey && shiftAnchor && onSelectTableCells) {
+        if (suppressClickRef) suppressClickRef.current = true
+        onSelectTableCells(
+          makeTableCellSelection(node, shiftAnchor, { row: hit.row, col: hit.col }),
+        )
+        const restore = () => {
+          g?.draggable(draggable)
+          window.removeEventListener('mouseup', restore)
+        }
+        window.addEventListener('mouseup', restore)
+        return
+      }
+
+      cellGestureCleanupRef.current?.()
+      const anchor: CellCoord = { row: hit.row, col: hit.col }
+      const downClient = { x: e.evt.clientX, y: e.evt.clientY }
+      let multiStarted = false
+      let lastHit: CellCoord = anchor
+      const onMove = (ev: MouseEvent) => {
+        if ((ev.buttons & 1) === 0) {
+          onUp(ev)
+          return
+        }
+        const cur = clientToTableCell?.(node, ev.clientX, ev.clientY)
+        if (!cur) return
+        if (cur.row !== anchor.row || cur.col !== anchor.col) multiStarted = true
+        if (multiStarted && (cur.row !== lastHit.row || cur.col !== lastHit.col)) {
+          lastHit = cur
+          onSelectTableCells?.(makeTableCellSelection(node, anchor, cur))
+        }
+      }
+      const onUp = (ev: MouseEvent) => {
+        cellGestureCleanupRef.current?.()
+        g?.draggable(draggable)
+        if (suppressClickRef) suppressClickRef.current = true
+        if (multiStarted) {
+          const sel = makeTableCellSelection(node, anchor, lastHit)
+          if (sel.cells.length > 1) {
+            onSelectTableCells?.(sel)
+            return
+          }
+        }
+        const dist = Math.hypot(ev.clientX - downClient.x, ev.clientY - downClient.y)
+        onSelectTableCells?.(null)
+        onEditTableCell(
+          node.sourceId,
+          anchor.row,
+          anchor.col,
+          dist > 3
+            ? { from: downClient, x: ev.clientX, y: ev.clientY }
+            : { x: ev.clientX, y: ev.clientY },
+        )
+      }
+      window.addEventListener('mousemove', onMove)
+      window.addEventListener('mouseup', onUp)
+      cellGestureCleanupRef.current = () => {
+        window.removeEventListener('mousemove', onMove)
+        window.removeEventListener('mouseup', onUp)
+        cellGestureCleanupRef.current = null
+      }
+    },
     onClick: (e: Konva.KonvaEventObject<MouseEvent>) => {
       if (suppressClickRef?.current) {
         suppressClickRef.current = false
@@ -2512,7 +2754,7 @@ function NodeView({
     if (!action) return
     if (action.kind === 'editText') onEditText(node.sourceId, caret)
     else if (action.kind === 'enterGroup') onGroupDblClick(e)
-    else if (action.kind === 'editCell') onEditTableCell(node.sourceId, cell!.row, cell!.col)
+    else if (action.kind === 'editCell') onEditTableCell(node.sourceId, cell!.row, cell!.col, caret)
     else if (action.kind === 'playMedia') onPlayMedia!(node.sourceId)
     else onOpenContextTab?.(action.tab)
   }
@@ -2567,6 +2809,47 @@ function NodeView({
             editingText && editingText.sourceId === node.sourceId ? editingText.cell : undefined
           }
         />
+        {/* Multi-cell table selection tint and outline (screen-only, follows table rotation/flip) */}
+        {node.type === 'table' &&
+          tableSelection &&
+          tableSelection.sourceId === node.sourceId &&
+          tableSelection.cells.length > 0 &&
+          (() => {
+            const selColors = tableCellSelectionColors()
+            const bounds = tableSelectionBounds(node, tableSelection.cells)
+            return (
+              <>
+                {tableSelection.cells.map((coord) => {
+                  const c = node.cells.find((x) => x.row === coord.row && x.col === coord.col)
+                  if (!c) return null
+                  return (
+                    <Rect
+                      key={`tcsel_${c.row}_${c.col}`}
+                      x={c.x}
+                      y={c.y}
+                      width={c.w}
+                      height={c.h}
+                      fill={selColors.fill}
+                      listening={false}
+                      perfectDrawEnabled={false}
+                    />
+                  )
+                })}
+                {bounds && (
+                  <Rect
+                    x={bounds.x}
+                    y={bounds.y}
+                    width={bounds.w}
+                    height={bounds.h}
+                    stroke={selColors.stroke}
+                    strokeWidth={1.5 / Math.max(zoom, 0.1)}
+                    listening={false}
+                    perfectDrawEnabled={false}
+                  />
+                )}
+              </>
+            )
+          })()}
         {/* Multi-select: PowerPoint-style per-element border so every selected element is visibly selected
           (the shared Transformer only draws one combined box). Lives inside the node group so it follows drags/transforms. */}
         {multiDrag && !isConnectorNode(node) && (

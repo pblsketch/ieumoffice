@@ -36,9 +36,16 @@ In the AI panel of the Docs, Sheets, Slides, Hangul, HTML and mind map editors y
 - When two documents share a name but sit in different folders, the name of the folder directly above is added, as in `@plan.docx(Term 2)`, and that folder name is also given to the AI.
 - The PDF and Markdown editors have no attachments yet, so neither way is available there.
 
+## Projects
+
+- Click the project name at the left, below the input, to pick a project (one folder on your PC). The AI then answers knowing that folder's files, instructions and memory, and the chat is kept in the folder so you can carry on in another editor. See [Projects](help://projects).
+- With a project picked, the current chat's title appears at the top of the panel. Click it for this project's chat list and **New chat**.
+- The `@` list in the input shows "Files in this project" after the open documents.
+- A request with a project picked also sends that project's instructions (with `AGENTS.md` and `CLAUDE.md` at the top of the folder, which you can turn off on the project's page), memory and list of file names, a short excerpt of each file the AI finds when it searches the folder, and the text of any file the AI reads, to the AI you are using.
+
 ## Rollback and safety
 
-- The Docs panel keeps a **version list**: one snapshot per turn, roll back to any of them, and the rollback itself is Ctrl+Z-able. Snapshots survive reopening the document.
+- A turn in which the AI changed the document gets a **Changes made to the document: N** card under its reply, and the changed places are marked in yellow on the document. The marks are only on screen — they are never saved, printed or exported — and they go away when you send the next request or press **Hide marks**. **Undo these changes** takes the whole turn back at once. In Docs, Markdown, HTML, Slides, Mind Map and Diagram, undoing an earlier turn also undoes the turns after it; in Hangul, Sheets, PDF and EPUB only the last turn can be undone, and only if the document was not edited after it. When it cannot be undone, use the editor's own Undo (Ctrl+Z).
 - AI edits go through the same editing pipeline as manual ones (undoable, save-gated) — nothing bypasses your save confirmation.
 
 ## Hiding a selection from the AI

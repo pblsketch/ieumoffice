@@ -75,6 +75,22 @@ describe('docx export', () => {
     expect(table?.table?.rows[1]?.[1]?.paras.join('')).toBe('1')
   })
 
+  it('table column alignment carries into every cell of the column', async () => {
+    const parsed = await exportAndParse(
+      '| L | C | R | N |\n| :--- | :---: | ---: | --- |\n| a | b | c | d |',
+    )
+    const rows = parsed.blocks.find((b) => b.type === 'table')?.table?.rows ?? []
+    expect(rows.length).toBe(2)
+    for (const row of rows) {
+      expect(row.map((cell) => cell.richParas?.[0]?.align)).toEqual([
+        'left',
+        'center',
+        'right',
+        undefined,
+      ])
+    }
+  })
+
   it('block math becomes a native OMML equation', async () => {
     const editor = createEditor('$$\n\\frac{a}{b}\n$$')
     const mapping = await mapDocToSaveBlocks(editor.getJSON(), noImages)

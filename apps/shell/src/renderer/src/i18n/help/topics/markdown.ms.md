@@ -8,6 +8,7 @@ Penyunting Markdown membuka .md / .markdown — dan .txt / .json, terus ke papar
 - **Simpanan** mengekalkan setiap bait dengan tepat. Tanda BOM, aksara CRLF, dan kehadiran baris akhir kosong semuanya dikekalkan, dan simpanan tanpa perubahan tidak menulis semula fail.
 - **Cari dan ganti**: ctrl+F mencari dalam sumber, dan Ganti Semua menulis hasilnya ke fail.
 - **AI**: Butang tetapan awal membolehkan pembantu menulis semula, melanjutkan, atau menterjemah dokumen tersebut. Pemilihan boleh disembunyikan daripada AI (lihat bab panel AI).
+- **Membuka pautan**: semasa mengedit, Ctrl+klik pautan (⌘ pada Mac) membukanya dalam pelayar; klik biasa meletakkan kursor dalam teks pautan untuk diedit. Dalam mod pembentangan (F5), klik biasa membukanya.
 
 ## Bar alat
 
@@ -36,6 +37,7 @@ Menu Fail, semuanya setempat dan semuanya akan bertanya di mana hasilnya perlu d
 
 - **Eksport sebagai Word…** dan **Eksport sebagai PDF…** menulis .docx atau .pdf yang sebenar.
 - **Eksport sebagai ODT…** menulis fail .odt (teks OpenDocument) melalui penukaran yang sama dengan eksport Word; jika ada yang berubah atau hilang dalam proses itu, anda melihat senarainya dan mengesahkan dahulu.
+- **Eksport sebagai dokumen HWP…** menulis dokumen HWP (.hwp atau .hwpx) melalui penukaran yang sama; tajuk, senarai dan jadual masuk sebagai sebahagian dokumen HWP, dan jadual yang panjang bersambung ke halaman seterusnya. Jika ada yang tidak dapat dibawa, anda melihat senarainya dan mengesahkan dahulu.
 - **Eksport sebagai imej…** menulis satu PNG bagi setiap halaman ke dalam folder yang anda pilih.
 - **Tukar dan buka dalam Docs** menukar kepada .docx dan membukanya dalam tab Docs terbina dalam di dalam aplikasi ini — ia bukan serah kepada apa-apa dalam awan, dan salinan yang ditukar tinggal dalam folder cache yang dibersihkan selepas kira-kira seminggu.
 
@@ -43,6 +45,7 @@ Menu Fail, semuanya setempat dan semuanya akan bertanya di mana hasilnya perlu d
 
 Reben itu membawa togol **Sumber** (dilocalkan bersama aplikasi). Hidupkan ia, dan editor akan digantikan oleh Markdown asal: betul-betul teks yang ditulis oleh sesuatu simpanan, tiada yang dicantikkan, dan tiada apa-apa yang dinormalkan di bawah anda.
 
+- **Papan kekunci**: Ctrl+E (⌘E pada Mac) menukar antara paparan sumber dan kanvas penyuntingan yang dipaparkan. Tekan F5 untuk membaca skrin penuh.
 - **Penyuntingan mengekalkan setiap bait dengan tepat.** Simpanan daripada paparan sumber menghasilkan bait yang sama seperti simpanan daripada editor — BOM, CRLF dan kehadiran baris akhir kosong semuanya kekal.
 - **Ia dokumen yang sama.** Anda boleh bergantian antara paparan ini dan editor dengan bebas; sumber itu ialah teks editor itu sendiri, bukan salinan yang perlu digabungkan.
 - **Bar alat pemformatan tidak tersedia** semasa ia terbuka, kerana kebanyakan butang itu memasukkan konstruksi editor yang hanya bermakna pada sisi yang dipaparkan. Ia kembali apabila anda menutup paparan tersebut.

@@ -37,7 +37,9 @@ const api = electronMocks.exposed.get('aiOfficeSubscription') as SubscriptionApi
 
 const READY = {
   'claude-code': { provider: 'claude-code', state: 'ready', meteredAccepted: false },
+  chatgpt: { provider: 'chatgpt', state: 'signed-out', meteredAccepted: false },
   codex: { provider: 'codex', state: 'signed-out', meteredAccepted: false },
+  antigravity: { provider: 'antigravity', state: 'signed-out', meteredAccepted: false },
 }
 
 beforeEach(() => {
@@ -56,7 +58,10 @@ describe('subscription preload API', () => {
     electronMocks.invoke.mockResolvedValue({ 'claude-code': READY['claude-code'] })
     await expect(api.statuses()).resolves.toEqual({
       'claude-code': READY['claude-code'],
+      // an answer without it comes from an app that has no ChatGPT connection
+      chatgpt: READY.chatgpt,
       codex: checkingSubscriptionStatuses().codex,
+      antigravity: READY.antigravity,
     })
     expect(electronMocks.invoke).toHaveBeenLastCalledWith(SUBSCRIPTION_IPC_CHANNELS.statuses)
   })
@@ -146,6 +151,45 @@ describe('subscription preload API', () => {
     expect(preloadOf('shell')).toMatch(asksForLogout)
     for (const app of ['docs', 'sheets', 'slides', 'pdf', 'markdown', 'html']) {
       expect(preloadOf(app), app).not.toMatch(asksForLogout)
+    }
+  })
+
+  it('turns a CLI off or back on, and reads the answer as done only on a literal true', async () => {
+    electronMocks.invoke.mockResolvedValue({ ok: true, statuses: READY })
+    await expect(api.setSubscriptionOff('claude-code', true)).resolves.toEqual({
+      ok: true,
+      statuses: READY,
+    })
+    expect(electronMocks.invoke).toHaveBeenLastCalledWith(SUBSCRIPTION_IPC_CHANNELS.off, {
+      provider: 'claude-code',
+      off: true,
+    })
+    expect(SUBSCRIPTION_IPC_CHANNELS.off).toBe('ai:subscription-off')
+    electronMocks.invoke.mockResolvedValue({ ok: 'yes' })
+    await expect(api.setSubscriptionOff('codex', false)).resolves.toMatchObject({ ok: false })
+  })
+
+  it('is the only preload that can turn a CLI off in this app (decision 0114)', () => {
+    const preloadOf = (app: string): string =>
+      readFileSync(
+        fileURLToPath(new URL(`../../${app}/src/preload/index.ts`, import.meta.url)),
+        'utf8',
+      )
+    const turnsOff = /SUBSCRIPTION_IPC_CHANNELS\.off\b|subscription-off/
+    expect(preloadOf('shell')).toMatch(turnsOff)
+    for (const app of [
+      'docs',
+      'sheets',
+      'slides',
+      'pdf',
+      'markdown',
+      'html',
+      'hwp',
+      'epub',
+      'mindmap',
+      'diagram',
+    ]) {
+      expect(preloadOf(app), app).not.toMatch(turnsOff)
     }
   })
 

@@ -38,6 +38,14 @@ describe('subscriptionChildEnv', () => {
       'ANTHROPIC_FEDERATION_RULE_ID',
       'CODEX_API_KEY',
       'CODEX_ACCESS_TOKEN',
+      'GEMINI_API_KEY',
+      'GOOGLE_API_KEY',
+      'GOOGLE_GEMINI_BASE_URL',
+      'AGY_ADC_AUTH',
+      'GOOGLE_CLOUD_PROJECT',
+      'GOOGLE_CLOUD_QUOTA_PROJECT',
+      'GOOGLE_CLOUD_LOCATION',
+      'GOOGLE_GENAI_USE_VERTEXAI',
     ]
     const base: NodeJS.ProcessEnv = {}
     for (const name of added) base[name] = 'value'

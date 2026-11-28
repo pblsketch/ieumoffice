@@ -13,6 +13,7 @@ import {
   defaultCandidateDirs,
   homebrewBinDirs,
   inspectCliLink,
+  inspectCliLinkAsync,
   installCliLink,
   isOurLauncher,
   pathHint,
@@ -298,6 +299,34 @@ describe('installCliLink', () => {
     })
     expect(missing.status).toBe('missing')
     expect(missing.manual).toContain('SetEnvironmentVariable')
+  })
+
+  it('inspects the Windows PATH asynchronously without blocking the event loop', async () => {
+    const scripts: string[] = []
+    const launcher = 'C:\\IeumOffice\\resources\\ieumoffice\\ieumoffice.cmd'
+    const present = await inspectCliLinkAsync({
+      launcher,
+      platform: 'win32',
+      runPowerShellAsync: async (s) => {
+        scripts.push(s)
+        return { ok: true, stdout: 'present\n' }
+      },
+    })
+    expect(present.status).toBe('present')
+    expect(present.location).toBe('C:\\IeumOffice\\resources\\ieumoffice')
+    expect(scripts[0]).not.toContain('SetValue')
+    const missing = await inspectCliLinkAsync({
+      launcher,
+      platform: 'win32',
+      runPowerShellAsync: async () => ({ ok: true, stdout: 'missing\n' }),
+    })
+    expect(missing.status).toBe('missing')
+    const failed = await inspectCliLinkAsync({
+      launcher,
+      platform: 'win32',
+      runPowerShellAsync: async () => ({ ok: false, stdout: '' }),
+    })
+    expect(failed.status).toBe('unwritable')
   })
 })
 

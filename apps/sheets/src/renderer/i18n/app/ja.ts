@@ -103,8 +103,10 @@ export const ja = {
   appChartNoRepoint: 'このグラフはデータ範囲の再指定に対応していません。',
   appKeepOneSeries: '少なくとも 1 つの系列を残してください。',
   appNoCategoriesToSwitch: '切り替えられる分類がありません。',
-  appComboNoSelectData: '組み合わせグラフのデータソース変更には未対応です。',
+  appSelectDataUnsupported: 'このグラフの種類はデータソースの変更に未対応です。',
   appSeriesName: '系列名',
+  appSeriesType: '系列の種類',
+  appSecondaryAxis: '第2軸',
   appValuesRange: '数値範囲',
   appCategoriesRange: '分類範囲',
   appKeepUnchanged: '変更しない',
@@ -191,6 +193,12 @@ export const ja = {
   appInvalidPageField: 'レポート フィルターのフィールドが無効です。',
   appPivotPageItemMissing:
     'レポート フィルターの項目「{item}」はフィールド「{label}」のメンバーではありません。',
+  appInvalidPivotBaseField: '「値の表示方法」の基準フィールドは行または列に配置してください。',
+  appPivotBaseFieldMissing: '値フィールドの「値の表示方法」には基準フィールドが必要です。',
+  appPivotBaseFieldNotAxis:
+    '基準フィールド「{label}」はピボットテーブルの行または列に配置してください。',
+  appPivotBaseItemMissing:
+    '基準アイテム「{item}」はフィールド「{label}」のメンバーではありません。',
   appInvalidLabelFilterField: 'ラベルフィルターのフィールドが無効です。',
   appInvalidValueFieldIndex: '値フィールドのインデックス {index} が無効です。',
   appInvalidValueField: '値フィールドが無効です。',
@@ -335,8 +343,8 @@ export const ja = {
     'このシートにはピボットテーブルが含まれています — 範囲の移動には未対応です。',
   appMergeOverTable:
     '選択範囲が Excel テーブルと重なっています — テーブル内のセル結合は現時点では対応していません。',
-  appTableFilterNoEdit:
-    'このシートのフィルターは Excel テーブルに属しています — 編集内容は現時点では保存できません。',
+  appFilterToggleFailed:
+    'フィルターは適用されませんでした — 先にデータを含む範囲を選択してください。',
   appAutofillStreaming: 'ストリーミング読み込み中の範囲へのオートフィルはまだ許可されていません。',
   appDvNeedsIndexed:
     'データの入力規則を編集するには、このシートのインデックス作成が完了している必要があります — しばらくしてからお試しください。',
@@ -392,6 +400,9 @@ export const ja = {
   appTableNameInFile: 'テーブル名 "{name}" はファイル内のテーブルで既に使用されています。',
   appTableOverlapsSession:
     'この範囲は、このセッションで作成したテーブル "{name}" と重なっています。',
+  appTableOverlapsFile: '範囲がファイル内のテーブル「{name}」と重なっています。',
+  appTableAlreadyInTable:
+    '選択範囲はすでにテーブル「{name}」の中です。スタイルは「テーブル デザイン」から変更してください。',
   appTablesNeedFile: '先に XLSX ファイルを開いてください。テーブルはファイルに書き込まれます。',
   appTableSelectRange: '先にデータ範囲を選択してください。先頭行がヘッダーになります。',
   appTableCreated: 'テーブルを作成しました — ⌘S で保存します。',
@@ -481,6 +492,7 @@ export const ja = {
   appGridlinesHidden: '目盛線を非表示にしました。',
   appGridlinesShown: '目盛線を表示しました。',
   appShowingFormulas: '数式を表示しています — もう一度切り替えると値を表示します。',
+  appShowingFormulasActive: '数式を表示中',
   appShowingValues: '計算結果を表示しています。',
   appTraceNoFormula: '参照元のトレース：アクティブセルに数式がありません。',
   appTraceNoRefs: '参照元のトレース：この数式にはセル参照がありません。',
@@ -577,6 +589,9 @@ export const ja = {
     'CSV エクスポートにはブックの完全読み込みが必要です — 読み込みの完了をお待ちください。',
   appCsvExportTooLarge: 'シートが大きすぎるため、CSV をエクスポートできません。',
   appCsvExportCanceled: 'CSV エクスポートをキャンセルしました。',
+  appOdsExported: '{path} をエクスポートしました。',
+  appOdsExportCanceled: 'ODS へのエクスポートを中止しました。',
+  appOdsExportFailed: 'ODS へのエクスポートに失敗しました。',
   appCsvExported: '{path} をエクスポートしました。',
   appCsvExportedActiveOnly:
     'CSV ファイルには 1 枚のシートしか含められません — アクティブなシート「{name}」を {path} にエクスポートしました。',
@@ -594,8 +609,6 @@ export const ja = {
   appSaveFailed: 'ブックを保存できません。',
   appCfRuleUnsaveable:
     'この条件付き書式ルールは xlsx に保存できません — 別のルールの種類をお使いください。',
-  appSaveErrX14Dv:
-    'このシートには拡張(x14)のデータの入力規則があり、その入力規則の編集はまだサポートされていません。',
   appSaveErrMultiSelectList:
     '複数選択リストの入力規則は xlsx に保存できません — 保存する前にそのルールを削除してください。',
   appSaveErrX14Cf: 'この範囲には拡張(x14)の条件付き書式があり、今のところ変更できません。',
@@ -615,6 +628,10 @@ export const ja = {
     'このブックのスタイルシートには基本構造が欠けているため、スタイルの変更を保存できません。',
   appSaveErrPackageGuard:
     '保存するとブックのパッケージ構造が変わってしまいます — ファイル保護のため中止しました。',
+  appSaveErrSheetNotFound:
+    '保存内容が参照するシートがブックに見つからないため、保存を中止しました。元のファイルはそのままです。',
+  appSaveErrSheetNameReused:
+    '名前を変更したシートの元の名前を新しいシートが使っているため、保存できません。新しいシートの名前をいったん別の名前にして保存してから、希望の名前に戻してください。元のファイルはそのままです。',
   appSaveErrChartUnsupported:
     'このグラフの種類はこの編集をサポートしていないため保存を中止しました — グラフの変更を元に戻してください。',
   appSaveErrMoveOverlap:
@@ -728,6 +745,12 @@ export const ja = {
   appSaveAs: '名前を付けて保存',
   appUndo: '元に戻す',
   appRedo: 'やり直し',
+  appQuickAccessCustomize: 'クイック アクセス ツール バーのユーザー設定',
+  appQuickAccessHint: 'Alt キーと数字キーを押すと、左から数えてその位置にあるボタンを実行します。',
+  appQuickAccessMoveEarlier: '前へ移動',
+  appQuickAccessMoveLater: '後ろへ移動',
+  appQuickAccessReset: '既定に戻す',
+  appQuickAccessFull: 'ツール バーに置けるボタンは 10 個までです。',
   appUnsavedEditOne: '● 未保存の編集 {count} 件',
   appUnsavedEditMany: '● 未保存の編集 {count} 件',
   appSavedState: '保存済み',
@@ -762,7 +785,6 @@ export const ja = {
   appRemoveLink: 'リンクの削除',
   // Ribbon common
   appNotAvailableYet: '現在利用できません',
-  appComingSoon: '近日提供予定',
   // Chart Design tab
   appGroupChartLayouts: 'グラフのレイアウト',
   appAddChartElement: 'グラフ要素を追加',
@@ -1201,6 +1223,8 @@ export const ja = {
   appRefreshAll: 'すべて更新',
   appWorkbookNoPivot: 'ブックにピボットテーブルがありません。',
   appRefreshAllTitle: 'すべてのピボットテーブルを更新',
+  appQueriesConnections: 'クエリと接続',
+  appQueriesConnectionsTitle: 'ブックのクエリとデータ接続を一覧表示',
   appErrorCheckingDetail: 'シート内のエラー値をスキャン',
   appErrorsFound: '{count} 件のエラー — {cell}:{value}',
   appCheckingErrors: 'シート全体のエラーをスキャンしています…',
@@ -1235,6 +1259,7 @@ export const ja = {
   appGroupForecast: '予測',
   appWhatIfAnalysis: 'What-If 分析',
   appGoalSeek: 'ゴールシーク',
+  appDataTable: 'データテーブル',
   appWhatIfTitle: '目標値から入力を逆算',
   appGoalSeekNeedsFormula: '数式入力セルには数式が必要です。',
   appGoalSeekByCellNotNumber: '変化させるセルは数値または空白にしてください。',
@@ -1497,6 +1522,16 @@ export const ja = {
   appTableFileUnnamed: 'このテーブルはファイル内に名前がないため、ここでは変更できません。',
   appTableRowsNotLoaded: 'テーブルの行をまだ読み込み中です。しばらくしてからやり直してください。',
   appTableTotalLabel: '集計',
+  appNotePicturesPaneTitle: 'メモの画像',
+  appNotePicturesClose: '閉じる',
+  appNotePicturesNone: 'このブックに画像を表示しているメモはありません。',
+  appNotePictureUnavailable: 'この画像は表示できません。',
+  appNotePicturesToggle: 'メモの画像',
+  appNoteInsertPicture: '画像を挿入',
+  appNotePictureInserted:
+    '{cell} のコメントに画像を追加しました。保存するとファイルに書き込まれます。',
+  appNotePictureRemoved: '{cell} のコメントから画像を取り除きました。',
+  appNotePictureRemove: '画像を削除',
   appCommentsPaneTitle: 'コメント',
   appThreadReply: '返信',
   appThreadReplyPlaceholder: '返信…',
@@ -1563,4 +1598,33 @@ export const ja = {
   appVisualFlipV: '上下反転',
   appVisualFlipH: '左右反転',
   appCtxPasteVisual: '図または図形を貼り付け',
+
+  // ── Spelling check (F7 / Review ▸ Proofing) ──
+  appSpellTitle: 'スペル チェック',
+  appSpellBtnDetail: 'ワークシートのテキストをチェック (F7)',
+  appSpellToggle: 'スペル チェック',
+  appSpellToggleTip:
+    'スペル チェック（F7 と Review ボタン）を有効にします。オフにするとコメント入力欄のスペルの波線が消えます',
+  appSpellOn: 'スペル チェックをオンにしました。',
+  appSpellOff: 'スペル チェックはオフです。Review ▸ 校対 からオンにできます。',
+  appSpellRecheck: '再チェック',
+  appSpellNone: '疑わしいスペルミスは見つかりませんでした。',
+  appSpellFindings: '疑わしいスペルミスが {count} 件あります。行をクリックすると移動します。',
+  appSpellTruncated: 'テキスト セルが多すぎるため、前半のみチェックしました。',
+  appSpellColWord: '疑わしい語',
+  appSpellIgnore: '無視',
+  appSpellIgnoreAll: 'すべて無視',
+  appSpellLearn: '辞書に追加',
+  appSpellNoSuggestions: '修正候補なし',
+  appSpellIgnoredAll: 'このセッションでは「{word}」を表示しません。',
+  appSpellLearned: '「{word}」を辞書に追加しました。',
+  appSpellChanged: '{address} を修正しました。',
+  appSpellChangeFailed: '{address} を修正できませんでした。',
+  appSpellUnavailable: 'このウィンドウではスペルチェックを利用できません。',
+  appSpellReplaceAll: 'すべて「{suggestion}」に置換',
+  appSpellChangedAll: '「{word}」を {count} か所修正しました。',
+
+  // ── ODS import ──
+  appOdsImportNotice: 'ODS を xlsx のコピーとして開きました。保存すると xlsx ファイルになります。',
+  appOdsFormulasDropped: '数式 {count} 個は値のみ残しました。',
 } satisfies Record<keyof typeof zh, string>

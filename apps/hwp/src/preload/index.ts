@@ -1,16 +1,28 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import { driveAiBridge } from '@genoffice/electron-utils/drive-ai-bridge'
+import { generateEditorBridge } from '@genoffice/electron-utils/generate-editor-bridge'
+import { mcpToolsBridge } from '@genoffice/electron-utils/mcp-tools-bridge'
 import { outboundBridge } from '@genoffice/electron-utils/outbound-bridge'
+import { ACP_TOOL_BRIDGE_KEY } from '@genoffice/electron-utils/acp-tool-channels'
+import { acpToolBridge } from '@genoffice/electron-utils/acp-tool-bridge'
 import { userSkillsBridge } from '@genoffice/electron-utils/user-skills-bridge'
+import {
+  PROJECT_FOLDER_BRIDGE_KEY,
+  projectFolderBridge,
+} from '@genoffice/electron-utils/project-folder-bridge'
 import { USER_SKILLS_BRIDGE_KEY } from '@genoffice/electron-utils/user-skills-channels'
 import { docAttachBridge } from '@genoffice/electron-utils/doc-attach-bridge'
+import { createPrintLayoutBridge } from '@genoffice/electron-utils/print-layout-bridge'
 import { DOC_ATTACH_BRIDGE_KEY } from '@genoffice/electron-utils/doc-attach-channels'
+import { connectorAttachBridge } from '@genoffice/electron-utils/connector-attach-bridge'
+import { CONNECTOR_ATTACH_BRIDGE_KEY } from '@genoffice/electron-utils/connector-attach-channels'
 import { SPLIT_PANE_BRIDGE_KEY, splitPaneBridge } from '@genoffice/electron-utils/split-pane-bridge'
+import { APP_CHOICE_BRIDGE_KEY, appChoiceBridge } from '@genoffice/electron-utils/app-choice-bridge'
 import type { AiStreamChunk } from '@genoffice/ai-provider'
 import { SUBSCRIPTION_IPC_CHANNELS } from '@genoffice/ai-provider/browser'
 import type { Lang } from '@genoffice/i18n'
 import type { ProjectApi } from '@genoffice/project-store'
-import type { AiPanelPrefs } from '@genoffice/ui'
+import type { AiPanelPrefs, AutoSaveDefault } from '@genoffice/ui'
 import {
   DROP_OPEN_CHANNEL,
   KNOWN_UNSUPPORTED_DOC_RE,
@@ -20,11 +32,23 @@ import {
   installDropOpenBridge,
 } from '@genoffice/electron-utils/drop-open'
 import { AI_CHANNELS, HWP_CHANNELS } from '../shared/ipc'
-import type { HwpApi, PrintMode, SaveMode, UiTheme } from '../shared/ipc'
+import type {
+  BibEntry,
+  BibKeyRenameInfo,
+  HwpApi,
+  MacroRecord,
+  OutlineStyleMap,
+  PreviewAction,
+  PrintJob,
+  PrintMode,
+  SaveMode,
+  UiTheme,
+} from '../shared/ipc'
 import type { SubscriptionApi } from '../shared/subscription-api'
 import {
   SUBSCRIPTION_CONNECT_HELP_CHANNEL,
   SUBSCRIPTION_INSTALL_HELP_CHANNEL,
+  SUBSCRIPTION_USAGE_CHANNEL,
   subscriptionLaunchResultOf,
   subscriptionStatusMapOf,
 } from '../shared/subscription-api'
@@ -43,9 +67,12 @@ const aiSubscription: SubscriptionApi = {
       ),
     )
   },
-  async login(provider) {
+  async login(provider, mode) {
     return subscriptionLaunchResultOf(
-      await ipcRenderer.invoke(SUBSCRIPTION_IPC_CHANNELS.login, { provider }),
+      await ipcRenderer.invoke(
+        SUBSCRIPTION_IPC_CHANNELS.login,
+        mode ? { provider, mode } : { provider },
+      ),
     )
   },
   async install(provider) {
@@ -77,6 +104,11 @@ const aiSubscription: SubscriptionApi = {
     ipcRenderer.on(SUBSCRIPTION_IPC_CHANNELS.changed, listener)
     return () => ipcRenderer.removeListener(SUBSCRIPTION_IPC_CHANNELS.changed, listener)
   },
+  onUsage(handler) {
+    const listener = (_event: unknown, usage: unknown) => handler(Array.isArray(usage) ? usage : [])
+    ipcRenderer.on(SUBSCRIPTION_USAGE_CHANNEL, listener)
+    return () => ipcRenderer.removeListener(SUBSCRIPTION_USAGE_CHANNEL, listener)
+  },
   async openInstallHelp(provider) {
     await ipcRenderer.invoke(SUBSCRIPTION_INSTALL_HELP_CHANNEL, provider)
   },
@@ -87,13 +119,21 @@ const aiSubscription: SubscriptionApi = {
 
 const api: HwpApi = {
   consumePending: () => ipcRenderer.invoke(HWP_CHANNELS.consumePending),
+  fontFileReads: () => ipcRenderer.invoke(HWP_CHANNELS.fontFileReads),
+  readFontNames: (faces) => ipcRenderer.invoke(HWP_CHANNELS.fontNames, faces),
+  isHeadlessExport: () => ipcRenderer.invoke(HWP_CHANNELS.isHeadlessExport),
   untitledCopy: () => ipcRenderer.invoke(HWP_CHANNELS.untitledCopy),
   readFile: (path) => ipcRenderer.invoke(HWP_CHANNELS.readFile, path),
   trackingDropped: () => ipcRenderer.invoke(HWP_CHANNELS.trackingDropped),
   beginSave: (mode) => ipcRenderer.invoke(HWP_CHANNELS.beginSave, mode),
   newTabs: (bytes, format) => ipcRenderer.invoke(HWP_CHANNELS.newTabs, bytes, format),
-  commitSave: (bytes, tabs) => ipcRenderer.invoke(HWP_CHANNELS.commitSave, bytes, tabs),
+  commitSave: (bytes, tabs, options) =>
+    ipcRenderer.invoke(HWP_CHANNELS.commitSave, bytes, tabs, options),
   abortSave: () => ipcRenderer.send(HWP_CHANNELS.abortSave),
+  beginSubmissionSave: () => ipcRenderer.invoke(HWP_CHANNELS.beginSubmissionSave),
+  commitSubmissionSave: (bytes, tabs, options) =>
+    ipcRenderer.invoke(HWP_CHANNELS.commitSubmissionSave, bytes, tabs, options),
+  abortSubmissionSave: () => ipcRenderer.send(HWP_CHANNELS.abortSubmissionSave),
   requestFileCommand: (command) => ipcRenderer.send(HWP_CHANNELS.fileCommand, command),
   setDirty: (dirty) => ipcRenderer.send(HWP_CHANNELS.dirtyChanged, dirty),
   onSaveRequest: (handler) => {
@@ -101,18 +141,51 @@ const api: HwpApi = {
     ipcRenderer.on(HWP_CHANNELS.saveRequest, listener)
     return () => ipcRenderer.removeListener(HWP_CHANNELS.saveRequest, listener)
   },
+  onSubmissionSaveRequest: (handler) => {
+    const listener = () => handler()
+    ipcRenderer.on(HWP_CHANNELS.submissionSaveRequest, listener)
+    return () => ipcRenderer.removeListener(HWP_CHANNELS.submissionSaveRequest, listener)
+  },
   onPrintRequest: (handler) => {
     const listener = (_e: Electron.IpcRendererEvent, mode: PrintMode) => handler(mode)
     ipcRenderer.on(HWP_CHANNELS.printRequest, listener)
     return () => ipcRenderer.removeListener(HWP_CHANNELS.printRequest, listener)
   },
-  printPages: (job) => ipcRenderer.invoke(HWP_CHANNELS.printPages, job),
+  onPreviewRequest: (handler) => {
+    const listener = (_e: Electron.IpcRendererEvent, action: PreviewAction) => handler(action)
+    ipcRenderer.on(HWP_CHANNELS.previewRequest, listener)
+    return () => ipcRenderer.removeListener(HWP_CHANNELS.previewRequest, listener)
+  },
+  printPages: (job, options) =>
+    options
+      ? ipcRenderer.invoke(HWP_CHANNELS.printPages, job, options)
+      : ipcRenderer.invoke(HWP_CHANNELS.printPages, job),
+  printLayout: createPrintLayoutBridge<PrintJob>(ipcRenderer, 'hwp'),
+  consumeHeadlessExport: () => ipcRenderer.invoke(HWP_CHANNELS.consumeHeadlessExport),
+  headlessExportDone: (result) => ipcRenderer.send(HWP_CHANNELS.headlessExportDone, result),
   onCloseSaveRequest: (handler) => {
     const listener = () => handler()
     ipcRenderer.on(HWP_CHANNELS.closeSaveRequest, listener)
     return () => ipcRenderer.removeListener(HWP_CHANNELS.closeSaveRequest, listener)
   },
   sendCloseSaveResult: (ok) => ipcRenderer.send(HWP_CHANNELS.closeSaveResult, ok),
+  setMemoModalOpen: (open) => ipcRenderer.send(HWP_CHANNELS.memoModalOpen, open),
+  getMemoModalOpen: async () => (await ipcRenderer.invoke(HWP_CHANNELS.memoModalState)) === true,
+  onMemoBlocked: (handler) => {
+    const listener = () => handler()
+    ipcRenderer.on(HWP_CHANNELS.memoBlocked, listener)
+    return () => ipcRenderer.removeListener(HWP_CHANNELS.memoBlocked, listener)
+  },
+  getAuthorName: async () => {
+    const raw = (await ipcRenderer.invoke(HWP_CHANNELS.getAuthorName)) as {
+      value?: unknown
+      fallback?: unknown
+    } | null
+    return {
+      value: typeof raw?.value === 'string' ? raw.value : '',
+      fallback: typeof raw?.fallback === 'string' ? raw.fallback : '',
+    }
+  },
   onReadBytesRequest: (handler) => {
     const listener = () => handler()
     ipcRenderer.on(HWP_CHANNELS.readBytesRequest, listener)
@@ -143,6 +216,13 @@ const api: HwpApi = {
   readAttachment: (path, offset, maxChars) =>
     ipcRenderer.invoke(HWP_CHANNELS.filesRead, path, offset, maxChars),
   readAttachmentImage: (path) => ipcRenderer.invoke(HWP_CHANNELS.filesReadImage, path),
+  readAttachmentDocument: (path) => ipcRenderer.invoke(HWP_CHANNELS.filesReadDocument, path),
+  importAttachmentAsDocument: (path, request) =>
+    ipcRenderer.invoke(HWP_CHANNELS.filesImportDocument, path, request),
+  loadGeneratedHwpx: (path, intoCurrentBlank) =>
+    ipcRenderer.invoke(HWP_CHANNELS.loadGeneratedHwpx, path, intoCurrentBlank),
+  noteAiRunStop: (stop) => ipcRenderer.send(HWP_CHANNELS.aiRunStop, stop),
+  analyzeMedia: (op) => ipcRenderer.invoke(HWP_CHANNELS.analyzeMedia, op),
   getPathForFile: (file) => webUtils.getPathForFile(file),
   // the drop bridge's rules, for drops it cannot hear: paths come from the dropped files
   // here, so the page can only pass on files the user dropped
@@ -174,6 +254,12 @@ const api: HwpApi = {
     ipcRenderer.on(HWP_CHANNELS.themeChanged, listener)
     return () => ipcRenderer.removeListener(HWP_CHANNELS.themeChanged, listener)
   },
+  getAutoSaveDefault: () => ipcRenderer.invoke(HWP_CHANNELS.getAutoSaveDefault),
+  onAutoSaveDefaultChanged: (handler) => {
+    const listener = (_e: Electron.IpcRendererEvent, value: AutoSaveDefault) => handler(value)
+    ipcRenderer.on(HWP_CHANNELS.autoSaveDefaultChanged, listener)
+    return () => ipcRenderer.removeListener(HWP_CHANNELS.autoSaveDefaultChanged, listener)
+  },
   getAiPanelPrefs: () => ipcRenderer.invoke(HWP_CHANNELS.getAiPanelPrefs),
   setAiPanelPrefs: (patch) => ipcRenderer.invoke(HWP_CHANNELS.setAiPanelPrefs, patch),
   onAiPanelPrefsChanged: (handler) => {
@@ -193,6 +279,56 @@ const api: HwpApi = {
   aiStream: (request) => ipcRenderer.invoke(AI_CHANNELS.stream, request),
   aiStreamCancel: (requestId) => ipcRenderer.invoke(AI_CHANNELS.streamCancel, requestId),
   readUrl: (url, offset) => ipcRenderer.invoke(AI_CHANNELS.readUrl, url, offset),
+  webSearch: (query, maxResults) => ipcRenderer.invoke(AI_CHANNELS.webSearch, query, maxResults),
+  imageSearch: (query, maxResults) =>
+    ipcRenderer.invoke(AI_CHANNELS.imageSearch, query, maxResults),
+  generateImage: (op) => ipcRenderer.invoke(HWP_CHANNELS.aiGenerateImage, op),
+  fetchImage: (url) => ipcRenderer.invoke(HWP_CHANNELS.fetchImage, url),
+  getOutlineStyleMap: () => ipcRenderer.invoke(HWP_CHANNELS.getOutlineStyleMap),
+  setOutlineStyleMap: (map) => ipcRenderer.invoke(HWP_CHANNELS.setOutlineStyleMap, map),
+  onOutlineStyleMapChanged: (handler) => {
+    const listener = (_e: Electron.IpcRendererEvent, map: OutlineStyleMap) => handler(map)
+    ipcRenderer.on(HWP_CHANNELS.outlineStyleMapChanged, listener)
+    return () => ipcRenderer.removeListener(HWP_CHANNELS.outlineStyleMapChanged, listener)
+  },
+  bibReadState: () => ipcRenderer.invoke(HWP_CHANNELS.bibReadState),
+  bibList: () => ipcRenderer.invoke(HWP_CHANNELS.bibList),
+  bibAdd: (input) => ipcRenderer.invoke(HWP_CHANNELS.bibAdd, input),
+  bibUpdate: (id, patch) => ipcRenderer.invoke(HWP_CHANNELS.bibUpdate, id, patch),
+  bibDelete: (id) => ipcRenderer.invoke(HWP_CHANNELS.bibDelete, id),
+  bibVerify: (id) => ipcRenderer.invoke(HWP_CHANNELS.bibVerify, id),
+  bibAddAiCandidates: (candidates) =>
+    ipcRenderer.invoke(HWP_CHANNELS.bibAddAiCandidates, candidates),
+  bibPickImportFile: () => ipcRenderer.invoke(HWP_CHANNELS.bibPickImportFile),
+  bibPreviewImport: (candidates) => ipcRenderer.invoke(HWP_CHANNELS.bibPreviewImport, candidates),
+  bibCommitImport: (entries, options) =>
+    ipcRenderer.invoke(HWP_CHANNELS.bibCommitImport, entries, options),
+  bibExportFile: (format, options) =>
+    ipcRenderer.invoke(HWP_CHANNELS.bibExportFile, format, options),
+  onBibChanged: (handler) => {
+    const listener = (_e: Electron.IpcRendererEvent, entries: BibEntry[]) => handler(entries)
+    ipcRenderer.on(HWP_CHANNELS.bibChanged, listener)
+    return () => ipcRenderer.removeListener(HWP_CHANNELS.bibChanged, listener)
+  },
+  onBibKeyRenamed: (handler) => {
+    const listener = (_e: Electron.IpcRendererEvent, info: BibKeyRenameInfo) => handler(info)
+    ipcRenderer.on(HWP_CHANNELS.bibKeyRenamed, listener)
+    return () => ipcRenderer.removeListener(HWP_CHANNELS.bibKeyRenamed, listener)
+  },
+  macrosReadState: () => ipcRenderer.invoke(HWP_CHANNELS.macrosReadState),
+  macrosAdd: (input) => ipcRenderer.invoke(HWP_CHANNELS.macrosAdd, input),
+  macrosUpdate: (id, patch) => ipcRenderer.invoke(HWP_CHANNELS.macrosUpdate, id, patch),
+  macrosDelete: (id) => ipcRenderer.invoke(HWP_CHANNELS.macrosDelete, id),
+  macrosAssignSlot: (id, slot) => ipcRenderer.invoke(HWP_CHANNELS.macrosAssignSlot, id, slot),
+  macrosPickImportFile: () => ipcRenderer.invoke(HWP_CHANNELS.macrosPickImportFile),
+  macrosCommitImport: (input) => ipcRenderer.invoke(HWP_CHANNELS.macrosCommitImport, input),
+  macrosExportFile: (id) => ipcRenderer.invoke(HWP_CHANNELS.macrosExportFile, id),
+  onMacrosChanged: (handler) => {
+    const listener = (_e: Electron.IpcRendererEvent, macros: MacroRecord[]) => handler(macros)
+    ipcRenderer.on(HWP_CHANNELS.macrosChanged, listener)
+    return () => ipcRenderer.removeListener(HWP_CHANNELS.macrosChanged, listener)
+  },
+  aiToolCapabilities: () => ipcRenderer.invoke(AI_CHANNELS.toolCapabilities),
   onAiStream: (handler) => {
     const listener = (_e: Electron.IpcRendererEvent, chunk: AiStreamChunk) => handler(chunk)
     ipcRenderer.on(AI_CHANNELS.streamChunk, listener)
@@ -201,13 +337,23 @@ const api: HwpApi = {
 }
 
 contextBridge.exposeInMainWorld('hwpApi', api)
+// Whether AI is on (Settings › Editors and AI): this screen only reads and follows it
+const appChoice = appChoiceBridge()
+contextBridge.exposeInMainWorld(APP_CHOICE_BRIDGE_KEY, {
+  get: appChoice.get,
+  onChange: appChoice.onChange,
+})
 // Google Drive for this editor's AI: search and read only (decision 0033)
 contextBridge.exposeInMainWorld('aiOfficeDriveAi', driveAiBridge())
 contextBridge.exposeInMainWorld('aiOfficeOutbound', outboundBridge())
+contextBridge.exposeInMainWorld(ACP_TOOL_BRIDGE_KEY, acpToolBridge())
+// the person's MCP servers for this editor's AI: list and call approved tools (the shell checks each)
+contextBridge.exposeInMainWorld('aiOfficeMcpTools', mcpToolsBridge())
 // the person's skills: the AI panel's `/` list and skill reads, skill cards (shell main checks each)
 contextBridge.exposeInMainWorld(USER_SKILLS_BRIDGE_KEY, userSkillsBridge())
 // The shell's document picker, for this editor's AI attach button
 contextBridge.exposeInMainWorld(DOC_ATTACH_BRIDGE_KEY, docAttachBridge())
+contextBridge.exposeInMainWorld(CONNECTOR_ATTACH_BRIDGE_KEY, connectorAttachBridge())
 // The shell's split panes: this view's pane role, and its way to ask for focus
 contextBridge.exposeInMainWorld(SPLIT_PANE_BRIDGE_KEY, splitPaneBridge(ipcRenderer))
 
@@ -220,6 +366,9 @@ const projectApi: Pick<ProjectApi, 'resolveChat' | 'appendChat' | 'loadChat' | '
 }
 
 contextBridge.exposeInMainWorld('projectApi', projectApi)
+// project folders (decision 0088): main identifies this window, the bridge forwards ids only
+contextBridge.exposeInMainWorld(PROJECT_FOLDER_BRIDGE_KEY, projectFolderBridge(ipcRenderer))
 
+contextBridge.exposeInMainWorld('aiOfficeGenerateEditor', generateEditorBridge())
 // open documents dragged from the OS onto this tab as a new shell tab
 installDropOpenBridge()

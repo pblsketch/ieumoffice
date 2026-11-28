@@ -6,7 +6,7 @@ GenOffice parle le Model Context Protocol : un agent de programmation peut donc 
 
 C’est dans **Paramètres ▸ Intégrations** qu’on fait cela. Le panneau a deux moitiés, et vous pouvez utiliser l’une, l’autre, ou les deux.
 
-**La compétence.** Une ligne par agent de programmation trouvé sur cette machine — Claude Code, Codex, Cursor, Gemini CLI, Copilot CLI, OpenCode, Windsurf —, chacune avec **Installer**, **Mettre à jour** et **Désinstaller**, plus **Installer dans un autre dossier…**, **Télécharger le skill (zip)** et **Copier le chemin**. Si votre assistant n’est pas dans la liste, indiquez à GenOffice un dossier depuis lequel il lit `SKILL.md`, ou enregistrez le zip et laissez l’assistant l’installer. La compétence et le MCP peuvent coexister : l’assistant choisit l’un des deux, et ils font exactement les mêmes choses.
+**La compétence.** Une ligne par agent de programmation trouvé sur cette machine — Claude Code, le dossier partagé `~/.agents` (lu par Codex, Cursor, Gemini CLI, Copilot CLI et OpenCode), Windsurf —, chacune avec **Installer**, **Mettre à jour** et **Désinstaller**, plus **Installer dans un autre dossier…**, **Télécharger le skill (zip)** et **Copier le chemin**. Si votre assistant n’est pas dans la liste, indiquez à GenOffice un dossier depuis lequel il lit `SKILL.md`, ou enregistrez le zip et laissez l’assistant l’installer. La compétence et le MCP peuvent coexister : l’assistant choisit l’un des deux, et ils font exactement les mêmes choses. Une copie installée auparavant dans le dossier propre de l’un de ces cinq outils reste listée sous la ligne du dossier partagé et continue d’être mise à jour ; une fois la compétence installée dans le dossier partagé, vous pouvez supprimer cette copie.
 
 **MCP.** Deux voies sont proposées : **Lancé par l’assistant (recommandé)**, où vous ajoutez la configuration affichée à votre client et où l’assistant lance le serveur lui-même, et le **Serveur HTTP local**, que l’application fait tourner pour vous. Dans les deux cas, l’assistant finit par parler à GenOffice et vous ne tapez jamais une commande.
 
@@ -58,7 +58,7 @@ Chaque commande est un outil. Les plus intéressantes :
 Une requête venue de la commande `ieumoffice` ou d’un client MCP n’a pas été saisie par vous dans l’application : GenOffice la traite donc avec prudence.
 
 - **La recherche** fonctionne toujours et est gratuite par défaut. La clé d’un fournisseur de recherche n’est utilisée que si vous en avez sélectionné une.
-- **Générer une image** demande la clé d’un fournisseur d’images. Dans cette version, un abonnement ne génère pas d’images.
+- **Générer une image** suit le choix de génération d’images des paramètres. Le choix par défaut, Forfait ChatGPT (programme Codex), utilise votre forfait ChatGPT via le programme Codex et **n’est pas utilisé sans votre autorisation** (voir plus bas). Sinon, la clé d’un fournisseur d’images configuré est utilisée. Un modèle que l’agent nomme est utilisé quand cette voie le propose.
 - **Décrire une image** utilise un fournisseur à clé lorsqu’il y en a un de configuré. Votre abonnement Claude ou Codex **n’est pas utilisé, sauf si vous l’autorisez**.
 - **La vidéo et l’audio** ont besoin d’un fournisseur à clé qui prend en charge la vidéo.
 

@@ -1,6 +1,8 @@
 import type { zh } from './zh'
 
 export const ru = {
+  appLegacyDocImported:
+    'Файл .{ext} открыт как преобразованная копия .docx. Исходный файл не изменяется; при сохранении создаётся новый файл .docx.',
   appScTitle: 'Сочетания клавиш',
   appScFilter: 'Поиск сочетания',
   appScNone: 'Совпадений не найдено',
@@ -54,6 +56,7 @@ export const ru = {
   appVerticalTextNotice:
     'Документ содержит вертикальный текст (пока отображается горизонтально; на сохранение это не влияет)',
   appNewDocCreated: 'Создан пустой документ. Опишите содержимое для создания в панели ИИ слева',
+  appNewDocCreatedNoAi: 'Создан пустой документ.',
   appNewFailed: 'Не удалось создать документ: {error}',
   appSaveFailed: 'Не удалось сохранить: {error}',
   appAutoSavedAt: 'Автосохранение ({time})',
@@ -96,6 +99,9 @@ export const ru = {
   appPrintRangeAll: 'Все страницы',
   appPrintRangeCurrent: 'Текущая страница',
   appPrintRangeCustom: 'Настраиваемый диапазон',
+  appPrintRangeSelection: 'Выделенный фрагмент',
+  appPrintSelectionPreparing: 'Разбивка выделенного фрагмента на страницы…',
+  appPrintSelectionFailed: 'Не удалось разбить выделенный фрагмент на страницы: {error}',
   appPrintRangeHint: 'напр. 1,3,5-8',
   appPrintPageCount: 'Страниц: {n}',
   appPrintNoPages: 'Нет страниц для печати',
@@ -354,6 +360,9 @@ export const ru = {
   appAiBadgeTip: 'Использует ИИ',
   appTranslate: 'Перевод',
   appTranslateTo: 'Перевести на {lang}',
+  appEasyWords: 'Объяснить простыми словами',
+  appEasyWordsPrompt:
+    'Объясните выделенный фрагмент на русском языке так, чтобы его понял и тот, кому нужен простой текст (дети, пожилые люди, те, кто изучает русский язык). Используйте обычные слова и короткие предложения, сохраните все факты, числа и условия. Документ не изменяйте: «{text}»',
   redactMenuLabel: 'Скрыть выделение от ИИ',
   redactDialogDesc:
     'Слова остаются в документе и в файле, а модель видит только метку. Дайте ей имя, чтобы было понятно, что она обозначает.',
@@ -384,6 +393,7 @@ export const ru = {
   appLangHindi: 'хинди',
   appLangTraditionalChinese: 'китайский (традиционный)',
   appLangVietnamese: 'вьетнамский',
+  appLangTurkish: 'турецкий',
   appWrapTextMenu: 'Обтекание текстом',
   appViewImage: 'Открыть изображение',
   appSaveImageAs: 'Сохранить изображение как…',
@@ -477,6 +487,12 @@ export const ru = {
   appLatexPlaceholder: 'например, x = \\frac{-b \\pm \\sqrt{b^2-4ac}}{2a}',
   appLatexPreviewHint: 'Введите LaTeX, чтобы увидеть предварительный просмотр',
   appPreviewUnavailable: 'Не удалось создать предварительный просмотр',
+  appMathTypeConvertNote:
+    'Уравнение MathType — сохранение преобразует его во встроенное уравнение Word (OMML).',
+  appMathTypeConvertOnlyNote:
+    'Это уравнение MathType содержит конструкции вне подмножества LaTeX. Его можно напрямую преобразовать в уравнение Word (OMML) с сохранением структуры.',
+  appMathTypeConvertAction: 'Преобразовать и обновить',
+  appMathTypeEditHint: 'Уравнение MathType (дважды щелкните для изменения или преобразования)',
   appInlineEquationToggle:
     'Встроенное уравнение (вставляется у курсора и перемещается вместе с текстом)',
   appInsertNewEquation: 'π Вставить новое уравнение (LaTeX)…',
@@ -585,4 +601,13 @@ export const ru = {
   appOdtLabelObject: 'Объект (виден в Hancom)',
   appOdtLabelNotice:
     'Объекты, нарисованные как подписанные рамки, могут выглядеть иначе, чем в Hancom Office.',
+  appMergeSourceLoaded: 'Загружено {name} (записей: {n})',
+  appMergeWritten: 'Записано документов: {n}',
+  appMergeNothingToWrite: 'Нечего записывать',
+  appExportingHwp: 'Экспорт документа HWP…',
+  appExportedHwp: 'Документ HWP экспортирован: {path}',
+  appExportHwpFailed: 'Не удалось экспортировать в HWP: {error}',
+  appExportHwpCanceled: 'Экспорт в HWP отменён',
+  appExportHwpReadback:
+    'Этот документ не удалось точно записать в формате .hwp. Попробуйте сохранить его как .hwpx.',
 } satisfies Record<keyof typeof zh, string>

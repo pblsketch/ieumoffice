@@ -9,7 +9,7 @@
 
 const { execFileSync } = require('node:child_process')
 const { existsSync, readFileSync, readdirSync, rmSync } = require('node:fs')
-const { join } = require('node:path')
+const { dirname, join } = require('node:path')
 
 // Product identity of the installed app. PRODUCT_NAME must equal PRODUCT_NAME
 // in packages/i18n/src/product.ts and "productName" in ./package.json, and the
@@ -27,7 +27,7 @@ const PRODUCT_NAME = 'PosidOffice'
 // (<local app data>/<name>-updater), so a shared name is a shared folder.
 const PACKAGED_APP_NAME = 'ieumoffice'
 const REPO_OWNER = 'pblsketch'
-const REPO_NAME = 'openoffice'
+const REPO_NAME = 'ieumoffice'
 const MAINTAINER = 'pblsketch <pblsketch@users.noreply.github.com>'
 
 // GENOFFICE_MAC_X64=1 — package the Intel (x64) dmg/zip alongside arm64.
@@ -53,6 +53,11 @@ if (winArm64 && !process.env.ELECTRON_BUILDER_7Z_FILTER) {
 const winArch = winArm64 ? 'arm64' : 'x64'
 const winSidecarTarget = winArm64 ? 'aarch64-pc-windows-msvc' : 'x86_64-pc-windows-gnu'
 const WIN_SIDECAR = `../sheets/native/xlsx-engine/target/${winSidecarTarget}/release/xlsx-sidecar.exe`
+const WIN_PARSE_SIDECAR = winArm64
+  ? '../../packages/file-parse/native/parse-sidecar/target/aarch64-pc-windows-msvc/release/ieum-parse-sidecar.exe'
+  : '../../packages/file-parse/native/parse-sidecar/target/release/ieum-parse-sidecar.exe'
+const UNIX_PARSE_SIDECAR =
+  '../../packages/file-parse/native/parse-sidecar/target/release/ieum-parse-sidecar'
 
 function assertExtraResourceSources() {
   for (const rel of [
@@ -64,8 +69,14 @@ function assertExtraResourceSources() {
     '../pdf/node_modules/harfbuzzjs/hb-subset.wasm',
     '../../node_modules/@neslinesli93/qpdf-wasm/dist/qpdf.wasm',
     '../../packages/ui/template-fonts/README.md',
+    '../../packages/ui/ui-fonts/README.md',
+    '../../packages/ui/ui-fonts/PretendardVariable.woff2',
     '../../node_modules/@rhwp/core/rhwp_bg.wasm',
+    '../../packages/hwp5-wasm/pkg/hwp5_wasm_bg.wasm',
+    '../../packages/print-layout/wasm/pkg/print_layout_wasm_bg.wasm',
+    '../../packages/whiteboard-engine/pkg/whiteboard_engine_bg.wasm',
     'resources/builtin-skills/builtin-skills.json',
+    'resources/builtin-craft/index.json',
   ]) {
     if (!existsSync(join(__dirname, rel))) {
       throw new Error(
@@ -194,6 +205,55 @@ function assertUniversalSidecar() {
   }
 }
 
+function assertUniversalParseSidecar() {
+  const sidecar = join(__dirname, UNIX_PARSE_SIDECAR)
+  if (!existsSync(sidecar)) {
+    throw new Error(
+      `mac extraResources source missing: ${sidecar} (run "npm run native:build:universal -w @genoffice/file-parse" first)`,
+    )
+  }
+  const archs = execFileSync('lipo', ['-archs', sidecar], { encoding: 'utf8' }).trim().split(/\s+/)
+  for (const want of ['x86_64', 'arm64']) {
+    if (!archs.includes(want)) {
+      throw new Error(
+        `ieum-parse-sidecar is [${archs.join(', ')}] but both mac arch packages ship it — ` +
+          'run "npm run native:build:universal -w @genoffice/file-parse" before packaging mac',
+      )
+    }
+  }
+}
+
+// The draw.io bundle (about 2,900 files, most of them shape pictures) ships
+// as one asar archive that the diagram editor reads through Electron's fs like
+// a folder (drawioBundleDir in apps/diagram/src/main/drawio-protocol.ts,
+// decision 0166). On Windows every shipped file is written by the installer,
+// opened by the virus scan and, at the next update, deleted by the old
+// uninstaller, so one file instead of 2,900 shortens both install and update.
+// electron-builder archives only the app itself, hence this hook.
+const DRAWIO_SOURCE = '../diagram/out/drawio'
+
+function packagedResourcesDir(context) {
+  if (context.electronPlatformName === 'darwin') {
+    const app = `${context.packager.appInfo.productFilename}.app`
+    return join(context.appOutDir, app, 'Contents', 'Resources')
+  }
+  return join(context.appOutDir, 'resources')
+}
+
+async function packDrawioArchive(context) {
+  // the asar tool electron-builder itself packs app.asar with
+  const asar = require(
+    require.resolve('@electron/asar', { paths: [dirname(require.resolve('app-builder-lib'))] }),
+  )
+  const target = join(packagedResourcesDir(context), 'modules', 'diagram', 'drawio.asar')
+  rmSync(target, { force: true })
+  await asar.createPackage(join(__dirname, DRAWIO_SOURCE), target)
+  const index = asar.extractFile(target, 'index.html')
+  if (!index || index.length === 0) {
+    throw new Error(`draw.io archive ${target} has no index.html`)
+  }
+}
+
 function assertModuleTreesPresent() {
   for (const rel of [
     '../docs/out',
@@ -205,6 +265,8 @@ function assertModuleTreesPresent() {
     '../mindmap/out',
     '../hwp/out',
     '../epub/out',
+    '../diagram/out/drawio/index.html',
+    '../whiteboard/out',
     '../../packages/cli/dist/genoffice.cjs',
     '../../packages/cli/dist/node_modules/jsdom',
   ]) {
@@ -283,9 +345,10 @@ function ensureCliBundleCarriesAppVersion() {
 const NOTICE_PATH = join(__dirname, 'build/THIRD-PARTY-NOTICES.txt')
 const PDFIUM_NOTICE_TERMS = ['@embedpdf/pdfium', 'Copyright 2014 PDFium Authors', 'Apache License']
 // tools/gen-third-party-notices.mjs writes this header after the repo NOTICE,
-// and one crate-count line per Rust component (xlsx-sidecar, rhwp_bg.wasm)
+// and one crate-count line per Rust component (xlsx-sidecar, rhwp_bg.wasm,
+// ieum-parse-sidecar, hwp5_bg.wasm, print_layout_bg.wasm, whiteboard_engine_bg.wasm)
 const NOTICE_HEADER = `${PRODUCT_NAME} — Third-Party Software Notices`
-const RUST_COMPONENTS = 2
+const RUST_COMPONENTS = 6
 const CRATE_COUNT_LINE = /^[1-9]\d* crates, all under permissive terms:$/gm
 
 /**
@@ -335,12 +398,27 @@ function ensureThirdPartyNotices() {
 // in Open With).
 // A mind map file and a book keep the program the user already opens them
 // with, and HWP and HWPX must not be taken from Hancom Office on a PC that has
-// it, so Windows takes none of the four as the extension's default. They are
-// still offered in Explorer's "Open with": build/installer.nsh writes a
-// product-own ProgId with the per-type document icon for each, so choosing
-// this app for them shows the Hangul, mind-map or book icon instead of the
-// bare app icon (the .ico files ship via win.extraResources below).
-const WIN_OPEN_WITH_ONLY_EXTS = new Set(['txt', 'json', 'xmind', 'hwp', 'hwpx', 'epub'])
+// it, so Windows takes none of the four as the extension's default. A Visio
+// drawing is only imported (as a new diagram), and an ODS spreadsheet opens as
+// a converted .xlsx copy that saves as .xlsx (decision 0119), so both keep
+// their program too.
+// They are still offered in Explorer's "Open with": build/installer.nsh
+// writes a product-own ProgId with a document icon for each (the per-type
+// icon, or the xlsx icon for .ods), so choosing this app for them shows the
+// Hangul, mind-map, book, diagram or spreadsheet icon instead of the bare app
+// icon (the per-type .ico files ship via win.extraResources below; xlsx.ico
+// comes with the .xlsx association).
+const WIN_OPEN_WITH_ONLY_EXTS = new Set([
+  'txt',
+  'json',
+  'xmind',
+  'hwp',
+  'hwpx',
+  'epub',
+  'vsdx',
+  'excalidraw',
+  'ods',
+])
 // NSIS registers each association under a ProgId taken from its `name`
 // (HKCU\Software\Classes\<name>). The upstream app registers the bare names
 // below ("Word Document"), so sharing them would let either install overwrite
@@ -401,6 +479,20 @@ const FILE_ASSOCIATIONS = [
     role: 'Editor',
     icon: 'xlsx',
     mimeType: 'text/tab-separated-values',
+  },
+  {
+    // Open With only (decision 0119): an ODS file opens as a converted .xlsx
+    // copy and saves as .xlsx, so installing must not take over the program
+    // the user already opens it with. Windows leaves it out
+    // (WIN_OPEN_WITH_ONLY_EXTS) and macOS ranks the app an alternate; the NSIS
+    // script offers it with the xlsx icon the .xlsx association installs.
+    ext: 'ods',
+    name: 'OpenDocument Spreadsheet',
+    description: 'OpenDocument Spreadsheet',
+    role: 'Editor',
+    rank: 'Alternate',
+    icon: 'xlsx',
+    mimeType: 'application/vnd.oasis.opendocument.spreadsheet',
   },
   {
     ext: 'pdf',
@@ -491,6 +583,57 @@ const FILE_ASSOCIATIONS = [
     icon: 'epub',
     mimeType: 'application/epub+zip',
   },
+  {
+    // draw.io diagrams open in the diagram tab and are saved back as they
+    // are: the app is their editor and takes the default like the office types
+    ext: 'drawio',
+    name: 'Diagram',
+    description: 'Diagram',
+    role: 'Editor',
+    icon: 'diagram',
+    mimeType: 'application/vnd.jgraph.mxfile',
+  },
+  {
+    ext: 'dio',
+    name: 'Diagram',
+    description: 'Diagram',
+    role: 'Editor',
+    icon: 'diagram',
+    mimeType: 'application/vnd.jgraph.mxfile',
+  },
+  {
+    // Open With only: a Visio drawing is read into a new diagram and never
+    // written, so the app only views it. Windows leaves it out
+    // (WIN_OPEN_WITH_ONLY_EXTS) and macOS ranks the app as an alternate.
+    // `.drawio.svg` / `.drawio.png` are not declared: their extension is a
+    // picture's, and the picture's program stays its opener.
+    ext: 'vsdx',
+    name: 'VSDX Drawing',
+    description: 'VSDX Drawing',
+    role: 'Viewer',
+    rank: 'Alternate',
+    icon: 'diagram',
+    mimeType: 'application/vnd.ms-visio.drawing.main+xml',
+  },
+  {
+    ext: 'whiteboard',
+    name: 'Whiteboard',
+    description: 'Whiteboard',
+    role: 'Editor',
+    icon: 'whiteboard',
+    mimeType: 'application/vnd.ieumoffice.whiteboard+zip',
+  },
+  {
+    // Open With only: Excalidraw scenes are imported as new whiteboards and
+    // never overwritten, so the app is only an alternate viewer/importer.
+    ext: 'excalidraw',
+    name: 'Excalidraw Drawing',
+    description: 'Excalidraw Drawing',
+    role: 'Viewer',
+    rank: 'Alternate',
+    icon: 'whiteboard',
+    mimeType: 'application/vnd.excalidraw+json',
+  },
 ]
 
 const config = {
@@ -563,6 +706,19 @@ const config = {
       from: '../epub/out',
       to: 'modules/epub',
     },
+    // the diagram editor; its trimmed draw.io bundle (out/drawio,
+    // vendor/drawio/bundle.mjs) is left out here and packed by afterPack into
+    // resources/modules/diagram/drawio.asar (packDrawioArchive, decision 0166);
+    // the stamp only tells the build step the bundle is current
+    {
+      from: '../diagram/out',
+      to: 'modules/diagram',
+      filter: ['**/*', '!drawio.stamp.json', '!drawio/**'],
+    },
+    {
+      from: '../whiteboard/out',
+      to: 'modules/whiteboard',
+    },
     // PDF text editing engines: the bundled main resolves these under
     // Resources/wasm when node_modules is absent (apps/pdf/src/main/wasm-path.ts)
     {
@@ -583,6 +739,24 @@ const config = {
     {
       from: '../../node_modules/@rhwp/core/rhwp_bg.wasm',
       to: 'wasm/rhwp_bg.wasm',
+    },
+    // HWP 5 OLE2/CFB container helper (section tails, tab widths, field kinds,
+    // save preview, tracked changes): packages/hwp5-wasm
+    {
+      from: '../../packages/hwp5-wasm/pkg/hwp5_wasm_bg.wasm',
+      to: 'wasm/hwp5_bg.wasm',
+    },
+    // Advanced print layout engine (PDF imposition, grayscale PDF, PNG encoding):
+    // packages/print-layout/wasm
+    {
+      from: '../../packages/print-layout/wasm/pkg/print_layout_wasm_bg.wasm',
+      to: 'wasm/print_layout_bg.wasm',
+    },
+    // Whiteboard WASM core engine (file checks, Excalidraw import, Markdown outline, CLI):
+    // packages/whiteboard-engine/pkg
+    {
+      from: '../../packages/whiteboard-engine/pkg/whiteboard_engine_bg.wasm',
+      to: 'wasm/whiteboard_engine_bg.wasm',
     },
     // platform system-OCR helpers for scanned-page recovery (each exists only
     // on its own build platform; electron-builder skips absent sources and the
@@ -638,12 +812,22 @@ const config = {
       from: '../../packages/ui/template-fonts',
       to: 'template-fonts',
     },
+    // the bundled UI font, shipped once for every window and editor chrome;
+    // main code finds the folder with uiFontsDir (@genoffice/electron-utils)
+    {
+      from: '../../packages/ui/ui-fonts',
+      to: 'ui-fonts',
+    },
     // the skills shipped with the app (read-only in the install folder): each
     // folder is the upstream skill as fetched, listed with its source, commit
     // and license in builtin-skills.json and NOTICE
     {
       from: 'resources/builtin-skills',
       to: 'builtin-skills',
+    },
+    {
+      from: 'resources/builtin-craft',
+      to: 'builtin-craft',
     },
   ],
   // `mimeType` is read only by the Linux target, where it becomes the
@@ -676,6 +860,32 @@ const config = {
     ],
     category: 'public.app-category.productivity',
     fileAssociations: FILE_ASSOCIATIONS,
+    // .drawio / .dio resolve to the type identifier draw.io exports, also on a
+    // Mac without draw.io: "set as default" (src/main/default-app.ts) names it
+    extendInfo: {
+      UTExportedTypeDeclarations: [
+        {
+          UTTypeIdentifier: 'io.github.pblsketch.ieumoffice.whiteboard',
+          UTTypeDescription: 'Whiteboard',
+          UTTypeConformsTo: ['public.zip-archive', 'public.data'],
+          UTTypeTagSpecification: {
+            'public.filename-extension': ['whiteboard'],
+            'public.mime-type': ['application/vnd.ieumoffice.whiteboard+zip'],
+          },
+        },
+      ],
+      UTImportedTypeDeclarations: [
+        {
+          UTTypeIdentifier: 'com.jgraph.drawio',
+          UTTypeDescription: 'Diagram',
+          UTTypeConformsTo: ['public.xml', 'public.data'],
+          UTTypeTagSpecification: {
+            'public.filename-extension': ['drawio', 'dio'],
+            'public.mime-type': ['application/vnd.jgraph.mxfile'],
+          },
+        },
+      ],
+    },
     hardenedRuntime: true,
     gatekeeperAssess: false,
     entitlements: 'build/entitlements.mac.plist',
@@ -685,6 +895,10 @@ const config = {
       {
         from: '../sheets/native/xlsx-engine/target/release/xlsx-sidecar',
         to: 'native/xlsx-sidecar',
+      },
+      {
+        from: UNIX_PARSE_SIDECAR,
+        to: 'native/ieum-parse-sidecar',
       },
     ],
   },
@@ -704,14 +918,18 @@ const config = {
         to: 'native/xlsx-sidecar.exe',
       },
       {
+        from: WIN_PARSE_SIDECAR,
+        to: 'native/ieum-parse-sidecar.exe',
+      },
+      {
         from: 'build/shell-new',
         to: 'shell-new',
         filter: ['*.docx', '*.xlsx', '*.pptx'],
       },
       // The Open-With ProgIds build/installer.nsh writes for .hwp/.hwpx/.xmind/.epub
-      // point their DefaultIcon at these; without the explicit entries the
-      // icons are absent (electron-builder places an icon only for the types
-      // in win.fileAssociations, and these four stay off that list).
+      // and .vsdx point their DefaultIcon at these; without the explicit entries
+      // the icons are absent (electron-builder places an icon only for the types
+      // in win.fileAssociations, and these stay off that list).
       {
         from: 'build/hwp.ico',
         to: 'hwp.ico',
@@ -723,6 +941,10 @@ const config = {
       {
         from: 'build/epub.ico',
         to: 'epub.ico',
+      },
+      {
+        from: 'build/diagram.ico',
+        to: 'diagram.ico',
       },
     ],
   },
@@ -776,6 +998,28 @@ const config = {
       {
         from: '../sheets/native/xlsx-engine/target/release/xlsx-sidecar',
         to: 'native/xlsx-sidecar',
+      },
+      {
+        from: UNIX_PARSE_SIDECAR,
+        to: 'native/ieum-parse-sidecar',
+      },
+      // Same blank templates the Windows installer registers for Explorer's
+      // "New" menu. The deb/rpm post-install step copies them into
+      // /usr/share/templates, which KDE Plasma's Dolphin "Create New" menu
+      // scans (genoffice#2384). AppImage gets the payload too but runs no
+      // install script, so it adds no templates.
+      {
+        from: 'build/shell-new',
+        to: 'shell-new',
+        filter: ['*.docx', '*.xlsx', '*.pptx'],
+      },
+      // Raises the open-file soft limit before Chromium forks its zygote, so
+      // an editor on a PC with thousands of fonts does not run out of file
+      // descriptors (#488). The deb/rpm post-install step points the desktop
+      // entry at it; AppImage starts through its own AppRun and does not use it.
+      {
+        from: 'build/linux-launch.sh',
+        to: 'ieumoffice-launch',
       },
     ],
   },
@@ -850,6 +1094,9 @@ const config = {
   portable: {
     splashImage: 'build/portable-splash.bmp',
   },
+  afterPack: async (context) => {
+    await packDrawioArchive(context)
+  },
   beforePack: async (context) => {
     ensurePlatformHelpers()
     assertExtraResourceSources()
@@ -857,13 +1104,35 @@ const config = {
     assertModuleTreesPresent()
     assertPdfStructureProcessBuilt()
     ensureCliBundleCarriesAppVersion()
-    if (context.electronPlatformName === 'darwin' && includeMacX64) {
-      assertUniversalSidecar()
-      assertUniversalVisionOcr()
+    if (context.electronPlatformName === 'darwin') {
+      if (includeMacX64) {
+        assertUniversalSidecar()
+        assertUniversalParseSidecar()
+        assertUniversalVisionOcr()
+      } else if (!existsSync(join(__dirname, UNIX_PARSE_SIDECAR))) {
+        throw new Error(
+          `mac extraResources source missing: ${UNIX_PARSE_SIDECAR} (run "npm run native:build -w @genoffice/file-parse" first)`,
+        )
+      }
     }
-    if (context.electronPlatformName === 'win32' && !existsSync(join(__dirname, WIN_SIDECAR))) {
+    if (context.electronPlatformName === 'win32') {
+      if (!existsSync(join(__dirname, WIN_SIDECAR))) {
+        throw new Error(
+          `win extraResources source missing: ${WIN_SIDECAR} (cargo build --target ${winSidecarTarget} first)`,
+        )
+      }
+      if (!existsSync(join(__dirname, WIN_PARSE_SIDECAR))) {
+        throw new Error(
+          `win extraResources source missing: ${WIN_PARSE_SIDECAR} (run "npm run native:build -w @genoffice/file-parse" first)`,
+        )
+      }
+    }
+    if (
+      context.electronPlatformName === 'linux' &&
+      !existsSync(join(__dirname, UNIX_PARSE_SIDECAR))
+    ) {
       throw new Error(
-        `win extraResources source missing: ${WIN_SIDECAR} (cargo build --target ${winSidecarTarget} first)`,
+        `linux extraResources source missing: ${UNIX_PARSE_SIDECAR} (run "npm run native:build -w @genoffice/file-parse" first)`,
       )
     }
   },

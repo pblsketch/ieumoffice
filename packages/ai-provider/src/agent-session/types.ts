@@ -3,7 +3,7 @@
  * tools in a project folder the user chose, instead of answering one turn with
  * no tools. These are the shapes the session runners and the app share.
  */
-import type { AiRunErrorKind, AiSubscriptionProviderId } from '../types'
+import type { AiRunErrorKind, AiSubscriptionCliId } from '../types'
 
 /**
  * When the app asks the person before the program acts.
@@ -35,8 +35,16 @@ export type AgentActionKind =
   | 'write'
   /** run a command or a script */
   | 'command'
-  /** a tool of the app's own MCP server (open documents) */
+  /**
+   * a tool of the app's own MCP server (open documents), or of this session's
+   * relay of a person's MCP server (user MCP spec 9): the relay asks itself
+   */
   | 'app-tool'
+  /**
+   * a call that reaches the app's relay of a person's MCP server, when the
+   * tool's permission is `ask` and the relay asks the person (user MCP spec 9)
+   */
+  | 'mcp-tool'
   /** load a skill's instructions */
   | 'skill'
   /** search the web (the program's own search tool) */
@@ -66,12 +74,14 @@ export interface AgentAction {
   target?: string | undefined
   /** the site (host name, lower case) of a page address, when it has one */
   host?: string | undefined
+  /** the person's MCP server an `mcp-tool` action calls */
+  server?: string | undefined
 }
 
 /** A request shown to the person; `id` is answered with `AgentPermissionAnswer` */
 export interface AgentPermissionRequest extends AgentAction {
   id: string
-  provider: AiSubscriptionProviderId
+  provider: AiSubscriptionCliId
 }
 
 /**
@@ -112,7 +122,7 @@ export type AgentSessionEvent =
   /** the program reported what it runs with; the session checked it */
   | {
       type: 'started'
-      provider: AiSubscriptionProviderId
+      provider: AiSubscriptionCliId
       model?: string | undefined
       skills: string[]
     }
@@ -124,10 +134,31 @@ export type AgentSessionEvent =
   | { type: 'permission'; request: AgentPermissionRequest }
   /** the program finished answering one message; the session stays open for the next */
   | { type: 'turn-done'; ok: boolean }
+  /**
+   * documents were opened after the session started; the program's rules were
+   * built at the start and cannot protect these. `paths` is what the window may
+   * count, never program output.
+   */
+  | { type: 'documents-unprotected'; paths: string[] }
   /** the session ended with a failure; `kind` follows the app's run errors */
   | { type: 'error'; kind?: AiRunErrorKind | undefined; message: string }
   /** the program is gone (stopped, failed, or idle) */
   | { type: 'ended' }
+
+/**
+ * One relay of a person's MCP server for a session (user MCP spec 9): an MCP
+ * server of the app on loopback with a token of this session, named like the
+ * person's server. The program gets the address and the token, never the
+ * server's own address, keys or environment.
+ */
+export interface AgentMcpRelay {
+  /** the person's server name; the program's tool names are `mcp__<name>__<tool>` */
+  name: string
+  url: string
+  token: string
+  /** the tools the relay lists at the start, as the program names them after `mcp__<name>__` */
+  tools: string[]
+}
 
 export interface AgentSessionOptions {
   /** absolute path of the project folder; the program's working directory */
@@ -135,6 +166,8 @@ export interface AgentSessionOptions {
   mode: AgentPermissionMode
   /** model id as the program takes it; empty for the program's default */
   model: string
+  /** how hard the model thinks (`AI_EFFORTS`); absent for the program's default */
+  effort?: string | undefined
   /** the user's own path to the CLI (settings), if any */
   cliPath?: string | undefined
   /** text the app adds to the program's own instructions (language, app tools, project notes) */
@@ -150,12 +183,14 @@ export interface AgentSessionOptions {
   skillBundleDir?: string | undefined
   /** the app's own MCP server for open documents, if the session may use it */
   appMcp?: { url: string; token: string } | undefined
+  /** the relays of the person's MCP servers that were on when the session started */
+  userMcpRelays?: AgentMcpRelay[] | undefined
   /** a folder the session may write its own files into (settings, MCP config) */
   sessionDir: string
 }
 
 export interface AgentSession {
-  readonly provider: AiSubscriptionProviderId
+  readonly provider: AiSubscriptionCliId
   /** send the person's next message; resolves when the program accepted it */
   send(text: string): Promise<void>
   /** answer a pending permission request */

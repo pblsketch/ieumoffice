@@ -56,4 +56,13 @@ describe('AI system prompts', () => {
     // the pinned-brief meta is document data shared with pages made by the upstream editor
     expect(BRIEF_META_NAME).toBe('genoffice:brief')
   })
+
+  it('names the image files attached to the chat and how to place one', () => {
+    const prompt = createDocumentSkill({
+      ...access,
+      listImageAttachmentNames: () => ['poster.png', 'photo.jpg'],
+    }).systemPrompt
+    expect(prompt).toContain('poster.png, photo.jpg')
+    expect(prompt).toContain('attachment://')
+  })
 })

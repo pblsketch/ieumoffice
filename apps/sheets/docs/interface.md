@@ -12,6 +12,8 @@ The shell layout, from top to bottom:
 4. Univer's name box + formula bar (preset `header: true, toolbar: false` renders only these), worksheet canvas, sheet tabs, statistics, and zoom controls.
 5. A right-side Workbook Copilot panel that can collapse to a narrow rail.
 
+The formula bar keeps its height when the selection changes. Long cell contents scroll inside the bar; dragging its bottom edge changes the height, and the existing fold arrow switches between the compact and expanded presets.
+
 The ribbon establishes the final command hierarchy. Commands whose workbook capability is not implemented are presented as reserved surfaces rather than active operations. In development builds the application menu title shows "Electron" — fixing that requires packaged builds (P0).
 
 ## AI interaction

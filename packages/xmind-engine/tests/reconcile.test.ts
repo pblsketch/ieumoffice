@@ -117,6 +117,47 @@ describe('reconcileSheet: a state that changes nothing', () => {
   })
 })
 
+describe('reconcileSheet: a picture the user removed', () => {
+  async function removing(change: (view: ViewSheet) => void, removedPictures: string[]) {
+    const document = await openSheets(sampleSheets())
+    const before = copyOf(document.sheets)
+    const entries = [...document.entryNames]
+    const view = document.viewSheets()[0]!
+    change(view)
+    const result = expectApplied(reconcileSheet(document, 0, view, { removedPictures }))
+    return { document, before, entries, result, sheet: document.sheets[0]! }
+  }
+
+  it('takes the picture off a topic named as removed, and nothing else', async () => {
+    const { document, before, entries, result, sheet } = await removing(
+      (view) => (inView(view, 'b').image = null),
+      ['b'],
+    )
+    expect(result).toMatchObject({ changed: true, inSync: true })
+    expect(inSource(sheet, 'b')!.image).toBeUndefined()
+    expect(differences(before[0], sheet)).toEqual(['$.rootTopic.children.attached[1].image'])
+    // no archive entry goes: another topic may show the same picture
+    expect(document.entryNames).toEqual(entries)
+    expect(document.changed).toBe(true)
+  })
+
+  it('keeps a picture the state still shows, even for a topic named as removed', async () => {
+    const { result, sheet } = await removing(() => {}, ['b'])
+    expect(result.changed).toBe(false)
+    expect(inSource(sheet, 'b')!.image).toEqual({
+      src: 'xap:resources/picture.png',
+      width: 120.5,
+      height: 80,
+    })
+  })
+
+  it('changes nothing for a named topic that has no picture', async () => {
+    const { document, result } = await removing(() => {}, ['a1'])
+    expect(result.changed).toBe(false)
+    expect(document.changed).toBe(false)
+  })
+})
+
 describe('reconcileSheet: a topic that is in both', () => {
   it('writes one edited title and nothing else, into content.json and no other entry', async () => {
     const original = await buildMapFile({
@@ -418,10 +459,21 @@ describe('reconcileSheet: topics only the state has', () => {
     shown.relationships = []
     const back = expectApplied(reconcileSheet(document, 0, shown))
     expect(back.ids.topics.size).toBe(0)
-    expect(back.inSync).toBe(false) // the picture and style were not brought back
+    expect(back.inSync).toBe(false) // the picture and the fill were not brought back
+    // the text and line format are: a topic the state adds is written with the ones it shows
     expect(inSource(document.sheets[0]!, SOME_UUID)).toEqual({
       id: SOME_UUID,
       title: 'Beta \u{1F600} 한글',
+      style: {
+        id: expect.any(String),
+        properties: {
+          'fo:color': '#112233',
+          'fo:font-family': 'Some Family',
+          'fo:font-size': '18pt',
+          'fo:font-weight': '700',
+          'line-width': '2pt',
+        },
+      },
     })
   })
 })
@@ -562,6 +614,21 @@ describe('reconcileSheet: layout', () => {
     }, fishbone())
     expect(sheet.rootTopic.structureClass).toBe('org.xmind.ui.org-chart.down')
     expect(expectApplied(result).view).toMatchObject({ layout: 'down', layoutExact: true })
+  })
+
+  it('writes the tree and the timeline as the classes of the format', async () => {
+    const cases = [
+      ['tree', 'org.xmind.ui.tree.right'],
+      ['timeline', 'org.xmind.ui.timeline.horizontal'],
+    ] as const
+    for (const [layout, structureClass] of cases) {
+      const { sheet, result } = await edit((view) => {
+        view.layout = layout
+        view.layoutExact = true
+      }, fishbone())
+      expect(sheet.rootTopic.structureClass, layout).toBe(structureClass)
+      expect(expectApplied(result).view).toMatchObject({ layout, layoutExact: true })
+    }
   })
 
   it('writes the stand-in layout too once the user picks it', async () => {
@@ -805,6 +872,58 @@ describe('reconcileSheet: sheets are reconciled one at a time', () => {
     const view = document.viewSheets()[0]!
     expect(() => reconcileSheet(document, 1, view)).toThrow(/no sheet 1/)
     expect(() => reconcileSheet(document, -1, view)).toThrow(/no sheet/)
+  })
+})
+
+describe('reconcileSheet: the width of a topic box', () => {
+  /** The sample with a width on topics `a1` and `a3` as the file holds them. */
+  function withWidths(a1: unknown, a3: unknown): unknown[] {
+    const content = sampleSheets() as Array<{ rootTopic: XmindSheet['rootTopic'] }>
+    const below = content[0]!.rootTopic.children!.attached![0]!.children!.attached!
+    below[0]!.customWidth = a1
+    below[2]!.customWidth = a3
+    return content
+  }
+
+  it('shows a width the file holds and leaves topics without one alone', async () => {
+    const document = await openSheets(withWidths(240, 'wide'))
+    const view = document.viewSheets()[0]!
+    expect(inView(view, 'a1').width).toBe(240)
+    expect('width' in inView(view, 'a3')).toBe(false)
+    expect('width' in inView(view, 'a')).toBe(false)
+  })
+
+  it('writes the width the user gave a box, and only that', async () => {
+    const { document, before, result, sheet } = await edit((view) => {
+      inView(view, 'a1').width = 312
+    })
+    expect(expectApplied(result)).toMatchObject({ changed: true, inSync: true })
+    expect(inSource(sheet, 'a1')!.customWidth).toBe(312)
+    expect(differences(before[0], sheet)).toEqual([
+      '$.rootTopic.children.attached[0].children.attached[0].customWidth',
+    ])
+    expect(document.changed).toBe(true)
+  })
+
+  it('takes the width off when the box goes back to the width of its text', async () => {
+    const content = withWidths(240, 'wide')
+    const { result, sheet } = await edit((view) => {
+      delete inView(view, 'a1').width
+    }, content)
+    expect(expectApplied(result)).toMatchObject({ changed: true, inSync: true })
+    expect('customWidth' in inSource(sheet, 'a1')!).toBe(false)
+    // a value the editor cannot draw shows as none, and a state without a width keeps it
+    expect(inSource(sheet, 'a3')!.customWidth).toBe('wide')
+  })
+
+  it('refuses a width that is not a positive number', async () => {
+    for (const width of [0, -5, Number.NaN, '200']) {
+      const { document, result } = await edit((view) => {
+        ;(inView(view, 'a1') as { width?: unknown }).width = width
+      })
+      expect(result.ok).toBe(false)
+      expect(document.changed).toBe(false)
+    }
   })
 })
 

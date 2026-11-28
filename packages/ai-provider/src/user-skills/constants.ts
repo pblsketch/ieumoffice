@@ -75,6 +75,36 @@ export const SKILL_TEMPLATE_FOLDER = 'assets'
 /** Front matter keys of this app, under `metadata` */
 export const IEUM_TITLE_KEY = 'ieum-title'
 export const IEUM_TEMPLATE_KEY = 'ieum-template'
+/** the editors the skill is for, ids separated by spaces; absent: every editor (decision 0122) */
+export const IEUM_EDITORS_KEY = 'ieum-editors'
+/** space-separated shared craft quality fragment slugs (unknown slugs ignored at runtime) */
+export const IEUM_CRAFT_KEY = 'ieum-craft'
+/** short one-line example prompt for trying the skill */
+export const IEUM_EXAMPLE_KEY = 'ieum-example'
+
+export const ALLOWED_CRAFT_SLUGS = [
+  'typography',
+  'color',
+  'anti-ai-slop',
+  'layout-hierarchy',
+  'korean-office',
+  'cjk-typography',
+] as const
+
+export type CraftSlug = (typeof ALLOWED_CRAFT_SLUGS)[number]
+
+const ALLOWED_CRAFT_SET: ReadonlySet<string> = new Set(ALLOWED_CRAFT_SLUGS)
+
+/** Parses space-separated `metadata.ieum-craft` slugs, silently ignoring unknown values. */
+export function parseCraftSlugs(raw: string | undefined): CraftSlug[] | undefined {
+  if (!raw) return undefined
+  const seen = new Set<CraftSlug>()
+  for (const token of raw.trim().split(/\s+/)) {
+    const slug = token.toLowerCase()
+    if (ALLOWED_CRAFT_SET.has(slug)) seen.add(slug as CraftSlug)
+  }
+  return seen.size > 0 ? [...seen] : undefined
+}
 
 /**
  * Which enabled skill wins when two share a name, first wins. Plugins among

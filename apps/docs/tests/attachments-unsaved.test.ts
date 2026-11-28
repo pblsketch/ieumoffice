@@ -47,14 +47,57 @@ const parseFileToText = vi.fn(async (_path: string) => ({
 vi.mock('@genoffice/file-parse', () => ({
   parseFileToText: (path: string) => parseFileToText(path),
   ATTACHABLE_EXTS: new Set([
-    'txt', 'md', 'markdown', 'csv', 'tsv', 'json', 'yaml', 'yml', 'xml', 'html', 'htm',
-    'log', 'js', 'ts', 'tsx', 'jsx', 'py', 'java', 'c', 'h', 'cpp', 'go', 'rs', 'rb',
-    'sh', 'sql', 'css', 'doc', 'docx', 'odt', 'pdf', 'pptx', 'ppt', 'xlsx', 'xlsm',
-    'xls', 'xmind', 'hwp', 'hwpx', 'png', 'jpg', 'jpeg', 'gif', 'webp',
+    'txt',
+    'md',
+    'markdown',
+    'csv',
+    'tsv',
+    'json',
+    'yaml',
+    'yml',
+    'xml',
+    'html',
+    'htm',
+    'log',
+    'js',
+    'ts',
+    'tsx',
+    'jsx',
+    'py',
+    'java',
+    'c',
+    'h',
+    'cpp',
+    'go',
+    'rs',
+    'rb',
+    'sh',
+    'sql',
+    'css',
+    'doc',
+    'docx',
+    'odt',
+    'pdf',
+    'pptx',
+    'ppt',
+    'xlsx',
+    'xlsm',
+    'xls',
+    'xmind',
+    'hwp',
+    'hwpx',
+    'png',
+    'jpg',
+    'jpeg',
+    'gif',
+    'webp',
   ]),
   ATTACHABLE_IMAGE_EXTS: new Set(['png', 'jpg', 'jpeg', 'gif', 'webp']),
   ATTACHABLE_MAX_BYTES: 50 * 1024 * 1024,
+  attachableMaxBytes: () => 50 * 1024 * 1024,
   ATTACHABLE_IMAGE_MAX_BYTES: 5 * 1024 * 1024,
+  diagramPictureExtOf: () => null,
+  diagramPictureExtOfName: () => null,
 }))
 // this workspace's test aliases do not reach the rest of these packages, and
 // the handler under test uses none of them
@@ -65,6 +108,10 @@ vi.mock('@genoffice/ai-search', async () => ({
 vi.mock('@genoffice/ai-provider/subscription', () => ({
   ensureSubscriptionIpc: () => ({}),
   sharedSubscriptionStatuses: () => ({}),
+  // docs-main gates these with the AI switch (editor choice); never called here
+  detectSubscriptionLogin: async () => ({}),
+  listSubscriptionModels: async () => [],
+  subscriptionStatusErrorText: () => '',
 }))
 vi.mock('@genoffice/ai-provider/codex-app-server', () => ({
   shutdownCodexAppServers: () => {},
@@ -74,14 +121,19 @@ vi.mock('@genoffice/ai-provider/custom-models', () => ({}))
 vi.mock('../src/main/lazy-media', () => ({ registerLazyMediaProtocol: () => {} }))
 vi.mock('../src/main/lazy-media-inline', () => ({}))
 
-import { UNSAVED_CHANGES_MESSAGE, setOpenFilesSource } from '@genoffice/electron-utils'
+import {
+  UNSAVED_CHANGES_MESSAGE,
+  setOpenFilesSource,
+  sharedPathGrants,
+} from '@genoffice/electron-utils'
 import { registerDocsIpc } from '../src/main/docs-main'
 
 type ReadResult = { ok: boolean; text?: string; error?: string }
 let dir: string
 
-function read(path: string): Promise<ReadResult> {
-  return handlers.get('files:read')!({}, path, 0, 1000) as Promise<ReadResult>
+function read(path: string, grant = true): Promise<ReadResult> {
+  if (grant) sharedPathGrants().grant(11, [path])
+  return handlers.get('files:read')!({ sender: { id: 11 } }, path, 0, 1000) as Promise<ReadResult>
 }
 
 beforeAll(() => {
@@ -92,6 +144,7 @@ beforeEach(() => {
   parseFileToText.mockClear()
 })
 afterEach(() => {
+  sharedPathGrants().release(11)
   setOpenFilesSource(null)
   rmSync(dir, { recursive: true, force: true })
 })

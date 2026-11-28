@@ -406,6 +406,8 @@ describe('runJobUnits', () => {
       'metered-not-accepted',
       'unsafe-tools',
       'not-connected',
+      // the person declined a prompt close to the model's window: asking the next batch would ignore that
+      'context-limit',
     ]
     for (const kind of blocked) expect(JOB_STOP_KINDS).toContain(kind)
     for (const kind of blocked) {

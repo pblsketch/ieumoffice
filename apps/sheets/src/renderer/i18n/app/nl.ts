@@ -104,9 +104,11 @@ export const nl = {
   appChartNoRepoint: 'Deze grafiek ondersteunt het opnieuw toewijzen van gegevensbereiken niet.',
   appKeepOneSeries: 'Behoud ten minste één reeks.',
   appNoCategoriesToSwitch: 'Geen categorieën om te wisselen.',
-  appComboNoSelectData:
-    'Het wijzigen van de gegevensbron van een combinatiegrafiek wordt nog niet ondersteund.',
+  appSelectDataUnsupported:
+    'Het wijzigen van de gegevensbron van dit diagramtype wordt niet ondersteund.',
   appSeriesName: 'Reeksnaam',
+  appSeriesType: 'Serietype',
+  appSecondaryAxis: 'Secundaire as',
   appValuesRange: 'Waardenbereik',
   appCategoriesRange: 'Categoriebereik',
   appKeepUnchanged: 'Ongewijzigd laten',
@@ -192,6 +194,13 @@ export const nl = {
   appInvalidGroupField: 'Ongeldig groeperingsveld.',
   appInvalidPageField: 'Ongeldig rapportfilterveld.',
   appPivotPageItemMissing: 'Rapportfilteritem "{item}" is geen lid van veld "{label}".',
+  appInvalidPivotBaseField:
+    'Het basisveld van "Waarden weergeven als" moet in rijen of kolommen staan.',
+  appPivotBaseFieldMissing:
+    'De modus "Waarden weergeven als" van een waardeveld heeft een basisveld nodig.',
+  appPivotBaseFieldNotAxis:
+    'Basisveld "{label}" moet in de rijen of kolommen van de draaitabel staan.',
+  appPivotBaseItemMissing: 'Basisitem "{item}" is geen lid van veld "{label}".',
   appInvalidLabelFilterField: 'Het veld van het labelfilter is ongeldig.',
   appInvalidValueFieldIndex: 'Waardeveldindex {index} is ongeldig.',
   appInvalidValueField: 'Ongeldig waardeveld.',
@@ -335,8 +344,8 @@ export const nl = {
     'Dit werkblad bevat een draaitabel — bereiken verplaatsen wordt nog niet ondersteund.',
   appMergeOverTable:
     'De selectie overlapt een Excel-tabel — cellen samenvoegen in een tabel wordt nog niet ondersteund.',
-  appTableFilterNoEdit:
-    'Het filter van dit werkblad hoort bij een Excel-tabel — de bewerking kan nog niet worden opgeslagen.',
+  appFilterToggleFailed:
+    'Het filter is niet toegepast — selecteer eerst het bereik met uw gegevens.',
   appAutofillStreaming:
     'Automatisch doorvoeren naar een gebied dat nog streamend wordt geladen, is nog niet toegestaan.',
   appDvNeedsIndexed:
@@ -393,6 +402,9 @@ export const nl = {
   appTableNameUsed: 'Tabelnaam "{name}" is in deze sessie al gebruikt.',
   appTableNameInFile: 'Tabelnaam "{name}" wordt al gebruikt door een tabel in het bestand.',
   appTableOverlapsSession: 'Het bereik overlapt tabel "{name}" die in deze sessie is gemaakt.',
+  appTableOverlapsFile: 'Het bereik overlapt tabel "{name}" in het bestand.',
+  appTableAlreadyInTable:
+    'De selectie staat al in tabel "{name}" — wijzig de stijl via Tabelontwerp.',
   appTablesNeedFile: 'Open eerst een XLSX-bestand — tabellen worden in het bestand geschreven.',
   appTableSelectRange: 'Selecteer eerst het gegevensbereik — veldnamen in de eerste rij.',
   appTableCreated: 'Tabel gemaakt — sla op met ⌘S.',
@@ -478,6 +490,7 @@ export const nl = {
   appGridlinesHidden: 'Rasterlijnen verborgen.',
   appGridlinesShown: 'Rasterlijnen weergegeven.',
   appShowingFormulas: 'Formules worden weergegeven — schakel opnieuw voor waarden.',
+  appShowingFormulasActive: 'Formules worden weergegeven',
   appShowingValues: 'Berekende waarden worden weergegeven.',
   appTraceNoFormula: 'Broncellen aanwijzen: de actieve cel bevat geen formule.',
   appTraceNoRefs: 'Broncellen aanwijzen: deze formule bevat geen celverwijzingen.',
@@ -576,6 +589,9 @@ export const nl = {
     'CSV-export vereist een volledig geladen werkmap — wacht tot het laden is voltooid.',
   appCsvExportTooLarge: 'Het blad is te groot om als CSV te exporteren.',
   appCsvExportCanceled: 'CSV-export geannuleerd.',
+  appOdsExported: '{path} geëxporteerd.',
+  appOdsExportCanceled: 'ODS-export geannuleerd.',
+  appOdsExportFailed: 'Exporteren naar ODS is mislukt.',
   appCsvExported: '{path} geëxporteerd.',
   appCsvExportedActiveOnly:
     'CSV-bestanden bevatten slechts één blad — het actieve blad “{name}” is geëxporteerd naar {path}.',
@@ -593,8 +609,6 @@ export const nl = {
   appSaveFailed: 'Kan de werkmap niet opslaan.',
   appCfRuleUnsaveable:
     'Deze regel voor voorwaardelijke opmaak kan niet in xlsx worden opgeslagen — gebruik een ander regeltype.',
-  appSaveErrX14Dv:
-    'Dit blad heeft uitgebreide (x14) gegevensvalidatie; het bewerken van de validatieregels wordt nog niet ondersteund.',
   appSaveErrMultiSelectList:
     'Validatie met een meerkeuzelijst kan niet in xlsx worden opgeslagen — verwijder de regel voordat u opslaat.',
   appSaveErrX14Cf:
@@ -615,6 +629,10 @@ export const nl = {
     'Het stylesheet van deze werkmap mist de basisstructuur; stijlwijzigingen kunnen niet worden opgeslagen.',
   appSaveErrPackageGuard:
     'Opslaan zou de pakketstructuur van de werkmap veranderen — afgebroken om het bestand te beschermen.',
+  appSaveErrSheetNotFound:
+    'Een blad waarnaar deze opslag verwijst, is niet gevonden in de werkmap — het opslaan is gestopt en het bestand is ongewijzigd gebleven.',
+  appSaveErrSheetNameReused:
+    'Een nieuw blad gebruikt de oude naam van een hernoemd blad, daarom kan niet worden opgeslagen. Geef het nieuwe blad voorlopig een andere naam, sla op en hernoem het daarna. Het bestand is ongewijzigd gebleven.',
   appSaveErrChartUnsupported:
     'Dit grafiektype ondersteunt die bewerking niet; opslaan afgebroken — maak de grafiekwijziging ongedaan.',
   appSaveErrMoveOverlap:
@@ -727,6 +745,13 @@ export const nl = {
   appSaveAs: 'Opslaan als',
   appUndo: 'Ongedaan maken',
   appRedo: 'Opnieuw',
+  appQuickAccessCustomize: 'Werkbalk Snelle toegang aanpassen',
+  appQuickAccessHint:
+    'Druk op Alt en een cijfer om de knop op die positie, geteld vanaf links, uit te voeren.',
+  appQuickAccessMoveEarlier: 'Naar voren verplaatsen',
+  appQuickAccessMoveLater: 'Naar achteren verplaatsen',
+  appQuickAccessReset: 'Standaardinstellingen herstellen',
+  appQuickAccessFull: 'Op de werkbalk passen maximaal 10 knoppen.',
   appUnsavedEditOne: '● {count} niet-opgeslagen bewerking',
   appUnsavedEditMany: '● {count} niet-opgeslagen bewerkingen',
   appSavedState: 'Opgeslagen',
@@ -756,7 +781,6 @@ export const nl = {
   appLinkPlaceholder: 'https://example.com of Sheet1!A1',
   appRemoveLink: 'Koppeling verwijderen',
   appNotAvailableYet: 'Nog niet beschikbaar',
-  appComingSoon: 'Binnenkort beschikbaar',
   appGroupChartLayouts: 'Grafiekindelingen',
   appAddChartElement: 'Grafiekelement toevoegen',
   appAddChartElementTitle: 'Titels, gegevenslabels, legenda',
@@ -1189,6 +1213,8 @@ export const nl = {
   appRefreshAll: 'Alles vernieuwen',
   appWorkbookNoPivot: 'Geen draaitabellen in deze werkmap.',
   appRefreshAllTitle: 'Alle draaitabellen vernieuwen',
+  appQueriesConnections: 'Query’s en verbindingen',
+  appQueriesConnectionsTitle: 'De query’s en gegevensverbindingen van de werkmap weergeven',
   appErrorCheckingDetail: 'Blad scannen op foutwaarden',
   appErrorsFound: '{count} fouten — bij {cell}: {value}',
   appCheckingErrors: 'Het hele werkblad wordt op fouten gecontroleerd…',
@@ -1223,6 +1249,7 @@ export const nl = {
   appGroupForecast: 'Prognose',
   appWhatIfAnalysis: 'Wat-als-analyse',
   appGoalSeek: 'Doelzoeken',
+  appDataTable: 'Gegevenstabel',
   appWhatIfTitle: 'Invoer bepalen voor een doelwaarde',
   appGoalSeekNeedsFormula: 'De cel moet een formule bevatten.',
   appGoalSeekByCellNotNumber: 'De te wijzigen cel moet een getal bevatten of leeg zijn.',
@@ -1485,6 +1512,16 @@ export const nl = {
     'Deze tabel heeft geen naam in het bestand en kan hier niet worden gewijzigd.',
   appTableRowsNotLoaded: 'De tabelrijen worden nog geladen; probeer het zo opnieuw.',
   appTableTotalLabel: 'Totaal',
+  appNotePicturesPaneTitle: 'Afbeeldingen bij notities',
+  appNotePicturesClose: 'Sluiten',
+  appNotePicturesNone: 'Geen enkele notitie in deze werkmap toont een afbeelding.',
+  appNotePictureUnavailable: 'Deze afbeelding kan niet worden getoond.',
+  appNotePicturesToggle: 'Afbeeldingen bij notities',
+  appNoteInsertPicture: 'Afbeelding invoegen',
+  appNotePictureInserted:
+    'Afbeelding toegevoegd aan de notitie in {cell}. Opslaan om die naar het bestand te schrijven.',
+  appNotePictureRemoved: 'Afbeelding verwijderd uit de notitie in {cell}.',
+  appNotePictureRemove: 'Afbeelding verwijderen',
   appCommentsPaneTitle: 'Opmerkingen',
   appThreadReply: 'Beantwoorden',
   appThreadReplyPlaceholder: 'Beantwoorden…',
@@ -1553,4 +1590,34 @@ export const nl = {
   appVisualFlipV: 'Verticaal spiegelen',
   appVisualFlipH: 'Horizontaal spiegelen',
   appCtxPasteVisual: 'Afbeelding of vorm plakken',
+
+  // ── Spelling check (F7 / Review ▸ Proofing) ──
+  appSpellTitle: 'Spelling',
+  appSpellBtnDetail: 'Bladtekst controleren (F7)',
+  appSpellToggle: 'Spelling controleren',
+  appSpellToggleTip:
+    'Zet de spellingcontrole aan (F7 en de Review-knop); uitgeschakeld tonen commentaarvakken geen golflijnen meer',
+  appSpellOn: 'Spellingcontrole ingeschakeld.',
+  appSpellOff: 'Spellingcontrole staat uit. Schakel deze in bij Controleren ▸ Controle.',
+  appSpellRecheck: 'Opnieuw controleren',
+  appSpellNone: 'Geen verdachte spelfouten gevonden.',
+  appSpellFindings: '{count} verdachte fouten. Klik op een rij om erheen te springen.',
+  appSpellTruncated: 'Te veel tekstcellen; alleen de eerste zijn gecontroleerd.',
+  appSpellColWord: 'Verdacht',
+  appSpellIgnore: 'Negeren',
+  appSpellIgnoreAll: 'Alles negeren',
+  appSpellLearn: 'Toevoegen aan woordenlijst',
+  appSpellNoSuggestions: 'Geen suggesties',
+  appSpellIgnoredAll: '"{word}" wordt in deze sessie niet meer gemarkeerd.',
+  appSpellLearned: '"{word}" is toegevoegd aan de woordenlijst.',
+  appSpellChanged: '{address} gecorrigeerd.',
+  appSpellChangeFailed: 'Kan {address} niet corrigeren.',
+  appSpellUnavailable: 'Spellingcontrole is niet beschikbaar in dit venster.',
+  appSpellReplaceAll: 'Alle vervangen door "{suggestion}"',
+  appSpellChangedAll: '{count} cellen met "{word}" gecorrigeerd.',
+
+  // ── ODS import ──
+  appOdsImportNotice:
+    'Het ODS-bestand is geopend als een xlsx-kopie. Opslaan schrijft een xlsx-bestand.',
+  appOdsFormulasDropped: 'Van {count} formules zijn alleen de waarden behouden.',
 } satisfies Record<keyof typeof zh, string>

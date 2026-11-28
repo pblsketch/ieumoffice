@@ -1,14 +1,21 @@
+import { mcpServerListOf, skillStepsNote } from '@genoffice/agent-core/skill-mcp-refs'
 import type { AiSkillsBridge } from './skill-picker-model'
 
 /**
  * What the app adds to a request for the skills the person chose (spec 5.4):
  * per skill its identifier, title, SKILL.md body without the front matter and
  * the list of its text files. The app reads the text and adds it; the program
- * gets no tool for it and no script of a skill runs.
+ * gets no tool for it and no script of a skill runs. After each skill comes
+ * the note that tells the model to name the steps it could not do (spec 8).
  */
 
 /** Largest total the added skill text may reach; over it nothing is sent */
 export const SKILL_SEND_MAX_CHARS = 150_000
+
+export interface CraftFragmentText {
+  readonly slug: string
+  readonly body: string
+}
 
 /** One skill as the bridge's `aiRead` gives it */
 export interface SkillForRequest {
@@ -18,6 +25,18 @@ export interface SkillForRequest {
   body: string
   /** text files of the folder besides SKILL.md, `/` between parts */
   files: string[]
+  /** MCP servers the skill refers to (body and front matter `allowed-tools`) */
+  mcpServers: string[]
+  /** resolved craft quality fragments declared in `metadata.ieum-craft` */
+  craftTexts?: readonly CraftFragmentText[] | undefined
+}
+
+export interface SkillRequestOptions {
+  /**
+   * whether an MCP server can be used now (registered and on); without it no
+   * referenced server counts as usable
+   */
+  mcpServerUsable?: ((name: string) => boolean) | undefined
 }
 
 function attr(value: string): string {
@@ -29,8 +48,25 @@ const SKILLS_LEAD =
   'the person keeps; follow it for this request. Its scripts are not run here.'
 
 /** The text added to a request for these skills; empty for none */
-export function skillRequestText(skills: readonly SkillForRequest[]): string {
+export function skillRequestText(
+  skills: readonly SkillForRequest[],
+  options: SkillRequestOptions = {},
+): string {
   if (skills.length === 0) return ''
+  const seenCraft = new Map<string, string>()
+  for (const skill of skills) {
+    for (const frag of skill.craftTexts ?? []) {
+      const slug = frag.slug.trim()
+      const body = frag.body.trim()
+      if (slug && body && !seenCraft.has(slug)) seenCraft.set(slug, body)
+    }
+  }
+  const craftBlock =
+    seenCraft.size > 0
+      ? `<craft-guidelines>\n${[...seenCraft.entries()]
+          .map(([slug, body]) => `<craft id="${attr(slug)}">\n${body}\n</craft>`)
+          .join('\n\n')}\n</craft-guidelines>\n\n`
+      : ''
   const blocks = skills.map((skill) => {
     const files =
       skill.files.length > 0
@@ -38,10 +74,11 @@ export function skillRequestText(skills: readonly SkillForRequest[]): string {
         : ''
     return (
       `<skill id="${attr(skill.id)}" title="${attr(skill.title)}">\n` +
-      `${skill.body.trim()}${files}\n</skill>`
+      `${skill.body.trim()}${files}\n</skill>\n` +
+      skillStepsNote(skill.mcpServers, options.mcpServerUsable)
     )
   })
-  return `\n\n${SKILLS_LEAD}\n\n${blocks.join('\n\n')}`
+  return `\n\n${SKILLS_LEAD}\n\n${craftBlock}${blocks.join('\n\n')}`
 }
 
 export type SkillRequestBuild =
@@ -51,8 +88,9 @@ export type SkillRequestBuild =
 export function buildSkillRequest(
   skills: readonly SkillForRequest[],
   max: number = SKILL_SEND_MAX_CHARS,
+  options: SkillRequestOptions = {},
 ): SkillRequestBuild {
-  const text = skillRequestText(skills)
+  const text = skillRequestText(skills, options)
   if (text.length > max) return { ok: false, reason: 'too-large', chars: text.length }
   return { ok: true, text }
 }
@@ -66,11 +104,27 @@ export function skillForRequestOf(raw: unknown): SkillForRequest | undefined {
   if (!isRecord(raw) || raw.ok !== true || !isRecord(raw.skill)) return undefined
   const s = raw.skill
   if (typeof s.id !== 'string' || typeof s.body !== 'string') return undefined
+  const craftTexts: CraftFragmentText[] = []
+  if (Array.isArray(s.craftTexts)) {
+    for (const item of s.craftTexts) {
+      if (
+        isRecord(item) &&
+        typeof item.slug === 'string' &&
+        typeof item.body === 'string' &&
+        item.slug.trim() &&
+        item.body.trim()
+      ) {
+        craftTexts.push({ slug: item.slug.trim(), body: item.body })
+      }
+    }
+  }
   return {
     id: s.id,
     title: typeof s.title === 'string' && s.title ? s.title : s.id,
     body: s.body,
     files: Array.isArray(s.files) ? s.files.filter((f): f is string => typeof f === 'string') : [],
+    mcpServers: mcpServerListOf(s.mcpServers),
+    ...(craftTexts.length > 0 ? { craftTexts } : {}),
   }
 }
 

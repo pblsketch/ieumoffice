@@ -21,7 +21,9 @@ export interface SheetContextMenuAction {
 
 export function sheetContextMenuAction(target: EventTarget | null): SheetContextMenuAction {
   if (!(target instanceof Element)) return { statsMenu: false, suppressNativeMenu: false }
-  const footer = target.closest('#univer-container section[data-range-selector]')
+  // The grid content section also has data-range-selector; only the section
+  // inside the workbench footer hosts the sheet tabs and statistics.
+  const footer = target.closest('#univer-container footer section[data-range-selector]')
   // Univer owns the footer; right-clicking it outside the tab strip opens ours.
   if (footer && !footer.firstElementChild?.contains(target))
     return { statsMenu: true, suppressNativeMenu: true }

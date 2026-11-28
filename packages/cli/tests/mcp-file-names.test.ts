@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { safeName } from '../src/mcp/files'
+import { MAX_SAFE_NAME_BYTES, safeName } from '../src/mcp/files'
 
 // CJK samples are written with \u escapes on purpose: literal Han characters are
 // rejected outside locale files, and comments must stay ASCII/English.
@@ -28,5 +28,26 @@ describe('safeName', () => {
     expect(safeName(nfd)).toBe(nfd)
     // and it stays distinct from the name it used to collide with
     expect(safeName(nfd)).not.toBe('re_sume_.pdf')
+  })
+
+  it('shortens a long name to bytes a file system accepts, keeping the extension whole', () => {
+    // 100 Hangul letters are 300 bytes: well under 128 characters, over a 255-byte file name
+    const long = `${'가'.repeat(100)}.docx`
+    const name = safeName(long)
+    expect(Buffer.byteLength(name)).toBeLessThanOrEqual(MAX_SAFE_NAME_BYTES)
+    expect(name.endsWith('.docx')).toBe(true)
+    expect(name.startsWith('가')).toBe(true)
+    // short names and ASCII names near the character limit are untouched
+    expect(safeName('가'.repeat(60) + '.docx')).toBe('가'.repeat(60) + '.docx')
+    expect(safeName('a'.repeat(120) + '.pdf')).toBe('a'.repeat(120) + '.pdf')
+    expect(safeName('a'.repeat(200) + '.pdf')).toBe('a'.repeat(124) + '.pdf')
+  })
+
+  it('never cuts a letter outside the BMP in half', () => {
+    // each of these letters is a surrogate pair in UTF-16
+    const name = safeName(`${'\u{20BB7}'.repeat(70)}.docx`)
+    expect(Buffer.from(name).toString('utf-8')).toBe(name)
+    expect(name.endsWith('.docx')).toBe(true)
+    expect(Buffer.byteLength(name)).toBeLessThanOrEqual(MAX_SAFE_NAME_BYTES)
   })
 })

@@ -8,6 +8,7 @@ O editor Markdown abre .md / .markdown — e .txt / .json, direto na visão de c
 - **Salvar**: fiel byte a byte — o BOM, o CRLF e a presença de uma quebra de linha no fim do ficheiro são preservados; um salvamento sem alterações não reescreve o ficheiro.
 - **Pesquisar e substituir**: o ctrl+F pesquisa no código; Substituir grava o resultado de volta.
 - **IA**: botões prontos deixam o assistente reescrever, desenvolver ou traduzir o documento. Uma seleção pode ser ocultada da IA (veja o capítulo do painel de IA).
+- **Abrir links**: ao editar, Ctrl+clique em um link (⌘ no Mac) o abre no navegador; um clique normal coloca o cursor no texto do link para editá-lo. Na apresentação (F5), um clique normal o abre.
 
 ## A barra de ferramentas
 
@@ -36,6 +37,7 @@ Menu Arquivo, tudo local e tudo pergunta onde colocar o resultado:
 
 - **Exportar como Word…** e **Exportar como PDF…** escrevem um .docx ou .pdf a sério.
 - **Exportar como ODT…** grava um .odt (texto OpenDocument) pela mesma conversão da exportação para Word; se algo mudar ou se perder no caminho, você vê a lista e confirma antes.
+- **Exportar como documento HWP…** grava um documento HWP (.hwp ou .hwpx) com a mesma conversão; títulos, listas e tabelas chegam como tais ao documento HWP, e uma tabela longa continua na página seguinte. Se algo não puder ser levado, você vê a lista e confirma antes.
 - **Exportar como imagens…** escreve um PNG por página numa pasta que escolher.
 - **Converter e abrir no Docs** converte para .docx e abre-o no separador Docs incorporado aqui na aplicação — não é uma entrega a nada na nuvem, e a cópia convertida fica numa pasta de cache que é limpa ao fim de cerca de uma semana.
 
@@ -43,6 +45,7 @@ Menu Arquivo, tudo local e tudo pergunta onde colocar o resultado:
 
 O friso traz um interruptor **Código-fonte** (localizado com a aplicação). Ligue-o e o editor é substituído pelo Markdown em bruto: exatamente o texto que uma gravação escreve, nada embelezado, nada normalizado por baixo de si.
 
+- **Teclado**: Ctrl+E (⌘E no Mac) alterna entre a vista de código-fonte e a tela de edição renderizada. Pressione F5 para ler em tela cheia.
 - **A edição é fiel byte a byte.** Uma gravação a partir da vista de código-fonte produz exatamente os mesmos bytes que uma gravação a partir do editor — o BOM, o CRLF e a presença de uma quebra de linha no fim sobrevivem todos.
 - **É o mesmo documento.** Alterne para um lado e para o outro à vontade; a fonte é o próprio texto do editor, não uma cópia que seja preciso fundir.
 - **A barra de formatação fica indisponível** enquanto a vista está aberta, porque a maioria desses botões insere construções do editor que só têm significado do lado renderizado. Reaparece quando fecha a vista.

@@ -1,6 +1,8 @@
 import type { zh } from './zh'
 
 export const ms = {
+  appLegacyPptImported:
+    'Fail .ppt dibuka sebagai salinan .pptx yang ditukar. Fail asal kekal seperti sedia ada; menyimpan akan menulis fail .pptx baharu. Nota penceramah dan animasi tidak dibawa bersama.',
   redactMenuLabel: 'Sembunyikan pilihan daripada AI',
   redactDialogDesc:
     'Kandungan yang dipilih kekal dalam dokumen dan fail; model hanya melihat placeholder di bawah. Beri nama supaya model tahu apa yang diwakili.',
@@ -178,6 +180,9 @@ export const ms = {
   appPrintLandscape: 'Landskap',
   appPrintFrame: 'Bingkai slaid',
   appPrintHidden: 'Cetak slaid tersembunyi',
+  appPrintRangeSelected: 'Slaid yang dipilih',
+  appPrintLayoutBlocked:
+    'Edaran dan halaman nota dicetak satu halaman setiap helaian. Untuk menyusun halaman, pilih Slaid Halaman Penuh.',
   appPrintPageCount: '{n} halaman',
   appPrintNoPages: 'Tiada slaid untuk dicetak',
   appPrintRendering: 'Menjana pratonton…',
@@ -188,6 +193,7 @@ export const ms = {
   appCtxSendToBack: 'Hantar ke Belakang',
   appCtxBringForward: 'Bawa ke Depan',
   appCtxSendBackward: 'Hantar ke Belakang Satu Aras',
+  appCtxRotate: 'Putar',
   appCtxRotateLeft90: 'Putar Kiri 90°',
   appCtxRotateRight90: 'Putar Kanan 90°',
   appCtxFlipH: 'Balikkan Melintang',
@@ -227,6 +233,8 @@ export const ms = {
   appMasterFillNone: 'Tiada Isian',
   appMasterStroke: 'Warna Garis Luar…',
   appMasterStrokeNone: 'Tiada Garis Luar',
+  appMasterInsertTextBox: 'Kotak Teks',
+  appMasterInsertShape: 'Bentuk',
   appStartOpening: 'Membuka…',
   appReadingSlideTitle: 'Klik untuk ke slaid seterusnya (Esc untuk keluar dari Pandangan Baca)',
   appReadingPrev: '‹ Sebelumnya',
@@ -263,4 +271,12 @@ export const ms = {
   appStatusSummaryZoomInserted: 'Slaid Zum Ringkasan disisipkan dengan {count} jubin',
   appSectionSummary: 'Seksyen Ringkasan',
   appSectionN: 'Seksyen {n}',
+  appStatusAnimPainterNone: 'Elemen yang dipilih tiada animasi',
+  appStatusAnimPainterOnce:
+    'Klik elemen untuk menggunakan animasi tersebut; dwiklik butang untuk mod berterusan',
+  appStatusAnimPainterContinuous: 'Mod berterusan Penyalin Animasi; tekan Esc untuk keluar',
+  appStatusAnimPainted: 'Animasi digunakan',
+  appStatusMergeUnsupported:
+    'Bentuk ini tidak boleh dicantumkan (garisan, gambar, jadual, carta dan sesetengah bentuk dikecualikan)',
+  appStatusMergeEmpty: 'Tiada apa-apa yang tinggal selepas dicantumkan (bentuk tidak bertindih)',
 } satisfies Record<keyof typeof zh, string>

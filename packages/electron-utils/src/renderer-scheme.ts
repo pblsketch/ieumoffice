@@ -31,8 +31,31 @@ export const DOCX_MEDIA_SCHEME_PRIVILEGE: CustomScheme = {
   },
 }
 
+/** Slides serves archive pictures outside structured-clone IPC payloads. */
+export const SLIDE_MEDIA_SCHEME_PRIVILEGE: CustomScheme = {
+  scheme: 'genoffice-slide-media',
+  privileges: {
+    standard: true,
+    secure: true,
+    supportFetchAPI: true,
+    corsEnabled: true,
+    stream: true,
+  },
+}
+
 export type RendererHost =
-  'docs' | 'sheets' | 'slides' | 'pdf' | 'markdown' | 'html' | 'mindmap' | 'hwp' | 'epub' | 'help'
+  | 'docs'
+  | 'sheets'
+  | 'slides'
+  | 'pdf'
+  | 'markdown'
+  | 'html'
+  | 'mindmap'
+  | 'hwp'
+  | 'epub'
+  | 'diagram'
+  | 'whiteboard'
+  | 'help'
 
 export const MAX_RENDERER_QUERY_ENTRIES = 20
 export const MAX_RENDERER_QUERY_CHARS = 4_000

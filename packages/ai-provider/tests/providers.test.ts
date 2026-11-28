@@ -81,6 +81,83 @@ describe('provider model catalog', () => {
     }
   })
 
+  it('seeds Runcrate with lab-namespaced model ids', () => {
+    const runcrate = AI_PROVIDERS.find((provider) => provider.id === 'runcrate')!
+    expect(runcrate.models).toContain(runcrate.defaultModel)
+    expect(runcrate.needsBaseUrl).toBeUndefined()
+    for (const model of runcrate.models) {
+      expect(model).toMatch(/^[A-Za-z0-9-]+\/[A-Za-z0-9._-]+$/)
+    }
+  })
+
+  it('seeds CloudGPU with bare model ids (no vendor prefix)', () => {
+    const cloudgpu = AI_PROVIDERS.find((provider) => provider.id === 'cloudgpu')!
+    expect(cloudgpu.models).toEqual([
+      'deepseek-v4.1-flash',
+      'deepseek-v4-pro',
+      'glm-5.3-flash',
+      'kimi-k2.6',
+      'minimax-m3',
+    ])
+    expect(cloudgpu.defaultModel).toBe('deepseek-v4.1-flash')
+    expect(cloudgpu.models).toContain(cloudgpu.defaultModel)
+    expect(cloudgpu.needsBaseUrl).toBeUndefined()
+    expect(cloudgpu.keyPlaceholder).toBe('sk-...')
+    for (const model of cloudgpu.models) {
+      expect(model).not.toContain('/')
+    }
+  })
+
+  it('seeds SiliconFlow with lab-namespaced ids and the CN endpoint base', () => {
+    const siliconflow = AI_PROVIDERS.find((provider) => provider.id === 'siliconflow')!
+    expect(siliconflow.models).toEqual([
+      'deepseek-ai/DeepSeek-V4.1-Flash',
+      'deepseek-ai/DeepSeek-V4-Pro',
+      'deepseek-ai/DeepSeek-V3.2',
+      'zai-org/GLM-5.3',
+      'zai-org/GLM-5.3-Flash',
+      'moonshotai/Kimi-K2.7-Code',
+      'Qwen/Qwen3.8-27B',
+    ])
+    expect(siliconflow.defaultModel).toBe('deepseek-ai/DeepSeek-V4-Pro')
+    expect(siliconflow.models).toContain(siliconflow.defaultModel)
+    expect(siliconflow.needsBaseUrl).toBeUndefined()
+    expect(siliconflow.keyPlaceholder).toBe('sk-...')
+  })
+
+  it('seeds PPIO with lowercase namespaced ids', () => {
+    const ppio = AI_PROVIDERS.find((provider) => provider.id === 'ppio')!
+    expect(ppio.models).toEqual([
+      'deepseek/deepseek-v4.1-flash',
+      'deepseek/deepseek-v4-pro',
+      'moonshotai/kimi-k3',
+      'zai-org/glm-5.3',
+      'qwen/qwen3.8-max',
+      'minimax/minimax-m3.1-flash',
+    ])
+    expect(ppio.defaultModel).toBe('deepseek/deepseek-v4.1-flash')
+    expect(ppio.models).toContain(ppio.defaultModel)
+    expect(ppio.needsBaseUrl).toBeUndefined()
+    expect(ppio.keyPlaceholder).toBe('sk-...')
+    for (const model of ppio.models) {
+      expect(model).toBe(model.toLowerCase())
+    }
+  })
+
+  it('seeds Command Code with vendor-prefixed ids and no Claude/GPT/Grok in the list', () => {
+    const cc = AI_PROVIDERS.find((provider) => provider.id === 'commandcode')!
+    expect(cc.label).toBe('Command Code')
+    expect(cc.defaultModel).toBe('zai-org/GLM-5.3')
+    expect(cc.models).toContain(cc.defaultModel)
+    expect(cc.needsBaseUrl).toBeUndefined()
+    for (const model of cc.models) {
+      // the CLI model reference spells every listed open-weight / Gemini id lab-prefixed
+      expect(model).toMatch(/^[A-Za-z0-9-]+\/[A-Za-z0-9._-]+$/)
+      // Claude rides a different route; GPT/Grok need the Responses API for tools
+      expect(model).not.toMatch(/(^|\/)(claude-|gpt-|grok-)/)
+    }
+  })
+
   it('seeds Cheaper Inference with bare model ids (no vendor prefix)', () => {
     const ci = AI_PROVIDERS.find((provider) => provider.id === 'cheaperinference')!
     expect(ci.models).toContain(ci.defaultModel)
@@ -88,6 +165,21 @@ describe('provider model catalog', () => {
     for (const model of ci.models) {
       expect(model).not.toContain('/')
     }
+  })
+
+  it('seeds Kimi with the K3.1 flagship ahead of the still-sold K3', () => {
+    const kimi = AI_PROVIDERS.find((provider) => provider.id === 'kimi')!
+    expect(kimi.models).toEqual(['kimi-k3.1-pro', 'kimi-k3'])
+    expect(kimi.defaultModel).toBe('kimi-k3.1-pro')
+    expect(kimi.needsBaseUrl).toBeUndefined()
+  })
+
+  it('seeds Claude with Sonnet 5.5 as default', () => {
+    const anthropic = AI_PROVIDERS.find((provider) => provider.id === 'anthropic')!
+    expect(anthropic.models.slice(0, 2)).toEqual(['claude-opus-5-5', 'claude-sonnet-5-5'])
+    expect(anthropic.defaultModel).toBe('claude-sonnet-5-5')
+    expect(anthropic.models.indexOf('claude-fable-5-2')).toBe(2)
+    expect(anthropic.models).toContain('claude-fable-5-1')
   })
 })
 
@@ -176,6 +268,39 @@ describe('resolveAiSettings', () => {
       apiKey: 'sk-user',
       model: 'deep-seek-v4.1-flash',
     })
+  })
+
+  it('moves a stored Gemini 3.7 Flash to 3.8 Flash, where Google routes it', () => {
+    const resolved = resolveAiSettings(
+      { providers: { gemini: { apiKey: 'k', model: 'gemini-3.7-flash' } } as never },
+      defaultAiSettings(),
+    )
+    expect(resolved.providers.gemini.model).toBe('gemini-3.8-flash')
+  })
+
+  it('keeps a stored live model list, cleaned', () => {
+    const resolved = resolveAiSettings(
+      {
+        providers: {
+          gemini: {
+            apiKey: 'k',
+            model: 'gemini-3.8-flash',
+            models: [
+              ' gemini-4-argon ',
+              7,
+              '',
+              'gemini-4-argon',
+              'x'.repeat(300),
+              'gemini-4.1-flash',
+            ],
+          },
+          openai: { apiKey: 'k', model: 'gpt-5.6-terra', models: 'not a list' },
+        } as never,
+      },
+      defaultAiSettings(),
+    )
+    expect(resolved.providers.gemini.models).toEqual(['gemini-4-argon', 'gemini-4.1-flash'])
+    expect(resolved.providers.openai).not.toHaveProperty('models')
   })
 
   it('rewrites the retired V4 Flash id and the vendor wire id to the listed V4.1 Flash name', () => {

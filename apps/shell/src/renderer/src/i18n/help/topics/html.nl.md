@@ -58,3 +58,11 @@ Een viewport-meta is bewust weggelaten: dit tekent zich af in een bureaubladpane
 De `lang` volgt de taal van de gebruikersinterface van de app, dus het skeleton dat je invoegt is degene waar je gereedschap al op is ingesteld. Daarna kun je het vrij bewerken.
 
 De optie verschijnt alleen in de bewerkingsmodus, en alleen zolang het document leeg is — zodra er inhoud is, is er niets meer om een skeleton _in_ in te voegen.
+
+## Formule bewerken
+
+Voer visueel in of bewerk LaTeX. HTML bewaart de bron voor latere bewerking.
+
+Kies Formule invoegen in de werkbalk, gebruik het visuele veld, sjablonen of LaTeX en pas toe. Klik op een opgeslagen formule in het voorbeeld om deze te bewerken. Selecteer voor een formule in de tekst een alinea en schakel de aparte regel uit; de formule komt aan het einde.
+
+Een formule die de zetter niet aankan, gaat niet verloren: de vergelijking houdt de LaTeX-bron en toont de ruwe tekst in de pagina, zodat je hem opnieuw kunt openen en verbeteren.

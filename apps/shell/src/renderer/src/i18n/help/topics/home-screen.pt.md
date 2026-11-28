@@ -8,6 +8,7 @@ O ecrã Início é a página inicial do GenOffice: uma barra de navegação à e
 - **Favoritos**: os arquivos que você marcou com uma estrela. Passe o cursor sobre a linha do arquivo e clique na estrela para adicioná-lo ou removê-lo. **Mover para grupo** no menu ⋯ organiza os favoritos em grupos nomeados; a visualização Favoritos filtra por eles.
 - **Guia do Usuário**: abre este manual.
 - **Ask AI**: o painel de base de conhecimento — pergunte e receba respostas citadas dos seus arquivos favoritados (veja abaixo).
+- **Projetos**: as pastas (projetos) com que a IA pode trabalhar. Crie um projeto ou use uma pasta existente, e abra um deles para gerenciar as instruções, a memória, os arquivos e as conversas. Veja [Projetos](help://projects).
 - **Pastas**: os diretórios que adiciona à barra lateral com **Adicionar pasta…**, ou que arrasta até lá a partir do gestor de ficheiros. Cada um torna-se uma raiz que pode abrir, onde criar subpastas, renomear e remover; a que ficar indisponível aparece como indisponível e pode ser retirada da lista. **Nova pasta** cria outra.
 - **A linha ao fundo**: mostra se há uma IA conectada — **Conectar IA**, ou o nome da assinatura conectada — e abre as Configurações.
 
@@ -43,6 +44,8 @@ Os cartões acima das listas criam um documento novo num só passo. Clicar num c
 
 O arquivo novo vai parar à pasta atualmente selecionada na barra lateral; se não houver nenhuma seleção, vai para a pasta predefinida.
 
+Para ocultar cartões ou mudar a ordem, use **Novos documentos no Início** em Configurações → Geral. Um tipo desativado só sai dos cartões e dos menus Novo; os arquivos desse tipo continuam abrindo normalmente. No Início, ⌘N/Ctrl+N cria o primeiro tipo ainda visível. Desativar um editor em Configurações → Editores e IA é diferente: os cartões e itens de menu dele também somem, e abrir os arquivos dele pede confirmação antes.
+
 O que faz cada cartão:
 
 - **AI Docs** (.docx): um documento de texto em branco no editor Docs. O arquivo só é gravado no disco no **primeiro salvamento**; e os documentos novos abrem com o painel de IA expandido (desligue em Configurações → "Abrir o painel de IA em novos documentos").
@@ -60,5 +63,6 @@ O que faz cada cartão:
 - Favorite arquivos primeiro (qualquer tipo que o app leia); o cabeçalho do painel conta o conjunto, e uma base vazia pede que você favorite algo.
 - As respostas citam os arquivos de origem; clique numa citação para abrir o arquivo no editor dele.
 - Precisa de uma IA conectada; consulte [Conexão por assinatura](help://subscription). A conversa vive só na memória — fechar o app a encerra.
+- Escolha um projeto abaixo do campo de entrada e os arquivos da pasta também são pesquisados e lidos, e a conversa fica guardada nessa pasta para você continuar em outro editor. Sem projeto, a conversa vive só na memória, como acima.
 - A busca roda no índice local de arquivos, como a do Início; arquivos desaparecidos saem do conjunto em silêncio.
 - Grupos organizam só a lista de Favoritos — a base de conhecimento sempre abrange todos os arquivos favoritados.

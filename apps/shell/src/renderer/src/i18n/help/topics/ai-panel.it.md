@@ -36,9 +36,16 @@ Nel pannello IA degli editor Docs, Sheets, Slides, Hangul, HTML e mappe mentali 
 - Se due documenti hanno lo stesso nome ma stanno in cartelle diverse, viene aggiunto il nome della cartella immediatamente superiore, come in `@piano.docx(2° quadrimestre)`, e anche l'IA riceve quel nome di cartella.
 - Gli editor PDF e Markdown non hanno ancora gli allegati, quindi nessuno dei due modi è disponibile lì.
 
+## Progetti
+
+- Fai clic sul nome del progetto, a sinistra sotto il campo di input, per scegliere un progetto (una cartella del tuo PC). L'IA risponde allora conoscendo i file, le istruzioni e la memoria di quella cartella, e la chat viene conservata lì così puoi continuare in un altro editor. Vedi [Progetti](help://projects).
+- Con un progetto scelto, il titolo della chat attuale compare in cima al pannello. Fai clic per vedere l'elenco delle chat del progetto e **Nuova chat**.
+- L'elenco di `@` nel campo di input mostra «File di questo progetto» dopo i documenti aperti.
+- Una richiesta con un progetto scelto invia all'IA che stai usando anche le istruzioni (insieme ad `AGENTS.md` e `CLAUDE.md` in cima alla cartella, che puoi disattivare nella pagina del progetto), la memoria e l'elenco dei nomi dei file di quel progetto, un breve estratto di ogni file che l'IA trova cercando nella cartella, oltre al testo di ogni file che l'IA legge.
+
 ## Ripristino e sicurezza
 
-- Il pannello di Docs mantiene un **elenco delle versioni**: uno snapshot per turno, puoi tornare a qualunque versione e il ripristino stesso è annullabile con Ctrl+Z. Gli snapshot sopravvivono alla riapertura del documento.
+- Un turno in cui l'IA ha modificato il documento riceve, sotto la risposta, una scheda **Modifiche apportate al documento: N**, e i punti modificati vengono segnati in giallo sul documento. I segni compaiono solo sullo schermo — non vengono mai salvati, stampati né esportati — e scompaiono quando invii la richiesta successiva o premi **Nascondi segni**. **Annulla queste modifiche** annulla l'intero turno in una volta. In Docs, Markdown, HTML, Slides, mappe mentali e diagrammi, annullare un turno precedente annulla anche i turni successivi; in Hangul, Sheets, PDF ed EPUB si può annullare solo l'ultimo turno, e solo se il documento non è stato modificato dopo. Quando non si può annullare, usa l'Annulla dell'editor (Ctrl+Z).
 - Le modifiche dell'IA passano dalla stessa pipeline di modifica di quelle manuali (annullabili, subordinate al salvataggio) — niente aggira la tua conferma di salvataggio.
 
 ## Nascondere una selezione all'IA

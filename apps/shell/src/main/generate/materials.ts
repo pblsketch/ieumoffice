@@ -15,7 +15,12 @@
  */
 import { stat } from 'node:fs/promises'
 import { basename, extname, isAbsolute, resolve } from 'node:path'
-import { parseFileToText, type ParsedFile } from '@genoffice/file-parse'
+import {
+  ATTACHABLE_EXTS,
+  attachableMaxBytes,
+  parseFileToText,
+  type ParsedFile,
+} from '@genoffice/file-parse'
 import { fileHasUnsavedChanges } from '@genoffice/electron-utils/unsaved-files'
 import type { AiTargetKind, MaterialProblem } from '../../shared/generate-api'
 import {
@@ -36,11 +41,25 @@ export const IMAGE_MATERIAL_EXTS: ReadonlySet<string> = new Set([
 ])
 
 /**
- * What a material can be: exactly what `parseFileToText` reads (its text,
- * office, pdf, mind map and image types). Every receiving editor accepts all
- * of these as attachments; anything else would come back from it unread.
+ * The largest material of this extension: pictures to the receiving editors'
+ * cap, formats whose size is pictures (zip-based documents, PDF) at any size,
+ * the rest to `MAX_MATERIAL_BYTES`.
  */
-export const SUPPORTED_MATERIAL_EXTS: ReadonlySet<string> = new Set([
+export function materialMaxBytes(ext: string): number {
+  if (IMAGE_MATERIAL_EXTS.has(ext)) return MAX_IMAGE_MATERIAL_BYTES
+  return Number.isFinite(attachableMaxBytes(ext)) ? MAX_MATERIAL_BYTES : Number.POSITIVE_INFINITY
+}
+
+/**
+ * The formats `parseFileToText` reads by a file's last extension that make
+ * material: its text, office, ODT, PDF, EPUB, mind map, Hangul (hwp, hwpx)
+ * and image types. The attachable list holds more (source-code text types,
+ * `.xls`) that it does not read. It also reads draw.io diagrams
+ * (`.drawio`, `.dio`); those are left out of the material on purpose.
+ * `tests/generate-materials.test.ts` checks this list against the reader
+ * itself.
+ */
+const PARSED_MATERIAL_EXTS: ReadonlySet<string> = new Set([
   'txt',
   'md',
   'markdown',
@@ -54,14 +73,32 @@ export const SUPPORTED_MATERIAL_EXTS: ReadonlySet<string> = new Set([
   'py',
   'doc',
   'docx',
+  'odt',
   'ppt',
   'pptx',
   'xlsx',
   'xlsm',
   'pdf',
   'xmind',
+  'whiteboard',
+  'epub',
+  'hwp',
+  'hwpx',
   ...IMAGE_MATERIAL_EXTS,
 ])
+
+/**
+ * What a material can be: the shared attachable formats (`ATTACHABLE_EXTS`,
+ * which every receiving editor checks its attachments against) that
+ * `parseFileToText` reads, the reader those editors extract the text with.
+ * Anything else would come back from the editor refused or unread. Named by
+ * the last extension, as `extOf` names a material: a `.drawio.png` is a `png`
+ * here, held to the picture cap (the reader still measures its diagram text),
+ * and a `.drawio.svg` is not a material.
+ */
+export const SUPPORTED_MATERIAL_EXTS: ReadonlySet<string> = new Set(
+  [...ATTACHABLE_EXTS].filter((ext) => PARSED_MATERIAL_EXTS.has(ext)),
+)
 
 export interface MaterialStatus {
   /** the path, or `untitled:<webContentsId>` for a document never saved */
@@ -152,8 +189,7 @@ export async function inspectMaterial(
     return { ...base, problem: 'missing' }
   }
   const sized = { ...base, sizeBytes: size }
-  const cap = IMAGE_MATERIAL_EXTS.has(ext) ? MAX_IMAGE_MATERIAL_BYTES : MAX_MATERIAL_BYTES
-  if (size > cap) return { ...sized, problem: 'too-large' }
+  if (size > materialMaxBytes(ext)) return { ...sized, problem: 'too-large' }
 
   // before any read: a file with unsaved changes is not read until saved
   if (await (deps.hasUnsavedChanges ?? fileHasUnsavedChanges)(path)) {

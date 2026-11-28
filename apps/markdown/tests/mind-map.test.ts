@@ -10,9 +10,10 @@ import {
   MIND_MAP_LIMITS,
   MIND_MAP_METRICS,
   MIND_MAP_TOOL,
+  mindMapToMermaid,
   parseMindMapTree,
   wrapLabel,
-} from '../src/renderer/ai/mind-map'
+} from '@genoffice/agent-core/mind-map'
 import type { MindMapTreeNode } from '@genoffice/agent-core'
 
 // Undestroyed views leave DOMObserver flush timers that fire after jsdom teardown
@@ -239,12 +240,13 @@ describe('layoutMindMap', () => {
     const a2 = byId.get('0.0.1')!
     const { nodeWidth: w, nodeHeight: h, depthGap, siblingGap, padding } = MIND_MAP_METRICS
 
-    expect(a1.y).toBe(2 * (h + depthGap))
+    expect(a1.y).toBe(2 * (h + depthGap) + padding)
     expect(a2.y).toBe(a1.y)
     // B is a direct child of the root: one level up from A1/A2, level with A
-    expect(b.y).toBe(h + depthGap)
-    expect(a.y).toBe(h + depthGap)
-    expect(root.y).toBe(0)
+    expect(b.y).toBe(h + depthGap + padding)
+    expect(a.y).toBe(h + depthGap + padding)
+    expect(root.y).toBe(padding)
+    expect(a1.x).toBe(padding)
 
     // leaves are sequential; A centers over A1/A2; the root centers over A..B
     expect(a2.x).toBe(a1.x + w + siblingGap)
@@ -256,7 +258,7 @@ describe('layoutMindMap', () => {
     expect(edges).toHaveLength(4)
     expect(edges.every((e) => e.d.startsWith('M '))).toBe(true)
 
-    expect(width).toBe(b.x + w + padding * 2)
+    expect(width).toBe(b.x + w + padding)
     expect(height).toBe(3 * (h + depthGap) - depthGap + padding * 2)
   })
 
@@ -428,5 +430,29 @@ describe('MIND_MAP_TOOL schema', () => {
       for (const value of Object.values(record)) walk(value)
     }
     walk(MIND_MAP_TOOL.inputSchema)
+  })
+})
+
+describe('mindMapToMermaid', () => {
+  it('emits the tree as an indented mindmap diagram, root first', () => {
+    const tree: MindMapTreeNode = {
+      label: 'Doc',
+      children: [{ label: 'A', children: [{ label: 'A1' }] }, { label: 'B' }],
+    }
+    expect(mindMapToMermaid(tree)).toBe(
+      ['mindmap', '  Doc', '    A', '      A1', '    B'].join('\n'),
+    )
+  })
+
+  it('strips node-shape delimiters so mermaid reads labels as plain text', () => {
+    expect(mindMapToMermaid({ label: 'Q1 (sales) [draft]' })).toBe('mindmap\n  Q1 sales draft')
+  })
+
+  it('strips fence and directive syntax that would break out of the mermaid block', () => {
+    expect(mindMapToMermaid({ label: '```%% x ::: y' })).toBe('mindmap\n  x y')
+  })
+
+  it('falls back to Topic when a label is only delimiters', () => {
+    expect(mindMapToMermaid({ label: '()' })).toBe('mindmap\n  Topic')
   })
 })

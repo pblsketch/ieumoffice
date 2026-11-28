@@ -1,6 +1,36 @@
 import type { zh } from './zh'
 
 export const ru = {
+  mathInsert: 'Вставить формулу',
+  mathEdit: 'Изменить формулу',
+  mathHelp:
+    'Вводите формулу визуально или редактируйте LaTeX. HTML сохраняет исходный код для дальнейших правок.',
+  mathVisualInput: 'Визуальный ввод формулы',
+  mathSource: 'Исходный код LaTeX',
+  mathDisplay: 'Показать на отдельной строке',
+  mathPreview: 'Предпросмотр',
+  mathUnsupported:
+    'Не удалось отобразить выражение. Исходный код будет сохранён для исправления позже.',
+  mathTooLong: 'Используйте не более {n} символов.',
+  mathStale: 'Документ изменился. Скопируйте черновик, закройте это окно и откройте формулу снова.',
+  mathShortcut: '⌘+Enter — применить',
+  mathApply: 'Применить формулу',
+  mathKeyboard: 'Математическая клавиатура',
+  mathFraction: 'Дробь',
+  mathRoot: 'Квадратный корень',
+  mathNthRoot: 'Корень n-й степени',
+  mathPower: 'Степень',
+  mathSubscript: 'Нижний индекс',
+  mathSum: 'Сумма',
+  mathProduct: 'Произведение',
+  mathIntegral: 'Интеграл',
+  mathLimit: 'Предел',
+  mathMatrix: 'Матрица',
+  mathVector: 'Вектор',
+  mathCases: 'Система',
+  mathPiecewise: 'Кусочная функция',
+  mathBinomial: 'Биномиальный коэффициент',
+
   redactMenuLabel: 'Скрыть выделение от ИИ',
   redactDialogDesc:
     'Слова остаются в документе и в файле, а модель видит только метку. Дайте ей имя, чтобы было понятно, что она обозначает.',
@@ -17,6 +47,10 @@ export const ru = {
   saveFailedStatus: 'Не удалось сохранить',
   exportFailed: 'Не удалось экспортировать',
   printFailed: 'Не удалось напечатать: {error}',
+  printRangeEmpty: 'В этом документе {count} стр. Укажите номера страниц в этих пределах.',
+  printPagesFailed: 'Не удалось подсчитать страницы для печати: {error}',
+  printLayoutSaved: 'Результат раскладки сохранён в PDF.',
+  printLayoutSaveFailed: 'Не удалось сохранить PDF: {error}',
   exportHtmlSkipped:
     'Экспортировано, но {count} ресурс(ов) не удалось встроить (например, {first})',
   viewPreview: 'Просмотр',
@@ -51,7 +85,8 @@ export const ru = {
   slideThumbs: 'Слайды',
   slideThumbGo: 'Перейти к слайду {n}',
   previewNeedsSave: 'Относительные изображения и стили появятся в просмотре после сохранения файла',
-  inspectHint: 'Щёлкните элемент в просмотре, чтобы выбрать; двойной щелчок редактирует текст',
+  inspectHint:
+    'Щёлкните элемент в просмотре, чтобы выбрать; двойной щелчок редактирует текст; Shift+щелчок или перетаскивание с {alt} выбирает несколько',
   nodeDynamic:
     'Этот элемент создан скриптом страницы и отсутствует в исходнике; редактируйте через исходник или ИИ',
   nodeDynamicShort: 'создан скриптом',
@@ -100,6 +135,7 @@ export const ru = {
   alignLeft: 'По левому краю',
   alignCenter: 'По центру',
   alignRight: 'По правому краю',
+  alignJustify: 'По ширине',
   fontSizeDec: 'Уменьшить размер шрифта',
   fontSizeInc: 'Увеличить размер шрифта',
   typography: 'Типографика',

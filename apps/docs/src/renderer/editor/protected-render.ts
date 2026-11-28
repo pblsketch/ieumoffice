@@ -418,7 +418,9 @@ interface ChartGeom {
 }
 
 export function chartPlotWidth(chart: ChartDisplay): number {
-  return Math.min(chart.widthPx ?? 560, CHART_MAX_WIDTH_PX)
+  // an authored wp:extent is kept as-is: Word renders the drawn width even when
+  // it exceeds the column (the cap bounds only the default and the resize UI)
+  return chart.widthPx ?? Math.min(560, CHART_MAX_WIDTH_PX)
 }
 
 /** c:marker/c:size default (5pt) in px */
@@ -1714,13 +1716,21 @@ export function textboxBoxStyle(box: TextboxDisplay, opts?: { inCell?: boolean }
   // preset/custom geometry renders as an SVG background so the border follows
   // the outline (a clip-path would clip a CSS outline away with the box corners)
   const geomCss = box.pathData
-    ? custGeomBackgroundCss(box.pathData, boxW, boxH, box.fill, box.borderColor)
+    ? custGeomBackgroundCss(box.pathData, boxW, boxH, box.fill, box.borderColor, box.borderWidthPx)
     : box.prst
-      ? shapeBackgroundCss(box.prst, boxW, boxH, box.fill, box.borderColor, {
-          diag: box.lineDiag,
-          flipH: box.flipH,
-          flipV: box.flipV,
-        })
+      ? shapeBackgroundCss(
+          box.prst,
+          boxW,
+          boxH,
+          box.fill,
+          box.borderColor,
+          {
+            diag: box.lineDiag,
+            flipH: box.flipH,
+            flipV: box.flipV,
+          },
+          box.borderWidthPx,
+        )
       : null
   const waStyle = box.wordArtId ? WORDART_CSS[box.wordArtId] : undefined
   // picture fill (photo boxes / a:blipFill): tiles repeat at natural size,

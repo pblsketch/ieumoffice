@@ -195,11 +195,13 @@ vi.mock('../../mindmap/src/main/mindmap-main', () => ({
 
 const createHwpView = vi.fn(() => makeFakeView())
 const hwpIsDirty = vi.fn(() => false)
+const hwpMemoModalOpen = vi.fn(() => false)
 const requestHwpClose = vi.fn(() => Promise.resolve(true))
 
 vi.mock('../../hwp/src/main/hwp-main', () => ({
   createHwpView: (...args: unknown[]) => createHwpView(...(args as [])),
   hwpIsDirty: (...args: unknown[]) => hwpIsDirty(...(args as [])),
+  hwpMemoModalOpen: (...args: unknown[]) => hwpMemoModalOpen(...(args as [])),
   requestHwpClose: (...args: unknown[]) => requestHwpClose(...(args as [])),
 }))
 

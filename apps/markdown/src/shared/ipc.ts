@@ -2,6 +2,7 @@ import type { AiPanelPrefs } from '@genoffice/ui'
 import type { Lang } from '@genoffice/i18n'
 import type { AiSettings, AiStreamChunk, AiStreamRequest } from '@genoffice/ai-provider'
 import type { AiToolCapabilities } from '@genoffice/ai-search'
+import type { PrintLayoutBridge } from '@genoffice/electron-utils/print-layout-bridge'
 import type { ExportImageMime } from './export-image-mime'
 import type { SubscriptionApi } from './subscription-api'
 
@@ -21,8 +22,15 @@ export const MARKDOWN_CHANNELS = {
   rememberWikiFragment: 'markdown:remember-wiki-fragment',
   /** take the fragment remembered for a path, '' when there is none */
   takeWikiFragment: 'markdown:take-wiki-fragment',
+  /** list the vault's notes for the `[[` suggester, breadth-first from the root */
+  listWikiNotes: 'markdown:list-wiki-notes',
+  /** create the note an unresolved `[[wiki link]]` names (never overwrites) */
+  createWikiNote: 'markdown:create-wiki-note',
+  /** what `[[Note#` offers: the target note's headings and block ids */
+  wikiHeads: 'markdown:wiki-heads',
   /** notes whose links land on the given path (the backlinks panel) */
   wikiBacklinks: 'markdown:wiki-backlinks',
+  wikiTags: 'markdown:wiki-tags',
   /** the vault's link graph (nodes + resolved edges, the graph view) */
   wikiGraph: 'markdown:wiki-graph',
   /** invoke → the recovery copy's text to open instead of the file (or as the untitled document), else null */
@@ -53,7 +61,10 @@ export const MARKDOWN_CHANNELS = {
   exportRequest: 'markdown:export-request',
   exportDocx: 'markdown:export-docx',
   exportOdt: 'markdown:export-odt',
+  exportHwp: 'markdown:export-hwp',
   exportPdf: 'markdown:export-pdf',
+  printPreview: 'markdown:print-preview',
+  printDocument: 'markdown:print-document',
   prepareImageExport: 'markdown:prepare-image-export',
   writeExportImage: 'markdown:write-export-image',
   finishImageExport: 'markdown:finish-image-export',
@@ -86,6 +97,67 @@ export interface WikiLinkResolved {
   fragment: string
   found: boolean
 }
+
+/** one vault note offered by the `[[` suggester, in the resolver's own order */
+export interface WikiNoteEntry {
+  /** absolute path, the shape `resolveWikiLinks` answers with */
+  path: string
+  /** file name with extension, as `[[Figure 1.png]]` addresses it */
+  file: string
+  /** stem without extension, as a bare `[[Figure 1]]` addresses it */
+  name: string
+  /** path relative to the walk root, shown under the name in the menu */
+  relPath: string
+}
+
+export interface WikiCreateNoteRequest {
+  /**
+   * The link's target as written, alias dropped: `Note`, `folder/Note`,
+   * `Note#Heading`. The fragment rides back on the answer for the caller to
+   * open on; the file part is what gets created.
+   */
+  target: string
+}
+
+/** a heading of the note `[[Note#` lists */
+export interface WikiHeadingEntry {
+  kind: 'heading'
+  /** heading text as the fragment addresses it, marker stripped */
+  text: string
+  level: number
+}
+
+/** a block id the note already carries, offered by `[[Note#^` */
+export interface WikiBlockIdEntry {
+  kind: 'block'
+  /** the id without the caret, as the completion adds its own */
+  id: string
+  /** the line's text before the marker, '' for a lone marker line */
+  text: string
+}
+
+export type WikiHeadEntry = WikiHeadingEntry | WikiBlockIdEntry
+
+export interface WikiHeadsRequest {
+  /** the link's file part as typed: `Note`, `folder/Note` */
+  target: string
+  /** absolute path of the open document, '' while untitled */
+  fromPath: string
+}
+
+export type WikiCreateNoteResult =
+  | {
+      ok: true
+      /** absolute path of the note, created or already there */
+      path: string
+      /** the spelling a link resolves by: sanitized stem, directories kept (`folder/Note`) */
+      target: string
+      /** the `#Heading` part of the target, '' when there was none */
+      fragment: string
+      /** false when a file already occupied the path and nothing was written */
+      created: boolean
+    }
+  | { ok: false }
 
 /** a note whose link lands on the asked-for path */
 export interface WikiBacklink {
@@ -202,12 +274,33 @@ export interface SaveMarkdownRequest {
    * direct save omits this and asks.
    */
   auto?: boolean
+  /**
+   * Save As only, rendered documents only: the print HTML of what is on screen.
+   * A picked target ending in .pdf writes this HTML as a PDF (and opens it)
+   * instead of the Markdown text; the document keeps its path and unsaved edits.
+   * Its presence also offers Word, ODT and page images in the dialog (`exportAs`).
+   */
+  pdfHtml?: string
 }
+
+/**
+ * Save As › a format the renderer builds with its export code (Word, ODT,
+ * Hangul, page images). The main process only approves the path; nothing is
+ * written yet.
+ */
+export type SaveAsExportFormat = 'docx' | 'odt' | 'hwp' | 'hwpx' | 'png'
 
 export type SaveMarkdownResult =
   | {
       ok: true
       path: string
+      /** the target was written as a PDF copy of the document, not as its save */
+      exported?: 'pdf'
+      /**
+       * Nothing was written: the renderer runs this export to `path` (passed back
+       * as `saveAsTarget`). The document keeps its path, unsaved edits and assets.
+       */
+      exportAs?: SaveAsExportFormat
       /** Save As may relocate local images into the new document's assets directory. */
       imageRewrites?: Array<{ from: string; to: string }>
       /** Actual persisted source after Save As image rewrites. */
@@ -271,7 +364,8 @@ export type ReadUrlResult =
     }
   | { ok: false; error: string; errorCode: string }
 
-export type ExportFormat = 'pdf' | 'docx' | 'docs' | 'png' | 'odt'
+/** 'hwp' from the menu asks for the format (.hwp or .hwpx) in its own dialog */
+export type ExportFormat = 'pdf' | 'docx' | 'docs' | 'png' | 'odt' | 'hwp' | 'hwpx'
 
 export interface ExportDocxRequest {
   /** .docx bytes, base64 */
@@ -280,6 +374,8 @@ export interface ExportDocxRequest {
   suggestedName: string
   /** 'dialog' = save dialog; 'openInDocs' = app-managed temporary copy opened in AI Docs */
   mode: 'dialog' | 'openInDocs'
+  /** Save As › Word: the path the save dialog approved (`exportAs`); no second dialog */
+  saveAsTarget?: string
 }
 
 /** ODT export: the Word export's .docx bytes, converted to ODT in the main process */
@@ -288,6 +384,18 @@ export interface ExportOdtRequest {
   base64: string
   /** file name (no extension) suggested in the dialog */
   suggestedName: string
+  /** Save As › ODT: the path the save dialog approved (`exportAs`); no second dialog */
+  saveAsTarget?: string
+}
+
+/** Hangul export: the Word export's .docx bytes, converted to .hwp / .hwpx in the main process */
+export interface ExportHwpRequest {
+  /** .docx bytes, base64 (the same bytes the Word export writes) */
+  base64: string
+  /** file name (no extension) suggested in the dialog */
+  suggestedName: string
+  /** Save As › HWP / HWPX: the path the save dialog approved (`exportAs`); no second dialog */
+  saveAsTarget?: string
 }
 
 export interface ExportPdfRequest {
@@ -296,6 +404,46 @@ export interface ExportPdfRequest {
   suggestedName: string
   /** headless export mode only: write here instead of opening the save dialog */
   outPath?: string
+}
+
+/** The print preview asks for the very PDF the PDF export writes. */
+export interface MarkdownPrintPreviewRequest {
+  html: string
+  /** paper and orientation chosen in the dialog; absent means A4 portrait */
+  options?: MarkdownPrintOptions
+}
+
+export type MarkdownPrintPreviewResult =
+  { ok: true; pdf: Uint8Array } | { ok: false; error: string }
+
+/** Print the same HTML the preview showed, optionally only a page range. */
+export interface MarkdownPrintDocumentRequest {
+  html: string
+  pages: MarkdownPageRange | null
+  options?: MarkdownPrintOptions
+}
+
+export type MarkdownPrintDocumentResult =
+  { ok: true; canceled?: boolean } | { ok: false; error: string }
+
+/**
+ * The advanced print layout's job (decision 0141): the print preview's PDF of
+ * this HTML and paper, cut to `pages` when the dialog chose a range.
+ */
+export interface MarkdownPrintLayoutJob {
+  html: string
+  pages: MarkdownPageRange | null
+  options: MarkdownPrintOptions
+  /** the document's name, offered in the save dialog of the arranged PDF */
+  name: string
+}
+
+export interface ImageExportRequest extends Omit<ExportPdfRequest, 'outPath'> {
+  /**
+   * Save As › page images: the one file name the save dialog approved
+   * (`exportAs`); pages are written beside it as numbered files, no folder dialog
+   */
+  saveAsTarget?: string
 }
 
 export type ImageExportPreparation =
@@ -313,6 +461,7 @@ export interface ImageData {
 
 /** API exposed by preload to the renderer (window.markdownApi) */
 import type { MarkdownTheme } from './markdown-theme'
+import type { MarkdownPageRange, MarkdownPrintOptions } from './print-options'
 export interface MarkdownApi {
   /** Take the md path pending for this view (queued at tab creation); null = new untitled document */
   consumePending(): Promise<string | null>
@@ -346,8 +495,24 @@ export interface MarkdownApi {
    * breadth-first (the order the resolver matches in), capped so a huge
    * library cannot stall the popup.
    */
+  listWikiNotes(): Promise<WikiNoteEntry[]>
+  /**
+   * Create the note an unresolved `[[target]]` names — Obsidian's "create new
+   * note". A target with a directory lands under the vault root, a bare name
+   * beside the open document (both decided in main, where the open paths
+   * live). An existing file is opened, never overwritten. `ok: false` when
+   * the target cannot name a note at all.
+   */
+  createWikiNote(request: WikiCreateNoteRequest): Promise<WikiCreateNoteResult>
+  /**
+   * What `[[Note#` offers: resolve the typed target the way the resolver does
+   * and list that note's headings and block ids. Read-only — the suggester
+   * lists what is there, it never writes an id into another file.
+   */
+  wikiHeads(request: WikiHeadsRequest): Promise<WikiHeadEntry[]>
   /** Notes whose links resolve to `path` (the backlinks panel); '' answers []. */
   wikiBacklinks(path: string): Promise<WikiBacklink[]>
+  wikiTags(): Promise<{ tag: string; files: string[] }[]>
   /** The vault's link graph, notes as nodes and resolved links as edges. */
   wikiGraph(): Promise<WikiGraph>
   /** Headless export mode: the PDF path this hidden renderer must export to, null in normal use */
@@ -444,8 +609,19 @@ export interface MarkdownApi {
   exportDocx(request: ExportDocxRequest): Promise<ExportResult>
   /** save dialog (.odt) → docx → ODT → confirmation when something changes → write */
   exportOdt(request: ExportOdtRequest): Promise<ExportResult>
+  /** save dialog (.hwp / .hwpx) → docx → Hangul → confirmation when something is lost → write */
+  exportHwp(request: ExportHwpRequest): Promise<ExportResult>
   exportPdf(request: ExportPdfRequest): Promise<ExportResult>
-  prepareImageExport(request: Omit<ExportPdfRequest, 'outPath'>): Promise<ImageExportPreparation>
+  /** the PDF the print preview shows; the same options the PDF export uses */
+  renderPrintPreview(request: MarkdownPrintPreviewRequest): Promise<MarkdownPrintPreviewResult>
+  /** print through the system dialog, using the same HTML and options as the preview */
+  printDocument(request: MarkdownPrintDocumentRequest): Promise<MarkdownPrintDocumentResult>
+  /**
+   * The advanced print layout: the preview's PDF of the job's HTML and paper,
+   * arranged and previewed, printed or saved by the shared print layout
+   */
+  printLayout: PrintLayoutBridge<MarkdownPrintLayoutJob>
+  prepareImageExport(request: ImageExportRequest): Promise<ImageExportPreparation>
   writeExportImage(
     id: string,
     page: number,
@@ -489,8 +665,10 @@ export interface MarkdownApi {
   /** Download an image URL in the main process (CORS-free, scheme/target validated) */
   fetchImage(url: string): Promise<{ base64: string; mime: string } | null>
   /** AI image generation through the configured image route (markdown-owned channel) */
-  aiGenerateImage(op: { prompt: string; aspectRatio?: string }): Promise<{
+  aiGenerateImage(op: { prompt: string; aspectRatio?: string; model?: string }): Promise<{
     url?: string
     error?: string
+    /** the shared tool's remark for the model (e.g. Codex picked the image model) */
+    note?: string
   }>
 }

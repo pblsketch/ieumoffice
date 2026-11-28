@@ -83,6 +83,19 @@ describe('slides hand-off channels', () => {
     expect(take(TAB)).toBeNull()
   })
 
+  it('forwards speakerNotesSeparate only when enabled on the hand-off', () => {
+    queueGenerateHandoff(TAB, handoff({ speakerNotesSeparate: true }))
+    expect(take(TAB)).toEqual({
+      id: 'h-1',
+      text: 'Make a deck for the kickoff',
+      materials: [
+        { path: 'C:\\work\\brief.docx', name: 'brief.docx' },
+        { path: 'C:\\work\\plan.xmind', name: 'plan.xmind' },
+      ],
+      speakerNotesSeparate: true,
+    })
+  })
+
   it('another tab, or a request made for another kind, takes nothing', () => {
     queueGenerateHandoff(TAB, handoff())
     expect(take(OTHER_TAB)).toBeNull()

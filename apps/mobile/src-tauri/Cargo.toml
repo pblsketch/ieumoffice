@@ -1,0 +1,52 @@
+[package]
+name = "ieumoffice-mobile"
+version = "0.1.0"
+description = "IeumOffice Mobile (Tauri 2 Android and iOS runtime)"
+authors = ["IeumOffice"]
+license = "Apache-2.0"
+edition = "2024"
+publish = false
+
+[lib]
+name = "ieumoffice_mobile_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+aes-gcm = "0.10"
+base64 = "0.22"
+futures-util = "0.3"
+hwp5-wasm = { path = "../../../packages/hwp5-wasm" }
+rand = "0.8"
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }
+rsa = { version = "0.9", features = ["sha2"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+tauri = { version = "2", features = [] }
+tauri-plugin-ieum-mobile = { path = "plugins/tauri-plugin-ieum-mobile" }
+thiserror = "2"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "net", "io-util"] }
+url = "2"
+uuid = { version = "1", features = ["v4"] }
+zip = { version = "2", default-features = false, features = ["deflate"] }
+
+[dev-dependencies]
+cfb = "0.15"
+flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
+tempfile = "3"
+
+[features]
+default = []
+# Debug/development-only loopback listener for Android dynamic_agent_client testing.
+# Never enabled in release or store builds.
+dev-chatgpt-loopback = []
+
+[profile.release]
+panic = "abort"
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true

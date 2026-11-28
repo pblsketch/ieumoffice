@@ -1,8 +1,12 @@
 import React, { useEffect, useRef } from 'react'
-import { IconEnter, IconSend, IconStop } from './icons'
+import type { Lang } from '@genoffice/i18n'
+import { IconArrowUp, IconSend, IconSlash, IconStop } from './icons'
 import { useAiPanelPrefs } from './ai-panel-prefs-store'
+import { clipboardPictureIsRendering } from './clipboard-picture'
+import { aiPanelText } from './strings-ai-panel'
 import type { AiComposerSkills } from './use-composer-skills'
 import { useComposerPickers, type AiComposerDocs } from './use-doc-mention'
+import { useImeEnterGuard } from './ime-enter'
 
 // Keep in sync with the CSS `max-height` on `.ai-input-box textarea` (7 lines à 24px)
 const MAX_TEXTAREA_HEIGHT = 168
@@ -31,6 +35,11 @@ export function AiComposer({
   header,
   queueStrip,
   footerStart,
+  footerEnd,
+  footerBelow,
+  footerBelowEnd,
+  showSkillButton = false,
+  lang,
   iconOnly = false,
   sendIconEnabled,
   sendIconDisabled,
@@ -61,6 +70,19 @@ export function AiComposer({
   readonly queueStrip?: React.ReactNode
   /** extra controls at the left of the footer (attach button, toggles, …) */
   readonly footerStart?: React.ReactNode
+  /** controls placed at the right of the footer just before the send/stop button (e.g. model picker) */
+  readonly footerEnd?: React.ReactNode
+  /**
+   * a row outside and below the input box (the project chip); rendered as
+   * `.ai-input-below` after `.ai-input-box`, nothing at all when absent
+   */
+  readonly footerBelow?: React.ReactNode
+  /** trailing slot in `.ai-input-below` (e.g. session-total usage chip) */
+  readonly footerBelowEnd?: React.ReactNode
+  /** show the standalone `/` skill quick-open button beside footerStart (opt-in, defaults false) */
+  readonly showSkillButton?: boolean | undefined
+  /** UI language for built-in composer labels (falls back to skills.lang or 'en') */
+  readonly lang?: Lang | undefined
   /** compact variant: no hint text, icon-only enter/stop button */
   readonly iconOnly?: boolean | undefined
   /** custom art for the icon-only send button (e.g. brand-supplied PNGs); falls back to IconEnter */
@@ -89,6 +111,7 @@ export function AiComposer({
   const innerRef = useRef<HTMLTextAreaElement | null>(null)
   const ref = textareaRef ?? innerRef
   const canSend = value.trim().length > 0 && !busy
+  const ime = useImeEnterGuard()
   const { spellcheck } = useAiPanelPrefs()
   const picker = useComposerPickers({ skills, docs, value, onChange, textareaRef: ref })
 
@@ -105,7 +128,44 @@ export function AiComposer({
     ta.style.height = `${Math.min(ta.scrollHeight, MAX_TEXTAREA_HEIGHT)}px`
   }, [value, ref])
 
-  return (
+  const resolvedLang: Lang = lang ?? skills?.lang ?? 'en'
+  const useTwoZoneFooter = footerEnd !== undefined || showSkillButton
+  const skillButtonLabel = aiPanelText(resolvedLang, 'skillButtonLabel')
+
+  const sendOrStopButton = busy ? (
+    <button
+      type="button"
+      className="ai-send-btn ai-stop-btn"
+      onClick={onStop}
+      title={iconOnly ? undefined : stopLabel}
+      data-tip={iconOnly ? stopLabel : undefined}
+      aria-label={stopLabel}
+    >
+      {iconOnly ? (stopIcon ?? <IconStop size={14} />) : <IconStop size={16} />}
+      {!iconOnly && stopLabel}
+    </button>
+  ) : (
+    <button
+      type="button"
+      className="ai-send-btn"
+      onClick={onSend}
+      disabled={!canSend}
+      title={iconOnly ? undefined : sendLabel}
+      data-tip={iconOnly ? sendLabel : undefined}
+      aria-label={sendLabel}
+    >
+      {iconOnly ? (
+        ((canSend ? sendIconEnabled : (sendIconDisabled ?? sendIconEnabled)) ?? (
+          <IconArrowUp size={15} />
+        ))
+      ) : (
+        <IconSend size={16} />
+      )}
+      {!iconOnly && sendLabel}
+    </button>
+  )
+
+  const box = (
     <div className="ai-input-box">
       {queueStrip}
       {header}
@@ -125,14 +185,21 @@ export function AiComposer({
           picker.track(e.target)
         }}
         onSelect={(e) => picker.track(e.currentTarget)}
-        onCompositionStart={picker.onCompositionStart}
-        onCompositionEnd={picker.onCompositionEnd}
+        onCompositionStart={() => {
+          picker.onCompositionStart()
+          ime.handleCompositionStart()
+        }}
+        onCompositionEnd={(e) => {
+          picker.onCompositionEnd(e)
+          ime.handleCompositionEnd()
+        }}
         onBlur={picker.onBlur}
         onKeyDown={(e) => {
           // an open skill or document list takes ↑/↓/Enter/Tab/Esc first; its Esc never stops a run
           if (picker.onKeyDown(e)) return
-          if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+          if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault()
+            if (ime.isImeConfirm(e.nativeEvent)) return
             if (canSend) onSend()
             else if (busy && onQueue) onQueue()
           } else if (e.key === 'Escape' && busy) {
@@ -141,53 +208,74 @@ export function AiComposer({
           }
         }}
         onPaste={(e) => {
-          const files = Array.from(e.clipboardData.files)
+          const text = e.clipboardData.getData('text/plain')
+          const files = clipboardPictureIsRendering(e.clipboardData.getData('text/html'), text)
+            ? []
+            : Array.from(e.clipboardData.files)
           if (files.length > 0) {
             if (!onPasteFiles) return
             e.preventDefault()
             onPasteFiles(files)
             return
           }
-          const text = e.clipboardData.getData('text/plain')
           if (text && onPasteText?.(text)) e.preventDefault()
         }}
       />
       <div className="ai-input-footer">
-        {footerStart}
-        {!iconOnly && (
-          <span className="ai-input-hint" title={busy ? undefined : hintIdleTitle}>
-            {busy ? hintBusy : hintIdle}
-          </span>
-        )}
-        {busy ? (
-          <button
-            className="ai-send-btn ai-stop-btn"
-            onClick={onStop}
-            title={stopLabel}
-            aria-label={stopLabel}
-          >
-            {iconOnly ? (stopIcon ?? <IconStop size={16} />) : <IconStop size={16} />}
-            {!iconOnly && stopLabel}
-          </button>
-        ) : (
-          <button
-            className="ai-send-btn"
-            onClick={onSend}
-            disabled={!canSend}
-            title={sendLabel}
-            aria-label={sendLabel}
-          >
-            {iconOnly ? (
-              ((canSend ? sendIconEnabled : (sendIconDisabled ?? sendIconEnabled)) ?? (
-                <IconEnter size={16} />
-              ))
-            ) : (
-              <IconSend size={16} />
+        {useTwoZoneFooter ? (
+          <>
+            <div className="ai-input-footer-start">
+              {footerStart}
+              {showSkillButton && skills && (
+                <button
+                  type="button"
+                  className="ai-composer-icon-btn ai-skill-trigger-btn"
+                  aria-haspopup="listbox"
+                  aria-expanded={Boolean(picker.manualOpen)}
+                  onClick={() => picker.toggleSkillMenu?.()}
+                  data-tip={skillButtonLabel}
+                  aria-label={skillButtonLabel}
+                >
+                  <IconSlash size={15} />
+                </button>
+              )}
+            </div>
+            {!iconOnly && (
+              <span className="ai-input-hint" title={busy ? undefined : hintIdleTitle}>
+                {busy ? hintBusy : hintIdle}
+              </span>
             )}
-            {!iconOnly && sendLabel}
-          </button>
+            <div className="ai-input-footer-end">
+              {footerEnd}
+              {sendOrStopButton}
+            </div>
+          </>
+        ) : (
+          <>
+            {footerStart}
+            {!iconOnly && (
+              <span className="ai-input-hint" title={busy ? undefined : hintIdleTitle}>
+                {busy ? hintBusy : hintIdle}
+              </span>
+            )}
+            {sendOrStopButton}
+          </>
         )}
       </div>
     </div>
+  )
+  const hasFooterBelow = footerBelow !== null && footerBelow !== undefined && footerBelow !== false
+  const hasFooterBelowEnd =
+    footerBelowEnd !== null && footerBelowEnd !== undefined && footerBelowEnd !== false
+  // without a row below, the composer renders exactly the box, as before
+  if (!hasFooterBelow && !hasFooterBelowEnd) return box
+  return (
+    <>
+      {box}
+      <div className="ai-input-below">
+        {hasFooterBelow ? footerBelow : null}
+        {hasFooterBelowEnd && <span className="ai-input-below-end">{footerBelowEnd}</span>}
+      </div>
+    </>
   )
 }

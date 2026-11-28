@@ -5,7 +5,9 @@ import {
   FORMULA_REFERENCE_PATTERN,
   qualifierMatches,
 } from '@genoffice/xlsx-gateway/gateway/xlsx-structure'
-import JSZip from 'jszip'
+import { resolveRelTarget } from '@genoffice/xlsx-gateway/gateway/xlsx-drawing-add'
+import { normalizeOoxmlPartPrefix } from '@genoffice/xlsx-gateway/gateway/xlsx-namespace'
+import { loadUserZip } from './gated-zip'
 import { excerpt, PLACEHOLDER, textWidthPx, type IssueDraft } from '../check'
 import { displayText } from './xlsx'
 
@@ -61,18 +63,28 @@ export interface WorkbookCheck {
 }
 
 export async function checkWorkbook(bytes: Uint8Array): Promise<WorkbookCheck> {
-  const zip = await JSZip.loadAsync(bytes)
-  const text = async (path: string) => (await zip.file(path)?.async('string')) ?? ''
-  const workbook = await text('xl/workbook.xml')
-  const rels = parseRelationships(await text('xl/_rels/workbook.xml.rels'))
+  const zip = await loadUserZip(bytes)
+  const text = async (path: string, required = false): Promise<string> => {
+    const part = zip.file(path)
+    if (!part) {
+      if (required) throw new Error(`Workbook part not found: ${path}.`)
+      return ''
+    }
+    return normalizeOoxmlPartPrefix(await part.async('string'))
+  }
+  const workbook = await text('xl/workbook.xml', true)
+  const rels = parseRelationships(await text('xl/_rels/workbook.xml.rels', true))
   const targets = new Map(
-    rels.filter((r) => r.id !== undefined && !r.external).map((r) => [r.id!, partPath(r.target)]),
+    rels.filter((r) => r.id !== undefined && !r.external).map((r) => [r.id!, r.target]),
   )
   const sheets: SheetXml[] = []
   for (const el of parseSheetElements(workbook)) {
-    const path = el.relationshipId ? targets.get(el.relationshipId) : undefined
-    if (path) sheets.push({ name: el.name, path, xml: await text(path) })
+    const target = el.relationshipId ? targets.get(el.relationshipId) : undefined
+    if (target === undefined) throw new Error(`Missing worksheet relationship for "${el.name}".`)
+    const path = resolveRelTarget('xl/workbook.xml', target)
+    sheets.push({ name: el.name, path, xml: await text(path, true) })
   }
+  if (sheets.length === 0) throw new Error('Workbook contains no readable worksheets.')
   const names = sheets.map((s) => s.name)
   const styles = parseStyles(await text('xl/styles.xml'))
   const shared = parseSharedStrings(await text('xl/sharedStrings.xml'))
@@ -94,10 +106,6 @@ export async function checkWorkbook(bytes: Uint8Array): Promise<WorkbookCheck> {
 }
 
 // ── parsing ────────────────────────────────────────────────────────────
-
-function partPath(target: string): string {
-  return target.startsWith('/') ? target.slice(1) : `xl/${target}`
-}
 
 function unescapeXml(text: string): string {
   return text
@@ -123,12 +131,12 @@ function parseStyles(xml: string): Styles {
   }
   const fontSizes: number[] = []
   const fonts = /<fonts\b[^>]*>([\s\S]*?)<\/fonts>/.exec(xml)?.[1] ?? ''
-  for (const m of fonts.matchAll(/<font\b[^>]*(?:\/>|>([\s\S]*?)<\/font>)/g)) {
+  for (const m of fonts.matchAll(/<font\b[^>]*?(?:\/>|>([\s\S]*?)<\/font>)/g)) {
     fontSizes.push(Number(/<sz\b[^>]*\bval="([\d.]+)"/.exec(m[1] ?? '')?.[1] ?? 11))
   }
   const xfs: Xf[] = []
   const cellXfs = /<cellXfs\b[^>]*>([\s\S]*?)<\/cellXfs>/.exec(xml)?.[1] ?? ''
-  for (const m of cellXfs.matchAll(/<xf\b([^>]*)(?:\/>|>([\s\S]*?)<\/xf>)/g)) {
+  for (const m of cellXfs.matchAll(/<xf\b([^>]*?)(?:\/>|>([\s\S]*?)<\/xf>)/g)) {
     xfs.push({
       numFmtId: Number(/\bnumFmtId="(\d+)"/.exec(m[1]!)?.[1] ?? 0),
       fontId: Number(/\bfontId="(\d+)"/.exec(m[1]!)?.[1] ?? 0),

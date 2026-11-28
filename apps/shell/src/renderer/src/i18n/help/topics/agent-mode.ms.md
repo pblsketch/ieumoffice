@@ -4,7 +4,7 @@ Ejen menjadikan satu folder yang anda pilih sebagai projek dan menjalankan Claud
 
 ## Sebelum bermula
 
-- Langganan Claude atau langganan ChatGPT yang disambungkan di bawah **Tetapan ▸ AI**. Topik "Sambungan langganan" menerangkan caranya.
+- Program Claude Code atau Codex yang disambungkan di bawah **Tetapan ▸ AI** (dilog masuk dengan langganan Claude atau pelan ChatGPT). ChatGPT yang disambungkan terus dalam aplikasi tidak digunakan oleh ejen. Topik "Sambungan langganan" menerangkan caranya.
 - Folder yang mengandungi bahan anda. Keseluruhan pemacu, keseluruhan folder rumah anda, dan folder data log masuk atau data aplikasi tidak boleh dipilih.
 
 ## Memulakan sesi

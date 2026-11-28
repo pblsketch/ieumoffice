@@ -7,6 +7,7 @@ import { AI_CHANNELS } from '../src/shared/ipc'
 import {
   SUBSCRIPTION_CONNECT_HELP_CHANNEL,
   SUBSCRIPTION_INSTALL_HELP_CHANNEL,
+  SUBSCRIPTION_USAGE_CHANNEL,
   checkingSubscriptionStatuses,
   isSubscriptionProviderId,
   subscriptionLaunchResultOf,
@@ -120,6 +121,7 @@ describe('html preload', () => {
         'cancelLogin',
         'login',
         'onChanged',
+        'onUsage',
         'openConnectHelp',
         'openInstallHelp',
         'recheck',
@@ -141,6 +143,7 @@ describe('html preload', () => {
         'ai:web-search',
         'ai:read-url',
         'ai:image-search',
+        'ai:tool-capabilities',
       ].sort(),
     )
   })
@@ -158,6 +161,7 @@ describe('html preload', () => {
     await api.subscription.recheck()
     await api.subscription.recheck(['codex'])
     await api.subscription.login('claude-code')
+    await api.subscription.login('claude-code', 'window')
     await api.subscription.install('codex')
     await api.subscription.setMeteredAccepted('codex', true)
     await api.subscription.openInstallHelp('claude-code')
@@ -166,6 +170,7 @@ describe('html preload', () => {
       [SUBSCRIPTION_IPC_CHANNELS.recheck, undefined],
       [SUBSCRIPTION_IPC_CHANNELS.recheck, { providers: ['codex'] }],
       [SUBSCRIPTION_IPC_CHANNELS.login, { provider: 'claude-code' }],
+      [SUBSCRIPTION_IPC_CHANNELS.login, { provider: 'claude-code', mode: 'window' }],
       [SUBSCRIPTION_IPC_CHANNELS.install, { provider: 'codex' }],
       [SUBSCRIPTION_IPC_CHANNELS.metered, { provider: 'codex', accepted: true }],
       [SUBSCRIPTION_INSTALL_HELP_CHANNEL, 'claude-code'],
@@ -199,6 +204,23 @@ describe('html preload', () => {
       SUBSCRIPTION_IPC_CHANNELS.changed,
       listener,
     )
+  })
+
+  it('hears the usage a picture request reported, and stops when asked', () => {
+    expect(SUBSCRIPTION_USAGE_CHANNEL).toBe('ai:subscription-usage-update')
+    const seen: unknown[] = []
+    const off = api.subscription.onUsage((usage) => seen.push(usage))
+    const [channel, listener] = electron.on.mock.calls[0] as [
+      string,
+      (event: unknown, payload: unknown) => void,
+    ]
+    expect(channel).toBe(SUBSCRIPTION_USAGE_CHANNEL)
+    const usage = [{ provider: 'codex', window: 'five_hour', utilization: 0.4, resetsAt: 1 }]
+    listener({}, usage)
+    listener({}, 'not a list')
+    expect(seen).toEqual([usage, []])
+    off()
+    expect(electron.removeListener).toHaveBeenCalledWith(SUBSCRIPTION_USAGE_CHANNEL, listener)
   })
 })
 

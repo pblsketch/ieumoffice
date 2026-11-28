@@ -1,0 +1,581 @@
+/* Macro recording top-bar badge, Macro Manager modal, and Macro Editor modal.
+ * Uses only theme design tokens from packages/ui/src/tokens.css,
+ * apps/hwp/src/renderer/dialog-theme.css, and apps/hwp/src/renderer/styles.css. */
+
+/* ---- top-bar recording badge (no accent stripe or sidebar bar) ---- */
+
+.hwp-macro-recording-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+  padding: 0 4px 0 8px;
+  border: 1px solid var(--danger-border);
+  border-radius: 999px;
+  background: var(--danger-bg);
+  color: var(--danger);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.hwp-macro-recording-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--danger);
+  flex: none;
+}
+
+.hwp-macro-recording-stop {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 16px;
+  padding: 0 7px;
+  border: 1px solid var(--danger-border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--danger);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.hwp-macro-recording-stop:hover {
+  border-color: var(--danger);
+  background: var(--hover);
+}
+
+.hwp-macro-recording-stop:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* ---- modal shell (shared by MacroManagerModal and MacroEditorModal) ---- */
+
+.macro-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1240;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.macro-modal-backdrop-editor {
+  z-index: 1260;
+}
+
+.macro-modal-backdrop::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--ieum-dialog-overlay);
+}
+
+.macro-modal {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  width: min(760px, 100%);
+  max-height: min(680px, calc(100vh - 48px));
+  overflow: hidden;
+  border: 1px solid var(--ieum-dialog-line);
+  border-radius: var(--ieum-dialog-radius);
+  background: var(--ieum-dialog-surface);
+  color: var(--ieum-dialog-ink);
+  box-shadow: var(--ieum-dialog-shadow);
+  font-family: var(--ieum-dialog-font);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.macro-modal-editor {
+  width: min(720px, 100%);
+  max-height: min(760px, calc(100vh - 40px));
+}
+
+.macro-modal-head {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 46px;
+  padding: 8px 12px 8px 18px;
+  background: var(--ieum-dialog-title-surface);
+  border-bottom: 1px solid var(--ieum-dialog-line);
+  color: var(--ieum-dialog-title-ink);
+}
+
+.macro-modal-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.macro-modal-head-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.macro-modal-close {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--ieum-dialog-radius-control);
+  background: transparent;
+  color: var(--ieum-dialog-ink-muted);
+  cursor: pointer;
+}
+
+.macro-modal-close:hover:not(:disabled) {
+  background: var(--hover);
+  color: var(--ieum-dialog-ink);
+}
+
+.macro-modal-close:focus-visible {
+  outline: 2px solid var(--ieum-dialog-focus);
+  outline-offset: 2px;
+}
+
+.macro-modal-body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+  padding: 16px 18px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.macro-modal-foot {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 18px;
+  border-top: 1px solid var(--ieum-dialog-line-soft);
+  background: var(--ieum-dialog-surface-sunken);
+}
+
+.macro-modal-foot-split {
+  justify-content: space-between;
+}
+
+.macro-modal-foot-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ---- buttons & inputs ---- */
+
+.macro-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--ieum-dialog-field-line);
+  border-radius: var(--ieum-dialog-radius-control);
+  background: var(--ieum-dialog-field-surface);
+  color: var(--ieum-dialog-ink);
+  box-shadow: var(--ieum-dialog-control-shadow);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.macro-btn:hover:not(:disabled) {
+  background: var(--hover);
+}
+
+.macro-btn:focus-visible {
+  outline: 2px solid var(--ieum-dialog-focus);
+  outline-offset: 1px;
+}
+
+.macro-btn:disabled {
+  border-color: var(--ieum-dialog-line-soft);
+  background: var(--ieum-dialog-surface-sunken);
+  color: var(--ieum-dialog-ink-disabled);
+  box-shadow: none;
+  cursor: not-allowed;
+}
+
+.macro-btn-primary {
+  border-color: var(--ieum-dialog-accent);
+  background: var(--ieum-dialog-accent);
+  color: var(--ieum-dialog-accent-ink);
+  box-shadow: var(--ieum-dialog-primary-shadow);
+}
+
+.macro-btn-primary:hover:not(:disabled) {
+  border-color: var(--ieum-dialog-accent-strong);
+  background: var(--ieum-dialog-accent-strong);
+}
+
+.macro-btn-danger {
+  border-color: var(--danger-border);
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
+.macro-btn-danger:hover:not(:disabled) {
+  border-color: var(--danger);
+  background: var(--danger-bg);
+}
+
+.macro-btn-compact {
+  height: 24px;
+  padding: 0 8px;
+  font-size: 11px;
+}
+
+.macro-input,
+.macro-select,
+.macro-textarea {
+  width: 100%;
+  border: 1px solid var(--ieum-dialog-field-line);
+  border-radius: var(--ieum-dialog-radius-control);
+  background: var(--ieum-dialog-field-surface);
+  color: var(--ieum-dialog-ink);
+  font: inherit;
+  font-size: 12px;
+}
+
+.macro-input,
+.macro-select {
+  height: 30px;
+  padding: 0 8px;
+}
+
+.macro-select-compact {
+  width: auto;
+  min-width: 84px;
+  height: 24px;
+  padding: 0 6px;
+  font-size: 11px;
+}
+
+.macro-textarea {
+  padding: 8px 10px;
+  line-height: 1.5;
+  resize: vertical;
+  scrollbar-width: thin;
+}
+
+.macro-script-textarea {
+  min-height: 200px;
+  font-family: ui-monospace, 'Cascadia Mono', 'SFMono-Regular', Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  tab-size: 2;
+}
+
+.macro-input:focus-visible,
+.macro-select:focus-visible,
+.macro-textarea:focus-visible {
+  border-color: var(--ieum-dialog-focus);
+  outline: 2px solid var(--ieum-dialog-focus);
+  outline-offset: 0;
+}
+
+/* ---- banners & notices ---- */
+
+.macro-banner {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-6);
+  background: var(--surface-subtle);
+  color: var(--text);
+  font-size: 12px;
+}
+
+.macro-banner-error {
+  border-color: var(--danger-border);
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
+.macro-banner-info {
+  border-color: var(--success-border);
+  background: var(--success-bg);
+  color: var(--success);
+}
+
+.macro-banner-warn {
+  border-color: var(--border-strong);
+  background: var(--surface-subtle);
+  color: var(--text);
+}
+
+.macro-banner-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.macro-banner-title {
+  font-weight: 600;
+}
+
+.macro-banner-path {
+  padding: 4px 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--ieum-dialog-radius-control);
+  background: var(--surface);
+  color: var(--text);
+  font-family: ui-monospace, 'Cascadia Mono', 'SFMono-Regular', Menlo, Consolas, monospace;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.macro-banner-hint {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+/* ---- manager list ---- */
+
+.macro-empty {
+  margin: 0;
+  padding: 28px 16px;
+  border: 1px dashed var(--ieum-dialog-line);
+  border-radius: var(--radius-6);
+  background: var(--ieum-dialog-surface-sunken);
+  color: var(--ieum-dialog-ink-muted);
+  text-align: center;
+  font-size: 12px;
+}
+
+.macro-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.macro-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--ieum-dialog-line);
+  border-radius: var(--radius-6);
+  background: var(--ieum-dialog-field-surface);
+}
+
+.macro-row-info {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.macro-row-title-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.macro-row-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ieum-dialog-ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.macro-row-desc {
+  color: var(--ieum-dialog-ink-muted);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.macro-origin-badge {
+  flex: 0 0 auto;
+  padding: 1px 7px;
+  border: 1px solid var(--ieum-dialog-line);
+  border-radius: 999px;
+  background: var(--ieum-dialog-surface-sunken);
+  color: var(--ieum-dialog-ink-muted);
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.macro-origin-badge-ai {
+  border-color: var(--ieum-dialog-accent-line);
+  background: var(--ieum-dialog-accent-soft);
+  color: var(--ieum-dialog-accent);
+}
+
+.macro-row-controls {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ---- import preview ---- */
+
+.macro-import-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--ieum-dialog-line);
+  border-radius: var(--radius-6);
+  background: var(--ieum-dialog-surface-sunken);
+}
+
+.macro-import-meta {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 4px 10px;
+  font-size: 12px;
+}
+
+.macro-import-meta-label {
+  color: var(--ieum-dialog-ink-muted);
+  font-weight: 500;
+}
+
+.macro-import-script {
+  margin: 0;
+  max-height: 240px;
+  overflow: auto;
+  scrollbar-width: thin;
+  padding: 10px 12px;
+  border: 1px solid var(--ieum-dialog-line);
+  border-radius: var(--ieum-dialog-radius-control);
+  background: var(--ieum-dialog-field-surface);
+  color: var(--ieum-dialog-ink);
+  font-family: ui-monospace, 'Cascadia Mono', 'SFMono-Regular', Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.macro-import-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* ---- editor fields & AI box ---- */
+
+.macro-form-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 160px;
+  gap: 10px;
+}
+
+.macro-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.macro-field-label {
+  color: var(--ieum-dialog-ink-muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.macro-syntax-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-radius: var(--ieum-dialog-radius-control);
+  font-size: 11px;
+}
+
+.macro-syntax-ok {
+  border: 1px solid var(--success-border);
+  background: var(--success-bg);
+  color: var(--success);
+}
+
+.macro-syntax-error {
+  border: 1px solid var(--danger-border);
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
+.macro-skipped-list {
+  margin: 4px 0 0;
+  padding-inline-start: 18px;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.macro-ai-box {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--ieum-dialog-line);
+  border-radius: var(--radius-6);
+  background: var(--ieum-dialog-surface-sunken);
+}
+
+.macro-ai-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.macro-ai-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ieum-dialog-ink);
+}
+
+.macro-ai-row {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.macro-ai-hint {
+  margin: 0;
+  color: var(--ieum-dialog-ink-muted);
+  font-size: 11px;
+  line-height: 1.45;
+}

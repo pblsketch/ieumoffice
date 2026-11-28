@@ -63,7 +63,8 @@ const GLYPH_FONT = join(root, 'packages/ui/template-fonts/Pretendard-Bold.otf')
 /**
  * One entry per format icon: the spine and pictogram color, and the
  * pictogram. Formats that share an icon (xlsm/xls/csv/tsv on xlsx, hwpx on
- * hwp, htm on html, markdown on md, odt on docx) are mapped in Home.tsx,
+ * hwp, htm on html, markdown on md, odt on docx, drawio/dio/vsdx and the
+ * draw.io pictures on diagram) are mapped in Home.tsx,
  * DriveBrowser.tsx and electron-builder.cjs. The colors are one palette of
  * similar lightness and chroma, our own and away from any vendor's brand
  * color.
@@ -78,6 +79,8 @@ const FORMATS = {
   html: { color: '#8257B6', picto: 'tag' }, // violet
   mindmap: { color: '#B04E83', picto: 'nodes' }, // berry
   epub: { color: '#8E5B3E', picto: 'book' }, // leather brown
+  diagram: { color: '#7A8B2C', picto: 'flow' }, // olive
+  whiteboard: { color: '#2B8A9E', picto: 'board' }, // ocean teal
   txt: { color: '#858D9B', picto: 'lines' }, // gray
   json: { color: '#977A2E', picto: 'braces' }, // ochre
 }
@@ -106,7 +109,19 @@ const SHADOW_COLOR = '#0F172A'
 const SVG_DIR = 'apps/shell/src/renderer/src/assets'
 const BUILD_DIR = 'apps/shell/build'
 const MENU_DIR = 'apps/shell/src/main/assets'
-const MENU_TYPES = ['docx', 'xlsx', 'pptx', 'pdf', 'md', 'html', 'mindmap', 'hwp', 'epub']
+const MENU_TYPES = [
+  'docx',
+  'xlsx',
+  'pptx',
+  'pdf',
+  'md',
+  'html',
+  'mindmap',
+  'hwp',
+  'epub',
+  'diagram',
+  'whiteboard',
+]
 
 /** attachment-card file name -> icon key (FORMATS or GENERIC) */
 const ATTACHMENT_ICONS = {
@@ -133,6 +148,9 @@ const ATTACHMENT_DIRS = {
     (name) => name !== 'file-video.png' && name !== 'file-voice.png',
   ),
   'apps/epub/src/renderer/ai/assets': Object.keys(ATTACHMENT_ICONS).filter(
+    (name) => name !== 'file-video.png' && name !== 'file-voice.png',
+  ),
+  'apps/whiteboard/src/renderer/ai/assets': Object.keys(ATTACHMENT_ICONS).filter(
     (name) => name !== 'file-video.png' && name !== 'file-voice.png',
   ),
 }
@@ -341,6 +359,44 @@ function pictogram(kind, b, fg, bg, sw, small) {
             )
             .join('')
       return page(-1) + page(1) + (text ? stroke(text, sw * 0.6, bg) : '')
+    }
+    case 'flow': {
+      // a flowchart: boxes joined by elbow connectors; at 16 px two boxes
+      if (small) {
+        return (
+          rect(X(0), Y(0), b.w * 0.5, b.h * 0.36, 8) +
+          rect(X(0.5), Y(0.64), b.w * 0.5, b.h * 0.36, 8) +
+          stroke(`M${X(0.25)} ${Y(0.36)}V${Y(0.82)}H${X(0.5)}`, sw * 0.9)
+        )
+      }
+      const r = sw * 0.5
+      return (
+        rect(X(0.27), Y(0.02), b.w * 0.46, b.h * 0.3, r) +
+        rect(X(0), Y(0.68), b.w * 0.4, b.h * 0.3, r) +
+        rect(X(0.6), Y(0.68), b.w * 0.4, b.h * 0.3, r) +
+        stroke(
+          `M${X(0.5)} ${Y(0.32)}V${Y(0.5)}M${X(0.2)} ${Y(0.68)}V${Y(0.5)}H${X(0.8)}V${Y(0.68)}`,
+          sw * 0.7,
+        )
+      )
+    }
+    case 'board': {
+      // a whiteboard frame with a sticky card and a freehand curve
+      if (small) {
+        return (
+          rect(X(0.02), Y(0.06), b.w * 0.44, b.h * 0.44, 6) +
+          stroke(`M${X(0.14)} ${Y(0.84)}Q${X(0.5)} ${Y(0.54)} ${X(0.94)} ${Y(0.76)}`, sw * 0.95)
+        )
+      }
+      const r = sw * 0.55
+      return (
+        rect(X(0.04), Y(0.04), b.w * 0.42, b.h * 0.42, r) +
+        rect(X(0.56), Y(0.1), b.w * 0.38, b.h * 0.3, r) +
+        stroke(
+          `M${X(0.08)} ${Y(0.84)}C${X(0.32)} ${Y(0.56)} ${X(0.62)} ${Y(0.96)} ${X(0.94)} ${Y(0.64)}`,
+          sw * 0.85,
+        )
+      )
     }
     case 'picture':
       // a picture: a hill and a sun cut out of a filled frame

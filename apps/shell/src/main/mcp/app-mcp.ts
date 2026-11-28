@@ -1,19 +1,15 @@
 import { PRODUCT_NAME } from '@genoffice/i18n'
-import { McpServerService, DEFAULT_MCP_PORT, type McpToolDefinition } from './mcp-server'
+import { DEFAULT_MCP_PORT } from './constants'
+import type { McpServerService, McpToolDefinition } from './mcp-server'
 import { McpLogger } from './mcp-logger'
 import type { CliRunner } from './cli-runner'
-import { createDocumentTools, documentDriver, type DocsControl } from './tools/document-tools'
-import { createPdfTools } from './tools/pdf-tools'
-import { createHwpTools } from './tools/hwp-tools'
-import { createSlidesTools, slidesDriver, type SlidesControl } from './tools/slides-tools'
-import { createSheetsTools, sheetsDriver, type SheetsControl } from './tools/sheets-tools'
-import {
-  createSessionHost,
-  createSessionTools,
-  type FamilyDriver,
-  type TargetResolver,
-} from './tools/session-tools'
-import { createOpenDocumentTools, type OpenDocumentsControl } from './tools/open-documents-tools'
+import type { DocsControl } from './tools/document-tools'
+import type { SlidesControl } from './tools/slides-tools'
+import type { SheetsControl } from './tools/sheets-tools'
+import type { FamilyDriver, TargetResolver } from './tools/session-tools'
+import type { OpenDocumentsControl } from './tools/open-documents-tools'
+import type { DiagramControl } from './tools/diagram-tools'
+import type { WhiteboardControl } from './tools/whiteboard-tools'
 
 /**
  * Main-process wiring for the MCP server.
@@ -51,6 +47,15 @@ export interface McpRuntimeDeps {
    * the argument from the tool schemas
    */
   resolveTarget?: TargetResolver
+  /**
+   * open diagram tabs for read_diagram / apply_diagram_ops; absent in headless
+   * runs, where the two tools answer that the app is not running
+   */
+  diagramControl?: DiagramControl
+  /**
+   * open whiteboard tabs for read_whiteboard / apply_whiteboard_ops
+   */
+  whiteboardControl?: WhiteboardControl
   /** where the MCP log file lives (userData); logging is unavailable without it */
   logFilePath?: string
 }
@@ -120,7 +125,51 @@ export function revealMcpLogFile(): void {
   logger?.ensureFile()
 }
 
-function buildTools(): McpToolDefinition[] {
+async function loadMcpRuntime() {
+  const [
+    serverMod,
+    docMod,
+    pdfMod,
+    hwpMod,
+    slidesMod,
+    sheetsMod,
+    sessionMod,
+    openDocsMod,
+    diagramMod,
+    whiteboardMod,
+  ] = await Promise.all([
+    import('./mcp-server'),
+    import('./tools/document-tools'),
+    import('./tools/pdf-tools'),
+    import('./tools/hwp-tools'),
+    import('./tools/slides-tools'),
+    import('./tools/sheets-tools'),
+    import('./tools/session-tools'),
+    import('./tools/open-documents-tools'),
+    import('./tools/diagram-tools'),
+    import('./tools/whiteboard-tools'),
+  ])
+  return {
+    McpServerService: serverMod.McpServerService,
+    createDocumentTools: docMod.createDocumentTools,
+    documentDriver: docMod.documentDriver,
+    createPdfTools: pdfMod.createPdfTools,
+    createHwpTools: hwpMod.createHwpTools,
+    createSlidesTools: slidesMod.createSlidesTools,
+    slidesDriver: slidesMod.slidesDriver,
+    createSheetsTools: sheetsMod.createSheetsTools,
+    sheetsDriver: sheetsMod.sheetsDriver,
+    createSessionHost: sessionMod.createSessionHost,
+    createSessionTools: sessionMod.createSessionTools,
+    createOpenDocumentTools: openDocsMod.createOpenDocumentTools,
+    createDiagramTools: diagramMod.createDiagramTools,
+    createWhiteboardTools: whiteboardMod.createWhiteboardTools,
+  }
+}
+
+type LoadedMcpRuntime = Awaited<ReturnType<typeof loadMcpRuntime>>
+
+function buildTools(runtime: LoadedMcpRuntime): McpToolDefinition[] {
   if (!deps) throw new Error('MCP runtime not configured')
   // get_app_info advertises what the registered tool families can generate
   const extraFormats = [
@@ -131,17 +180,17 @@ function buildTools(): McpToolDefinition[] {
   // family is active, and each family's content tools address that same tab.
   // buildTools runs once per client session (see the server's toolsFactory), so
   // each connected client gets its own active session rather than sharing one.
-  const host = createSessionHost()
+  const host = runtime.createSessionHost()
   const drivers: FamilyDriver[] = [
-    ...(deps.docsControl ? [documentDriver(deps.docsControl)] : []),
-    ...(deps.slidesControl ? [slidesDriver(deps.slidesControl)] : []),
-    ...(deps.sheetsControl ? [sheetsDriver(deps.sheetsControl)] : []),
+    ...(deps.docsControl ? [runtime.documentDriver(deps.docsControl)] : []),
+    ...(deps.slidesControl ? [runtime.slidesDriver(deps.slidesControl)] : []),
+    ...(deps.sheetsControl ? [runtime.sheetsDriver(deps.sheetsControl)] : []),
   ]
   const cli = deps.cliRunner
   return [
     // the session entry point first: an agent picking a tool sees create_session
-    ...createSessionTools(drivers, host),
-    ...createDocumentTools(
+    ...runtime.createSessionTools(drivers, host),
+    ...runtime.createDocumentTools(
       {
         version: deps.version,
         defaultSaveDir: deps.defaultSaveDir,
@@ -161,7 +210,7 @@ function buildTools(): McpToolDefinition[] {
       },
       host,
     ),
-    ...createSlidesTools(
+    ...runtime.createSlidesTools(
       {
         defaultSaveDir: deps.defaultSaveDir,
         background: currentSettings.background,
@@ -171,7 +220,7 @@ function buildTools(): McpToolDefinition[] {
       },
       host,
     ),
-    ...createSheetsTools(
+    ...runtime.createSheetsTools(
       {
         defaultSaveDir: deps.defaultSaveDir,
         background: currentSettings.background,
@@ -183,25 +232,34 @@ function buildTools(): McpToolDefinition[] {
     ),
     // headless, session-free read access (read_pdf); registered whenever the
     // pdf workspace is bundled in, which the shell always does
-    ...createPdfTools(),
+    ...runtime.createPdfTools(),
     // the same for Hangul documents (read_hwp)
-    ...createHwpTools(),
+    ...runtime.createHwpTools(),
     // documents the user has open, independent of the session above
-    ...createOpenDocumentTools({
+    ...runtime.createOpenDocumentTools({
       defaultSaveDir: deps.defaultSaveDir,
       ...(deps.openDocumentsControl ? { control: deps.openDocumentsControl } : {}),
+    }),
+    // open diagrams: read a page, apply ops as one undo step (no session family)
+    ...runtime.createDiagramTools({
+      ...(deps.diagramControl ? { control: deps.diagramControl } : {}),
+    }),
+    // open whiteboards: read a page, apply ops or template as one undo step
+    ...runtime.createWhiteboardTools({
+      ...(deps.whiteboardControl ? { control: deps.whiteboardControl } : {}),
     }),
   ]
 }
 
-function ensureService(): McpServerService {
+async function ensureService(): Promise<McpServerService> {
   if (!deps) throw new Error('MCP runtime not configured')
   if (!service) {
-    service = new McpServerService({
+    const runtime = await loadMcpRuntime()
+    service = new runtime.McpServerService({
       port: currentSettings.port,
       // built per client session so concurrent clients do not share one
       // active editing session; the factory re-reads settings at connect time
-      toolsFactory: buildTools,
+      toolsFactory: () => buildTools(runtime),
       logger: mcpLogger,
       version: deps.version,
     })
@@ -213,7 +271,7 @@ function ensureService(): McpServerService {
 export async function startMcpFromSettings(settings: McpSettings): Promise<void> {
   currentSettings = normalize(settings)
   if (!currentSettings.enabled) return
-  await ensureService().start(currentSettings.port)
+  await (await ensureService()).start(currentSettings.port)
 }
 
 /**
@@ -236,11 +294,11 @@ export async function applyMcpSettings(settings: McpSettings): Promise<McpStatus
   // a background flip changes the exposed tool list, so live sessions must be
   // dropped and rebuilt — same treatment as a port change
   if (!wasRunning) {
-    await ensureService().start(next.port)
+    await (await ensureService()).start(next.port)
   } else if (portChanged || backgroundChanged) {
     await service?.stop()
     service = null
-    await ensureService().start(next.port)
+    await (await ensureService()).start(next.port)
   }
   return mcpStatus()
 }

@@ -65,5 +65,12 @@ export async function openSlidesSeed(
   setImmediate(() => {
     if (!wc.isDestroyed()) wc.send('slides:deck-changed', { slides, size })
   })
-  return { path: '', slides, size, defaultFont: defaultFontOf(opened) }
+  return {
+    path: '',
+    slides,
+    size,
+    defaultFont: defaultFontOf(opened),
+    ...(entry.options.importedFrom ? { importedFrom: entry.options.importedFrom } : {}),
+    ...(entry.options.password !== undefined ? { encrypted: true } : {}),
+  }
 }

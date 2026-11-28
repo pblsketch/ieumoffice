@@ -1,9 +1,19 @@
 import katexCss from 'katex/dist/katex.min.css?inline'
+import { MARKDOWN_PRINT_OPTIONS } from '../../shared/print-options'
+import { AI_MARK_CLASS } from '../editor/aiHighlight'
 
-/** Print-theme CSS: mirrors the editor typography so the PDF matches the canvas */
+/** `[[target|alias]]` as one whole literal; mirrors the editor's link regex */
+const WIKI_ALIAS_RE = /^\[\[[^[\]|\n]+\|([^[\]\n]+)\]\]$/
+
+/**
+ * Print-theme CSS: mirrors the editor typography so the PDF matches the canvas.
+ * The `@page` margin is the print options' margin. Chromium lets a CSS page
+ * margin win over the `margins` that printToPDF and print() are given, so a
+ * margin of 0 here put the text on the paper's edge, where printers clip it.
+ */
 const PRINT_CSS = `
 @page {
-  margin: 2cm;
+  margin: ${MARKDOWN_PRINT_OPTIONS.marginIn}in;
   size: auto;
 }
 * { box-sizing: border-box; }
@@ -33,18 +43,24 @@ img { max-width: 100%; height: auto; }
 .md-diagram-preview { margin: 0.8em 0; text-align: center; break-inside: avoid; }
 .md-diagram-preview svg { max-width: 100%; height: auto; }
 .tableWrapper { margin: 0.8em 0; }
-table { border-collapse: collapse; width: 100%; margin: 0; break-inside: avoid; }
-th, td { border: 1px solid #d0d5db; padding: 6px 10px; vertical-align: top; text-align: start; }
+table { border-collapse: collapse; width: 100%; margin: 0; }
+tr { break-inside: avoid; }
+th, td { border: 1px solid #d0d5db; padding: 6px 10px; vertical-align: top; text-align: start; overflow-wrap: anywhere; }
 th > p, td > p { margin: 0; }
 th { background: #f6f8fa; font-weight: 600; }
 ul[data-type='taskList'] { list-style: none; padding-left: 0.4em; }
 ul[data-type='taskList'] li { display: flex; gap: 8px; }
 ul[data-type='taskList'] li > label { flex: 0 0 auto; margin-top: 0.3em; }
 ul[data-type='taskList'] li[data-checked='true'] > div { color: #8b929b; text-decoration: line-through; }
+sup.md-footnote-ref { color: #0a69da; font-size: 0.78em; }
+.md-footnote-def { display: grid; grid-template-columns: max-content 1fr; column-gap: 6px; font-size: 0.92em; color: #57606a; margin: 0.3em 0; }
+.md-footnote-def-label { white-space: pre; }
+.md-footnote-def-body > p { margin: 0.15em 0; }
+.md-footnote-def + .md-footnote-def { margin-top: 0.2em; }
 @media print {
   /* High-quality rendering for text */
   body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  pre, blockquote, table { break-inside: avoid; }
+  pre, blockquote, tr { break-inside: avoid; }
   img { max-width: 100% !important; page-break-inside: avoid; }
 }
 `
@@ -60,13 +76,32 @@ export function buildPrintHtml(editorRoot: HTMLElement, title: string): string {
   for (const el of clone.querySelectorAll('[contenteditable]'))
     el.removeAttribute('contenteditable')
 
+  // the marks of the AI's last changes are screen-only: their spans go, the content stays
+  for (const mark of clone.querySelectorAll(`.${AI_MARK_CLASS}`)) {
+    mark.classList.remove(AI_MARK_CLASS)
+    if (!mark.classList.length) mark.removeAttribute('class')
+    if (mark.tagName === 'SPAN' && mark.attributes.length === 0)
+      mark.replaceWith(...mark.childNodes)
+  }
   // editor-only code block chrome (language picker + copy button) must not print
   for (const bar of clone.querySelectorAll(
     '.md-codeblock-bar, .md-diagram-error, .ProseMirror-separator',
   ))
     bar.remove()
+  // an aliased wiki link prints as its alias, from the literal rather than the
+  // view's hidden spans: a link under the caret has none, as it shows its syntax
+  for (const link of clone.querySelectorAll('a.wiki-link')) {
+    // a literal an inline mark splits stays visible on the canvas too
+    if ([...link.children].some((el) => el.tagName !== 'SPAN')) continue
+    const alias = WIKI_ALIAS_RE.exec(link.textContent ?? '')?.[1]
+    if (alias) link.textContent = alias
+  }
   // a rendered diagram block prints as its picture; an unrendered one keeps its source
   for (const block of clone.querySelectorAll('[data-diagram="rendered"] pre')) block.remove()
+  // the task item view sets `checked` as a property, which innerHTML drops;
+  // the clone carries the property over, so write it back as the attribute
+  for (const box of clone.querySelectorAll<HTMLInputElement>('input[type="checkbox"]'))
+    box.toggleAttribute('checked', box.checked)
 
   const escapedTitle = title.replace(/&/g, '&amp;').replace(/</g, '&lt;')
   // <base> lets the inlined KaTeX CSS resolve its relative font URLs from the
