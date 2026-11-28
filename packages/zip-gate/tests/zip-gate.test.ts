@@ -1,6 +1,6 @@
 import JSZip from 'jszip'
-import { crc32, deflateRawSync } from 'node:zlib'
-import { describe, expect, it } from 'vitest'
+import { crc32, deflateRawSync, inflateRawSync } from 'node:zlib'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   assertDeclaredSizesWithinLimits,
   assertZipInflatesWithinLimits,
@@ -165,7 +165,33 @@ function gzipTrailer(crc: number, size: number): Buffer {
   return trailer
 }
 
+// Node 22 ignores bytes after a raw deflate stream. Exercise the recovery path
+// under a decompressor that enforces the stream boundary on every CI runtime.
+class StrictRawDeflateStream extends TransformStream<Uint8Array, Uint8Array> {
+  constructor() {
+    const chunks: Uint8Array[] = []
+    super({
+      transform(chunk) {
+        chunks.push(chunk)
+      },
+      flush(controller) {
+        const input = Buffer.concat(chunks)
+        const { buffer, engine } = inflateRawSync(input, { info: true }) as unknown as {
+          buffer: Buffer
+          engine: { bytesWritten: number }
+        }
+        if (engine.bytesWritten !== input.length) {
+          throw new TypeError('Trailing bytes after raw deflate')
+        }
+        controller.enqueue(buffer)
+      },
+    })
+  }
+}
+
 describe('a deflated part followed by a gzip trailer (#693)', () => {
+  beforeEach(() => vi.stubGlobal('DecompressionStream', StrictRawDeflateStream))
+  afterEach(() => vi.unstubAllGlobals())
   // what an HWP 5 BinData stream from some writers looks like, copied into an HWPX
   const IMAGE = 'BinData/image1.jpg'
   const hwpx = { allowHwpxBinDataTrailer: true }
