@@ -5875,6 +5875,9 @@ let splashShownAt = 0
 const SPLASH_MIN_MS = 900
 
 function showSplashWindow(): void {
+  // e2e takes the app's first window as the shell: a splash in front of it
+  // would be picked instead and then close under the test
+  if (process.env.GENOFFICE_E2E === '1') return
   if (splashWindow && !splashWindow.isDestroyed()) return
   try {
     const imgB64 = readFileSync(posidSignatureAsset).toString('base64')
