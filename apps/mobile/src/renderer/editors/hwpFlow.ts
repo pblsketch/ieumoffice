@@ -86,6 +86,18 @@ export interface FlowSourceDocument {
     cellPathJson: string,
     controlIdx: number,
   ): string
+  /** Equation properties (`script`, `fontSize`, `color`) for a body-level equation control. */
+  getEquationProperties?(
+    sectionIdx: number,
+    parentParaIdx: number,
+    controlIdx: number,
+    cellIdx: number,
+    cellParaIdx: number,
+  ): string
+  /** Renders an equation script as an SVG preview string. */
+  renderEquationPreview?(script: string, fontSizeHu: number, color: number): string
+  /** Form control properties (`caption`, `text`, `value`) for a body-level form object. */
+  getFormObjectInfo?(sectionIdx: number, paraIdx: number, controlIdx: number): string
   getCellParagraphCount(
     sectionIdx: number,
     paraIdx: number,
@@ -224,6 +236,32 @@ function bulletChar(doc: FlowSourceDocument, id: number): string {
   return bullets.get(id) ?? FALLBACK_BULLET
 }
 
+/** Tab stop metadata returned by `getParaPropertiesAt` / `getCellParaPropertiesAtByPath`. */
+export interface FlowTabStop {
+  readonly position?: number
+  readonly type?: number
+  readonly fill?: number
+}
+
+export interface FlowParaTabInfo {
+  readonly tabStops?: readonly FlowTabStop[]
+  readonly tabAutoRight?: boolean
+}
+
+interface ParsedParaProps extends FlowParaTabInfo {
+  readonly headType?: string
+  readonly numberingId?: number
+}
+
+function parseParaProps(propsJson: () => string): ParsedParaProps {
+  try {
+    const parsed = JSON.parse(propsJson()) as ParsedParaProps
+    return parsed && typeof parsed === 'object' ? parsed : {}
+  } catch {
+    return {}
+  }
+}
+
 /**
  * The bullet or automatic number (1., 가., ①) shown before a paragraph, or ''.
  *
@@ -233,21 +271,16 @@ function bulletChar(doc: FlowSourceDocument, id: number): string {
  */
 function paragraphMarker(
   doc: FlowSourceDocument,
-  propsJson: () => string,
+  props: ParsedParaProps,
   sec: number,
   para: number,
   path: readonly CellStep[] | null,
 ): ParagraphMarker {
-  try {
-    const props = JSON.parse(propsJson()) as { headType?: string; numberingId?: number }
-    if (props.headType === 'Bullet') {
-      return { text: bulletChar(doc, props.numberingId ?? 0), numbered: false }
-    }
-    if (props.headType === 'Number' || props.headType === 'Outline') {
-      return { text: paragraphNumber(doc, sec, para, path), numbered: true }
-    }
-  } catch {
-    // no properties: no marker
+  if (props.headType === 'Bullet') {
+    return { text: bulletChar(doc, props.numberingId ?? 0), numbered: false }
+  }
+  if (props.headType === 'Number' || props.headType === 'Outline') {
+    return { text: paragraphNumber(doc, sec, para, path), numbered: true }
   }
   return NO_MARKER
 }
@@ -765,20 +798,160 @@ function stripAppendedControls(html: string): string {
   return parsed.body.innerHTML.trim()
 }
 
+function tabLeaderClass(fill: number): string {
+  if (fill === 3 || fill === 7) return 'flow-tab-dot'
+  if (fill === 2 || fill === 4 || fill === 5 || fill === 6) return 'flow-tab-dash'
+  if (fill === 1 || fill >= 8) return 'flow-tab-solid'
+  return 'flow-tab-space'
+}
+
+/**
+ * Splits a DOM subtree at the first literal `\t`, cloning inline wrapper elements
+ * so font styles on both sides remain intact and `textContent` stays byte-identical
+ * for `flowEditing.ts` character offset mapping.
+ */
+function splitSubtreeAtFirstTab(
+  node: Node,
+  doc: Document,
+): { before: Node | null; after: Node | null; found: boolean } {
+  if (node.nodeType === 3) {
+    const text = node.textContent ?? ''
+    const idx = text.indexOf('\t')
+    if (idx < 0) return { before: node.cloneNode(false), after: null, found: false }
+    const left = text.slice(0, idx)
+    const right = text.slice(idx + 1)
+    return {
+      before: left ? doc.createTextNode(left) : null,
+      after: right ? doc.createTextNode(right) : null,
+      found: true,
+    }
+  }
+  if (node.nodeType !== 1) return { before: node.cloneNode(true), after: null, found: false }
+
+  const el = node as Element
+  let found = false
+  let beforeEl: Element | null = null
+  let afterEl: Element | null = null
+
+  const ensureBefore = () => {
+    if (!beforeEl) beforeEl = el.cloneNode(false) as Element
+    return beforeEl
+  }
+  const ensureAfter = () => {
+    if (!afterEl) afterEl = el.cloneNode(false) as Element
+    return afterEl
+  }
+
+  for (const child of [...el.childNodes]) {
+    if (!found) {
+      const split = splitSubtreeAtFirstTab(child, doc)
+      if (split.before) ensureBefore().appendChild(split.before)
+      if (split.found) {
+        found = true
+        if (split.after) ensureAfter().appendChild(split.after)
+      }
+    } else {
+      ensureAfter().appendChild(child.cloneNode(true))
+    }
+  }
+
+  return { before: beforeEl, after: afterEl, found }
+}
+
+/**
+ * Formats literal `\t` characters inside a paragraph while preserving exact
+ * `textContent` (including the `\t` character itself) for `flowEditing.ts`:
+ * - Single-tab paragraphs with a right-aligned tab stop (`type === 1` or
+ *   `tabAutoRight`) or a leader fill (`fill > 0`) render as a flex leader row
+ *   (`lead ····· tail`) in reading view, keeping TOC titles and page numbers
+ *   aligned on one clean line even when reflowed.
+ * - All other tabs wrap `\t` in `<span class="flow-tab">` so browsers keep a
+ *   visible tab gap instead of collapsing `\t` to a single space.
+ */
+export function formatFlowTabs(html: string, tabInfo?: FlowParaTabInfo): string {
+  if (!html || !html.includes('\t')) return html
+  const parsed = new DOMParser().parseFromString(`<body>${html}</body>`, 'text/html')
+  const p = parsed.body.querySelector('p')
+  if (!p) return html
+
+  const fullText = p.textContent ?? ''
+  const firstTab = fullText.indexOf('\t')
+  if (firstTab < 0) return html
+  const singleTab = fullText.indexOf('\t', firstTab + 1) < 0
+
+  const stops = tabInfo?.tabStops ?? []
+  const leaderStop = stops.find((s) => (s.fill ?? 0) > 0) ?? stops.find((s) => s.type === 1)
+  const hasLeaderOrRight = Boolean(leaderStop) || Boolean(tabInfo?.tabAutoRight)
+  const hasBothSides =
+    fullText.slice(0, firstTab).trim().length > 0 && fullText.slice(firstTab + 1).trim().length > 0
+
+  if (singleTab && hasLeaderOrRight && hasBothSides) {
+    const leadWrap = parsed.createElement('span')
+    leadWrap.className = 'flow-tab-lead'
+    const tabSpan = parsed.createElement('span')
+    tabSpan.className = `flow-tab flow-tab-leader ${tabLeaderClass(leaderStop?.fill ?? 0)}`
+    tabSpan.textContent = '\t'
+    const tailWrap = parsed.createElement('span')
+    tailWrap.className = 'flow-tab-tail'
+
+    let found = false
+    for (const child of [...p.childNodes]) {
+      if (!found) {
+        const split = splitSubtreeAtFirstTab(child, parsed)
+        if (split.before) leadWrap.appendChild(split.before)
+        if (split.found) {
+          found = true
+          if (split.after) tailWrap.appendChild(split.after)
+        }
+      } else {
+        tailWrap.appendChild(child.cloneNode(true))
+      }
+    }
+
+    p.textContent = ''
+    p.classList.add('flow-tab-line')
+    p.append(leadWrap, tabSpan, tailWrap)
+    return parsed.body.innerHTML
+  }
+
+  // Ordinary tabs: wrap each `\t` in `<span class="flow-tab">` so it never collapses to 1 space.
+  const walker = parsed.createTreeWalker(p, NodeFilter.SHOW_TEXT)
+  const textNodes: Text[] = []
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+    if ((n.textContent ?? '').includes('\t')) textNodes.push(n as Text)
+  }
+  for (const node of textNodes) {
+    const parts = (node.textContent ?? '').split('\t')
+    const frag = parsed.createDocumentFragment()
+    for (let i = 0; i < parts.length; i += 1) {
+      if (parts[i]) frag.appendChild(parsed.createTextNode(parts[i]))
+      if (i < parts.length - 1) {
+        const span = parsed.createElement('span')
+        span.className = 'flow-tab'
+        span.textContent = '\t'
+        frag.appendChild(span)
+      }
+    }
+    node.replaceWith(frag)
+  }
+  return parsed.body.innerHTML
+}
+
 /** HTML of one body paragraph's text. */
 export function bodyParagraphHtml(doc: FlowSourceDocument, sec: number, para: number): string {
   const length = doc.getParagraphLength(sec, para)
+  const paraProps = parseParaProps(() => doc.getParaPropertiesAt(sec, para))
   const html =
     length > 0
-      ? normalizeFlowParagraphStyle(
-          stripClipboardFragment(doc.exportSelectionHtml(sec, para, 0, para, length)),
-          false,
+      ? formatFlowTabs(
+          normalizeFlowParagraphStyle(
+            stripClipboardFragment(doc.exportSelectionHtml(sec, para, 0, para, length)),
+            false,
+          ),
+          paraProps,
         )
       : ''
-  return withMarker(
-    html,
-    paragraphMarker(doc, () => doc.getParaPropertiesAt(sec, para), sec, para, null),
-  )
+  return withMarker(html, paragraphMarker(doc, paraProps, sec, para, null))
 }
 
 /** HTML of one cell paragraph's text (`path` ends at that paragraph). */
@@ -792,25 +965,29 @@ export function cellParagraphHtml(
   const flat = flatStep(path)
   const length = listParagraphLength(doc, sec, para, path)
   const k = path[path.length - 1].cellParaIndex ?? 0
-  const props = () =>
+  const propsJson = () =>
     flat
       ? doc.getCellParaPropertiesAt(sec, para, flat.ctrl, flat.cell, flat.cellPara)
       : doc.getCellParaPropertiesAtByPath(sec, para, json)
+  const paraProps = parseParaProps(propsJson)
   let html = ''
   if (flat && flat.cell === TABLE_CAPTION_CELL) {
     // the engine cannot export a table caption as HTML: show its text with its alignment
-    html = captionTextHtml(doc, sec, para, flat, length, props)
+    html = captionTextHtml(doc, sec, para, flat, length, propsJson)
   } else if (length > 0) {
-    html = normalizeFlowParagraphStyle(
-      stripAppendedControls(
-        stripClipboardFragment(
-          doc.exportSelectionInCellHtmlByPath(sec, para, json, k, 0, k, length),
+    html = formatFlowTabs(
+      normalizeFlowParagraphStyle(
+        stripAppendedControls(
+          stripClipboardFragment(
+            doc.exportSelectionInCellHtmlByPath(sec, para, json, k, 0, k, length),
+          ),
         ),
+        true,
       ),
-      true,
+      paraProps,
     )
   }
-  return withMarker(html, paragraphMarker(doc, props, sec, para, path))
+  return withMarker(html, paragraphMarker(doc, paraProps, sec, para, path))
 }
 
 function captionTextHtml(
@@ -884,12 +1061,16 @@ function exportControl(
 }
 
 /**
- * Paragraph list held by a control other than a table: a text box's text or a
- * picture's caption. The engine reaches both as cell 0 of that control.
+ * Paragraph list held by a control other than a table: a text box's text (including
+ * each child text box `cellIndex = 0, 1, ...` inside a grouped shape container) or a
+ * picture's caption.
  */
-function innerListPath(hostPath: readonly CellStep[], ctrl: number): CellStep[] {
-  return [...hostPath, { controlIndex: ctrl, cellIndex: 0 }]
+function innerListPath(hostPath: readonly CellStep[], ctrl: number, cellIndex = 0): CellStep[] {
+  return [...hostPath, { controlIndex: ctrl, cellIndex }]
 }
+
+/** Safety upper bound when walking child text boxes of a grouped shape container. */
+const MAX_SHAPE_SUBLISTS = 256
 
 function hasInnerList(
   doc: FlowSourceDocument,
@@ -954,18 +1135,20 @@ function shapeBoxStyle(
   para: number,
   hostPath: readonly CellStep[],
   ctrl: number,
-): { style: string; hasSolidFill: boolean } {
+): { style: string; hasSolidFill: boolean; captionSide: 'top' | 'bottom' | null } {
   try {
     const raw =
       hostPath.length === 0
         ? doc.getShapeProperties?.(sec, para, ctrl)
         : doc.getCellShapePropertiesByPath?.(sec, para, JSON.stringify(hostPath), ctrl)
-    if (!raw) return { style: '', hasSolidFill: false }
+    if (!raw) return { style: '', hasSolidFill: false, captionSide: null }
     const props = JSON.parse(raw) as {
       fillType?: string
       fillBgColor?: number
       borderColor?: number
       width?: number
+      hasCaption?: boolean
+      captionDirection?: string | number
     }
     const rules: string[] = []
     let hasSolidFill = false
@@ -988,9 +1171,18 @@ function shapeBoxStyle(
     ) {
       rules.push('display:inline-block')
     }
-    return { style: rules.length > 0 ? `${rules.join(';')};` : '', hasSolidFill }
+    let captionSide: 'top' | 'bottom' | null = null
+    if (props.hasCaption && hostPath.length === 0) {
+      captionSide =
+        props.captionDirection === 'Bottom' || props.captionDirection === 3 ? 'bottom' : 'top'
+    }
+    return {
+      style: rules.length > 0 ? `${rules.join(';')};` : '',
+      hasSolidFill,
+      captionSide,
+    }
   } catch {
-    return { style: '', hasSolidFill: false }
+    return { style: '', hasSolidFill: false, captionSide: null }
   }
 }
 
@@ -1000,8 +1192,144 @@ function hasWhiteText(html: string): boolean {
 }
 
 /**
+ * Marks leading and trailing completely empty `.flow-p` spacer paragraphs inside a
+ * grouped-shape item so reading mode collapses blank A4 padding while edit mode keeps
+ * every paragraph addressable.
+ */
+function markEdgeEmptyParagraphs(html: string): string {
+  const parsed = new DOMParser().parseFromString(`<body>${html}</body>`, 'text/html')
+  const children = [...parsed.body.children]
+  const isEmptyPara = (el: Element) =>
+    el.classList.contains('flow-p') &&
+    !(el.textContent ?? '').replace(/\u00a0/g, ' ').trim() &&
+    !el.querySelector('p[data-marker],img,table,.flow-box,.flow-group-box')
+
+  for (let i = 0; i < children.length && isEmptyPara(children[i]); i += 1) {
+    children[i].classList.add('flow-edge-empty')
+  }
+  for (let i = children.length - 1; i >= 0 && isEmptyPara(children[i]); i -= 1) {
+    children[i].classList.add('flow-edge-empty')
+  }
+  return parsed.body.innerHTML
+}
+
+/** Renders a body-level equation control as read-only SVG preview or script text. */
+function renderEquationControl(
+  doc: FlowSourceDocument,
+  sec: number,
+  para: number,
+  ctrl: number,
+): string {
+  try {
+    const raw = doc.getEquationProperties?.(sec, para, ctrl, 0, 0)
+    if (!raw) return ''
+    const props = JSON.parse(raw) as { script?: string; fontSize?: number; color?: number }
+    const script = (props.script ?? '').trim()
+    if (!script) return ''
+    const svg = doc.renderEquationPreview?.(script, props.fontSize ?? 1000, props.color ?? 0) ?? ''
+    const cleanSvg = svg.trim()
+    if (cleanSvg.startsWith('<svg') && !/<script\b/i.test(cleanSvg)) {
+      return `<div class="flow-equation" contenteditable="false">${cleanSvg}</div>`
+    }
+    return `<div class="flow-equation" contenteditable="false">${escapeText(script)}</div>`
+  } catch {
+    return ''
+  }
+}
+
+/** Renders a body-level form object's caption/value read-only so its label is never lost. */
+function renderFormControl(
+  doc: FlowSourceDocument,
+  sec: number,
+  para: number,
+  ctrl: number,
+): string {
+  try {
+    const raw = doc.getFormObjectInfo?.(sec, para, ctrl)
+    if (!raw) return ''
+    const info = JSON.parse(raw) as {
+      ok?: boolean
+      caption?: string
+      text?: string
+      value?: string
+    }
+    if (!info.ok) return ''
+    const label = (info.caption || info.text || info.value || '').trim()
+    if (!label) return ''
+    return `<div class="flow-form-obj" contenteditable="false">${escapeText(label)}</div>`
+  } catch {
+    return ''
+  }
+}
+
+/**
+ * Renders a Shape control (single text box or grouped shape container).
+ * Grouped shapes (`<hp:container>`) expose every child text box densely at
+ * `cellIndex = 0, 1, 2, ...`; walking all indices ensures none of their text
+ * (such as TOC contents inside a decorative folder frame) is ever omitted.
+ */
+function renderShapeControl(
+  doc: FlowSourceDocument,
+  sec: number,
+  para: number,
+  hostPath: readonly CellStep[],
+  ctrl: number,
+  cellHeader?: { found: CellHeaderFallback | null },
+): string {
+  const boxes: Array<{ list: CellStep[]; inner: string; hasVisible: boolean }> = []
+  for (let ci = 0; ci < MAX_SHAPE_SUBLISTS; ci += 1) {
+    const list = innerListPath(hostPath, ctrl, ci)
+    if (!hasInnerList(doc, sec, para, list)) break
+    const inner = renderCellContents(doc, sec, para, list, cellHeader)
+    const parsed = new DOMParser().parseFromString(`<body>${inner}</body>`, 'text/html')
+    const hasVisible =
+      Boolean(parsed.body.textContent?.trim()) ||
+      Boolean(parsed.body.querySelector('img,table,.flow-box:not(.flow-box-empty),.flow-group-box'))
+    boxes.push({ list, inner, hasVisible })
+  }
+  if (boxes.length === 0) return ''
+
+  const shape = shapeBoxStyle(doc, sec, para, hostPath, ctrl)
+  let body: string
+  if (boxes.length === 1) {
+    const [box] = boxes
+    const classes = ['flow-box']
+    if (!box.hasVisible) classes.push('flow-box-empty')
+    else if (!shape.hasSolidFill && hasWhiteText(box.inner)) classes.push('flow-box-contrast')
+    body = listContainer(classes.join(' '), sec, para, box.list, box.inner, shape.style)
+  } else {
+    const anyVisible = boxes.some((b) => b.hasVisible)
+    const items = boxes.map((box) => {
+      const subClasses = ['flow-group-item']
+      if (!box.hasVisible) subClasses.push('flow-box-empty')
+      else if (hasWhiteText(box.inner)) subClasses.push('flow-box-contrast')
+      const content = box.hasVisible ? markEdgeEmptyParagraphs(box.inner) : box.inner
+      return listContainer(subClasses.join(' '), sec, para, box.list, content)
+    })
+    const groupClasses = anyVisible ? 'flow-group-box' : 'flow-group-box flow-box-empty'
+    body = `<div class="${groupClasses}">${items.join('')}</div>`
+  }
+
+  if (shape.captionSide) {
+    const capList: CellStep[] = [{ controlIndex: ctrl, cellIndex: TABLE_CAPTION_CELL }]
+    if (hasInnerList(doc, sec, para, capList)) {
+      const caption = listContainer(
+        'flow-caption',
+        sec,
+        para,
+        capList,
+        renderCellContents(doc, sec, para, capList, cellHeader),
+      )
+      return shape.captionSide === 'top' ? caption + body : body + caption
+    }
+  }
+  return body
+}
+
+/**
  * Renders one control of a paragraph (body or cell), or '' when there is nothing to show.
- * Tables keep the engine's skeleton; pictures come with their caption; text boxes show their text.
+ * Tables keep the engine's skeleton; pictures come with their caption; text boxes and
+ * grouped shapes show all of their child text boxes.
  */
 function renderControl(
   doc: FlowSourceDocument,
@@ -1045,21 +1373,16 @@ function renderControl(
     if (cellHeader) cellHeader.found = { para, list }
     return ''
   }
-  // Only text boxes (`Shape`) or unannotated controls in mocks may open a `.flow-box`;
-  // headers, footers, notes, fields and section controls must never render as boxes.
+  if (unsupportedKind === 'Equation' && hostPath.length === 0) {
+    return renderEquationControl(doc, sec, para, ctrl)
+  }
+  if ((unsupportedKind === 'Form' || unsupportedKind === 'FormObject') && hostPath.length === 0) {
+    return renderFormControl(doc, sec, para, ctrl)
+  }
+  // Only text boxes / grouped shapes (`Shape`) or unannotated controls in mocks may open a
+  // `.flow-box` / `.flow-group-box`; headers, footers, notes, fields and section controls must not.
   if (unsupportedKind === null || unsupportedKind === 'Shape') {
-    if (hasInnerList(doc, sec, para, list)) {
-      const inner = renderCellContents(doc, sec, para, list, cellHeader)
-      const parsed = new DOMParser().parseFromString(`<body>${inner}</body>`, 'text/html')
-      const hasVisible =
-        Boolean(parsed.body.textContent?.trim()) ||
-        Boolean(parsed.body.querySelector('img,table,.flow-box:not(.flow-box-empty)'))
-      const shape = shapeBoxStyle(doc, sec, para, hostPath, ctrl)
-      const classes = ['flow-box']
-      if (!hasVisible) classes.push('flow-box-empty')
-      else if (!shape.hasSolidFill && hasWhiteText(inner)) classes.push('flow-box-contrast')
-      return listContainer(classes.join(' '), sec, para, list, inner, shape.style)
-    }
+    return renderShapeControl(doc, sec, para, hostPath, ctrl, cellHeader)
   }
   return html
 }
@@ -1386,7 +1709,11 @@ function renderTable(
       td.innerHTML = renderCellContents(doc, sec, para, cellPath, cellHeader)
 
       const visibleText = (td.textContent ?? '').replace(/\u00a0/g, ' ').trim()
-      const hasMediaOrTable = Boolean(td.querySelector('img,table,.flow-box:not(.flow-box-empty)'))
+      const hasMediaOrTable = Boolean(
+        td.querySelector(
+          'img,table,.flow-box:not(.flow-box-empty),.flow-group-box:not(.flow-box-empty),.flow-equation,.flow-form-obj',
+        ),
+      )
       const styleAfter = td.getAttribute('style') ?? ''
       const hasSolidFill = /background-color\s*:/i.test(styleAfter)
       const hasBorder = engineProps
@@ -1695,6 +2022,45 @@ img { max-width: 100%; height: auto; }
 }
 .flow-caption { margin: 2px 0 4px; }
 .flow-box { border: 1px solid #b0b0b0; border-radius: 4px; padding: 6px 8px; margin: 4px 0; }
+.flow-group-box { border: 1px solid #b0b0b0; border-radius: 6px; padding: 10px 12px; margin: 6px 0; }
+.flow-group-item:not(.flow-box-empty) ~ .flow-group-item:not(.flow-box-empty) {
+  border-top: 1px solid #e2e8f0;
+  margin-top: 8px;
+  padding-top: 8px;
+}
+body:not([contenteditable='true']) .flow-group-item > .flow-edge-empty { display: none; }
+body:not([contenteditable='true']) .flow-p p.flow-tab-line {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.25em;
+  text-indent: 0 !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+}
+body:not([contenteditable='true']) .flow-tab-lead { flex: 0 1 auto; min-width: 0; }
+body:not([contenteditable='true']) .flow-tab-leader {
+  flex: 1 0 1.2em;
+  min-width: 1.2em;
+  height: 0;
+  overflow: hidden;
+  color: transparent;
+  align-self: flex-end;
+  margin-bottom: 0.35em;
+}
+body:not([contenteditable='true']) .flow-tab-dot { border-bottom: 1.5px dotted #8c959f; }
+body:not([contenteditable='true']) .flow-tab-dash { border-bottom: 1.5px dashed #8c959f; }
+body:not([contenteditable='true']) .flow-tab-solid { border-bottom: 1px solid #8c959f; }
+body:not([contenteditable='true']) .flow-tab-tail { flex: 0 0 auto; white-space: nowrap; }
+body:not([contenteditable='true']) span.flow-tab:not(.flow-tab-leader) {
+  display: inline-block;
+  min-width: 1.5em;
+  white-space: pre;
+}
+body[contenteditable='true'] .flow-p p.flow-tab-line,
+body[contenteditable='true'] span.flow-tab { white-space: pre-wrap; tab-size: 4; }
+.flow-equation { display: inline-block; max-width: 100%; overflow-x: auto; vertical-align: middle; }
+.flow-equation svg { max-width: 100%; height: auto; }
+.flow-form-obj { display: inline-block; border: 1px solid #cbd5e1; border-radius: 3px; padding: 1px 6px; font-size: 0.9em; }
 .flow-note { font-size: 0.85em; color: #444444; padding-left: 1em; margin: 0 0 6px; }
 .flow-note p { margin: 0; }
 .flow-hf { font-size: 0.8em; color: #666666; opacity: 0.6; }

@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
 import { act } from 'react'
@@ -11,11 +11,15 @@ import {
   cellStyleFromEngineProps,
   classifyFlowTable,
   FLOW_FRAME_CSS,
+  formatFlowTabs,
   normalizeClipboardBorderWidths,
   normalizeFlowFontFamily,
   normalizeFlowParagraphStyle,
   stripClipboardFragment,
+  TABLE_CAPTION_CELL,
+  type CellStep,
 } from '../src/renderer/editors/hwpFlow'
+import { paragraphText } from '../src/renderer/editors/flowEditing'
 import { HwpFlowView } from '../src/renderer/editors/HwpFlowView'
 import type { FlowEngineDocument } from '../src/renderer/editors/rhwpEngine'
 
@@ -460,10 +464,367 @@ describe('HWP flow builder (real rhwp engine)', () => {
       const dataTable = tables[3]
       expect(dataTable.getAttribute('data-table-kind')).toBe('data')
       expect(dataTable.getAttribute('style') ?? '').toMatch(/min-width:\d+px/)
+
+      // 6. Grouped shape TOC container: both title (cellIndex 0) and TOC list (cellIndex 1) render with dotted leaders
+      const groupBox = body.querySelector('.flow-group-box')
+      expect(groupBox).not.toBeNull()
+      const groupItems = groupBox!.querySelectorAll(':scope > .flow-group-item')
+      expect(groupItems).toHaveLength(2)
+      expect(groupItems[0].textContent).toContain('순    서')
+      expect(groupItems[1].textContent).toContain('Ⅰ. 추진 배경')
+      expect(groupItems[1].textContent).toContain('Ⅱ. 추진 경과')
+      expect(groupItems[1].textContent).toContain('맞춤형 예시 항목의 긴 목차 제목 줄바꿈 확인')
+      const tabLines = groupItems[1].querySelectorAll('p.flow-tab-line')
+      expect(tabLines).toHaveLength(3)
+      expect(groupItems[1].querySelectorAll('.flow-tab-leader.flow-tab-dot')).toHaveLength(3)
+      // Leading and trailing empty spacer paragraphs inside the grouped TOC item are marked for reading collapse
+      expect(groupItems[1].querySelectorAll(':scope > .flow-edge-empty')).toHaveLength(2)
+      // Every paragraph inside the grouped TOC keeps exact 1:1 textContent with the engine for flowEditing
+      const tocBlocks = [...groupItems[1].querySelectorAll<HTMLElement>(':scope > .flow-p')]
+      tocBlocks.forEach((el, k) => {
+        const len = doc.getCellParagraphLength(0, 1, 0, 1, k)
+        const expected = len > 0 ? doc.getTextInCell(0, 1, 0, 1, k, 0, len) : ''
+        expect(paragraphText(el)).toBe(expected)
+      })
     } finally {
       doc.free()
     }
   })
+
+  it('formats tab leaders and right-aligned tabs without altering paragraph textContent', () => {
+    const dotted = formatFlowTabs(
+      '<p style="text-align:left;"><span style="font-weight:bold;">Ⅰ</span><span>. 추진배경 \t 1</span></p>',
+      { tabStops: [{ position: 81688, type: 1, fill: 7 }] },
+    )
+    const dotP = new DOMParser().parseFromString(`<body>${dotted}</body>`, 'text/html').body
+      .firstElementChild!
+    expect(dotP.classList.contains('flow-tab-line')).toBe(true)
+    expect(dotP.querySelector('.flow-tab-lead')?.textContent).toBe('Ⅰ. 추진배경 ')
+    expect(dotP.querySelector('.flow-tab-leader.flow-tab-dot')?.textContent).toBe('\t')
+    expect(dotP.querySelector('.flow-tab-tail')?.textContent).toBe(' 1')
+    expect(dotP.querySelector('.flow-tab-lead span')?.getAttribute('style')).toContain(
+      'font-weight:bold',
+    )
+    // Exact textContent preserved for flowEditing character offsets
+    expect(dotP.textContent).toBe('Ⅰ. 추진배경 \t 1')
+
+    const dashed = formatFlowTabs('<p><span>항목\t12</span></p>', {
+      tabStops: [{ position: 80000, type: 1, fill: 2 }],
+    })
+    expect(dashed).toContain('flow-tab-dash')
+
+    const solid = formatFlowTabs('<p><span>항목\t12</span></p>', {
+      tabStops: [{ position: 80000, type: 1, fill: 1 }],
+    })
+    expect(solid).toContain('flow-tab-solid')
+
+    const autoRight = formatFlowTabs('<p><span>좌측\t우측</span></p>', { tabAutoRight: true })
+    expect(autoRight).toContain('flow-tab-line')
+    expect(autoRight).toContain('flow-tab-space')
+
+    // Plain left tabs or multi-tab paragraphs wrap each tab without turning into a leader flex row
+    const multi = formatFlowTabs('<p><span>A\tB\tC</span></p>', {
+      tabStops: [{ position: 80000, type: 1, fill: 7 }],
+    })
+    const multiP = new DOMParser().parseFromString(`<body>${multi}</body>`, 'text/html').body
+      .firstElementChild!
+    expect(multiP.classList.contains('flow-tab-line')).toBe(false)
+    expect(multiP.querySelectorAll('span.flow-tab')).toHaveLength(2)
+    expect(multiP.textContent).toBe('A\tB\tC')
+  })
+
+  it('renders all child text boxes of a grouped shape plus equation and form controls', () => {
+    const mockDoc: FlowEngineDocument = {
+      getSectionCount: () => 1,
+      getParagraphCount: () => 3,
+      getParagraphLength: () => 0,
+      getControlTextPositions: () => '[0]',
+      exportSelectionHtml: () => '',
+      exportControlHtml: (_sec, para, pathJson, ctrl) => {
+        if (pathJson !== '[]' || ctrl !== 0) throw new Error('out of range')
+        if (para === 0) {
+          return '<!--StartFragment--><!-- rhwp: 셀 안 Shape 컨트롤은 클립보드 HTML 내보내기 미지원 --><!--EndFragment-->'
+        }
+        if (para === 1) {
+          return '<!--StartFragment--><!-- rhwp: 셀 안 Equation 컨트롤은 클립보드 HTML 내보내기 미지원 --><!--EndFragment-->'
+        }
+        return '<!--StartFragment--><!-- rhwp: 셀 안 FormObject 컨트롤은 클립보드 HTML 내보내기 미지원 --><!--EndFragment-->'
+      },
+      getCellParagraphCount: (_sec, para, ctrl, cell) =>
+        para === 0 && ctrl === 0 && cell >= 0 && cell <= 2 ? 1 : 0,
+      getCellParagraphLength: (_sec, para, ctrl, cell) =>
+        para === 0 && ctrl === 0 && cell >= 0 && cell <= 2 ? 4 : 0,
+      getCellParagraphCountByPath: () => 0,
+      getCellParagraphLengthByPath: () => 0,
+      exportSelectionInCellHtmlByPath: (_sec, _para, pathJson) => {
+        if (pathJson === '[{"controlIndex":0,"cellIndex":0,"cellParaIndex":0}]') {
+          return '<!--StartFragment--><p><span>목차 제목</span></p><!--EndFragment-->'
+        }
+        if (pathJson === '[{"controlIndex":0,"cellIndex":1,"cellParaIndex":0}]') {
+          return '<!--StartFragment--><p><span>1장\t1</span></p><!--EndFragment-->'
+        }
+        if (pathJson === '[{"controlIndex":0,"cellIndex":2,"cellParaIndex":0}]') {
+          return '<!--StartFragment--><p><span>2장\t5</span></p><!--EndFragment-->'
+        }
+        return ''
+      },
+      getParaPropertiesAt: () => '{"headType":"None"}',
+      getCellParaPropertiesAt: () =>
+        '{"headType":"None","tabStops":[{"position":80000,"type":1,"fill":7}]}',
+      getCellParaPropertiesAtByPath: () => '{"headType":"None"}',
+      getBulletList: () => '[]',
+      getFootnoteInfo: () => '{"ok":false}',
+      getHeaderFooter: () => '{"ok":true,"exists":false}',
+      getTableProperties: () => '{}',
+      getEquationProperties: (_sec, para) =>
+        para === 1 ? '{"script":"a^2 + b^2 = c^2","fontSize":1000,"color":0}' : '',
+      renderEquationPreview: (script) => `<svg><text>${script}</text></svg>`,
+      getFormObjectInfo: (_sec, para) =>
+        para === 2 ? '{"ok":true,"formType":"checkbox","caption":"동의함"}' : '{"ok":false}',
+      getTextInCell: () => '',
+      getCellCharPropertiesAt: () => '{}',
+      free: vi.fn(),
+    }
+
+    const html = buildFlowHtml(mockDoc)
+    const body = new DOMParser().parseFromString(`<body>${html}</body>`, 'text/html').body
+    const groupItems = body.querySelectorAll('.flow-group-box > .flow-group-item')
+    expect(groupItems).toHaveLength(3)
+    expect(groupItems[0].textContent).toBe('목차 제목')
+    expect(groupItems[1].textContent).toBe('1장\t1')
+    expect(groupItems[2].textContent).toBe('2장\t5')
+    expect(groupItems[1].querySelector('p.flow-tab-line')).not.toBeNull()
+    expect(body.querySelector('.flow-equation svg')?.textContent).toBe('a^2 + b^2 = c^2')
+    expect(body.querySelector('.flow-form-obj')?.textContent).toBe('동의함')
+  })
+
+  it('omits zero engine-readable paragraphs across all HWP/HWPX test fixtures', () => {
+    const norm = (s: string) => s.replace(/[\s\u00a0\u200b\ufeff]+/g, '')
+    const UNSUPPORTED_RE = /<!--\s*rhwp:[^->]*\b([A-Za-z]+)\s+컨트롤은/
+
+    function collectEngineParagraphTexts(doc: HwpDocument): string[] {
+      const texts: string[] = []
+      const pushText = (raw: string) => {
+        const n = norm(raw)
+        if (n.length > 0) texts.push(n)
+      }
+
+      const walkList = (sec: number, para: number, list: readonly CellStep[]) => {
+        let count: number
+        try {
+          count =
+            list.length === 1
+              ? doc.getCellParagraphCount(sec, para, list[0].controlIndex, list[0].cellIndex ?? 0)
+              : doc.getCellParagraphCountByPath(
+                  sec,
+                  para,
+                  JSON.stringify([
+                    ...list.slice(0, -1),
+                    { ...list[list.length - 1], cellParaIndex: 0 },
+                  ]),
+                )
+        } catch {
+          return
+        }
+        for (let k = 0; k < count; k += 1) {
+          const pPath: CellStep[] = [
+            ...list.slice(0, -1),
+            { ...list[list.length - 1], cellParaIndex: k },
+          ]
+          const pJson = JSON.stringify(pPath)
+          let len: number
+          try {
+            len =
+              list.length === 1
+                ? doc.getCellParagraphLength(
+                    sec,
+                    para,
+                    list[0].controlIndex,
+                    list[0].cellIndex ?? 0,
+                    k,
+                  )
+                : doc.getCellParagraphLengthByPath(sec, para, pJson)
+          } catch {
+            len = 0
+          }
+          if (len > 0) {
+            try {
+              const t =
+                list.length === 1
+                  ? doc.getTextInCell(
+                      sec,
+                      para,
+                      list[0].controlIndex,
+                      list[0].cellIndex ?? 0,
+                      k,
+                      0,
+                      len,
+                    )
+                  : doc.getTextInCellByPath(sec, para, pJson, 0, len)
+              pushText(t)
+            } catch {
+              // skip unreadable
+            }
+          }
+          for (let ctrl = 0; ; ctrl += 1) {
+            let raw: string
+            try {
+              raw = doc.exportControlHtml(sec, para, pJson, ctrl)
+            } catch {
+              break
+            }
+            walkControl(sec, para, pPath, ctrl, raw)
+          }
+        }
+      }
+
+      const walkControl = (
+        sec: number,
+        para: number,
+        hostPath: readonly CellStep[],
+        ctrl: number,
+        raw: string,
+      ) => {
+        const kind = UNSUPPORTED_RE.exec(raw)?.[1] ?? null
+        const cleaned = raw.replace(/<!--[\s\S]*?-->/g, '').trim()
+        if (/<table[\s>]/i.test(cleaned)) {
+          const cellCount = (cleaned.match(/<t[dh][\s>]/gi) ?? []).length
+          for (let ci = 0; ci < cellCount; ci += 1) {
+            walkList(sec, para, [...hostPath, { controlIndex: ctrl, cellIndex: ci }])
+          }
+          if (hostPath.length === 0) {
+            try {
+              const tp = JSON.parse(doc.getTableProperties(sec, para, ctrl)) as {
+                hasCaption?: boolean
+              }
+              if (tp.hasCaption) {
+                walkList(sec, para, [{ controlIndex: ctrl, cellIndex: TABLE_CAPTION_CELL }])
+              }
+            } catch {
+              // no caption
+            }
+          }
+          return
+        }
+        if (/<img[\s>]/i.test(cleaned)) {
+          walkList(sec, para, [...hostPath, { controlIndex: ctrl, cellIndex: 0 }])
+          return
+        }
+        if (kind === 'Shape') {
+          for (let ci = 0; ci < 256; ci += 1) {
+            const list = [...hostPath, { controlIndex: ctrl, cellIndex: ci }]
+            let cnt: number
+            try {
+              cnt =
+                list.length === 1
+                  ? doc.getCellParagraphCount(sec, para, ctrl, ci)
+                  : doc.getCellParagraphCountByPath(
+                      sec,
+                      para,
+                      JSON.stringify([
+                        ...hostPath,
+                        { controlIndex: ctrl, cellIndex: ci, cellParaIndex: 0 },
+                      ]),
+                    )
+            } catch {
+              cnt = 0
+            }
+            if (cnt <= 0) break
+            walkList(sec, para, list)
+          }
+          return
+        }
+        if (hostPath.length === 0) {
+          try {
+            const fn = JSON.parse(doc.getFootnoteInfo(sec, para, ctrl)) as {
+              ok?: boolean
+              texts?: string[]
+            }
+            if (fn.ok && fn.texts) {
+              for (const t of fn.texts) pushText(t)
+            }
+          } catch {
+            // not a note
+          }
+        }
+      }
+
+      for (let sec = 0; sec < doc.getSectionCount(); sec += 1) {
+        for (let p = 0; p < doc.getParagraphCount(sec); p += 1) {
+          const len = doc.getParagraphLength(sec, p)
+          if (len > 0) pushText(doc.getTextRange(sec, p, 0, len))
+          let ctrlCount: number
+          try {
+            const pos = JSON.parse(doc.getControlTextPositions(sec, p)) as unknown[]
+            ctrlCount = Array.isArray(pos) ? pos.length : 0
+          } catch {
+            ctrlCount = 0
+          }
+          for (let c = 0; c < ctrlCount; c += 1) {
+            try {
+              const raw = doc.exportControlHtml(sec, p, '[]', c)
+              walkControl(sec, p, [], c, raw)
+            } catch {
+              // ignore
+            }
+          }
+        }
+      }
+      return texts
+    }
+
+    const mobileFixturesDir = join(__dirname, 'fixtures')
+    const allFixtureFiles = [
+      ...readdirSync(fixtures)
+        .filter((f) => f.endsWith('.hwp') || f.endsWith('.hwpx'))
+        .sort()
+        .map((f) => ({ name: f, path: join(fixtures, f) })),
+      ...readdirSync(mobileFixturesDir)
+        .filter((f) => f.endsWith('.hwp') || f.endsWith('.hwpx'))
+        .sort()
+        .map((f) => ({ name: `mobile/${f}`, path: join(mobileFixturesDir, f) })),
+    ]
+    expect(allFixtureFiles.length).toBeGreaterThan(30)
+
+    const omissions: Array<{ doc: string; text: string; expected: number; found: number }> = []
+    for (const file of allFixtureFiles) {
+      const doc = new HwpDocument(new Uint8Array(readFileSync(file.path)))
+      try {
+        const expectedTexts = collectEngineParagraphTexts(doc)
+        const html = buildFlowHtml(doc as unknown as FlowEngineDocument)
+        const parsed = new DOMParser().parseFromString(`<body>${html}</body>`, 'text/html')
+        // Strip elements hidden in reading mode so hidden text cannot mask an omission.
+        for (const el of parsed.body.querySelectorAll(
+          '.flow-spacer-row, .flow-spacer-cell, .flow-box-empty, .flow-edge-empty, .flow-divider-row .flow-p',
+        )) {
+          el.remove()
+        }
+        const visibleFlowText = norm(parsed.body.textContent ?? '')
+
+        const expectedCounts = new Map<string, number>()
+        for (const t of expectedTexts) {
+          expectedCounts.set(t, (expectedCounts.get(t) ?? 0) + 1)
+        }
+        for (const [t, expected] of expectedCounts) {
+          let found = 0
+          let pos = 0
+          while (true) {
+            const idx = visibleFlowText.indexOf(t, pos)
+            if (idx < 0) break
+            found += 1
+            pos = idx + t.length
+          }
+          if (found < expected) {
+            omissions.push({ doc: file.name, text: t.slice(0, 60), expected, found })
+          }
+        }
+      } finally {
+        doc.free()
+      }
+    }
+
+    expect(omissions).toEqual([])
+  }, 60_000)
 
   it('converts HWP border-width codes in clipboard table styles to real CSS pixels', () => {
     expect(
