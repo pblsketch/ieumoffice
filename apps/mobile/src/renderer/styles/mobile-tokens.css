@@ -1,10 +1,14 @@
 @import '@genoffice/ui/tokens.css';
+@import '../assets/fonts/ui-font.css';
 
 /* Mobile layout, touch target, safe area, and elevation tokens.
  * All color values reference @genoffice/ui/tokens.css variables exclusively. */
 :root {
   /* Declare support for both schemes so Android/iOS WebViews evaluate prefers-color-scheme: dark. */
   color-scheme: light dark;
+
+  /* App UI font: Pretendard for Korean/Latin/Cyrillic/Vietnamese, falling back to device fonts. */
+  --m-font-ui: 'Pretendard', var(--gs-font-sans);
 
   /* Mobile design system tokens (.dryforge/mobile/design-system/design.md, section 3).
    * Colors only reference @genoffice/ui/tokens.css; platform never changes these values. */
@@ -86,6 +90,18 @@
   --m-z-modal: 50;
 }
 
+/* Scripts Pretendard does not cover (Kanji/Hanzi, Thai, Arabic, Hebrew, Devanagari)
+ * fall back directly to the device system font stack so glyphs stay unified. */
+:root:lang(ja),
+:root:lang(zh),
+:root:lang(zh-TW),
+:root:lang(th),
+:root:lang(ar),
+:root:lang(he),
+:root:lang(hi) {
+  --m-font-ui: var(--gs-font-sans);
+}
+
 :root[data-theme='light'] {
   color-scheme: light;
 }
@@ -108,7 +124,7 @@ body,
   height: 100%;
   overflow: hidden;
   overscroll-behavior: none;
-  font-family: var(--gs-font-sans);
+  font-family: var(--m-font-ui);
   background: var(--surface);
   color: var(--text-primary);
   user-select: none;
@@ -1597,6 +1613,7 @@ input:focus-visible {
   width: 100%;
   margin: 0 auto;
   padding: var(--m-space-5) var(--m-space-5) calc(var(--m-fab-size) + var(--m-space-8));
+  font-family: var(--gs-font-sans);
   font-size: var(--m-text-body);
   line-height: 1.72;
   color: var(--text-primary);
@@ -1684,7 +1701,7 @@ input:focus-visible {
   margin: 0;
   white-space: pre-wrap;
   word-break: break-word;
-  font-family: inherit;
+  font-family: var(--gs-font-sans);
   font-size: var(--m-text-body);
   line-height: 1.65;
   color: var(--text-primary);
@@ -1701,7 +1718,7 @@ input:focus-visible {
   padding: var(--m-space-5) var(--m-space-5) var(--m-space-10);
   background: var(--surface);
   color: var(--text-primary);
-  font-family: inherit;
+  font-family: var(--gs-font-sans);
   font-size: var(--m-text-body);
   line-height: 1.7;
   resize: none;

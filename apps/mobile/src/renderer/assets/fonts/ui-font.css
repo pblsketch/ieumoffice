@@ -1,0 +1,19 @@
+/* Bundled Pretendard UI font (SIL OFL 1.1, Reserved Font Name "Pretendard").
+ * Lossless WOFF2 packaging of packages/ui/template-fonts/Pretendard-{Regular,Bold}.otf.
+ * Used exclusively for mobile app UI chrome; document content keeps its own font stacks. */
+
+@font-face {
+  font-family: 'Pretendard';
+  src: url('./Pretendard-Regular.woff2') format('woff2');
+  font-weight: 400 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Pretendard';
+  src: url('./Pretendard-Bold.woff2') format('woff2');
+  font-weight: 600 700;
+  font-style: normal;
+  font-display: swap;
+}
