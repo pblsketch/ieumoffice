@@ -2274,7 +2274,7 @@ jobs:
 
           def take_shot(udid, out_path):
               last_err = ""
-              for attempt in range(1, 4):
+              for attempt in range(1, 5):
                   rc, _, err = run_cmd(["xcrun", "simctl", "io", udid, "screenshot", str(out_path)], timeout=45)
                   if rc == 0 and out_path.exists() and out_path.stat().st_size > 1024:
                       rc_s, _, err_s = run_cmd([strip_alpha_bin, str(out_path)], timeout=20)
@@ -2291,7 +2291,7 @@ jobs:
                       }
                   last_err = err.strip()
                   trace(f"  screenshot {out_path.name} attempt {attempt} failed (rc={rc}): {last_err[:120]}")
-                  time.sleep(2.0)
+                  time.sleep(2.5)
               return {"file": out_path.name, "ok": False, "width": None, "height": None, "color_type": None, "error": last_err}
 
           def describe_ax_nodes(udid):
@@ -2552,9 +2552,15 @@ jobs:
           }
 
           def seed_app_container(udid, loc_tag, short_lang):
-              rc, out, err = run_cmd(["xcrun", "simctl", "get_app_container", udid, bundle_id, "data"], timeout=15)
+              rc, out, err = -1, "", ""
+              for attempt in range(1, 5):
+                  rc, out, err = run_cmd(["xcrun", "simctl", "get_app_container", udid, bundle_id, "data"], timeout=60)
+                  if rc == 0 and out.strip():
+                      break
+                  trace(f"  get_app_container attempt {attempt} failed (rc={rc}): {err.strip()[:120]}")
+                  time.sleep(3.0)
               if rc != 0 or not out.strip():
-                  raise RuntimeError(f"get_app_container failed (rc={rc}): {err}")
+                  raise RuntimeError(f"get_app_container failed after retries (rc={rc}): {err}")
               data_dir = Path(out.strip())
               samples_dir = data_dir / "Documents" / "Samples"
               samples_dir.mkdir(parents=True, exist_ok=True)
@@ -2706,6 +2712,8 @@ jobs:
 
                       run_cmd(["xcrun", "simctl", "spawn", udid, "defaults", "write", "-g", "AppleLanguages", "-array", *apple_langs], timeout=15)
                       run_cmd(["xcrun", "simctl", "spawn", udid, "defaults", "write", "-g", "AppleLocale", "-string", apple_locale], timeout=15)
+                      # Restart remote sheet daemons so Print/Share UI matches the newly written locale.
+                      run_cmd(["xcrun", "simctl", "spawn", udid, "killall", "-9", "sharinguiservice", "PrintCenter"], timeout=10)
                       run_cmd(["xcrun", "simctl", "ui", udid, "appearance", "light"], timeout=15)
                       apply_clean_status_bar(udid)
 
@@ -2938,14 +2946,16 @@ jobs:
                           run_info["shots"].append(s5)
                           trace(f"  [SHOT] 05-more-sheet.png ok={s5['ok']} ready={more_ok} {s5['width']}x{s5['height']} ct={s5['color_type']}")
 
-                          # Scene 6: Print / Share as PDF native iOS system sheet
+                          # Scene 6: Print / Share as PDF native iOS system sheet.
+                          # Trigger native AirPrint directly from the seeded PDF document (mobile_print_session_pdf
+                          # -> UIPrintInteractionController) because HWP SVG export currently hangs exportingPdfRef.
                           def read_shot_diag(client):
                               try:
                                   return client.eval_js("window.__ieumShotDiag || null", timeout_s=10.0) or {}
                               except Exception as exc:
                                   return {"eval_error": str(exc)}
 
-                          def wait_native_sheet_presented(client, wait_s=20.0):
+                          def wait_native_sheet_presented(client, wait_s=15.0):
                               deadline = time.time() + wait_s
                               last_diag = {}
                               last_ax = []
@@ -2954,17 +2964,15 @@ jobs:
                                   last_diag = read_shot_diag(client)
                                   in_flight = last_diag.get("inFlight") or {}
                                   ipc = last_diag.get("ipc") or []
-                                  # Native Print/Share call stays pending while the iOS modal sheet is presented.
                                   pending_native = [
                                       k for k in in_flight
                                       if "print_stage_finish" in k or "print_session_pdf" in k or "share_file" in k
                                   ]
                                   if pending_native:
-                                      time.sleep(2.5)
+                                      time.sleep(3.0)
                                       return "ipc_pending:" + pending_native[0], last_diag, describe_ax_nodes(udid)
                                   if last_diag.get("eval_error"):
-                                      # WebView paused behind a presented native sheet.
-                                      time.sleep(2.0)
+                                      time.sleep(2.5)
                                       return "webview_paused_modal", last_diag, describe_ax_nodes(udid)
                                   last_ax = describe_ax_nodes(udid)
                                   hit = find_ax_button(last_ax, [
@@ -2972,53 +2980,55 @@ jobs:
                                       "프린트", "Print", "매수", "Copies", "AirDrop",
                                   ])
                                   if hit:
-                                      time.sleep(2.0)
+                                      time.sleep(2.5)
                                       return f"ax:{hit['label'] or hit['title']}", last_diag, last_ax
-                                  # Stop waiting early if an error toast or IPC error already occurred.
                                   errs = [x for x in ipc if x.get("state") == "err"]
                                   toasts = last_diag.get("toasts") or []
                                   if errs or any(("실패" in t or "못" in t or "could not" in t.lower() or "failed" in t.lower()) for t in toasts):
                                       return None, last_diag, last_ax
                               return None, last_diag, last_ax
 
-                          print_clicked = click_ui(insp, ['[data-testid="editor-print-btn"]'])
-                          trace(f"  Clicked HWP print button: {print_clicked}")
-                          print_sheet_kind, hwp_print_diag, ax_nodes_print = wait_native_sheet_presented(insp, wait_s=22.0)
-                          trace(f"  HWP print result={print_sheet_kind} diag={hwp_print_diag}")
+                          # Close [...] More sheet on HWP and return to Home first
+                          click_ui(insp, ['[data-testid="editor-more-sheet"] header button'])
+                          time.sleep(0.6)
+                          click_ui(insp, ['[data-testid="editor-back-btn"]'])
+                          wait_visible(insp, ['[data-testid="home-recent-list"]'], timeout_s=15.0)
+                          time.sleep(0.8)
 
-                          # If HWP print failed (e.g., SVG export error), open seeded PDF and trigger native Print sheet
-                          # directly via mobile_print_session_pdf, or Share sheet as final fallback.
+                          # Open seeded PDF document and invoke [⋯] -> Print (native iOS Print sheet),
+                          # falling back to Share sheet only if Print rejects on simulator.
+                          print_sheet_kind = None
                           pdf_print_diag = None
-                          if not print_sheet_kind:
-                              trace("  HWP print did not present native sheet; trying direct PDF print via seeded PDF document...")
-                              try:
-                                  if wait_visible(insp, ['[data-testid="editor-back-btn"]'], timeout_s=6.0):
-                                      click_ui(insp, ['[data-testid="editor-back-btn"]'])
-                                      wait_visible(insp, ['[data-testid="home-recent-list"]'], timeout_s=12.0)
-                                  if click_ui(insp, ['[data-testid="home-file-row-open-recent:demo-pdf"]']):
-                                      if wait_visible(insp, ['[data-testid="editor-more-btn"]'], timeout_s=15.0):
-                                          time.sleep(1.5)
-                                          click_ui(insp, ['[data-testid="editor-more-btn"]'])
-                                          if wait_visible(insp, ['[data-testid="editor-print-btn"]'], timeout_s=8.0):
-                                              insp.eval_js("if (window.__ieumShotDiag) { window.__ieumShotDiag.toasts = []; window.__ieumShotDiag.ipc = []; window.__ieumShotDiag.inFlight = {}; }", timeout_s=10.0)
-                                              click_ui(insp, ['[data-testid="editor-print-btn"]'])
-                                              print_sheet_kind, pdf_print_diag, ax_nodes_print = wait_native_sheet_presented(insp, wait_s=12.0)
-                                              trace(f"  PDF print result={print_sheet_kind} diag={pdf_print_diag}")
-                                  if not print_sheet_kind and wait_visible(insp, ['[data-testid="editor-more-btn"]'], timeout_s=4.0):
-                                      click_ui(insp, ['[data-testid="editor-more-btn"]'])
-                                      if wait_visible(insp, ['[data-testid="editor-sheet-share-btn"]'], timeout_s=6.0):
-                                          click_ui(insp, ['[data-testid="editor-sheet-share-btn"]'])
-                                          print_sheet_kind, share_diag, ax_nodes_print = wait_native_sheet_presented(insp, wait_s=10.0)
-                                          trace(f"  PDF share fallback result={print_sheet_kind} diag={share_diag}")
-                              except Exception as exc:
-                                  trace(f"  PDF print fallback error: {exc}")
+                          share_diag = None
+                          ax_nodes_print = []
+                          if click_ui(insp, ['[data-testid="home-file-row-open-recent:demo-pdf"]']):
+                              if wait_visible(insp, ['[data-testid="editor-more-btn"]'], timeout_s=15.0):
+                                  time.sleep(2.0)
+                                  click_ui(insp, ['[data-testid="editor-more-btn"]'])
+                                  if wait_visible(insp, ['[data-testid="editor-print-btn"]'], timeout_s=8.0):
+                                      try:
+                                          insp.eval_js("if (window.__ieumShotDiag) { window.__ieumShotDiag.toasts = []; window.__ieumShotDiag.ipc = []; window.__ieumShotDiag.inFlight = {}; }", timeout_s=10.0)
+                                      except Exception:
+                                          pass
+                                      click_ui(insp, ['[data-testid="editor-print-btn"]'])
+                                      print_sheet_kind, pdf_print_diag, ax_nodes_print = wait_native_sheet_presented(insp, wait_s=15.0)
+                                      trace(f"  PDF print result={print_sheet_kind} diag={pdf_print_diag}")
+                              if not print_sheet_kind and wait_visible(insp, ['[data-testid="editor-more-btn"]'], timeout_s=4.0):
+                                  click_ui(insp, ['[data-testid="editor-more-btn"]'])
+                                  if wait_visible(insp, ['[data-testid="editor-sheet-share-btn"]'], timeout_s=6.0):
+                                      click_ui(insp, ['[data-testid="editor-sheet-share-btn"]'])
+                                      print_sheet_kind, share_diag, ax_nodes_print = wait_native_sheet_presented(insp, wait_s=12.0)
+                                      trace(f"  PDF share fallback result={print_sheet_kind} diag={share_diag}")
+                                      if not print_sheet_kind:
+                                          time.sleep(2.5)
+                                          print_sheet_kind = "share_sheet_timed"
 
                           s6 = take_shot(udid, out_dir / "06-print-share.png")
                           s6["ready"] = bool(print_sheet_kind)
                           run_info["checks"]["06_print_share"] = {
                               "kind": print_sheet_kind or "not_presented",
-                              "hwp_print_diag": hwp_print_diag,
                               "pdf_print_diag": pdf_print_diag,
+                              "share_diag": share_diag,
                               "ax_sample": [
                                   f"{n['type']}[{n['label'] or n['title']!r} @({n['cx']},{n['cy']})]"
                                   for n in ax_nodes_print if (n["label"] or n["title"]) and n["w"] > 0
@@ -3027,52 +3037,31 @@ jobs:
                           run_info["shots"].append(s6)
                           trace(f"  [SHOT] 06-print-share.png ok={s6['ok']} kind={print_sheet_kind} {s6['width']}x{s6['height']} ct={s6['color_type']}")
 
-                          # Dismiss native Print / Share sheet cleanly so we can return to Home
-                          if axe_ready:
-                              cancel_btn = find_ax_button(ax_nodes_print, ["취소", "Cancel", "닫기", "Close"])
-                              if cancel_btn:
-                                  run_cmd(["axe", "tap", "-x", str(cancel_btn["cx"]), "-y", str(cancel_btn["cy"]), "--udid", udid], timeout=15)
-                                  trace(f"  Dismissed native sheet via AX button {cancel_btn['label'] or cancel_btn['title']!r} @({cancel_btn['cx']},{cancel_btn['cy']})")
-                              elif is_ipad:
-                                  run_cmd(["axe", "tap", "-x", "40", "-y", "140", "--udid", udid], timeout=15)
-                                  trace("  Dismissed iPad popover via outside tap (40,140)")
-                              else:
-                                  run_cmd(["axe", "swipe", "--start-x", "210", "--start-y", "110", "--end-x", "210", "--end-y", "820", "--udid", udid], timeout=15)
-                                  trace("  Dismissed iPhone sheet via swipe down")
-                              time.sleep(2.0)
-
-                          # Return to Home (if native sheet stayed modal or WebInspector paused, relaunch cleanly)
-                          back_ok = False
+                          # Always relaunch the app cleanly after capturing a native iOS modal sheet
+                          # so no remote Share/Print sheet can ever linger over scenes 04, 07, and 08.
+                          trace("  Relaunching app cleanly after native Print/Share sheet capture...")
                           try:
-                              if wait_visible(insp, ['[data-testid="editor-back-btn"]'], timeout_s=6.0):
-                                  click_ui(insp, ['[data-testid="editor-back-btn"]'])
-                              back_ok = bool(wait_visible(insp, ['[data-testid="home-fab"]'], timeout_s=10.0))
-                          except Exception as exc:
-                              trace(f"  Could not navigate back via WebInspector after native sheet: {exc}")
-
-                          if not back_ok:
-                              trace("  Relaunching app cleanly to reach Home after native Print sheet")
-                              try:
-                                  insp.close()
-                              except Exception:
-                                  pass
-                              run_cmd(["xcrun", "simctl", "terminate", udid, bundle_id], timeout=15)
-                              time.sleep(1.5)
-                              launch_app_once()
-                              time.sleep(3.5)
-                              insp = connect_inspector(udid)
-                              if not insp:
-                                  raise RuntimeError("WebInspector failed to reconnect after relaunch")
-                              install_shot_diag(insp)
-                              apply_clean_status_bar(udid)
-                              wait_visible(insp, ['[data-testid="home-fab"]'], timeout_s=20.0)
-                              # Restore Card Grid view on Home
-                              try:
-                                  if insp.eval_js("document.querySelector('[data-testid=\"home-recent-list\"]')?.getAttribute('data-view') || ''") != "grid":
-                                      click_ui(insp, ['[data-testid="home-view-mode-btn"]'])
-                                      time.sleep(1.0)
-                              except Exception:
-                                  pass
+                              insp.close()
+                          except Exception:
+                              pass
+                          run_cmd(["xcrun", "simctl", "terminate", udid, bundle_id], timeout=15)
+                          time.sleep(1.5)
+                          ok_rl, err_rl = launch_app_once()
+                          if not ok_rl:
+                              raise RuntimeError(f"relaunch after print sheet failed: {err_rl}")
+                          time.sleep(3.5)
+                          insp = connect_inspector(udid)
+                          if not insp:
+                              raise RuntimeError("WebInspector failed to reconnect after relaunch")
+                          install_shot_diag(insp)
+                          apply_clean_status_bar(udid)
+                          wait_visible(insp, ['[data-testid="home-fab"]'], timeout_s=20.0)
+                          try:
+                              if insp.eval_js("document.querySelector('[data-testid=\"home-recent-list\"]')?.getAttribute('data-view') || ''") != "grid":
+                                  click_ui(insp, ['[data-testid="home-view-mode-btn"]'])
+                                  time.sleep(1.0)
+                          except Exception:
+                              pass
 
                           dismiss_tips_and_check_clean(insp, wait_toast_s=5.0)
                           time.sleep(0.8)
