@@ -212,7 +212,7 @@ fn gate_refuses_recent_pdf_opened_before_the_gate_was_set() {
 }
 
 #[test]
-fn gate_allows_listed_formats_and_unknown_extensions_as_md() {
+fn gate_allows_listed_formats_and_refuses_unknown_extensions() {
     let (_tmp, bridge, svc) = new_service();
     svc.set_openable_formats(&hangul_and_markdown_gate());
 
@@ -221,8 +221,10 @@ fn gate_allows_listed_formats_and_unknown_extensions_as_md() {
     assert_eq!(md.format, MobileDocFormat::Md);
 
     bridge.set_next_pick_open(doc("content://docs/b.docx", "b.docx", true, false));
-    let docx = svc.pick_open_file(&["md".into()]).unwrap();
-    assert_eq!(docx.format, MobileDocFormat::Md);
+    assert_not_openable(svc.pick_open_file(&["md".into()]).unwrap_err(), "docx");
+
+    bridge.enqueue_open_intent(doc("content://share/archive.zip", "archive.zip", false, true));
+    assert_not_openable(svc.consume_pending_open_intent().unwrap_err(), "zip");
 
     bridge.enqueue_open_intent(doc("content://share/c.txt", "c.txt", true, false));
     let txt = svc.consume_pending_open_intent().unwrap().unwrap();

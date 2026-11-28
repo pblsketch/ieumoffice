@@ -179,4 +179,10 @@ export const de = {
   backupRestoreSaveAs: 'Als Kopie speichern',
   backupDelete: 'Löschen',
   formatNotOpenable: 'Dieser Dateityp kann nicht geöffnet werden.',
+  insertPanel: 'Einfügen',
+  keyboardLock: 'Tastatur sperren',
+  keyboardUnlock: 'Tastatur entsperren',
+  moreSectionDocument: 'Dokument',
+  moreSectionFile: 'Datei',
+  viewModeLabel: 'Ansicht',
 } as const satisfies Record<keyof typeof zh, string>

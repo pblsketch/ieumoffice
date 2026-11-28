@@ -912,6 +912,9 @@ out += `
 The SIL OFL 1.1 Korean font subsets (GenOffice Serif KR, GenOffice Sans KR,
 GenOffice Gothic KR, GenOffice Che Latin KR) are also bundled in the mobile app
 (apps/mobile/src/renderer/assets/fonts/, LICENSE-OFL.txt) for Hangul layout fidelity.
+Pretendard 1.309 (Pretendard-Regular.woff2, Pretendard-Bold.woff2, Pretendard-OFL.txt,
+SIL OFL 1.1, Reserved Font Name "Pretendard") is also bundled in the mobile app UI
+as a lossless WOFF2 container of packages/ui/template-fonts/Pretendard-{Regular,Bold}.otf.
 `
 for (const [name, spdx, copyright] of FONTS) out += sub(`${name} — ${spdx}`) + copyright + '\n'
 for (const [name, file, copyright] of TEMPLATE_FONTS) {

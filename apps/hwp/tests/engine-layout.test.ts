@@ -444,4 +444,96 @@ describe('vendored rhwp engine', () => {
       allowDeferredCellNote: true,
     })
   })
+
+  it('keeps a paragraph-anchored body-wide head table at the body top in a 2-column layout', () => {
+    // Regression test for patch 0060: in a 2-column layout, a body-wide
+    // TopAndBottom table with vertRelTo=Para in column 0 used to push column 0
+    // down before placing the table, shifting the table down by its own height
+    // so it overlapped both following paragraphs and column 2 while the column
+    // separator cut through it.
+    const firstNonEmptyLineTop = (node: Node): number | undefined => {
+      if (node.type === 'TextLine' && node.bbox) {
+        const t = (node.children ?? []).map((c) => c.text ?? '').join('')
+        if (t.trim()) return node.bbox.y
+        return undefined
+      }
+      if (node.type === 'Table') return undefined
+      for (const ch of node.children ?? []) {
+        const found = firstNonEmptyLineTop(ch)
+        if (found !== undefined) return found
+      }
+      return undefined
+    }
+
+    // 1. Anonymized reproduction saved by Hangul 2024 (2 columns, body-wide
+    //    VertRelTo=Para TopAndBottom 3x6 head table with 283 HU outer margins)
+    const fixtureDoc = open('body-wide-para-float-two-columns.hwpx')
+    try {
+      expect(fixtureDoc.pageCount()).toBe(1)
+      const root = JSON.parse(fixtureDoc.getPageRenderTree(0)) as Node
+      const body = area(root, 'Body')!
+      const columns = (body.children ?? []).filter((c) => c.type === 'Column')
+      expect(columns).toHaveLength(2)
+      const table = first(columns[0], 'Table')!.bbox!
+      const reservedBottom = table.y + table.h + px(283)
+      expect(table.y).toBeCloseTo(body.bbox!.y + px(283), 0)
+      expect(firstNonEmptyLineTop(columns[0])).toBeCloseTo(reservedBottom, 0)
+      expect(firstNonEmptyLineTop(columns[1])).toBeCloseTo(reservedBottom, 0)
+    } finally {
+      fixtureDoc.free()
+    }
+
+    // 2. Programmatically created 2-column document with a column separator
+    const doc = HwpDocument.createEmpty()
+    try {
+      doc.createBlankDocument()
+      const made = JSON.parse(doc.createTable(0, 0, 0, 3, 6)) as {
+        paraIdx: number
+        controlIdx: number
+      }
+      doc.setTableProperties(
+        0,
+        made.paraIdx,
+        made.controlIdx,
+        JSON.stringify({
+          treatAsChar: false,
+          textWrap: 'TopAndBottom',
+          vertRelTo: 'Para',
+          horzRelTo: 'Page',
+          vertAlign: 'Top',
+          horzAlign: 'Left',
+          vertOffset: 0,
+          horzOffset: 0,
+        }),
+      )
+      const props = JSON.parse(doc.getTableProperties(0, made.paraIdx, made.controlIdx)) as {
+        outerTop: number
+        outerBottom: number
+      }
+      for (let i = 0; i < 60; i++) {
+        const para = made.paraIdx + 1 + i
+        if (i > 0) doc.insertParagraph(0, para)
+        doc.insertText(0, para, 0, `Question ${String(i + 1).padStart(3, '0')} filler text`)
+      }
+      doc.setColumnDef(0, 2, 0, 1, 2268)
+      doc.setColumnSeparator(0, JSON.stringify({ type: 1, width: 1, color: '#112233' }))
+
+      const root = JSON.parse(doc.getPageRenderTree(0)) as Node
+      const body = area(root, 'Body')!
+      const columns = (body.children ?? []).filter((c) => c.type === 'Column')
+      expect(columns).toHaveLength(2)
+
+      const table = first(columns[0], 'Table')!.bbox!
+      const reservedBottom = table.y + table.h + px(props.outerBottom)
+      expect(table.y).toBeCloseTo(body.bbox!.y + px(props.outerTop), 0)
+      expect(firstNonEmptyLineTop(columns[0])).toBeCloseTo(reservedBottom, 0)
+      expect(firstNonEmptyLineTop(columns[1])).toBeCloseTo(reservedBottom, 0)
+
+      const separator = (body.children ?? []).find((c) => c.type === 'Line')?.bbox
+      expect(separator).toBeDefined()
+      expect(separator!.y).toBeCloseTo(reservedBottom, 0)
+    } finally {
+      doc.free()
+    }
+  })
 })

@@ -1,0 +1,41 @@
+import type { zh } from './zh'
+
+export const it = {
+  pdfViewEditorName: 'Editor PDF',
+  pdfViewLoading: 'Apertura…',
+  pdfViewOpenFailed:
+    'Impossibile aprire questo PDF. Il file potrebbe essere danneggiato o non essere un PDF.',
+  pdfViewCertEncrypted:
+    "Questo PDF è protetto da un certificato, non da una password. Aprilo nell'app che lo ha emesso.",
+  pdfViewBlankUnavailable: 'Impossibile creare un nuovo PDF.',
+  pdfViewPagesFailed: 'Alcune pagine non sono leggibili e appaiono vuote.',
+  pdfViewPageBroken: 'Impossibile visualizzare questa pagina',
+  pdfViewPageLabel: 'Pagina {page}',
+  pdfViewPageIndicator: 'Pagina {page} di {count}',
+  pdfViewInternalLink: 'Vai alla pagina collegata',
+  pdfViewPasswordTitle: 'Questo PDF è crittografato',
+  pdfViewPasswordBody: '"{name}" è protetto da password. Inserisci la password per aprirlo.',
+  pdfViewPasswordLabel: 'Password',
+  pdfViewPasswordPlaceholder: 'Inserisci la password per aprire',
+  pdfViewPasswordShow: 'Mostra password',
+  pdfViewPasswordHide: 'Nascondi password',
+  pdfViewPasswordOpen: 'Apri',
+  pdfViewPasswordWrong: 'Password errata, riprova',
+  pdfViewReadOnlyEncrypted: 'Il documento crittografato è di sola lettura',
+  pdfViewReadOnlyDamaged: 'File danneggiato: le pagine illeggibili sono vuote, sola lettura',
+  pdfViewReadOnlyNotWritable:
+    'Questo file non può essere salvato nella sua posizione, quindi è di sola lettura',
+  pdfViewSearch: 'Cerca',
+  pdfViewSearchPlaceholder: 'Trova nel documento',
+  pdfViewSearching: 'Ricerca in corso…',
+  pdfViewSearchNone: 'Nessun risultato',
+  pdfViewSearchPrev: 'Precedente',
+  pdfViewSearchNext: 'Successivo',
+  pdfViewSearchClose: 'Chiudi ricerca',
+  pdfViewOutline: 'Struttura',
+  pdfViewOutlineEmpty: 'Questo documento non ha una struttura',
+  pdfViewGoToPage: 'Vai alla pagina',
+  pdfViewGoToPageLabel: 'Numero di pagina (1–{count})',
+  pdfViewGoToPageGo: 'Vai',
+  pdfViewGoToPageInvalid: 'Inserisci un numero da 1 a {count}',
+} as const satisfies Record<keyof typeof zh, string>

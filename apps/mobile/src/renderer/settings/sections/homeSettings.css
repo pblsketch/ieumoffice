@@ -1,0 +1,82 @@
+/* Owner: track T6. Settings rows for editors, home cards, screen-on, folders, storage. */
+
+.home-set-group {
+  display: flex;
+  flex-direction: column;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.home-set-group-head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-space-1);
+  padding: var(--m-space-3) 0 var(--m-space-1);
+}
+
+.home-set-subrow {
+  padding-inline-start: var(--m-space-3);
+}
+
+.home-set-text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-space-1);
+  min-width: 0;
+}
+
+.home-set-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: var(--m-text-body-s);
+  color: var(--text-primary);
+}
+
+.home-set-desc {
+  font-size: var(--m-text-caption);
+  line-height: var(--m-line-body);
+  color: var(--text-secondary);
+}
+
+.home-set-row-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--m-space-1);
+  flex-shrink: 0;
+}
+
+.home-set-row-controls .mobile-icon-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.home-set-icon-up {
+  transform: rotate(180deg);
+}
+
+.home-set-folder + .home-set-folder {
+  padding-top: var(--m-space-3);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.home-set-size-row {
+  min-height: var(--m-hit);
+}
+
+.home-set-size {
+  font-size: var(--m-text-body-s);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.home-set-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: var(--m-space-2);
+}
+
+.home-set-confirm-actions.is-ios > * {
+  flex: 1;
+}

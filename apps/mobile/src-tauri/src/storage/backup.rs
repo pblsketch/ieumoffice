@@ -3,7 +3,7 @@ use crate::storage::recent::now_millis;
 use crate::storage::session::MobileDocFormat;
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
 pub const MAX_HWP_BACKUPS: usize = 20;
@@ -174,6 +174,36 @@ impl HwpBackupStore {
             uri,
             bytes,
         ))
+    }
+
+    pub(crate) fn dir(&self) -> &Path {
+        &self.dir
+    }
+
+    /// Points the backups of a renamed document at its new docKey, location, and name, so
+    /// restoring in place writes to the renamed file and backup listings show the new name.
+    pub(crate) fn rekey(
+        &self,
+        old_key: &str,
+        old_uri: &str,
+        new_key: &str,
+        new_uri: &str,
+        new_name: &str,
+    ) -> MobileResult<()> {
+        let mut index = self.load_index()?;
+        let mut changed = false;
+        for entry in index.iter_mut() {
+            if entry.doc_key == old_key || entry.original_uri == old_uri {
+                entry.doc_key = new_key.to_string();
+                entry.original_uri = new_uri.to_string();
+                entry.original_name = new_name.to_string();
+                changed = true;
+            }
+        }
+        if changed {
+            self.save_index(&index)?;
+        }
+        Ok(())
     }
 
     pub fn delete(&self, backup_id: &str) -> MobileResult<()> {

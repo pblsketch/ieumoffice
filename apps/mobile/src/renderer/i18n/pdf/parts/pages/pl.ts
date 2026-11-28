@@ -1,0 +1,42 @@
+import type { zh } from './zh'
+
+export const pl = {
+  pdfPagesSelected: 'Wybrano: {n}',
+  pdfPagesNoneSelected: 'Stuknij strony, aby je wybrać',
+  pdfPagesSelectAll: 'Zaznacz wszystko',
+  pdfPagesClearSelection: 'Wyczyść wybór',
+  pdfPagesRotate: 'Obróć',
+  pdfPagesDelete: 'Usuń',
+  pdfPagesMoveEarlier: 'Wcześniej',
+  pdfPagesMoveLater: 'Później',
+  pdfPagesBlankBefore: 'Pusta przed',
+  pdfPagesBlankAfter: 'Pusta po',
+  pdfPagesImport: 'Z innego PDF',
+  pdfPagesPageLabel: 'Strona {n}',
+  pdfPagesBlankLabel: 'Pusta strona',
+  pdfPagesDragHandle: 'Przeciągnij, aby przenieść',
+  pdfPagesKeepOne: 'Nie można usunąć ostatniej strony.',
+  pdfPagesActionFailed: 'Nie udało się zmienić stron.',
+  pdfPagesDeletedLabel: 'Do usunięcia',
+  pdfPagesDeletedHint: 'Zostanie usunięta przy zapisie. Cofnij ją przywróci.',
+  pdfPagesMovedLabel: 'Nowa kolejność: strona {n}',
+  pdfPagesImportTitle: 'Wstaw strony z innego PDF',
+  pdfPagesImportCount: 'Strony do wstawienia: {n}',
+  pdfPagesImportPlace: 'Gdzie wstawić',
+  pdfPagesImportFront: 'Na początku',
+  pdfPagesImportAfter: 'Po stronie {n}',
+  pdfPagesImportEnd: 'Na końcu',
+  pdfPagesImportConfirmHint:
+    'Najpierw zostaną zapisane dotychczasowe zmiany, a potem wstawione strony. Wstawione strony trafiają od razu do pliku i nie można tego cofnąć.',
+  pdfPagesImportConfirm: 'Zapisz i wstaw',
+  pdfPagesImportDone: 'Wstawiono strony: {n}.',
+  pdfPagesImportFailed: 'Nie udało się wstawić stron.',
+  pdfPagesImportDamaged: 'Nie można wstawić stron z innego PDF do uszkodzonego dokumentu.',
+  pdfPagesImportEncrypted: 'Nie można wstawić stron z innego PDF do zaszyfrowanego dokumentu.',
+  pdfPagesImportUntitled:
+    'Nie można wstawić stron do nowego dokumentu, który nie był jeszcze zapisany. Najpierw go zapisz.',
+  pdfPagesImportReadOnly: 'Nie można wstawić stron do dokumentu tylko do odczytu.',
+  pdfPagesImportPickEncrypted:
+    'Wybrany PDF jest chroniony hasłem, więc nie można zaimportować jego stron.',
+  pdfPagesImportPickUnreadable: 'Nie można odczytać wybranego pliku jako PDF.',
+} as const satisfies Record<keyof typeof zh, string>

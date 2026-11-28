@@ -1,0 +1,42 @@
+import type { zh } from './zh'
+
+export const ja = {
+  pdfPagesSelected: '{n} ページ選択中',
+  pdfPagesNoneSelected: 'ページをタップして選択',
+  pdfPagesSelectAll: 'すべて選択',
+  pdfPagesClearSelection: '選択を解除',
+  pdfPagesRotate: '回転',
+  pdfPagesDelete: '削除',
+  pdfPagesMoveEarlier: '前へ',
+  pdfPagesMoveLater: '後ろへ',
+  pdfPagesBlankBefore: '前に白紙',
+  pdfPagesBlankAfter: '後ろに白紙',
+  pdfPagesImport: '別の PDF から',
+  pdfPagesPageLabel: '{n} ページ',
+  pdfPagesBlankLabel: '白紙ページ',
+  pdfPagesDragHandle: 'ドラッグして移動',
+  pdfPagesKeepOne: '最後の 1 ページは削除できません。',
+  pdfPagesActionFailed: 'ページを変更できませんでした。',
+  pdfPagesDeletedLabel: '削除予定',
+  pdfPagesDeletedHint: '保存すると削除されます。元に戻すで復元できます。',
+  pdfPagesMovedLabel: '新しい順序: {n} ページ',
+  pdfPagesImportTitle: '別の PDF からページを挿入',
+  pdfPagesImportCount: '挿入するページ: {n} ページ',
+  pdfPagesImportPlace: '挿入する位置',
+  pdfPagesImportFront: '先頭',
+  pdfPagesImportAfter: '{n} ページの後',
+  pdfPagesImportEnd: '末尾',
+  pdfPagesImportConfirmHint:
+    'ここまでの変更を先に保存してからページを挿入します。挿入したページはファイルに直接書き込まれ、元に戻せません。',
+  pdfPagesImportConfirm: '保存して挿入',
+  pdfPagesImportDone: '{n} ページを挿入しました。',
+  pdfPagesImportFailed: 'ページを挿入できませんでした。',
+  pdfPagesImportDamaged: '破損した文書には別の PDF のページを挿入できません。',
+  pdfPagesImportEncrypted: '暗号化された文書には別の PDF のページを挿入できません。',
+  pdfPagesImportUntitled:
+    '一度も保存していない新しい文書にはページを挿入できません。先に保存してください。',
+  pdfPagesImportReadOnly: '読み取り専用の文書にはページを挿入できません。',
+  pdfPagesImportPickEncrypted:
+    '選んだ PDF はパスワードで保護されているため、ページを取り込めません。',
+  pdfPagesImportPickUnreadable: '選んだファイルを PDF として読み込めません。',
+} as const satisfies Record<keyof typeof zh, string>

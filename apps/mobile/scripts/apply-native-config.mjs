@@ -37,6 +37,17 @@ function replaceOrInsertBlock(content, startMarker, endMarker, block, anchorRege
 
 const GRADLE_SIGNING_BLOCK = `// IEUM_MOBILE_GRADLE_SIGNING_START
 android {
+    // Google Play requires targetSdk >= 36 (Android 16) for new apps since Aug 31, 2026.
+    compileSdk = 36
+    defaultConfig {
+        targetSdk = 36
+    }
+    // Keep native .so libraries uncompressed and 16KB-aligned in APK/AAB for Android 15+ devices.
+    packaging {
+        jniLibs {
+            useLegacyPackaging = false
+        }
+    }
     val ieumVersionCode = System.getenv("IEUM_ANDROID_VERSION_CODE")?.toIntOrNull()
     if (ieumVersionCode != null && ieumVersionCode > 0) {
         defaultConfig {
@@ -112,10 +123,29 @@ export function applyAndroidConfig(genRoot = GEN_DIR) {
     intentBlock,
     /<\/activity>/,
   )
+  // Strip any template-generated FileProvider outside our managed markers so AndroidManifest.xml
+  // does not declare two FileProvider entries with the same authority.
+  const startMarker = '<!-- IEUM_MOBILE_NATIVE_CONFIG_START -->'
+  const endMarker = '<!-- IEUM_MOBILE_NATIVE_CONFIG_END -->'
+  const existingStart = manifest.indexOf(startMarker)
+  const existingEnd = manifest.indexOf(endMarker)
+  const stripTemplateProvider = (chunk) =>
+    chunk.replace(
+      /\s*<provider\b[^>]*android:name="androidx\.core\.content\.FileProvider"[\s\S]*?<\/provider>/g,
+      '',
+    )
+  if (existingStart !== -1 && existingEnd !== -1 && existingEnd > existingStart) {
+    manifest =
+      stripTemplateProvider(manifest.slice(0, existingStart)) +
+      manifest.slice(existingStart, existingEnd + endMarker.length) +
+      stripTemplateProvider(manifest.slice(existingEnd + endMarker.length))
+  } else {
+    manifest = stripTemplateProvider(manifest)
+  }
   manifest = replaceOrInsertBlock(
     manifest,
-    '<!-- IEUM_MOBILE_NATIVE_CONFIG_START -->',
-    '<!-- IEUM_MOBILE_NATIVE_CONFIG_END -->',
+    startMarker,
+    endMarker,
     providerBlock,
     /<\/application>/,
   )
@@ -154,6 +184,84 @@ function findIosInfoPlist(iosRoot) {
   return null
 }
 
+const PRIVACY_FILE_REF_ID = 'A1E011000000000000000001'
+const PRIVACY_BUILD_FILE_ID = 'A1E011000000000000000002'
+
+function findXcodeprojPbxproj(iosRoot) {
+  for (const entry of readdirSync(iosRoot, { withFileTypes: true })) {
+    if (!entry.isDirectory() || !entry.name.endsWith('.xcodeproj')) continue
+    const candidate = join(iosRoot, entry.name, 'project.pbxproj')
+    if (existsSync(candidate)) return candidate
+  }
+  return null
+}
+
+/**
+ * Idempotently adds PrivacyInfo.xcprivacy to the generated Xcode project's
+ * file references, target group, and Resources build phase so archive builds
+ * embed it at the root of the .app bundle.
+ */
+function wireIosPrivacyManifestInPbxproj(iosRoot, targetDir, targetDirName) {
+  const pbxPath = findXcodeprojPbxproj(iosRoot)
+  if (!pbxPath) return { pbxprojPatched: false }
+
+  let pbx = readFileSync(pbxPath, 'utf8')
+  if (pbx.includes('PrivacyInfo.xcprivacy')) {
+    return { pbxprojPatched: false, pbxPath }
+  }
+
+  const buildFileMarker = '/* Begin PBXBuildFile section */'
+  const fileRefMarker = '/* Begin PBXFileReference section */'
+  if (!pbx.includes(buildFileMarker) || !pbx.includes(fileRefMarker)) {
+    throw new Error(`Unexpected project.pbxproj layout at ${pbxPath}`)
+  }
+
+  const relativePrivacyPath =
+    resolve(targetDir) === resolve(iosRoot)
+      ? 'PrivacyInfo.xcprivacy'
+      : `${targetDirName}/PrivacyInfo.xcprivacy`
+
+  const buildFileEntry = `\t\t${PRIVACY_BUILD_FILE_ID} /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = ${PRIVACY_FILE_REF_ID} /* PrivacyInfo.xcprivacy */; };`
+  const fileRefEntry = `\t\t${PRIVACY_FILE_REF_ID} /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; name = PrivacyInfo.xcprivacy; path = "${relativePrivacyPath}"; sourceTree = SOURCE_ROOT; };`
+
+  pbx = pbx.replace(buildFileMarker, `${buildFileMarker}\n${buildFileEntry}`)
+  pbx = pbx.replace(fileRefMarker, `${fileRefMarker}\n${fileRefEntry}`)
+
+  // Add the file reference to the single PBXGroup matching the Info.plist folder
+  // (bounded to one group block so an earlier root PBXGroup is not matched across blocks).
+  const escapedDir = targetDirName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const groupPattern = new RegExp(
+    `(isa = PBXGroup;[^}]*?children = \\()([^)]*)(\\);[^}]*?path = "?${escapedDir}"?;)`,
+  )
+  if (groupPattern.test(pbx)) {
+    pbx = pbx.replace(
+      groupPattern,
+      `$1\n\t\t\t\t${PRIVACY_FILE_REF_ID} /* PrivacyInfo.xcprivacy */,$2$3`,
+    )
+  } else {
+    const fallbackGroup = /(isa = PBXGroup;[^}]*?children = \()([^)]*?Info\.plist[^)]*)(\);)/
+    if (fallbackGroup.test(pbx)) {
+      pbx = pbx.replace(
+        fallbackGroup,
+        `$1\n\t\t\t\t${PRIVACY_FILE_REF_ID} /* PrivacyInfo.xcprivacy */,$2$3`,
+      )
+    }
+  }
+
+  // Add the build file to the first PBXResourcesBuildPhase so Xcode copies it into the .app bundle.
+  const resourcesPhase = /(isa = PBXResourcesBuildPhase;[\s\S]*?files = \()/
+  if (!resourcesPhase.test(pbx)) {
+    throw new Error(`Could not locate PBXResourcesBuildPhase in ${pbxPath}`)
+  }
+  pbx = pbx.replace(
+    resourcesPhase,
+    `$1\n\t\t\t\t${PRIVACY_BUILD_FILE_ID} /* PrivacyInfo.xcprivacy in Resources */,`,
+  )
+
+  writeFileSync(pbxPath, pbx, 'utf8')
+  return { pbxprojPatched: true, pbxPath }
+}
+
 export function applyIosConfig(genRoot = GEN_DIR) {
   // Tauri 2 `tauri ios init --ci` outputs under `src-tauri/gen/apple/`.
   const appleRoot = join(genRoot, 'apple')
@@ -186,9 +294,40 @@ export function applyIosConfig(genRoot = GEN_DIR) {
   )
   writeFileSync(plistPath, plist, 'utf8')
 
-  const entitlementsOut = join(dirname(plistPath), 'IeumOfficeMobile.entitlements')
+  const targetDir = dirname(plistPath)
+  const entitlementsOut = join(targetDir, 'IeumOfficeMobile.entitlements')
   copyFileSync(join(NATIVE_CONFIG, 'ios', 'Entitlements.plist'), entitlementsOut)
-  return { applied: true, plistPath, entitlementsOut }
+
+  const privacyManifestOut = join(targetDir, 'PrivacyInfo.xcprivacy')
+  copyFileSync(join(NATIVE_CONFIG, 'ios', 'PrivacyInfo.xcprivacy'), privacyManifestOut)
+  const targetDirName = targetDir.split(/[\\/]/).pop() ?? ''
+  const { pbxprojPatched } = wireIosPrivacyManifestInPbxproj(iosRoot, targetDir, targetDirName)
+
+  // Replace Tauri's default AppIcon.appiconset with IeumOffice's opaque 1024x1024 RGB icon.
+  const brandAppIconSrc = join(NATIVE_CONFIG, 'ios', 'AppIcon.appiconset')
+  let appIconOut = null
+  if (existsSync(brandAppIconSrc)) {
+    const rootCatalog = join(iosRoot, 'Assets.xcassets')
+    const targetCatalog = join(targetDir, 'Assets.xcassets')
+    const assetsDir = existsSync(rootCatalog)
+      ? rootCatalog
+      : existsSync(targetCatalog)
+        ? targetCatalog
+        : rootCatalog
+    appIconOut = join(assetsDir, 'AppIcon.appiconset')
+    rmSync(appIconOut, { recursive: true, force: true })
+    mkdirSync(appIconOut, { recursive: true })
+    cpSync(brandAppIconSrc, appIconOut, { recursive: true, force: true })
+  }
+
+  return {
+    applied: true,
+    plistPath,
+    entitlementsOut,
+    privacyManifestOut,
+    pbxprojPatched,
+    appIconOut,
+  }
 }
 
 const isMain = process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)

@@ -1,6 +1,6 @@
 # IeumOffice Privacy
 
-Last updated: November 16, 2026
+Last updated: November 28, 2026
 
 IeumOffice opens, edits and saves documents on your own PC. The project runs
 no server of its own: nothing is sent to IeumOffice or to its maintainers, and
@@ -583,6 +583,74 @@ Nothing in this list is uploaded by the app.
 
 Uninstalling the app does not necessarily delete these folders; remove them
 yourself if you want them gone.
+
+## IeumOffice Mobile (Android and iOS)
+
+IeumOffice Mobile opens, edits, and saves documents (`.hwp`, `.hwpx`, `.pdf`,
+`.xlsx`, `.xlsm`, `.xls`, `.csv`, `.md`, `.txt`, `.html`) and reads `.epub` and
+`.pptx` files locally on your phone or tablet. Built-in PDF tools (merge, split,
+extract pages, reverse, rotate, remove blank pages, images to PDF, text export,
+compress, encrypt, decrypt, repair, and remove annotations) also run entirely on
+the device. The mobile app has no accounts, no ads, no analytics, no telemetry,
+and no tracking, and sends nothing to IeumOffice or its maintainers.
+
+- **File access.** The app accesses only the files and folders you explicitly
+  select through the operating system picker (Android Storage Access Framework
+  or iOS Files document picker), folders you link in the Folders tab (kept as an
+  OS folder grant or security-scoped bookmark), and files you share into the app
+  from other apps. It does not scan the rest of your device storage.
+- **AI is off by default.** On a fresh installation, AI is switched off
+  (**Settings → Use AI**) and all AI controls are hidden. While AI is off, the
+  app makes no AI or search network requests.
+- **No subscriptions or CLI programs.** Desktop Claude Code / Codex programs and
+  ChatGPT direct connection are not used in the mobile v1 release.
+
+### What leaves your mobile device
+
+| When                                                                                                                                                        | What is sent                                                                                                                                                                                                                                                                                                 | Where it goes                                                                                                                                                                                                                                                   |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| You save an API key under **Settings → AI** (OpenRouter free connection, Gemini key, or a key for OpenAI, Anthropic, OpenRouter, DeepSeek, xAI, or Mistral) | Your key, to verify it and list available models (no document content is sent)                                                                                                                                                                                                                               | That provider's official HTTPS endpoint (`openrouter.ai`, `generativelanguage.googleapis.com`, `api.openai.com`, `api.anthropic.com`, `api.deepseek.com`, `api.x.ai`, or `api.mistral.ai`)                                                                      |
+| You turn AI on and send a request in an editor's AI sheet                                                                                                   | What you typed, the conversation, the document content or context the request works on, and any photo you attached in the AI sheet. Parts marked as hidden from AI in Markdown and HTML documents stay withheld. On an OpenRouter free connection, only `:free` models are sent and paid plugins are refused | Directly over HTTPS to the provider you chose (or the HTTPS self-hosted server address you configured under **Settings → AI**). On free plans (OpenRouter free models, Gemini free tier), providers may use what you send to improve their AI under their terms |
+| While AI and **Let AI use internet tools** are on, the AI searches the web or images                                                                        | The search query only (no keys and no cookies)                                                                                                                                                                                                                                                               | **Parallel** (`search.parallel.ai`) and **DuckDuckGo** (`html.duckduckgo.com`, `duckduckgo.com`)                                                                                                                                                                |
+| While AI and **Let AI use internet tools** are on, the AI reads a web page by address or fetches a picture                                                  | A GET request for that public address (no cookies; private and loopback addresses are blocked). Addresses that have not appeared in your messages or tool results require your confirmation before anything is fetched                                                                                       | The website named in the address; returned page text then goes to the AI provider in use, as for chat                                                                                                                                                           |
+| While AI and optional **Image generation** (off by default) are on, the AI generates an image                                                               | The image prompt and any reference picture the AI passes                                                                                                                                                                                                                                                     | **Google** (Gemini) or **OpenAI**, using the key you saved for that provider                                                                                                                                                                                    |
+| You open an HTML document that references external web resources                                                                                            | Requests made by the HTML document's own markup when rendered in the system WebView                                                                                                                                                                                                                          | The servers referenced by that HTML file                                                                                                                                                                                                                        |
+| You tap **Send feedback** under **Settings → Help**                                                                                                         | Nothing is sent by the app itself. The dialog shows the app version, OS version, and UI language, copies that block if you choose, and opens the feedback form in your system browser                                                                                                                        | **Google** (the survey form), in your browser under your own browser session                                                                                                                                                                                    |
+| You tap **Print** or **Share as PDF** in any mobile editor                                                                                                  | A locally generated PDF copy of the document (current sheet for spreadsheets; current chapter for EPUB) handed to your device's operating system print service or share sheet. Password-protected and distribution documents are refused                                                                    | The printer, PDF save target, or app you choose in the Android or iOS system sheet                                                                                                                                                                              |
+
+Every network request goes directly from your device to the destination listed
+above, so that service sees your public IP address.
+
+### What stays on your mobile device
+
+Nothing in this list is uploaded by the app.
+
+- **Preferences and home lists** in the app's private data directory: settings
+  (`prefs.json`), recent file list (`recent.json`), linked folder grants
+  (`folders.json`), favorites and groups (`favorites.json`), and EPUB/PowerPoint
+  reading positions (`readers.json`).
+- **Recovery copies and HWP backups**: unsaved document recovery copies
+  (`recovery/`, never written for password-protected HWP, Excel, or PDF files)
+  and up to 20 original HWP/HWPX backups created before first overwrite
+  (`hwp-backups/`).
+- **AI settings, sealed keys, and generated images**: non-secret AI settings
+  (`ai-settings.json`, `ai-tool-settings.json`), AI-generated images
+  (`ai-results/`), and any API keys you entered (`secrets/`), encrypted with
+  AES-256-GCM using a device master key stored in Android Keystore or iOS
+  Keychain. API keys are never exposed to the WebView.
+- **Temporary working files, print staging, share copies, and thumbnail cache**
+  (`ieum-tmp/` and `shared/` in the app's cache directory): temporary print PDFs
+  (`ieum-tmp/print/`, removed when the print job finishes and on launch),
+  temporary PDF share copies (`shared/pdf-<id>/`, cleaned on error or via
+  **Settings → Storage**), and local document preview thumbnails
+  (`ieum-tmp/thumbs/`, capped in count and size, never written for
+  password-protected or distribution documents, and evicted when you remove a
+  file from recent or favorites or delete it). All temporary files can also be
+  cleared via **Settings → Storage**.
+
+You can delete recovery copies, temporary files, HWP backups, and saved AI
+results from **Settings**, or remove all app-private data by uninstalling the
+app.
 
 ## Builds from source and forks
 

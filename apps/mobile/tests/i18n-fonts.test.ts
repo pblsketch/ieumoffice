@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
@@ -43,5 +43,37 @@ describe('mobile bundled OFL-1.1 Korean fonts', () => {
     }
     expect(MOBILE_KOREAN_FONT_FAMILIES).toContain('함초롬바탕')
     expect(MOBILE_KOREAN_FONT_FAMILIES).toContain('맑은 고딕')
+  })
+
+  it('bundles Pretendard UI woff2 weights and OFL-1.1 notice with device fallback and doc isolation', () => {
+    expect(existsSync(resolve(FONTS_DIR, 'Pretendard-Regular.woff2'))).toBe(true)
+    expect(existsSync(resolve(FONTS_DIR, 'Pretendard-Bold.woff2'))).toBe(true)
+    expect(existsSync(resolve(FONTS_DIR, 'Pretendard-OFL.txt'))).toBe(true)
+    expect(existsSync(resolve(FONTS_DIR, 'ui-font.css'))).toBe(true)
+
+    const uiFontCss = readFileSync(resolve(FONTS_DIR, 'ui-font.css'), 'utf8')
+    expect(uiFontCss).toContain("font-family: 'Pretendard';")
+    expect(uiFontCss).toContain('Pretendard-Regular.woff2')
+    expect(uiFontCss).toContain('Pretendard-Bold.woff2')
+
+    const tokensCss = readFileSync(
+      resolve(HERE, '../src/renderer/styles/mobile-tokens.css'),
+      'utf8',
+    )
+    expect(tokensCss).toContain("@import '../assets/fonts/ui-font.css';")
+    expect(tokensCss).toContain("--m-font-ui: 'Pretendard', var(--gs-font-sans);")
+    for (const lang of ['ja', 'zh', 'zh-TW', 'th', 'ar', 'he', 'hi']) {
+      expect(tokensCss).toContain(`:root:lang(${lang})`)
+    }
+    // Markdown/plain-text document bodies stay on --gs-font-sans rather than inheriting Pretendard.
+    expect(tokensCss).toMatch(
+      /\.mobile-markdown-preview\s*\{[^}]*font-family:\s*var\(--gs-font-sans\);/,
+    )
+    expect(tokensCss).toMatch(
+      /\.mobile-plain-text-view\s*\{[^}]*font-family:\s*var\(--gs-font-sans\);/,
+    )
+    expect(tokensCss).toMatch(
+      /\.mobile-markdown-textarea\s*\{[^}]*font-family:\s*var\(--gs-font-sans\);/,
+    )
   })
 })

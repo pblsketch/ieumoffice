@@ -76,12 +76,96 @@
     </dict>
 
     <!-- T1 sheets document types -->
+    <dict>
+      <key>CFBundleTypeName</key>
+      <string>Spreadsheet (XLSX)</string>
+      <key>LSHandlerRank</key>
+      <string>Alternate</string>
+      <key>LSItemContentTypes</key>
+      <array>
+        <string>org.openxmlformats.spreadsheetml.sheet</string>
+      </array>
+    </dict>
+    <dict>
+      <key>CFBundleTypeName</key>
+      <string>Macro-Enabled Spreadsheet (XLSM)</string>
+      <key>LSHandlerRank</key>
+      <string>Alternate</string>
+      <key>LSItemContentTypes</key>
+      <array>
+        <string>org.openxmlformats.spreadsheetml.sheet.macroenabled</string>
+      </array>
+    </dict>
+    <dict>
+      <key>CFBundleTypeName</key>
+      <string>Spreadsheet 97-2003 (XLS)</string>
+      <key>LSHandlerRank</key>
+      <string>Alternate</string>
+      <key>LSItemContentTypes</key>
+      <array>
+        <string>com.microsoft.excel.xls</string>
+      </array>
+    </dict>
+    <dict>
+      <key>CFBundleTypeName</key>
+      <string>Comma-Separated Values (CSV)</string>
+      <key>LSHandlerRank</key>
+      <string>Alternate</string>
+      <key>LSItemContentTypes</key>
+      <array>
+        <string>public.comma-separated-values-text</string>
+      </array>
+    </dict>
 
     <!-- T2 pdf document types -->
+    <dict>
+      <key>CFBundleTypeName</key>
+      <string>PDF Document</string>
+      <key>LSHandlerRank</key>
+      <string>Alternate</string>
+      <key>LSItemContentTypes</key>
+      <array>
+        <string>com.adobe.pdf</string>
+      </array>
+    </dict>
 
     <!-- T4 html document types -->
+    <dict>
+      <key>CFBundleTypeName</key>
+      <string>HTML Document</string>
+      <key>LSHandlerRank</key>
+      <string>Alternate</string>
+      <key>LSItemContentTypes</key>
+      <array>
+        <string>public.html</string>
+      </array>
+    </dict>
 
     <!-- T5 readers document types -->
+    <dict>
+      <key>CFBundleTypeName</key>
+      <string>EPUB Book</string>
+      <key>CFBundleTypeRole</key>
+      <string>Viewer</string>
+      <key>LSHandlerRank</key>
+      <string>Alternate</string>
+      <key>LSItemContentTypes</key>
+      <array>
+        <string>org.idpf.epub-container</string>
+      </array>
+    </dict>
+    <dict>
+      <key>CFBundleTypeName</key>
+      <string>PowerPoint Presentation</string>
+      <key>CFBundleTypeRole</key>
+      <string>Viewer</string>
+      <key>LSHandlerRank</key>
+      <string>Alternate</string>
+      <key>LSItemContentTypes</key>
+      <array>
+        <string>org.openxmlformats.presentationml.presentation</string>
+      </array>
+    </dict>
   </array>
   <key>UTImportedTypeDeclarations</key>
   <array>
@@ -132,10 +216,54 @@
     </dict>
 
     <!-- T1 sheets imported types -->
+    <dict>
+      <key>UTTypeIdentifier</key>
+      <string>org.openxmlformats.spreadsheetml.sheet.macroenabled</string>
+      <key>UTTypeDescription</key>
+      <string>Macro-Enabled Spreadsheet (XLSM)</string>
+      <key>UTTypeConformsTo</key>
+      <array>
+        <string>org.openxmlformats.openxml</string>
+        <string>public.zip-archive</string>
+      </array>
+      <key>UTTypeTagSpecification</key>
+      <dict>
+        <key>public.filename-extension</key>
+        <array>
+          <string>xlsm</string>
+        </array>
+        <key>public.mime-type</key>
+        <array>
+          <string>application/vnd.ms-excel.sheet.macroEnabled.12</string>
+        </array>
+      </dict>
+    </dict>
 
     <!-- T2 pdf imported types -->
 
     <!-- T4 html imported types -->
+    <dict>
+      <key>UTTypeIdentifier</key>
+      <string>net.daringfireball.markdown</string>
+      <key>UTTypeDescription</key>
+      <string>Markdown Document</string>
+      <key>UTTypeConformsTo</key>
+      <array>
+        <string>public.plain-text</string>
+      </array>
+      <key>UTTypeTagSpecification</key>
+      <dict>
+        <key>public.filename-extension</key>
+        <array>
+          <string>md</string>
+          <string>markdown</string>
+        </array>
+        <key>public.mime-type</key>
+        <array>
+          <string>text/markdown</string>
+        </array>
+      </dict>
+    </dict>
 
     <!-- T5 readers imported types -->
   </array>

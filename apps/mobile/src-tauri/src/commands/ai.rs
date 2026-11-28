@@ -1,3 +1,7 @@
+pub mod relay;
+pub mod tools;
+pub mod web;
+
 use crate::ai::{
     MobileAiService, MobileAiSettingsPatch, MobileAiSettingsSnapshot, MobileAiStreamRequest,
     MobileChatGptStatus, ModelPatch, ProviderKeyPatch, ValidateKeyResult,

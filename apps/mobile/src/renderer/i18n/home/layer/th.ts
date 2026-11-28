@@ -1,0 +1,27 @@
+import type { zh } from './zh'
+
+export const th = {
+  homeRunEditorOffTitle: 'ตัวแก้ไข {name} ปิดอยู่',
+  homeRunEditorOffBody: 'เปิดตัวแก้ไขเพื่อเปิดไฟล์นี้ ปิดอีกครั้งได้ในการตั้งค่า',
+  homeRunEditorOffConfirm: 'เปิดใช้และเปิดไฟล์',
+  homeRunStripSample: 'เอกสารตัวอย่าง · อ่านอย่างเดียว',
+  homeRunStripReceived: 'ไฟล์ที่ได้รับ · อ่านอย่างเดียว',
+  homeRunStripReadOnly: 'อ่านอย่างเดียว',
+  homeRunStripCopy: 'แก้ไขสำเนา',
+  homeRunStripClose: 'ปิดการแจ้งเตือน',
+  homeRunReceiveTitle: 'ไฟล์ที่ได้รับ',
+  homeRunReceiveCount: '{count} ไฟล์',
+  homeRunReceiveClose: 'ปิดไฟล์ที่ได้รับ',
+  homeRunReceiveOpen: 'เปิด',
+  homeRunReceivePdfOff: 'เครื่องมือ PDF ปิดอยู่',
+  homeRunReceivePdfOn: 'เปิดใช้และทำต่อ',
+  homeRunGuideLabel: 'คำแนะนำเริ่มต้น',
+  homeRunWelcomeTitle: 'ยินดีต้อนรับ',
+  homeRunWelcomeBody:
+    'เปิดและแก้ไขเอกสาร HWP, PDF, Markdown และอื่นๆ ด้วย GenOffice ไม่ต้องมีบัญชี ไม่มีโฆษณา และเอกสารอยู่บนอุปกรณ์นี้เท่านั้น',
+  homeRunStart: 'เริ่มใช้งาน',
+  homeRunTipEditButton: 'ถ้าต้องการแก้ไข ให้แตะ [แก้ไข]',
+  homeRunTipFlowView: 'หากต้องการอ่านให้พอดีหน้าจอ ให้แตะ [มุมมองการอ่าน]',
+  homeRunTipFirstEdit: 'แอปจะสร้างสำเนากู้คืนให้อัตโนมัติ ต้นฉบับจะบันทึกเมื่อแตะ [เสร็จสิ้น]',
+  homeRunTipFirstKeyboard: 'เปลี่ยนรูปแบบตัวอักษรด้วย [Aa]',
+} as const satisfies Record<keyof typeof zh, string>

@@ -1,14 +1,4 @@
 <!-- IEUM_MOBILE_INTENT_FILTERS_START -->
-<intent-filter android:autoVerify="true">
-    <action android:name="android.intent.action.VIEW" />
-    <category android:name="android.intent.category.DEFAULT" />
-    <category android:name="android.intent.category.BROWSABLE" />
-    <data
-        android:scheme="https"
-        android:host="ieumoffice.com"
-        android:pathPrefix="/mobile/auth/callback" />
-</intent-filter>
-
 <intent-filter>
     <action android:name="android.intent.action.VIEW" />
     <category android:name="android.intent.category.DEFAULT" />
@@ -28,37 +18,59 @@
     <data android:mimeType="application/vnd.hancom.hwp" />
     <data android:mimeType="application/hwp+zip" />
     <data android:mimeType="application/vnd.hancom.hwpx" />
+    <data android:mimeType="application/haansofthwpx" />
     <data android:mimeType="text/markdown" />
     <data android:mimeType="text/plain" />
     <data android:mimeType="application/octet-stream" />
 
     <!-- T1 sheets MIME types -->
+    <data android:mimeType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
+    <data android:mimeType="application/vnd.ms-excel.sheet.macroEnabled.12" />
+    <data android:mimeType="application/vnd.ms-excel" />
+    <data android:mimeType="text/csv" />
+    <data android:mimeType="text/comma-separated-values" />
 
     <!-- T2 pdf MIME types -->
+    <data android:mimeType="application/pdf" />
 
     <!-- T4 html MIME types -->
+    <data android:mimeType="text/html" />
 
     <!-- T5 readers MIME types -->
+    <data android:mimeType="application/epub+zip" />
+    <data android:mimeType="application/vnd.openxmlformats-officedocument.presentationml.presentation" />
 </intent-filter>
 
 <intent-filter>
     <action android:name="android.intent.action.SEND" />
+    <action android:name="android.intent.action.SEND_MULTIPLE" />
     <category android:name="android.intent.category.DEFAULT" />
     <data android:mimeType="application/x-hwp" />
     <data android:mimeType="application/haansofthwp" />
     <data android:mimeType="application/vnd.hancom.hwp" />
     <data android:mimeType="application/hwp+zip" />
     <data android:mimeType="application/vnd.hancom.hwpx" />
+    <data android:mimeType="application/haansofthwpx" />
     <data android:mimeType="text/markdown" />
     <data android:mimeType="text/plain" />
     <data android:mimeType="application/octet-stream" />
 
     <!-- T1 sheets MIME types -->
+    <data android:mimeType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
+    <data android:mimeType="application/vnd.ms-excel.sheet.macroEnabled.12" />
+    <data android:mimeType="application/vnd.ms-excel" />
+    <data android:mimeType="text/csv" />
+    <data android:mimeType="text/comma-separated-values" />
 
     <!-- T2 pdf MIME types -->
+    <data android:mimeType="application/pdf" />
 
     <!-- T4 html MIME types -->
+    <data android:mimeType="text/html" />
 
     <!-- T5 readers MIME types -->
+    <data android:mimeType="application/epub+zip" />
+    <data android:mimeType="application/vnd.openxmlformats-officedocument.presentationml.presentation" />
+    <data android:mimeType="image/*" />
 </intent-filter>
 <!-- IEUM_MOBILE_INTENT_FILTERS_END -->

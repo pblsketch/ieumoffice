@@ -174,4 +174,10 @@ export const hi = {
   backupRestoreSaveAs: 'प्रति के रूप में सहेजें',
   backupDelete: 'हटाएँ',
   formatNotOpenable: 'इस प्रकार की फ़ाइल नहीं खोली जा सकती।',
+  insertPanel: 'सम्मिलित करें',
+  keyboardLock: 'कीबोर्ड लॉक करें',
+  keyboardUnlock: 'कीबोर्ड अनलॉक करें',
+  moreSectionDocument: 'दस्तावेज़ उपकरण',
+  moreSectionFile: 'फ़ाइल',
+  viewModeLabel: 'दृश्य',
 } as const satisfies Record<keyof typeof zh, string>

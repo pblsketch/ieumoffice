@@ -1,0 +1,23 @@
+// Keys of the "draw" part of the T2 pdf strings; every key starts with `pdfDraw`.
+export const zh = {
+  pdfDrawSettings: '笔设置',
+  pdfDrawTool: '工具',
+  pdfDrawPen: '笔',
+  pdfDrawRect: '矩形',
+  pdfDrawEllipse: '椭圆',
+  pdfDrawLine: '直线',
+  pdfDrawArrow: '箭头',
+  pdfDrawEraser: '橡皮擦',
+  pdfDrawColor: '颜色',
+  pdfDrawColorRed: '红色',
+  pdfDrawColorYellow: '黄色',
+  pdfDrawColorGreen: '绿色',
+  pdfDrawColorBlue: '蓝色',
+  pdfDrawColorBlack: '黑色',
+  pdfDrawWidth: '粗细',
+  pdfDrawWidthValue: '{width} 磅',
+  pdfDrawFinger: '也用手指绘图',
+  pdfDrawFingerHint: '开启后，用过触控笔之后手指仍可绘图。关闭时，用过触控笔之后手指用于移动画面。',
+  pdfDrawEraserHint: '橡皮擦只能擦除尚未保存的笔画和图形。',
+  pdfDrawRefused: '现在无法绘图。请稍后再试。',
+} as const

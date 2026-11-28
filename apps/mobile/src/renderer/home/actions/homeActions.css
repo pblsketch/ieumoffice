@@ -1,0 +1,173 @@
+/* Home file actions (HOME-T7): rows, selection header and bar, rename/group sheets, confirm. */
+
+.home-act-row {
+  display: flex;
+  flex-direction: column;
+}
+
+.home-act-row-line {
+  display: flex;
+  align-items: center;
+  padding-right: var(--m-space-1);
+}
+
+.home-act-row-btn {
+  flex: 1;
+  min-width: 0;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.home-act-row[data-selected='true'] {
+  background: var(--active-bg);
+}
+
+.home-act-row-check {
+  display: inline-flex;
+  flex-shrink: 0;
+  color: var(--m-accent);
+}
+
+.home-act-row-glyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: var(--m-control-s);
+  height: var(--m-control-s);
+  border-radius: var(--radius-8);
+  background: var(--surface-subtle);
+  color: var(--text-secondary);
+}
+
+.home-act-star {
+  display: inline-flex;
+  flex-shrink: 0;
+  color: var(--text-secondary);
+}
+
+.home-act-selection-header {
+  display: flex;
+  align-items: center;
+  gap: var(--m-space-2);
+  min-height: calc(var(--m-appbar-h) + var(--m-safe-top));
+  padding: var(--m-safe-top) calc(var(--m-space-2) + var(--m-safe-right)) 0
+    calc(var(--m-space-2) + var(--m-safe-left));
+  background: var(--m-surface-raised);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.home-act-selection-count {
+  font-size: var(--m-text-title-m);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.home-act-bar {
+  display: flex;
+  align-items: stretch;
+  justify-content: space-around;
+  gap: var(--m-space-1);
+  min-height: var(--m-toolbar-h);
+  padding: var(--m-space-1) var(--m-space-2) calc(var(--m-space-1) + var(--m-safe-bottom));
+  background: var(--m-surface-raised);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.home-act-bar-btn {
+  flex: 1;
+  min-width: var(--m-hit);
+  min-height: var(--m-hit);
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--m-space-half);
+  padding: var(--m-space-1);
+  border: 0;
+  border-radius: var(--m-radius-control);
+  background: transparent;
+  color: var(--text-primary);
+  font-size: var(--m-text-caption);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.home-act-bar-btn:hover {
+  background: var(--bg-hover-subtle);
+}
+
+.home-act-bar-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.home-act-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-space-3);
+}
+
+.home-act-name-field {
+  display: flex;
+  align-items: center;
+  gap: var(--m-space-2);
+}
+
+.home-act-name-ext {
+  flex-shrink: 0;
+  font-size: var(--m-text-body-s);
+  color: var(--text-muted);
+}
+
+.home-act-form-error {
+  margin: 0;
+  font-size: var(--m-text-body-s);
+  color: var(--danger);
+}
+
+.home-act-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--m-space-2);
+}
+
+.home-act-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--m-space-2);
+}
+
+.home-act-confirm-actions[data-platform='ios'] {
+  justify-content: space-between;
+}
+
+.home-act-btn-danger {
+  background: var(--danger-bg);
+  color: var(--danger);
+  border-color: var(--danger-border);
+}
+
+.home-act-group-row {
+  display: flex;
+  align-items: center;
+  gap: var(--m-space-1);
+}
+
+.home-act-group-row > .mobile-menu-row-btn {
+  flex: 1;
+  min-width: 0;
+}
+
+.home-act-group-edit {
+  padding: var(--m-space-2) 0;
+}
+
+.home-act-group-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

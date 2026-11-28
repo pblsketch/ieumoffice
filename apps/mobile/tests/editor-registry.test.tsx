@@ -60,9 +60,8 @@ describe('the editor registry', () => {
     expect(hwpEditorKind.recoveryFormat('hwp')).toBe('hwp')
     expect(hwpEditorKind.recoveryFormat('hwpx')).toBe('hwpx')
 
-    // the Markdown kind belongs to T4 after S0; only the recovery rule is pinned here
-    // a .txt recovery copy reopens as an untitled Markdown document, as before
+    // .txt preserves plain-text format on untitled copy and recovery restore
     expect(markdownEditorKind.recoveryFormat('md')).toBe('md')
-    expect(markdownEditorKind.recoveryFormat('txt')).toBe('md')
+    expect(markdownEditorKind.recoveryFormat('txt')).toBe('txt')
   })
 })

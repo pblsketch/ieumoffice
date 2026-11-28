@@ -170,4 +170,10 @@ export const he = {
   backupRestoreSaveAs: 'שמור כעותק',
   backupDelete: 'מחק',
   formatNotOpenable: 'לא ניתן לפתוח סוג קובץ זה.',
+  insertPanel: 'הוספה',
+  keyboardLock: 'נעילת מקלדת',
+  keyboardUnlock: 'שחרור נעילת מקלדת',
+  moreSectionDocument: 'כלי מסמך',
+  moreSectionFile: 'קובץ',
+  viewModeLabel: 'תצוגה',
 } as const satisfies Record<keyof typeof zh, string>

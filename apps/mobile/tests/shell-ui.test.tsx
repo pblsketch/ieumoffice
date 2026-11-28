@@ -10,7 +10,7 @@ import type {
 import { MobileLocaleProvider } from '../src/renderer/i18n'
 import { HomeScreen } from '../src/renderer/components/HomeScreen'
 import { EditorShell } from '../src/renderer/shell/EditorShell'
-import { windowClassForWidth } from '../src/renderer/shell/useViewportLayout'
+import { useViewportLayout, windowClassForWidth } from '../src/renderer/shell/useViewportLayout'
 import { SettingsScreen } from '../src/renderer/settings/SettingsScreen'
 
 const containers: HTMLElement[] = []
@@ -163,6 +163,56 @@ describe('responsive mobile shell layout (<840px phone layout vs >=840px tablet 
     expect(el.querySelector('[data-testid="phone-quick-toolbar"]')).toBeNull()
     expect(el.querySelector('[data-testid="tablet-ai-toggle"]')).not.toBeNull()
   })
+
+  it('exposes stable data-testid hooks on the More sheet actions including Save As', () => {
+    Object.defineProperty(window, 'innerWidth', { value: 390, configurable: true })
+    const onSaveAs = vi.fn()
+    const onShare = vi.fn()
+    const onFitToWidth = vi.fn()
+    const onOpenBackups = vi.fn()
+    const el = renderInDom(
+      <EditorShell
+        docTitle="report.hwp"
+        docFormat="hwp"
+        saveState="saved"
+        mode="view"
+        canEdit={true}
+        aiEnabled={false}
+        quickActions={[]}
+        aiPanelContent={null}
+        onBack={() => {}}
+        onEnterEdit={() => {}}
+        onDone={() => {}}
+        onExitEdit={() => {}}
+        onSave={() => {}}
+        onSaveAs={onSaveAs}
+        onShare={onShare}
+        onFitToWidth={onFitToWidth}
+        onOpenBackups={onOpenBackups}
+      >
+        <div>HWP body</div>
+      </EditorShell>,
+    )
+
+    const moreBtn = el.querySelector<HTMLButtonElement>('[data-testid="editor-more-btn"]')
+    expect(moreBtn).not.toBeNull()
+    act(() => {
+      moreBtn!.click()
+    })
+
+    const saveAsBtn = document.querySelector<HTMLButtonElement>(
+      '[data-testid="editor-save-as-btn"]',
+    )
+    expect(saveAsBtn).not.toBeNull()
+    expect(document.querySelector('[data-testid="editor-sheet-share-btn"]')).not.toBeNull()
+    expect(document.querySelector('[data-testid="editor-fit-width-btn"]')).not.toBeNull()
+    expect(document.querySelector('[data-testid="editor-backups-btn"]')).not.toBeNull()
+
+    act(() => {
+      saveAsBtn!.click()
+    })
+    expect(onSaveAs).toHaveBeenCalledTimes(1)
+  })
 })
 
 describe('SettingsScreen ChatGPT visibility gate, usage link, and HWP backup actions', () => {
@@ -260,5 +310,57 @@ describe('HomeScreen permission-expired recent doc recovery UI', () => {
     )
 
     expect(el.querySelector('[data-testid="recent-expired-rec-1"]')).not.toBeNull()
+  })
+})
+
+describe('useViewportLayout root scroll reset', () => {
+  it('calls window.scrollTo(0, 0) when iOS visualViewport drifts off top on focus or scroll', () => {
+    const scrollToSpy = vi.fn()
+    const origScrollTo = window.scrollTo
+    const origVisualViewport = Object.getOwnPropertyDescriptor(window, 'visualViewport')
+    const listeners = new Map<string, Set<EventListener>>()
+    const fakeVv = {
+      height: 844,
+      width: 420,
+      offsetTop: 0,
+      offsetLeft: 0,
+      scale: 1,
+      addEventListener: (type: string, fn: EventListener) => {
+        if (!listeners.has(type)) listeners.set(type, new Set())
+        listeners.get(type)!.add(fn)
+      },
+      removeEventListener: (type: string, fn: EventListener) => {
+        listeners.get(type)?.delete(fn)
+      },
+    }
+
+    function Probe() {
+      const layout = useViewportLayout()
+      return <div data-testid="vp-probe" data-kb={String(layout.keyboardInsetPx)} />
+    }
+
+    window.scrollTo = scrollToSpy
+    Object.defineProperty(window, 'visualViewport', {
+      configurable: true,
+      value: fakeVv,
+    })
+
+    try {
+      renderInDom(<Probe />)
+      expect(scrollToSpy).not.toHaveBeenCalled()
+
+      fakeVv.offsetTop = 47
+      act(() => {
+        for (const fn of listeners.get('scroll') ?? []) fn(new Event('scroll'))
+      })
+      expect(scrollToSpy).toHaveBeenCalledWith(0, 0)
+    } finally {
+      window.scrollTo = origScrollTo
+      if (origVisualViewport) {
+        Object.defineProperty(window, 'visualViewport', origVisualViewport)
+      } else {
+        delete (window as unknown as { visualViewport?: unknown }).visualViewport
+      }
+    }
   })
 })

@@ -1,0 +1,149 @@
+/**
+ * The spreadsheet grid screen (lazy chunk: Univer and the reused PC grid
+ * modules load only when a workbook opens). The grid itself belongs to the
+ * document (`SheetsGridAccess.grid`): this view builds it on first mount,
+ * attaches it while mounted and detaches it after (the settings screen), and
+ * the document's `dispose()` tears it down.
+ */
+import { useEffect, useRef, useState } from 'react'
+import { ThemeService } from '@univerjs/core'
+import type { Lang } from '@genoffice/i18n'
+import type { DocumentMode } from '@genoffice/mobile-bridge/view-edit-gate'
+import type { MobileTheme } from '@genoffice/mobile-bridge/transport'
+import { isResolvedThemeDark, useNativeSystemDark } from '../../../theme'
+import type { EditorHost } from '../../editorKind'
+import type { OpenedSheetsWorkbook } from '../session'
+import type { SheetsGridAccess } from '../workspace/slots'
+import { FormulaKeyboardBar } from './FormulaKeyboardBar'
+import { HeaderMenuSheet } from './HeaderMenuSheet'
+import { SheetSwitcher } from './SheetSwitcher'
+import { applyFreeze } from './ViewMenuSheet'
+import { selectHeaderLine, type HeaderAxis } from './headerMenu'
+import { createMobileGrid, type MobileGrid } from './mobileGrid'
+import { toastUnlessStatus } from '../journal/statusLines'
+import '../sheets.css'
+import './grid.css'
+
+export interface SheetsGridHandle {
+  freeze(kind: 'row' | 'column' | 'none'): void
+  undo(): void
+  redo(): void
+  resetZoom(): void
+}
+
+export interface SheetsGridViewProps {
+  readonly opened: OpenedSheetsWorkbook
+  readonly host: EditorHost
+  readonly mode: DocumentMode
+  readonly lang: Lang
+  readonly theme: MobileTheme
+  readonly onEnterEdit: () => void
+  readonly access: SheetsGridAccess
+}
+
+export default function SheetsGridView({
+  opened,
+  host,
+  mode,
+  lang,
+  theme,
+  onEnterEdit,
+  access,
+}: SheetsGridViewProps) {
+  const slotRef = useRef<HTMLDivElement | null>(null)
+  const [editing, setEditing] = useState(false)
+  const [headerMenu, setHeaderMenu] = useState<HeaderAxis | null>(null)
+  // The grid is built in the effect below; this re-renders the bars around it once it is.
+  const [grid, setGrid] = useState<MobileGrid | null>(access.grid)
+  const onEnterEditRef = useRef(onEnterEdit)
+  onEnterEditRef.current = onEnterEdit
+  const nativeSystemDark = useNativeSystemDark()
+  const darkMode = isResolvedThemeDark(theme, nativeSystemDark)
+  const darkModeRef = useRef(darkMode)
+  darkModeRef.current = darkMode
+
+  useEffect(() => {
+    let grid = access.grid
+    if (!grid) {
+      grid = createMobileGrid({
+        lang,
+        darkMode: darkModeRef.current,
+        onMessage: (message) => console.info('[sheets]', message),
+        onEditRequestInView: () => onEnterEditRef.current(),
+        onCellEditing: (next) => setEditing(next),
+        onEdited: () => {
+          host.markDirty(true)
+          host.contentChanged()
+        },
+        // Gate refusals; a desktop status line that comes this way stays out of the toasts.
+        onNotice: toastUnlessStatus((message) => host.showToast(message)),
+        onHeaderLongPress: (axis, index, wasSelected) => {
+          const live = access.grid
+          if (!live) return
+          selectHeaderLine(live.runtime, axis, index, wasSelected)
+          setHeaderMenu(axis)
+        },
+      })
+      access.grid = grid
+      void grid.load(opened.file)
+    }
+    const slot = slotRef.current
+    if (slot) {
+      grid.element.style.position = ''
+      grid.element.style.inset = ''
+      grid.element.style.visibility = ''
+      slot.appendChild(grid.element)
+      grid.relayout()
+    }
+    const live = grid
+    setGrid(live)
+    access.handle = {
+      freeze: (kind) => applyFreeze(live.runtime, kind),
+      undo: () => void live.runtime.univerAPI.undo(),
+      redo: () => void live.runtime.univerAPI.redo(),
+      resetZoom: () => live.runtime.univerAPI.getActiveWorkbook()?.getActiveSheet()?.zoom(1),
+    }
+    return () => {
+      access.handle = null
+      // Detach only: the grid lives as long as the document (back from settings re-attaches it).
+      live.element.remove()
+    }
+  }, [opened, host, access, lang])
+
+  // Keep the persistent Univer grid's darkMode synced when switching theme in Settings or OS night mode.
+  useEffect(() => {
+    if (!grid) return
+    const apply = () => {
+      const nextDark = isResolvedThemeDark(theme, nativeSystemDark)
+      const themeService = grid.runtime.univer.__getInjector().get(ThemeService)
+      themeService.setDarkMode(nextDark)
+    }
+    apply()
+    if (theme !== 'system' || typeof nativeSystemDark === 'boolean') return
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return
+    const mq = window.matchMedia('(prefers-color-scheme: dark)')
+    mq.addEventListener?.('change', apply)
+    return () => mq.removeEventListener?.('change', apply)
+  }, [grid, theme, nativeSystemDark])
+
+  useEffect(() => {
+    access.grid?.setViewMode(mode === 'view')
+    if (mode === 'view') setHeaderMenu(null)
+  }, [access, mode])
+
+  return (
+    <div className="m-sheets-stage" data-testid="sheets-stage">
+      <div ref={slotRef} className="m-sheets-slot" />
+      {grid && <SheetSwitcher runtime={grid.runtime} mode={mode} lang={lang} />}
+      {editing && grid && mode === 'edit' && <FormulaKeyboardBar grid={grid} lang={lang} />}
+      {grid && (
+        <HeaderMenuSheet
+          runtime={grid.runtime}
+          axis={mode === 'edit' ? headerMenu : null}
+          lang={lang}
+          onClose={() => setHeaderMenu(null)}
+        />
+      )}
+    </div>
+  )
+}

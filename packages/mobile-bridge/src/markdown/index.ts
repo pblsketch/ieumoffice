@@ -1,11 +1,21 @@
 import type { AgentSkill, AgentToolCall, AgentToolDef, ToolExecution } from '@genoffice/agent-core'
 import { brandText } from '@genoffice/i18n'
+import { createTextSessionStore, type OpenedText } from '../html/text-sessions'
+import { WEB_EXPORT_MIME, saveNewFile, type SaveNewFileResult } from '../html/save-new-file'
 import { MobileCommandError, type MobileClient, type MobileDocSession } from '../transport'
+import {
+  markdownPlaceholderInstruction,
+  redactedMarkdownView,
+  restoreRedactedEdit,
+  type MarkdownRedactedView,
+} from './redaction'
 import {
   wrapSkillWithViewEditGate,
   type DocumentEditCapabilities,
   type DocumentMode,
 } from '../view-edit-gate'
+
+export * from './redaction'
 
 export const MAX_MOBILE_INLINE_IMAGE_BYTES = 5 * 1024 * 1024
 
@@ -41,7 +51,7 @@ function bytesToBase64(bytes: Uint8Array): string {
   return btoa(binary)
 }
 
-function base64ToBytes(b64: string): Uint8Array {
+export function base64ToBytes(b64: string): Uint8Array {
   if (typeof Buffer !== 'undefined') {
     return new Uint8Array(Buffer.from(b64, 'base64'))
   }
@@ -118,8 +128,14 @@ export interface MobileMarkdownApiOptions {
   readonly maxInlineImageBytes?: number
 }
 
+/** The text of an opened document; `utf8: false` when the file is not valid UTF-8 (view only). */
+export type MobileMarkdownOpenedText = OpenedText
+
 export interface MobileMarkdownApi {
-  readDocument(session: MobileDocSession): Promise<{ readonly text: string }>
+  /** Reads the file and remembers its envelope (BOM, line ends) and bytes for this session. */
+  readDocument(session: MobileDocSession): Promise<MobileMarkdownOpenedText>
+  /** Same as readDocument for bytes the caller already has (a recovery copy reopened in `session`). */
+  openFromBytes(session: MobileDocSession, bytes: Uint8Array): MobileMarkdownOpenedText
   saveDocument(session: MobileDocSession, markdownText: string): Promise<{ readonly ok: true }>
   saveAsDocument(
     session: MobileDocSession | null,
@@ -127,8 +143,11 @@ export interface MobileMarkdownApi {
     markdownText: string,
   ): Promise<MobileDocSession>
   shareDocument(session: MobileDocSession, markdownText: string): Promise<{ readonly ok: boolean }>
-  /** Saves a HWPX converted from the Markdown as a new file (system save dialog). */
-  saveConvertedHwpx(suggestedName: string, bytes: Uint8Array): Promise<MobileDocSession>
+  /**
+   * Saves a HWPX converted from the Markdown as a new file (system save dialog) without
+   * changing the open document's session; resolves with the name of the written file.
+   */
+  saveConvertedHwpx(suggestedName: string, bytes: Uint8Array): Promise<SaveNewFileResult>
   writeRecovery(session: MobileDocSession, markdownText: string): Promise<{ readonly ok: boolean }>
   discardRecovery(docKey: string): Promise<{ readonly ok: boolean }>
   insertInlineImage(input: Omit<InlineImageInput, 'maxBytes'>): string
@@ -151,10 +170,19 @@ export function createMobileMarkdownApi(
 ): MobileMarkdownApi {
   const maxInlineImageBytes = options.maxInlineImageBytes ?? MAX_MOBILE_INLINE_IMAGE_BYTES
 
+  /** Per session: the envelope, the body as read and the bytes it was read from (spec 3.1). */
+  const texts = createTextSessionStore()
+  const remember = texts.remember
+  const bytesFor = texts.bytesFor
+
   return {
     async readDocument(session) {
       const result = await client.readFileBytes(session.sessionId)
-      return { text: base64ToUtf8(result.bytesBase64) }
+      return remember(session.sessionId, base64ToBytes(result.bytesBase64))
+    },
+
+    openFromBytes(session, bytes) {
+      return remember(session.sessionId, bytes)
     },
 
     async saveDocument(session, markdownText) {
@@ -165,19 +193,24 @@ export function createMobileMarkdownApi(
           detail: 'Read-only or ephemeral URI requires Save As.',
         })
       }
-      await client.saveFileBytes(session.sessionId, utf8ToBase64(markdownText))
+      const bytes = bytesFor(session, markdownText)
+      await client.saveFileBytes(session.sessionId, bytesToBase64(bytes))
+      texts.written(session.sessionId, markdownText, bytes)
       await client.recoveryDiscard(session.docKey).catch(() => {})
       return { ok: true }
     },
 
     async saveAsDocument(session, suggestedName, markdownText) {
       const format = session?.format === 'txt' ? 'txt' : 'md'
+      const bytes = bytesFor(session, markdownText)
       const nextSession = await client.saveAsFileBytes({
         sessionId: session?.sessionId,
         suggestedName,
         format,
-        bytesBase64: utf8ToBase64(markdownText),
+        bytesBase64: bytesToBase64(bytes),
       })
+      texts.written(nextSession.sessionId, markdownText, bytes, session)
+      if (session && session.sessionId !== nextSession.sessionId) texts.forget(session.sessionId)
       if (session) {
         await client.recoveryDiscard(session.docKey).catch(() => {})
       }
@@ -185,11 +218,8 @@ export function createMobileMarkdownApi(
     },
 
     async saveConvertedHwpx(suggestedName, bytes) {
-      return client.saveAsFileBytes({
-        suggestedName,
-        format: 'hwpx',
-        bytesBase64: bytesToBase64(bytes),
-      })
+      // a new file: the open Markdown session stays the one the editor saves to
+      return saveNewFile(client, { suggestedName, mime: WEB_EXPORT_MIME.hwpx, bytes })
     },
 
     async shareDocument(session, markdownText) {
@@ -197,7 +227,7 @@ export function createMobileMarkdownApi(
         sessionId: session.sessionId,
         suggestedName: session.name,
         mode: 'edited',
-        bytesBase64: utf8ToBase64(markdownText),
+        bytesBase64: bytesToBase64(bytesFor(session, markdownText)),
       })
     },
 
@@ -206,7 +236,7 @@ export function createMobileMarkdownApi(
         docKey: session.docKey,
         format: session.format === 'txt' ? 'txt' : 'md',
         title: session.name,
-        bytesBase64: utf8ToBase64(markdownText),
+        bytesBase64: bytesToBase64(bytesFor(session, markdownText)),
       })
     },
 
@@ -309,28 +339,72 @@ const MOBILE_MARKDOWN_TOOLS: AgentToolDef[] = [
 
 const MARKDOWN_MUTATING_TOOLS = new Set(['replace_text', 'append_markdown', 'replace_document'])
 
+const MOBILE_MARKDOWN_PROMPT = [
+  brandText('You are the writing assistant inside GenOffice Mobile Markdown editor.', 'en'),
+  'You may only inspect and edit the currently open Markdown document.',
+  'Use read_document to inspect content, and replace_text, append_markdown, or replace_document for edits.',
+  'Keep existing relative image links intact and never emit raw HTML tags.',
+].join('\n')
+
 export function createMobileMarkdownSkill(
   editor: MobileMarkdownEditorPort,
   gate: MobileMarkdownSkillGate,
 ): AgentSkill {
+  // Fails closed before anything is sent: a document whose hidden spans cannot be
+  // verified gets no skill at all (spec 4.4, 6.2).
+  redactedMarkdownView(editor.getMarkdown())
+
+  /** The model's view of the text as it is now; rebuilt on every read, throws when unverifiable. */
+  const currentView = () => {
+    const source = editor.getMarkdown()
+    return { source, view: redactedMarkdownView(source) }
+  }
+
+  /**
+   * Applies the model's edited view: mapped back to source when the document has
+   * hidden spans (refused when a placeholder would change), as is otherwise.
+   */
+  const applyViewEdit = (
+    prev: { source: string; view: MarkdownRedactedView },
+    nextView: string,
+    summary: string,
+    done: string,
+    toolSummary: string,
+    toolName: string,
+  ): ToolExecution => {
+    let next = nextView
+    if (prev.view.spans.length > 0) {
+      const restored = restoreRedactedEdit(prev.view, nextView)
+      if (!restored.ok) return { output: restored.message, isError: true, summary: toolName }
+      next = restored.source
+    }
+    editor.setMarkdown(next)
+    gate.onDocumentMutated?.(summary, prev.source, next)
+    return { output: done, mutated: true, summary: toolSummary }
+  }
+
   const baseSkill: AgentSkill = {
     id: 'mobile-markdown',
-    systemPrompt: [
-      brandText('You are the writing assistant inside GenOffice Mobile Markdown editor.', 'en'),
-      'You may only inspect and edit the currently open Markdown document.',
-      'Use read_document to inspect content, and replace_text, append_markdown, or replace_document for edits.',
-      'Keep existing relative image links intact and never emit raw HTML tags.',
-    ].join('\n'),
+    get systemPrompt() {
+      const base = MOBILE_MARKDOWN_PROMPT
+      let labels: readonly string[] = []
+      try {
+        labels = redactedMarkdownView(editor.getMarkdown()).labels
+      } catch {
+        // buildContext and every tool refuse this document; the prompt holds no text either way
+      }
+      return labels.length > 0 ? `${base}\n\n${markdownPlaceholderInstruction(labels)}` : base
+    },
     tools: MOBILE_MARKDOWN_TOOLS,
     buildContext() {
-      const text = editor.getMarkdown()
+      const text = currentView().view.text
       const preview = text.length > 6000 ? `${text.slice(0, 6000)}\n...[truncated]` : text
       return `Current Markdown document (${text.length} chars):\n\n${preview}`
     },
     executeTool(call: AgentToolCall): ToolExecution {
       if (call.name === 'read_document') {
         return {
-          output: editor.getMarkdown(),
+          output: currentView().view.text,
           mutated: false,
           summary: 'Read Markdown document',
         }
@@ -342,15 +416,24 @@ export function createMobileMarkdownSkill(
         if (!find) {
           return { output: 'Missing non-empty "find" text.', isError: true, summary: call.name }
         }
-        const prev = editor.getMarkdown()
-        if (!prev.includes(find)) {
+        const prev = currentView()
+        const prevView = prev.view.text
+        if (!prevView.includes(find)) {
           return { output: `Text not found: ${find}`, isError: true, summary: call.name }
         }
-        const rawNext = replaceAll ? prev.split(find).join(replace) : prev.replace(find, replace)
-        const next = preserveRelativeImageLinks(prev, rawNext)
-        editor.setMarkdown(next)
-        gate.onDocumentMutated?.(`Replaced "${find.slice(0, 24)}"`, prev, next)
-        return { output: 'Replaced text in document.', mutated: true, summary: 'Replace text' }
+        // a function replacement: "$&" and the like in the model's text stay literal
+        const rawNext = replaceAll
+          ? prevView.split(find).join(replace)
+          : prevView.replace(find, () => replace)
+        const nextView = preserveRelativeImageLinks(prevView, rawNext)
+        return applyViewEdit(
+          prev,
+          nextView,
+          `Replaced "${find.slice(0, 24)}"`,
+          'Replaced text in document.',
+          'Replace text',
+          call.name,
+        )
       }
       if (call.name === 'append_markdown') {
         const addition = typeof call.input.markdown === 'string' ? call.input.markdown : ''
@@ -361,20 +444,30 @@ export function createMobileMarkdownSkill(
             summary: call.name,
           }
         }
-        const prev = editor.getMarkdown()
-        const sep = prev.endsWith('\n') || prev.length === 0 ? '' : '\n\n'
-        const next = `${prev}${sep}${addition}`
-        editor.setMarkdown(next)
-        gate.onDocumentMutated?.('Appended markdown content', prev, next)
-        return { output: 'Appended content to document.', mutated: true, summary: 'Append content' }
+        const prev = currentView()
+        const prevView = prev.view.text
+        const sep = prevView.endsWith('\n') || prevView.length === 0 ? '' : '\n\n'
+        return applyViewEdit(
+          prev,
+          `${prevView}${sep}${addition}`,
+          'Appended markdown content',
+          'Appended content to document.',
+          'Append content',
+          call.name,
+        )
       }
       if (call.name === 'replace_document') {
         const rawNext = typeof call.input.markdown === 'string' ? call.input.markdown : ''
-        const prev = editor.getMarkdown()
-        const next = preserveRelativeImageLinks(prev, rawNext)
-        editor.setMarkdown(next)
-        gate.onDocumentMutated?.('Updated document content', prev, next)
-        return { output: 'Updated full document.', mutated: true, summary: 'Update document' }
+        const prev = currentView()
+        const nextView = preserveRelativeImageLinks(prev.view.text, rawNext)
+        return applyViewEdit(
+          prev,
+          nextView,
+          'Updated document content',
+          'Updated full document.',
+          'Update document',
+          call.name,
+        )
       }
       return { output: `Unknown tool: ${call.name}`, isError: true, summary: call.name }
     },

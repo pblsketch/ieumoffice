@@ -212,6 +212,7 @@ jobs:
             cp "$APK_SRC" dist-apk/ieumoffice-mobile-arm64.apk
             cp "$AAB_SRC" dist-aab/ieumoffice-mobile-arm64.aab
             "$BUILD_TOOLS/apksigner" verify --print-certs dist-apk/ieumoffice-mobile-arm64.apk
+            "$BUILD_TOOLS/zipalign" -c -P 16 4 dist-apk/ieumoffice-mobile-arm64.apk
             jarsigner -verify dist-aab/ieumoffice-mobile-arm64.aab
 
             echo "apk_path=apps/mobile/dist-apk/ieumoffice-mobile-arm64.apk" >> "$GITHUB_OUTPUT"
@@ -229,7 +230,7 @@ jobs:
             keytool -genkeypair -noprompt -keystore "$KEYSTORE" -storepass ieumtest -keypass ieumtest \
               -alias ieumtest -keyalg RSA -keysize 2048 -validity 365 \
               -dname "CN=IeumOffice Test, O=IeumOffice, C=KR"
-            "$BUILD_TOOLS/zipalign" -f -p 4 "$APK_SRC" dist-apk/aligned.apk
+            "$BUILD_TOOLS/zipalign" -f -P 16 4 "$APK_SRC" dist-apk/aligned.apk
             "$BUILD_TOOLS/apksigner" sign --ks "$KEYSTORE" --ks-pass pass:ieumtest \
               --key-pass pass:ieumtest --ks-key-alias ieumtest \
               --out dist-apk/ieumoffice-mobile-arm64-test.apk dist-apk/aligned.apk

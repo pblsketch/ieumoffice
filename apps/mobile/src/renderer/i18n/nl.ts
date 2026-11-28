@@ -179,4 +179,10 @@ export const nl = {
   backupRestoreSaveAs: 'Opslaan als kopie',
   backupDelete: 'Verwijderen',
   formatNotOpenable: 'Dit bestandstype kan niet worden geopend.',
+  insertPanel: 'Invoegen',
+  keyboardLock: 'Toetsenbord vergrendelen',
+  keyboardUnlock: 'Toetsenbord ontgrendelen',
+  moreSectionDocument: 'Document',
+  moreSectionFile: 'Bestand',
+  viewModeLabel: 'Weergave',
 } as const satisfies Record<keyof typeof zh, string>

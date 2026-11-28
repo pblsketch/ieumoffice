@@ -1,0 +1,103 @@
+/* PDF tools options sheet forms. Tokens only (mobile-tokens.css, packages/ui tokens.css). */
+
+.pdf-tools-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-space-4);
+}
+
+.pdf-tools-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-space-1);
+}
+
+.pdf-tools-field-label {
+  padding: 0;
+  font-size: var(--m-text-body-s);
+  font-weight: 600;
+  line-height: var(--m-line-tight);
+  color: var(--text-primary);
+}
+
+.pdf-tools-input {
+  font-size: var(--m-text-body);
+}
+
+.pdf-tools-input[aria-invalid='true'] {
+  border-color: var(--danger);
+}
+
+.pdf-tools-field-hint {
+  margin: 0;
+  font-size: var(--m-text-caption);
+  line-height: var(--m-line-body);
+  color: var(--text-secondary);
+}
+
+/* ── Choice groups ─────────────────────────────────────────────────────── */
+
+.pdf-tools-choices {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-space-2);
+}
+
+.pdf-tools-choices > legend {
+  margin-bottom: var(--m-space-2);
+}
+
+.pdf-tools-choice-list {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--m-space-2);
+}
+
+.pdf-tools-choices[data-columns='2'] .pdf-tools-choice-list {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.pdf-tools-choice,
+.pdf-tools-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--m-space-3);
+  min-height: var(--m-hit);
+  padding: var(--m-space-1) var(--m-space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--m-radius-control);
+  background: var(--surface);
+  color: var(--text-primary);
+  font-size: var(--m-text-body-s);
+  line-height: var(--m-line-tight);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.pdf-tools-choice:has(input:checked) {
+  border-color: var(--color-btn-primary);
+  background: var(--active-bg);
+}
+
+.pdf-tools-choice > input {
+  flex-shrink: 0;
+  margin: 0;
+  width: var(--m-space-5);
+  height: var(--m-space-5);
+  accent-color: var(--color-btn-primary);
+}
+
+.pdf-tools-choice-text,
+.pdf-tools-toggle-text {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.pdf-tools-toggle {
+  justify-content: space-between;
+}

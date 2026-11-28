@@ -9,6 +9,7 @@ import {
   type FlowPicture,
 } from './flowEditing'
 import { buildFlowDocument, buildFlowHtml } from './hwpFlow'
+import { attachPinchZoom } from './pinchZoom'
 import type { FlowEngineDocument } from './rhwpEngine'
 
 export interface HwpFlowViewHandle {
@@ -36,6 +37,10 @@ export interface HwpFlowViewProps {
   readonly lang: string
   /** Text scale; document sizes are in pt, so the whole frame is zoomed. */
   readonly zoom: number
+  readonly minZoom?: number
+  readonly maxZoom?: number
+  /** Called when a two-finger pinch inside the document frame changes zoom. */
+  readonly onZoomChange?: (next: number) => void
   /** Typing in the flow (body paragraphs; tables and pictures stay read-only). */
   readonly editable?: boolean
   /** Opens bytes with the rhwp engine; injectable for tests. */
@@ -54,6 +59,26 @@ type EngineDocument = FlowEngineDocument &
     exportHwpx(): Uint8Array
   }
 
+const TABLET_MIN_WIDTH = 840
+/** Physical px needed at the end of the document to clear the floating view FAB bar. */
+const VIEW_FAB_CLEARANCE_PX = 104
+const COMPACT_EDIT_CLEARANCE_PX = 32
+
+function computeFlowBottomPadPx(editable: boolean): number {
+  if (typeof window === 'undefined' || typeof document === 'undefined') {
+    return editable ? COMPACT_EDIT_CLEARANCE_PX : VIEW_FAB_CLEARANCE_PX
+  }
+  const rawSafe = getComputedStyle(document.documentElement)
+    .getPropertyValue('--m-safe-bottom')
+    .trim()
+  const safeBottom = Number.parseFloat(rawSafe)
+  const safePx = Number.isFinite(safeBottom) && safeBottom > 0 ? safeBottom : 0
+  const hasFloatingViewBar = !editable && window.innerWidth < TABLET_MIN_WIDTH
+  return Math.round(
+    (hasFloatingViewBar ? VIEW_FAB_CLEARANCE_PX : COMPACT_EDIT_CLEARANCE_PX) + safePx,
+  )
+}
+
 /**
  * Reading view that reflows an HWP document to the screen width, and edits it
  * in place (flowEditing.ts). The HTML comes from the document, so it is shown
@@ -65,6 +90,9 @@ export const HwpFlowView = forwardRef<HwpFlowViewHandle, HwpFlowViewProps>(funct
     title,
     lang,
     zoom,
+    minZoom = 0.8,
+    maxZoom = 2.4,
+    onZoomChange,
     editable = false,
     openDocument,
     onUnavailable,
@@ -77,9 +105,16 @@ export const HwpFlowView = forwardRef<HwpFlowViewHandle, HwpFlowViewProps>(funct
   const frameRef = useRef<HTMLIFrameElement | null>(null)
   const docRef = useRef<EngineDocument | null>(null)
   const editorRef = useRef<FlowEditor | null>(null)
+  const pinchDisposeRef = useRef<(() => void) | null>(null)
   const pendingRef = useRef(false)
   const zoomRef = useRef(zoom)
   zoomRef.current = zoom
+  const minZoomRef = useRef(minZoom)
+  minZoomRef.current = minZoom
+  const maxZoomRef = useRef(maxZoom)
+  maxZoomRef.current = maxZoom
+  const onZoomChangeRef = useRef(onZoomChange)
+  onZoomChangeRef.current = onZoomChange
   const editableRef = useRef(editable)
   editableRef.current = editable
   const onEditRef = useRef(onEdit)
@@ -112,6 +147,8 @@ export const HwpFlowView = forwardRef<HwpFlowViewHandle, HwpFlowViewProps>(funct
     })()
     return () => {
       cancelled = true
+      pinchDisposeRef.current?.()
+      pinchDisposeRef.current = null
       editorRef.current?.dispose()
       editorRef.current = null
       if (opened && docRef.current === opened) docRef.current = null
@@ -121,17 +158,49 @@ export const HwpFlowView = forwardRef<HwpFlowViewHandle, HwpFlowViewProps>(funct
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bytes, openDocument])
 
-  // The frame is rebuilt only when the document changes; zoom and editing are
-  // applied in place so the reading position and the caret stay put.
+  // The frame is rebuilt only when the document changes; zoom, bottom clearance,
+  // and editing are applied in place so the reading position and the caret stay put.
   const srcDoc = useMemo(
-    () => (body === null ? '' : buildFlowDocument(body, zoomRef.current, lang)),
+    () =>
+      body === null
+        ? ''
+        : buildFlowDocument(
+            body,
+            zoomRef.current,
+            lang,
+            computeFlowBottomPadPx(editableRef.current),
+          ),
     [body, lang],
   )
+
+  const syncBottomPad = () => {
+    const frameDoc = frameRef.current?.contentDocument
+    if (!frameDoc) return
+    frameDoc.documentElement.style.setProperty(
+      '--flow-bottom-pad',
+      `${computeFlowBottomPadPx(editableRef.current)}px`,
+    )
+  }
 
   const onFrameLoad = () => {
     const frameDoc = frameRef.current?.contentDocument
     if (!frameDoc) return
     frameDoc.documentElement.style.setProperty('--flow-zoom', String(zoomRef.current))
+    syncBottomPad()
+    pinchDisposeRef.current?.()
+    pinchDisposeRef.current = attachPinchZoom(frameDoc, {
+      getScale: () => zoomRef.current,
+      min: minZoomRef.current,
+      max: maxZoomRef.current,
+      onPreview: (next) => {
+        frameDoc.documentElement.style.setProperty('--flow-zoom', String(next))
+      },
+      onCommit: (next) => {
+        zoomRef.current = next
+        frameDoc.documentElement.style.setProperty('--flow-zoom', String(next))
+        onZoomChangeRef.current?.(next)
+      },
+    })
     editorRef.current?.dispose()
     editorRef.current = null
     const doc = docRef.current
@@ -148,6 +217,23 @@ export const HwpFlowView = forwardRef<HwpFlowViewHandle, HwpFlowViewProps>(funct
     editorRef.current.setEditable(editableRef.current)
   }
 
+  useEffect(
+    () => () => {
+      pinchDisposeRef.current?.()
+      pinchDisposeRef.current = null
+      const iframe = frameRef.current
+      if (iframe) {
+        try {
+          iframe.srcdoc = ''
+          iframe.src = 'about:blank'
+        } catch {
+          // Ignore detach errors during unmount.
+        }
+      }
+    },
+    [],
+  )
+
   useEffect(() => {
     frameRef.current?.contentDocument?.documentElement.style.setProperty(
       '--flow-zoom',
@@ -157,7 +243,19 @@ export const HwpFlowView = forwardRef<HwpFlowViewHandle, HwpFlowViewProps>(funct
 
   useEffect(() => {
     editorRef.current?.setEditable(editable)
+    syncBottomPad()
   }, [editable])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const onResize = () => syncBottomPad()
+    window.addEventListener('resize', onResize)
+    window.visualViewport?.addEventListener('resize', onResize)
+    return () => {
+      window.removeEventListener('resize', onResize)
+      window.visualViewport?.removeEventListener('resize', onResize)
+    }
+  }, [])
 
   useImperativeHandle(
     ref,

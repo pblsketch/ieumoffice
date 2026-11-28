@@ -16,4 +16,14 @@ export interface HomeHost {
   showToast(input: ToastRequest | string): void
   refreshHome(): Promise<void>
   openSettings(): void
+  /**
+   * Opens `bytesBase64` as an untitled document named `name` in edit mode, marked changed (the
+   * same path as restoring a recovery copy). Saving it asks where ("save as"); the source stays.
+   * Optional so hosts written before it (test doubles) still type-check; App always provides it.
+   */
+  openUntitledCopy?(params: {
+    format: MobileDocFormat
+    name: string
+    bytesBase64: string
+  }): Promise<boolean | void>
 }

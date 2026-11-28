@@ -1,0 +1,41 @@
+import type { zh } from './zh'
+
+export const pl = {
+  pdfViewEditorName: 'Edytor PDF',
+  pdfViewLoading: 'Otwieranie…',
+  pdfViewOpenFailed:
+    'Nie można otworzyć tego pliku PDF. Plik może być uszkodzony lub nie jest plikiem PDF.',
+  pdfViewCertEncrypted:
+    'Ten PDF jest chroniony certyfikatem, a nie hasłem. Otwórz go w aplikacji, która go wystawiła.',
+  pdfViewBlankUnavailable: 'Nie można utworzyć nowego pliku PDF.',
+  pdfViewPagesFailed: 'Niektórych stron nie udało się odczytać i są puste.',
+  pdfViewPageBroken: 'Nie można wyświetlić tej strony',
+  pdfViewPageLabel: 'Strona {page}',
+  pdfViewPageIndicator: 'Strona {page} z {count}',
+  pdfViewInternalLink: 'Przejdź do połączonej strony',
+  pdfViewPasswordTitle: 'Ten PDF jest zaszyfrowany',
+  pdfViewPasswordBody: '„{name}” jest chroniony hasłem. Wprowadź hasło, aby go otworzyć.',
+  pdfViewPasswordLabel: 'Hasło',
+  pdfViewPasswordPlaceholder: 'Wpisz hasło, aby otworzyć',
+  pdfViewPasswordShow: 'Pokaż hasło',
+  pdfViewPasswordHide: 'Ukryj hasło',
+  pdfViewPasswordOpen: 'Otwórz',
+  pdfViewPasswordWrong: 'Nieprawidłowe hasło, spróbuj ponownie',
+  pdfViewReadOnlyEncrypted: 'Zaszyfrowany dokument jest tylko do odczytu',
+  pdfViewReadOnlyDamaged: 'Uszkodzony plik: nieczytelne strony są puste, tylko do odczytu',
+  pdfViewReadOnlyNotWritable:
+    'Tego pliku nie można zapisać w jego miejscu, więc jest tylko do odczytu',
+  pdfViewSearch: 'Szukaj',
+  pdfViewSearchPlaceholder: 'Znajdź w dokumencie',
+  pdfViewSearching: 'Wyszukiwanie…',
+  pdfViewSearchNone: 'Brak wyników',
+  pdfViewSearchPrev: 'Poprzedni',
+  pdfViewSearchNext: 'Następny',
+  pdfViewSearchClose: 'Zamknij wyszukiwanie',
+  pdfViewOutline: 'Konspekt',
+  pdfViewOutlineEmpty: 'Ten dokument nie ma konspektu',
+  pdfViewGoToPage: 'Przejdź do strony',
+  pdfViewGoToPageLabel: 'Numer strony (1–{count})',
+  pdfViewGoToPageGo: 'Przejdź',
+  pdfViewGoToPageInvalid: 'Wpisz liczbę od 1 do {count}',
+} as const satisfies Record<keyof typeof zh, string>

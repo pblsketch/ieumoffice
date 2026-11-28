@@ -99,11 +99,29 @@ const noopStack: BackStack = {
 
 const BackStackContext = createContext<BackStack>(noopStack)
 
+/** The mounted BackStackProvider's stack, shared with detached `createRoot` overlays (e.g. password sheets). */
+let activeBackStack: BackStack = noopStack
+
 export function BackStackProvider({ children }: { readonly children: ReactNode }) {
   const stackRef = useRef<BackStack | null>(null)
   if (stackRef.current === null) {
     stackRef.current = typeof window === 'undefined' ? noopStack : createBackStack(window)
   }
+  const stack = stackRef.current
+  // Register synchronously so detached roots mounted immediately after render share this stack.
+  activeBackStack = stack
+  useEffect(() => {
+    activeBackStack = stack
+    return () => {
+      if (activeBackStack === stack) activeBackStack = noopStack
+    }
+  }, [stack])
+  return <BackStackContext.Provider value={stack}>{children}</BackStackContext.Provider>
+}
+
+/** Provides the app's active back stack to a detached `createRoot` overlay. */
+export function ActiveBackStackPortal({ children }: { readonly children: ReactNode }) {
+  const stackRef = useRef<BackStack>(activeBackStack)
   return <BackStackContext.Provider value={stackRef.current}>{children}</BackStackContext.Provider>
 }
 

@@ -170,4 +170,10 @@ export const cs = {
   backupRestoreSaveAs: 'Uložit jako kopii',
   backupDelete: 'Smazat',
   formatNotOpenable: 'Tento typ souboru nelze otevřít.',
+  insertPanel: 'Vložit',
+  keyboardLock: 'Zamknout klávesnici',
+  keyboardUnlock: 'Odemknout klávesnici',
+  moreSectionDocument: 'Dokument',
+  moreSectionFile: 'Soubor',
+  viewModeLabel: 'Zobrazení',
 } as const satisfies Record<keyof typeof zh, string>

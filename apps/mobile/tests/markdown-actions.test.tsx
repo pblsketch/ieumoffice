@@ -76,4 +76,55 @@ describe('markdown format actions', () => {
     act(() => vi.runAllTimers())
     expect(ed.value).toBe('**가나**')
   })
+
+  it('keeps typed characters when selectionchange fires before React onChange or during IME', () => {
+    let value = ''
+    let selection = { start: 0, end: 0 }
+    const el = document.createElement('div')
+    document.body.appendChild(el)
+    containers.push(el)
+    const root = createRoot(el)
+    const renderNow = () =>
+      act(() =>
+        root.render(
+          <MarkdownMobileEditor
+            value={value}
+            mode="edit"
+            editorLabel="마크다운 문서 편집기"
+            onChange={(next) => {
+              value = next
+              renderNow()
+            }}
+            onSelectionChange={(start, end) => {
+              // Simulate a parent state update re-rendering the controlled textarea.
+              selection = { start, end }
+              renderNow()
+            }}
+          />,
+        ),
+      )
+    renderNow()
+    const textarea = el.querySelector('textarea') as HTMLTextAreaElement
+    expect(textarea.getAttribute('data-testid')).toBe('markdown-editor-textarea')
+    expect(textarea.getAttribute('aria-label')).toBe('마크다운 문서 편집기')
+
+    // Simulate Android WebView / Gboard IME updating DOM value and firing selectionchange
+    // + native input before React's root-level onChange commits the new value.
+    act(() => {
+      textarea.focus()
+      textarea.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }))
+      const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set
+      setter?.call(textarea, 'markdownq')
+      textarea.setSelectionRange(9, 9)
+      document.dispatchEvent(new Event('selectionchange'))
+      textarea.dispatchEvent(new Event('input', { bubbles: true }))
+      textarea.dispatchEvent(
+        new CompositionEvent('compositionend', { bubbles: true, data: 'markdownq' }),
+      )
+    })
+
+    expect(value).toBe('markdownq')
+    expect(textarea.value).toBe('markdownq')
+    expect(selection).toEqual({ start: 9, end: 9 })
+  })
 })

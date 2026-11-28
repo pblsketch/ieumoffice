@@ -1,0 +1,196 @@
+/* The app layer (track T6): read-only strip, first-use tips, receive screen, first-run guide. */
+
+/* Read-only strip: compact notice bar fixed below the editor header (top is measured inline). */
+.home-run-strip {
+  position: fixed;
+  left: 0;
+  right: 0;
+  z-index: var(--m-z-header);
+  display: flex;
+  align-items: center;
+  gap: var(--m-space-2);
+  min-height: 40px;
+  padding: var(--m-space-1) calc(var(--m-space-1) + var(--m-safe-right)) var(--m-space-1)
+    calc(var(--m-space-3) + var(--m-safe-left));
+  background: var(--surface-subtle);
+  border-bottom: 1px solid var(--border);
+  color: var(--text-primary);
+  font-size: var(--m-text-caption);
+  line-height: var(--m-line-tight);
+}
+
+.home-run-strip-text {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.home-run-strip-copy {
+  position: relative;
+  flex-shrink: 0;
+  min-height: var(--m-control-s);
+  height: var(--m-control-s);
+  padding: 0 var(--m-space-3);
+  border-radius: var(--m-radius-full);
+  font-size: var(--m-text-caption);
+}
+
+.home-run-strip-close {
+  position: relative;
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  min-height: 36px;
+}
+
+.home-run-strip-copy::before,
+.home-run-strip-close::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: max(100%, var(--m-hit));
+  height: max(100%, var(--m-hit));
+  transform: translate(-50%, -50%);
+}
+
+/* First-use tip: a small bubble beside its element; never blocks touches around it. */
+.home-run-tip {
+  position: fixed;
+  z-index: var(--m-z-modal);
+  max-width: calc(100vw - var(--m-space-8));
+  padding: var(--m-space-2) var(--m-space-3);
+  border-radius: var(--m-radius-control);
+  background: var(--text-primary);
+  color: var(--surface);
+  font-size: var(--m-text-body-s);
+  line-height: var(--m-line-tight);
+  box-shadow: var(--shadow-modal-strong);
+  pointer-events: none;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+
+.home-run-tip[data-side='above'] {
+  transform: translateY(-100%);
+}
+
+/* Receive screen: full screen above the home or the editor; dialogs open above it. */
+.home-run-receive {
+  position: fixed;
+  inset: 0;
+  z-index: var(--m-z-sheet);
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-content);
+}
+
+.home-run-receive-header {
+  display: flex;
+  align-items: center;
+  gap: var(--m-space-2);
+  min-height: calc(var(--m-appbar-h) + var(--m-safe-top));
+  padding: var(--m-safe-top) calc(var(--m-space-3) + var(--m-safe-right)) 0
+    calc(var(--m-space-2) + var(--m-safe-left));
+  background: var(--chrome-bg);
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+
+.home-run-receive-title {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: var(--m-text-title-m);
+  font-weight: 700;
+  outline: none;
+}
+
+.home-run-receive-count {
+  color: var(--text-secondary);
+  font-size: var(--m-text-body-s);
+}
+
+.home-run-receive-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-space-3);
+  padding: var(--m-space-4) calc(var(--m-space-4) + var(--m-safe-right))
+    calc(var(--m-space-4) + var(--m-safe-bottom)) calc(var(--m-space-4) + var(--m-safe-left));
+}
+
+.home-run-receive-tool {
+  align-self: flex-start;
+}
+
+.home-run-receive-off {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--m-space-2);
+  padding: var(--m-space-3);
+  border-radius: var(--m-radius-card);
+  border: 1px solid var(--border);
+  background: var(--surface-subtle);
+  color: var(--text-primary);
+  font-size: var(--m-text-body-s);
+}
+
+.home-run-receive-off > span {
+  flex: 1;
+  min-width: 0;
+}
+
+.home-run-receive-row-actions {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0 var(--m-space-3) var(--m-space-2);
+}
+
+/* First-run guide: a full-screen layer over the home, which stays mounted below it. */
+.home-run-first {
+  position: fixed;
+  inset: 0;
+  z-index: var(--m-z-modal);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: calc(var(--m-space-4) + var(--m-safe-top)) calc(var(--m-space-4) + var(--m-safe-right))
+    calc(var(--m-space-4) + var(--m-safe-bottom)) calc(var(--m-space-4) + var(--m-safe-left));
+  background: var(--bg-content);
+}
+
+.home-run-first-card {
+  width: 100%;
+  max-width: var(--m-panel-w);
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-space-4);
+}
+
+.home-run-first-title {
+  margin: 0;
+  font-size: var(--m-text-title-l);
+  font-weight: 700;
+  color: var(--text-primary);
+  outline: none;
+}
+
+.home-run-first-body {
+  margin: 0;
+  font-size: var(--m-text-body);
+  line-height: var(--m-line-body);
+  color: var(--text-primary);
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+
+.home-run-first-actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: var(--m-space-2);
+}

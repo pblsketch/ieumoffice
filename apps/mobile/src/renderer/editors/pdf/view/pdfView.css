@@ -1,0 +1,318 @@
+/* Mobile PDF viewer (track T2). Chrome colors come from the design tokens; the page
+   paper and the text selection tint are document colors and stay the same in the
+   dark theme — page bitmaps are never recolored. */
+
+.m-pdf-stage {
+  /* document content colors, not chrome: a PDF page is white paper in every theme */
+  --m-pdf-paper: #fff;
+  --m-pdf-text-selection: rgb(56 108 255 / 32%);
+
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--canvas);
+}
+
+.m-pdf-scroll {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  /* one finger scrolls natively; two-finger zoom is handled by the viewer */
+  touch-action: pan-x pan-y;
+  -webkit-overflow-scrolling: touch;
+}
+
+.m-pdf-pages {
+  position: relative;
+  transform-origin: 0 0;
+  will-change: transform;
+}
+
+.m-pdf-page {
+  /* PDF.js setLayerDimensions sizes the text layer from these */
+  --user-unit: 1;
+  --total-scale-factor: calc(var(--scale-factor) * var(--user-unit));
+  --scale-round-x: 1px;
+  --scale-round-y: 1px;
+
+  position: absolute;
+  overflow: hidden;
+  background: var(--m-pdf-paper);
+  box-shadow: var(--shadow-sm);
+}
+
+.m-pdf-page-content {
+  position: absolute;
+  inset: 0;
+}
+
+.m-pdf-page-content canvas {
+  position: absolute;
+  left: 0;
+  top: 0;
+}
+
+.m-pdf-page-broken {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--m-space-4);
+  text-align: center;
+  font-size: var(--m-text-body-s);
+  color: var(--text-secondary);
+  background: var(--surface-subtle);
+}
+
+/* ── PDF.js text layer (long press selects and copies), after pdf.js text_layer.css ── */
+.m-pdf-page .textLayer {
+  --min-font-size: 1;
+  --text-scale-factor: calc(var(--total-scale-factor) * var(--min-font-size));
+  --min-font-size-inv: calc(1 / var(--min-font-size));
+
+  position: absolute;
+  inset: 0;
+  overflow: clip;
+  line-height: 1;
+  text-size-adjust: none;
+  forced-color-adjust: none;
+  transform-origin: 0 0;
+  caret-color: CanvasText;
+}
+
+.m-pdf-page .textLayer[data-main-rotation='90'] {
+  transform: rotate(90deg) translateY(-100%);
+}
+
+.m-pdf-page .textLayer[data-main-rotation='180'] {
+  transform: rotate(180deg) translate(-100%, -100%);
+}
+
+.m-pdf-page .textLayer[data-main-rotation='270'] {
+  transform: rotate(270deg) translateX(-100%);
+}
+
+.m-pdf-page .textLayer span,
+.m-pdf-page .textLayer br {
+  color: transparent;
+  position: absolute;
+  white-space: pre;
+  cursor: text;
+  transform-origin: 0% 0%;
+}
+
+.m-pdf-page .textLayer > :not(.markedContent),
+.m-pdf-page .textLayer .markedContent span:not(.markedContent) {
+  z-index: 1;
+  --font-height: 0;
+  font-size: calc(var(--text-scale-factor) * var(--font-height));
+  --scale-x: 1;
+  --rotate: 0deg;
+  transform: rotate(var(--rotate)) scaleX(var(--scale-x)) scale(var(--min-font-size-inv));
+}
+
+.m-pdf-page .textLayer .markedContent {
+  display: contents;
+}
+
+.m-pdf-page .textLayer span::selection {
+  background: var(--m-pdf-text-selection);
+}
+
+.m-pdf-page .textLayer .endOfContent {
+  display: block;
+  position: absolute;
+  inset: 100% 0 0;
+  z-index: -1;
+  cursor: default;
+  user-select: none;
+}
+
+/* ── search hits and links ── */
+.m-pdf-hit {
+  position: absolute;
+  z-index: 2;
+  pointer-events: none;
+  background: var(--search-hit-bg);
+  mix-blend-mode: multiply;
+  opacity: 0.6;
+}
+
+.m-pdf-hit-active {
+  background: var(--search-hit-active-bg);
+  opacity: 0.55;
+}
+
+.m-pdf-link-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+}
+
+.m-pdf-link {
+  position: absolute;
+  display: block;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  background: transparent;
+  pointer-events: auto;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.m-pdf-link:active {
+  background: var(--fill-muted);
+}
+
+/* ── read-only reason (where the edit button would be) ── */
+.m-pdf-readonly {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--m-space-2);
+  padding: var(--m-space-2) var(--m-space-4);
+  font-size: var(--m-text-caption);
+  line-height: var(--m-line-tight);
+  color: var(--text-secondary);
+  background: var(--surface-subtle);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+/* ── find bar ── */
+.m-pdf-findbar {
+  display: flex;
+  align-items: center;
+  gap: var(--m-space-1);
+  min-height: var(--m-hit);
+  padding: 0 var(--m-space-2) 0 var(--m-space-3);
+  color: var(--text-secondary);
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.m-pdf-find-input {
+  flex: 1;
+  min-width: 0;
+  min-height: var(--m-hit);
+  border: 0;
+  outline: none;
+  font: inherit;
+  font-size: var(--m-text-body);
+  color: var(--text-primary);
+  background: transparent;
+}
+
+/* the find bar is the field: the global focus ring would only show as two bars at the
+   input's sides (the bar clips the rest); the caret marks the focus */
+.m-pdf-find-input:focus-visible {
+  outline: none;
+}
+
+.m-pdf-find-count {
+  flex-shrink: 0;
+  font-size: var(--m-text-caption);
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+
+/* ── page indicator ── */
+.m-pdf-page-chip {
+  position: absolute;
+  left: calc(var(--m-space-4) + var(--m-safe-left));
+  bottom: calc(var(--m-space-5) + var(--m-safe-bottom));
+  z-index: var(--m-z-toolbar);
+  min-width: var(--m-hit);
+  min-height: var(--m-hit);
+  padding: 0 var(--m-space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--m-radius-full);
+  font: inherit;
+  font-size: var(--m-text-body-s);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+}
+
+/* ── sheets ── */
+.m-pdf-sheet-note {
+  margin: 0 0 var(--m-space-3);
+  font-size: var(--m-text-body-s);
+  line-height: var(--m-line-body);
+  color: var(--text-secondary);
+}
+
+.m-pdf-outline {
+  display: flex;
+  flex-direction: column;
+}
+
+.m-pdf-outline-row {
+  --m-pdf-depth: 0;
+
+  display: flex;
+  align-items: center;
+  min-height: var(--m-hit);
+  padding: var(--m-space-2) var(--m-space-4);
+  padding-inline-start: calc(var(--m-space-4) + var(--m-pdf-depth) * var(--m-space-4));
+  border: 0;
+  border-bottom: 1px solid var(--border-subtle);
+  font: inherit;
+  font-size: var(--m-text-body);
+  text-align: start;
+  text-decoration: none;
+  color: var(--text-primary);
+  background: transparent;
+  cursor: pointer;
+}
+
+.m-pdf-outline-row:active {
+  background: var(--pressed);
+}
+
+.m-pdf-outline-row:disabled {
+  color: var(--text-tertiary);
+  cursor: default;
+}
+
+.m-pdf-outline-row.is-bold {
+  font-weight: 600;
+}
+
+.m-pdf-outline-row.is-italic {
+  font-style: italic;
+}
+
+.m-pdf-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-space-3);
+}
+
+.m-pdf-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-space-1);
+  font-size: var(--m-text-body-s);
+  color: var(--text-secondary);
+}
+
+.m-pdf-password-row {
+  display: flex;
+  align-items: center;
+  gap: var(--m-space-1);
+}
+
+.m-pdf-error {
+  margin: 0;
+  font-size: var(--m-text-body-s);
+  color: var(--danger);
+}

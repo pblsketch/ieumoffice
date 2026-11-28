@@ -170,4 +170,10 @@ export const ru = {
   backupRestoreSaveAs: 'Сохранить копию',
   backupDelete: 'Удалить',
   formatNotOpenable: 'Файлы этого типа нельзя открыть.',
+  insertPanel: 'Вставка',
+  keyboardLock: 'Заблокировать клавиатуру',
+  keyboardUnlock: 'Разблокировать клавиатуру',
+  moreSectionDocument: 'Документ',
+  moreSectionFile: 'Файл',
+  viewModeLabel: 'Вид',
 } as const satisfies Record<keyof typeof zh, string>

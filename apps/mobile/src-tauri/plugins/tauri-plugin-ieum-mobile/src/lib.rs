@@ -12,9 +12,15 @@ use tauri::{
 #[cfg(mobile)]
 mod mobile_bridge {
     use crate::auth::NativeAuthBridge;
-    use crate::fs::{NativeFileBridge, NativeFsError, NativeFsErrorKind, PickedFile};
+    use crate::fs::{
+        FolderGrantState, NativeDirs, NativeFileBridge, NativeFolderEntry, NativeFsError,
+        NativeFsErrorKind, NativeHomeError, NativeHomeErrorKind, NativeIncomingBatch, PickedFile,
+        PickedFolder, WRITE_WORK_RELATIVE_DIR, is_openable_external_url, unique_work_path,
+        write_uri_from_file,
+    };
     use base64::{Engine as _, engine::general_purpose::STANDARD as B64};
     use serde::{Deserialize, Serialize};
+    use std::path::{Path, PathBuf};
     use tauri::{Runtime, plugin::PluginHandle};
 
     #[derive(Serialize)]
@@ -36,25 +42,49 @@ mod mobile_bridge {
         uri: &'a str,
     }
 
+    /// A document and a local file inside the app cache. Bytes travel through the file, never as
+    /// one string argument (Android refuses strings over 20,000,000 characters).
     #[derive(Serialize)]
     #[serde(rename_all = "camelCase")]
-    struct WriteArgs<'a> {
+    struct UriPathArgs<'a> {
         uri: &'a str,
-        bytes_base64: String,
+        path: &'a str,
     }
 
     #[derive(Serialize)]
     #[serde(rename_all = "camelCase")]
-    struct ShareArgs<'a> {
+    struct SharePathArgs<'a> {
+        path: &'a str,
         suggested_name: &'a str,
         mime: &'a str,
-        bytes_base64: String,
+    }
+
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct PrintPathArgs<'a> {
+        path: &'a str,
+        job_name: &'a str,
+    }
+
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct RenderPdfThumbArgs<'a> {
+        src_path: &'a str,
+        dest_path: &'a str,
+        max_px: u32,
     }
 
     #[derive(Deserialize)]
     #[serde(rename_all = "camelCase")]
-    struct BytesResp {
-        bytes_base64: String,
+    struct RenderPdfThumbResp {
+        #[serde(default)]
+        rendered: bool,
+    }
+
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct SizeResp {
+        size: u64,
     }
 
     #[derive(Deserialize)]
@@ -83,6 +113,91 @@ mod mobile_bridge {
         }
     }
 
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct FolderListArgs<'a> {
+        uri: &'a str,
+        sub_path: &'a [String],
+    }
+
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct NameArgs<'a> {
+        uri: &'a str,
+        new_name: &'a str,
+    }
+
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct UrisArgs<'a> {
+        uris: &'a [String],
+    }
+
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct KeepScreenOnArgs {
+        on: bool,
+    }
+
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct AppThemeArgs<'a> {
+        theme: &'a str,
+    }
+
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct UrlArgs<'a> {
+        url: &'a str,
+    }
+
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct GrantResp {
+        state: FolderGrantState,
+    }
+
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct EntriesResp {
+        #[serde(default)]
+        entries: Vec<NativeFolderEntry>,
+    }
+
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct UriResp {
+        uri: String,
+    }
+
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct BatchResp {
+        #[serde(default)]
+        batch: Option<NativeIncomingBatch>,
+    }
+
+    /// Maps the `CODE: message` rejections of the native home commands to error kinds.
+    fn map_home_invoke_err(err: impl std::fmt::Display) -> NativeHomeError {
+        let msg = err.to_string();
+        let kind = if msg.contains("USER_CANCELLED") {
+            NativeHomeErrorKind::UserCancelled
+        } else if msg.contains("NOT_SUPPORTED") {
+            NativeHomeErrorKind::NotSupportedHere
+        } else if msg.contains("NAME_TAKEN") {
+            NativeHomeErrorKind::NameTaken
+        } else if msg.contains("NOT_FOUND") {
+            NativeHomeErrorKind::NotFound
+        } else if msg.contains("INVALID_ARGUMENT") {
+            NativeHomeErrorKind::InvalidArgument
+        } else if msg.contains("PERMISSION_DENIED") || msg.contains("SecurityException") {
+            NativeHomeErrorKind::PermissionDenied
+        } else {
+            NativeHomeErrorKind::IoError
+        };
+        NativeHomeError::new(kind, msg)
+    }
+
     pub struct MobilePluginFileBridge<R: Runtime> {
         handle: PluginHandle<R>,
     }
@@ -91,6 +206,28 @@ mod mobile_bridge {
         pub fn new(handle: PluginHandle<R>) -> Self {
             Self { handle }
         }
+
+        /// `<cache>/ieum-tmp/home/write`: temporary copies of a document being read or written.
+        fn write_work_dir(&self) -> Result<PathBuf, NativeFsError> {
+            let dirs = self.native_dirs().map_err(home_to_fs_error)?;
+            let dir = dirs.cache_dir.join(WRITE_WORK_RELATIVE_DIR);
+            std::fs::create_dir_all(&dir).map_err(io_error)?;
+            Ok(dir)
+        }
+    }
+
+    fn io_error(e: std::io::Error) -> NativeFsError {
+        NativeFsError::new(NativeFsErrorKind::IoError, e.to_string())
+    }
+
+    fn home_to_fs_error(e: NativeHomeError) -> NativeFsError {
+        NativeFsError::new(NativeFsErrorKind::IoError, e.detail)
+    }
+
+    fn path_arg(path: &Path) -> Result<&str, NativeFsError> {
+        path.to_str().ok_or_else(|| {
+            NativeFsError::new(NativeFsErrorKind::IoError, "non-UTF-8 cache path")
+        })
     }
 
     impl<R: Runtime> NativeFileBridge for MobilePluginFileBridge<R> {
@@ -117,26 +254,40 @@ mod mobile_bridge {
         }
 
         fn read_uri_bytes(&self, uri: &str) -> Result<Vec<u8>, NativeFsError> {
-            let resp: BytesResp = self
-                .handle
-                .run_mobile_plugin("readUriBytes", UriArgs { uri })
-                .map_err(map_invoke_err)?;
-            B64.decode(&resp.bytes_base64)
-                .map_err(|e| NativeFsError::new(NativeFsErrorKind::IoError, e.to_string()))
+            let work = self.write_work_dir()?;
+            let tmp = unique_work_path(&work, "read");
+            let result = self
+                .copy_uri_to_file(uri, &tmp)
+                .and_then(|_| std::fs::read(&tmp).map_err(io_error));
+            let _ = std::fs::remove_file(&tmp);
+            result
         }
 
         fn write_uri_bytes_atomic(&self, uri: &str, bytes: &[u8]) -> Result<(), NativeFsError> {
-            let _: serde_json::Value = self
+            let work = self.write_work_dir()?;
+            let src = unique_work_path(&work, "write");
+            std::fs::write(&src, bytes).map_err(io_error)?;
+            let result = write_uri_from_file(self, uri, &src, &work);
+            let _ = std::fs::remove_file(&src);
+            result
+        }
+
+        fn copy_uri_to_file(&self, uri: &str, dest: &Path) -> Result<u64, NativeFsError> {
+            let path = path_arg(dest)?;
+            let resp: SizeResp = self
                 .handle
-                .run_mobile_plugin(
-                    "writeUriBytesAtomic",
-                    WriteArgs {
-                        uri,
-                        bytes_base64: B64.encode(bytes),
-                    },
-                )
+                .run_mobile_plugin("copyUriToFile", UriPathArgs { uri, path })
                 .map_err(map_invoke_err)?;
-            Ok(())
+            Ok(resp.size)
+        }
+
+        fn stream_file_to_uri(&self, uri: &str, src: &Path) -> Result<u64, NativeFsError> {
+            let path = path_arg(src)?;
+            let resp: SizeResp = self
+                .handle
+                .run_mobile_plugin("writeUriFromFile", UriPathArgs { uri, path })
+                .map_err(map_invoke_err)?;
+            Ok(resp.size)
         }
 
         fn share_file_bytes(
@@ -145,14 +296,24 @@ mod mobile_bridge {
             mime: &str,
             bytes: &[u8],
         ) -> Result<(), NativeFsError> {
+            let dirs = self.native_dirs().map_err(home_to_fs_error)?;
+            let dir = unique_work_path(&dirs.share_temp_dir, "share");
+            std::fs::create_dir_all(&dir).map_err(io_error)?;
+            let safe_name: String = suggested_name
+                .chars()
+                .map(|c| if c == '/' || c == '\\' { '_' } else { c })
+                .collect();
+            let file = dir.join(safe_name);
+            std::fs::write(&file, bytes).map_err(io_error)?;
+            let path = path_arg(&file)?;
             let _: serde_json::Value = self
                 .handle
                 .run_mobile_plugin(
-                    "shareFileBytes",
-                    ShareArgs {
+                    "shareFileFromPath",
+                    SharePathArgs {
+                        path,
                         suggested_name,
                         mime,
-                        bytes_base64: B64.encode(bytes),
                     },
                 )
                 .map_err(map_invoke_err)?;
@@ -164,6 +325,179 @@ mod mobile_bridge {
                 .run_mobile_plugin::<Option<PickedFile>>("takePendingOpenIntent", ())
                 .ok()
                 .flatten()
+        }
+
+        fn pick_folder(&self) -> Result<PickedFolder, NativeHomeError> {
+            self.handle
+                .run_mobile_plugin("pickFolder", ())
+                .map_err(map_home_invoke_err)
+        }
+
+        fn release_folder(&self, folder_uri: &str) -> Result<(), NativeHomeError> {
+            let _: serde_json::Value = self
+                .handle
+                .run_mobile_plugin("releaseFolder", UriArgs { uri: folder_uri })
+                .map_err(map_home_invoke_err)?;
+            Ok(())
+        }
+
+        fn check_folder_grant(&self, folder_uri: &str) -> FolderGrantState {
+            self.handle
+                .run_mobile_plugin::<GrantResp>("checkFolderGrant", UriArgs { uri: folder_uri })
+                .map(|r| r.state)
+                .unwrap_or(FolderGrantState::Revoked)
+        }
+
+        fn list_folder(
+            &self,
+            folder_uri: &str,
+            sub_path: &[String],
+        ) -> Result<Vec<NativeFolderEntry>, NativeHomeError> {
+            let resp: EntriesResp = self
+                .handle
+                .run_mobile_plugin(
+                    "listFolder",
+                    FolderListArgs {
+                        uri: folder_uri,
+                        sub_path,
+                    },
+                )
+                .map_err(map_home_invoke_err)?;
+            Ok(resp.entries)
+        }
+
+        fn rename_document(&self, uri: &str, new_name: &str) -> Result<String, NativeHomeError> {
+            let resp: UriResp = self
+                .handle
+                .run_mobile_plugin("renameDocument", NameArgs { uri, new_name })
+                .map_err(map_home_invoke_err)?;
+            Ok(resp.uri)
+        }
+
+        fn copy_document(&self, uri: &str, new_name: &str) -> Result<String, NativeHomeError> {
+            let resp: UriResp = self
+                .handle
+                .run_mobile_plugin("copyDocument", NameArgs { uri, new_name })
+                .map_err(map_home_invoke_err)?;
+            Ok(resp.uri)
+        }
+
+        fn delete_document(&self, uri: &str) -> Result<(), NativeHomeError> {
+            let _: serde_json::Value = self
+                .handle
+                .run_mobile_plugin("deleteDocument", UriArgs { uri })
+                .map_err(map_home_invoke_err)?;
+            Ok(())
+        }
+
+        fn share_files(&self, uris: &[String]) -> Result<(), NativeHomeError> {
+            if uris.is_empty() {
+                return Err(NativeHomeError::new(
+                    NativeHomeErrorKind::InvalidArgument,
+                    "nothing to share",
+                ));
+            }
+            let _: serde_json::Value = self
+                .handle
+                .run_mobile_plugin("shareFiles", UrisArgs { uris })
+                .map_err(map_home_invoke_err)?;
+            Ok(())
+        }
+
+        fn take_incoming_batch(&self) -> Option<NativeIncomingBatch> {
+            self.handle
+                .run_mobile_plugin::<BatchResp>("takePendingIncomingBatch", ())
+                .ok()
+                .and_then(|r| r.batch)
+        }
+
+        fn set_keep_screen_on(&self, on: bool) -> Result<(), NativeHomeError> {
+            let _: serde_json::Value = self
+                .handle
+                .run_mobile_plugin("setKeepScreenOn", KeepScreenOnArgs { on })
+                .map_err(map_home_invoke_err)?;
+            Ok(())
+        }
+
+        fn set_app_theme(&self, theme: &str) -> Result<(), NativeHomeError> {
+            let _: serde_json::Value = self
+                .handle
+                .run_mobile_plugin("setAppTheme", AppThemeArgs { theme })
+                .map_err(map_home_invoke_err)?;
+            Ok(())
+        }
+
+        fn open_external_url(&self, url: &str) -> Result<(), NativeHomeError> {
+            // Refused here too, so a bad URL never reaches the native side.
+            if !is_openable_external_url(url) {
+                return Err(NativeHomeError::new(
+                    NativeHomeErrorKind::InvalidArgument,
+                    "only http, https, and mailto URLs are opened",
+                ));
+            }
+            let _: serde_json::Value = self
+                .handle
+                .run_mobile_plugin("openExternalUrl", UrlArgs { url })
+                .map_err(map_home_invoke_err)?;
+            Ok(())
+        }
+
+        fn native_dirs(&self) -> Result<NativeDirs, NativeHomeError> {
+            self.handle
+                .run_mobile_plugin("getNativeDirs", ())
+                .map_err(map_home_invoke_err)
+        }
+
+        fn print_pdf_from_path(&self, path: &Path, job_name: &str) -> Result<(), NativeFsError> {
+            let path = path_arg(path)?;
+            let _: serde_json::Value = self
+                .handle
+                .run_mobile_plugin("printPdfFromPath", PrintPathArgs { path, job_name })
+                .map_err(map_invoke_err)?;
+            Ok(())
+        }
+
+        fn share_file_from_path(
+            &self,
+            path: &Path,
+            suggested_name: &str,
+            mime: &str,
+        ) -> Result<(), NativeFsError> {
+            let path = path_arg(path)?;
+            let _: serde_json::Value = self
+                .handle
+                .run_mobile_plugin(
+                    "shareFileFromPath",
+                    SharePathArgs {
+                        path,
+                        suggested_name,
+                        mime,
+                    },
+                )
+                .map_err(map_invoke_err)?;
+            Ok(())
+        }
+
+        fn render_pdf_thumbnail(
+            &self,
+            src_path: &Path,
+            dest_png_path: &Path,
+            max_px: u32,
+        ) -> Result<bool, NativeFsError> {
+            let src_path = path_arg(src_path)?;
+            let dest_path = path_arg(dest_png_path)?;
+            let resp: RenderPdfThumbResp = self
+                .handle
+                .run_mobile_plugin(
+                    "renderPdfThumbnail",
+                    RenderPdfThumbArgs {
+                        src_path,
+                        dest_path,
+                        max_px,
+                    },
+                )
+                .map_err(map_invoke_err)?;
+            Ok(resp.rendered)
         }
     }
 

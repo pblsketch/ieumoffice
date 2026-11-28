@@ -170,4 +170,10 @@ export const zhTW = {
   backupRestoreSaveAs: '另存副本',
   backupDelete: '刪除',
   formatNotOpenable: '無法開啟此類型的檔案。',
+  insertPanel: '插入',
+  keyboardLock: '鎖定鍵盤',
+  keyboardUnlock: '解鎖鍵盤',
+  moreSectionDocument: '文件工具',
+  moreSectionFile: '檔案',
+  viewModeLabel: '檢視方式',
 } as const satisfies Record<keyof typeof zh, string>

@@ -1,0 +1,26 @@
+// Track T6 home strings, part "layer". zh defines the keys.
+export const zh = {
+  homeRunEditorOffTitle: '{name}编辑器已停用',
+  homeRunEditorOffBody: '启用后才能打开这个文件。之后可以随时在设置中再停用。',
+  homeRunEditorOffConfirm: '启用并打开',
+  homeRunStripSample: '示例文档 · 只读',
+  homeRunStripReceived: '收到的文件 · 只读',
+  homeRunStripReadOnly: '只读',
+  homeRunStripCopy: '编辑副本',
+  homeRunStripClose: '关闭提示',
+  homeRunReceiveTitle: '收到的文件',
+  homeRunReceiveCount: '{count} 个文件',
+  homeRunReceiveClose: '关闭收到的文件',
+  homeRunReceiveOpen: '打开',
+  homeRunReceivePdfOff: 'PDF 工具已停用',
+  homeRunReceivePdfOn: '启用并继续',
+  homeRunGuideLabel: '入门引导',
+  homeRunWelcomeTitle: '欢迎',
+  homeRunWelcomeBody:
+    '用 GenOffice 打开并编辑 HWP、PDF、Markdown 等文档。无需账号，没有广告，文档只保存在这台设备上。',
+  homeRunStart: '开始使用',
+  homeRunTipEditButton: '想修改时，点 [编辑]',
+  homeRunTipFlowView: '想按屏幕宽度阅读，点 [阅读视图]',
+  homeRunTipFirstEdit: '应用会自动保留恢复副本。点 [完成] 时才会保存原文件',
+  homeRunTipFirstKeyboard: '点 [Aa] 可以更改文字格式',
+} as const

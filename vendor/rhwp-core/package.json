@@ -1,6 +1,6 @@
 {
   "name": "@rhwp/core",
-  "version": "0.9.1-ieum.37",
+  "version": "0.9.1-ieum.38",
   "description": "rhwp v0.9.1 HWP/HWPX engine (WebAssembly) rebuilt with the patches in ./patches",
   "private": true,
   "type": "module",
@@ -58,9 +58,10 @@
       "0055-nested-table-path-calls.patch",
       "0056-atomic-table-save-verify.patch",
       "0057-paragraph-head-text.patch",
-      "0058-path-split-merge-in-text-boxes.patch"
+      "0058-path-split-merge-in-text-boxes.patch",
+      "0060-body-wide-para-float-owner-column.patch"
     ],
     "wasmPack": "0.15.0",
-    "wasmSha256": "4d9ab3781e56cb27468c13b5d8bc6040e8706760cef2c0386cc5a1e9e2291771"
+    "wasmSha256": "80edc6ea3396df696cceb50955d5447543d5d4162bff5f0f034ebd3edd79a13b"
   }
 }

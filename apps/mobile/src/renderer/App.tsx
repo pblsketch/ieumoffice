@@ -6,8 +6,10 @@ import {
   type UnsavedSwitchChoice,
 } from '@genoffice/mobile-bridge/session-state'
 import {
+  commitMobileSession,
   createMobileClient,
   createTauriMobileTransport,
+  discardMobileSession,
   isMobileCommandError,
   type HwpBackupEntry,
   type MobileAppPrefs,
@@ -30,14 +32,17 @@ import { ToastHost, useToast } from './components/Toast'
 import { UnsavedModal } from './components/UnsavedModal'
 import type { EditorDocument, EditorHost, EditorKind } from './editors/editorKind'
 import { findEditorKind, openableExtensions } from './editors/registry'
+import { confirmEditorOn } from './home/editorGate'
+import { HomeAppLayer } from './home/HomeAppLayer'
 import type { HomeHost } from './home/homeHost'
 import { takeIncomingDocument } from './home/incoming'
 import { MobileLocaleProvider, translateMobile } from './i18n'
-import { DEFAULT_PREFS } from './settings/defaultPrefs'
+import { DEFAULT_PREFS, detectSystemLang, resolveInitialLang } from './settings/defaultPrefs'
 import { SettingsScreen } from './settings/SettingsScreen'
 import { BackStackProvider } from './shell/backStack'
 import type { EditorSaveState } from './shell/EditorShell'
 import { useViewportLayout } from './shell/useViewportLayout'
+import { applyDocumentTheme, useNativeSystemDark } from './theme'
 
 function editorSaveState(saving: boolean, dirty: boolean): EditorSaveState {
   if (saving) return 'saving'
@@ -76,7 +81,10 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
   windowClassRef.current = viewport.windowClass
 
   const [screen, setScreen] = useState<ScreenView>('home')
-  const [prefs, setPrefs] = useState<MobileAppPrefs>(DEFAULT_PREFS)
+  const [prefs, setPrefs] = useState<MobileAppPrefs>(() => ({
+    ...DEFAULT_PREFS,
+    lang: detectSystemLang(),
+  }))
   const [recentDocs, setRecentDocs] = useState<RecentDocEntry[]>([])
   const [recoveryEntries, setRecoveryEntries] = useState<RecoveryEntry[]>([])
   const [backups, setBackups] = useState<HwpBackupEntry[]>([])
@@ -99,10 +107,6 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
   const lang: Lang = normalizeLang(prefs.lang)
   const langRef = useRef(lang)
   langRef.current = lang
-  const tNow = useCallback(
-    (key: Parameters<typeof translateMobile>[1]) => translateMobile(lang, key),
-    [lang],
-  )
 
   const modeRef = useRef(mode)
   modeRef.current = mode
@@ -137,14 +141,12 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
   })
   const { refreshAiState, resetForDocument: resetAiForDocument, cancel: cancelAiRun } = ai
 
+  const nativeSystemDark = useNativeSystemDark()
+
   useEffect(() => {
     if (typeof document === 'undefined') return
-    if (prefs.theme === 'system') {
-      document.documentElement.removeAttribute('data-theme')
-    } else {
-      document.documentElement.setAttribute('data-theme', prefs.theme)
-    }
-  }, [prefs.theme])
+    applyDocumentTheme(document, prefs.theme, nativeSystemDark)
+  }, [prefs.theme, nativeSystemDark])
 
   const refreshHomeData = useCallback(async () => {
     const [recent, recovery, bk] = await Promise.all([
@@ -227,10 +229,12 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
 
   /** Refusal of a file whose format no registered editor opens (spec: open gate). */
   const notifyNotOpenable = useCallback(() => {
-    showToast({ message: tNow('formatNotOpenable'), tone: 'error' })
-  }, [showToast, tNow])
+    showToast({ message: translateMobile(langRef.current, 'formatNotOpenable'), tone: 'error' })
+  }, [showToast])
 
-  const openLoadedSessionRef = useRef<(session: MobileDocSession) => Promise<void>>(async () => {})
+  const openLoadedSessionRef = useRef<(session: MobileDocSession) => Promise<boolean>>(
+    async () => false,
+  )
 
   /** What App lends the open document (stable; reads the latest state through refs). */
   const editorHost = useMemo<EditorHost>(
@@ -242,7 +246,9 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
       showToast: (input) => showToast(input),
       contentChanged: () => setContentVersion((version) => version + 1),
       refreshHome: () => refreshHomeData(),
-      openSession: (session) => openLoadedSessionRef.current(session),
+      openSession: async (session) => {
+        await openLoadedSessionRef.current(session)
+      },
       translate: (key, params) => translateMobile(langRef.current, key, params),
       windowClass: () => windowClassRef.current,
     }),
@@ -253,12 +259,20 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
     async (
       session: MobileDocSession,
       options?: { isUntitled?: boolean; recoveryBytesBase64?: string },
-    ) => {
+    ): Promise<boolean> => {
       const controller = sessionControllerRef.current!
+      const discardStaged = () => {
+        void discardMobileSession(client, session.sessionId).catch(() => {})
+      }
       const kind = findEditorKind(session.format)
       if (!kind) {
+        discardStaged()
         notifyNotOpenable()
-        return
+        return false
+      }
+      if (!(await confirmEditorOn(kind, client))) {
+        discardStaged()
+        return false
       }
       const isUntitled =
         options?.isUntitled ?? (!session.writable && !session.ephemeral && !session.uriHint)
@@ -272,8 +286,9 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
           recoveryBytesBase64: options?.recoveryBytesBase64,
         })
       } catch (err) {
+        discardStaged()
         // the editor asked something while opening (e.g. a password) and the user cancelled
-        if (isMobileCommandError(err) && err.code === 'USER_CANCELLED') return
+        if (isMobileCommandError(err) && err.code === 'USER_CANCELLED') return false
         throw err
       }
 
@@ -286,8 +301,10 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
       }))
       if (!outcome.switched) {
         opened.discard?.()
-        return
+        discardStaged()
+        return false
       }
+      void commitMobileSession(client, session.sessionId).catch(() => {})
       openedDocRef.current?.doc.dispose?.()
       openSeqRef.current += 1
       const next: OpenedDocument = {
@@ -301,11 +318,12 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
       setMode(
         kind.editable && next.doc.editable !== false ? initialDocumentMode({ isUntitled }) : 'view',
       )
-      setNoticeBanner(opened.noticeKey ? tNow(opened.noticeKey) : null)
+      setNoticeBanner(opened.noticeKey ? translateMobile(langRef.current, opened.noticeKey) : null)
       setScreen('editor')
       await refreshHomeData()
+      return true
     },
-    [client, editorHost, notifyNotOpenable, refreshHomeData, tNow],
+    [client, editorHost, notifyNotOpenable, refreshHomeData],
   )
   openLoadedSessionRef.current = openLoadedSession
 
@@ -321,7 +339,9 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
         client.setOpenableExtensions(openableExtensions()).catch(() => {}),
       ])
       if (!mounted) return
-      setPrefs(loadedPrefs)
+      const resolvedLang = resolveInitialLang(loadedPrefs.lang)
+      langRef.current = resolvedLang
+      setPrefs({ ...loadedPrefs, lang: resolvedLang })
 
       const pending = await takeIncomingDocument(client).catch((err) => {
         if (isFormatNotOpenable(err)) notifyNotOpenable()
@@ -388,13 +408,37 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
   const homeHost = useMemo<HomeHost>(
     () => ({
       client,
-      openSession: (session) => openLoadedSession(session),
+      openSession: async (session) => {
+        await openLoadedSession(session)
+      },
       createNew: (format) => handleCreateNew(format),
       showToast: (input) => showToast(input),
       refreshHome: refreshHomeData,
       openSettings: openSettingsFromHome,
+      openUntitledCopy: async ({ format, name, bytesBase64 }) => {
+        const kind = findEditorKind(format)
+        if (!kind) {
+          notifyNotOpenable()
+          return false
+        }
+        const session = await client.createUntitledSession(kind.recoveryFormat(format))
+        const switched = await openLoadedSession(
+          { ...session, name },
+          { isUntitled: true, recoveryBytesBase64: bytesBase64 },
+        )
+        if (switched) sessionControllerRef.current?.markDirty(true)
+        return switched
+      },
     }),
-    [client, handleCreateNew, openLoadedSession, openSettingsFromHome, refreshHomeData, showToast],
+    [
+      client,
+      handleCreateNew,
+      notifyNotOpenable,
+      openLoadedSession,
+      openSettingsFromHome,
+      refreshHomeData,
+      showToast,
+    ],
   )
 
   const handlePickOpenFile = useCallback(async () => {
@@ -452,11 +496,11 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
           return
         }
         const session = await client.createUntitledSession(kind.recoveryFormat(entry.format))
-        await openLoadedSession(
+        const switched = await openLoadedSession(
           { ...session, name: entry.title },
           { isUntitled: true, recoveryBytesBase64: bytesBase64 },
         )
-        sessionControllerRef.current?.markDirty(true)
+        if (switched) sessionControllerRef.current?.markDirty(true)
       } catch (err) {
         if (!isFormatNotOpenable(err)) throw err
         notifyNotOpenable()
@@ -474,8 +518,12 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
   )
 
   const handleBackFromEditor = useCallback(async () => {
+    const closingSessionId = activeDocRef.current?.session.sessionId ?? null
     const outcome = await sessionControllerRef.current!.closeActive()
     if (outcome.switched) {
+      if (closingSessionId) {
+        void discardMobileSession(client, closingSessionId).catch(() => {})
+      }
       openedDocRef.current?.doc.dispose?.()
       openedDocRef.current = null
       setOpenedDoc(null)
@@ -483,7 +531,7 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
       setNoticeBanner(null)
       await refreshHomeData()
     }
-  }, [refreshHomeData])
+  }, [client, refreshHomeData])
 
   const handleShare = useCallback(async () => {
     const doc = activeDocRef.current
@@ -491,10 +539,88 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
     await openedDocRef.current?.doc.share(doc)
   }, [])
 
+  const exportingPdfRef = useRef(false)
+  const runPdfAction = useCallback(
+    async (target: 'print' | 'share') => {
+      const doc = activeDocRef.current
+      const opened = openedDocRef.current
+      if (!doc || !opened?.doc.exportPdf || exportingPdfRef.current) return
+      if (doc.encrypted || doc.distribution) {
+        showToast({
+          message: translateMobile(langRef.current, 'homePrintProtected'),
+          tone: 'error',
+        })
+        return
+      }
+      exportingPdfRef.current = true
+      try {
+        showToast(translateMobile(langRef.current, 'homePdfExportWorking'))
+        const exported = await opened.doc.exportPdf(doc, target)
+        if (!exported) return
+        const printBridge = await import('@genoffice/mobile-bridge/print')
+        if (exported.kind === 'session-original') {
+          if (target === 'print') {
+            await printBridge.printSessionPdf(client, doc.session.sessionId)
+          } else {
+            await opened.doc.share(doc)
+          }
+        } else if (target === 'print') {
+          await printBridge.printPdfBytes(client, {
+            sessionId: doc.session.sessionId,
+            suggestedName: exported.fileName,
+            bytes: exported.bytes,
+          })
+          if (exported.noticeKey) {
+            showToast(translateMobile(langRef.current, exported.noticeKey))
+          }
+        } else {
+          await printBridge.sharePdfBytes(client, {
+            sessionId: doc.session.sessionId,
+            suggestedName: exported.fileName,
+            bytes: exported.bytes,
+          })
+          if (exported.noticeKey) {
+            showToast(translateMobile(langRef.current, exported.noticeKey))
+          }
+        }
+      } catch (err) {
+        if (isMobileCommandError(err)) {
+          if (err.code === 'USER_CANCELLED') return
+          if (err.code === 'PASSWORD_PROTECTED') {
+            showToast({
+              message: translateMobile(langRef.current, 'homePrintProtected'),
+              tone: 'error',
+            })
+            return
+          }
+          if (err.messageKey === 'mobile.print.tooLarge') {
+            showToast({
+              message: translateMobile(langRef.current, 'homePrintTooLarge'),
+              tone: 'error',
+            })
+            return
+          }
+        }
+        showToast({
+          message: translateMobile(
+            langRef.current,
+            target === 'print' ? 'homePrintFailed' : 'homePdfExportFailed',
+          ),
+          tone: 'error',
+        })
+      } finally {
+        exportingPdfRef.current = false
+      }
+    },
+    [client, showToast],
+  )
+
   const handleUpdatePrefs = useCallback(
     async (patch: MobileAppPrefsPatch) => {
       const updated = await client.setAppPrefs(patch)
-      setPrefs(updated)
+      const resolvedLang = resolveInitialLang(updated.lang)
+      langRef.current = resolvedLang
+      setPrefs({ ...updated, lang: resolvedLang })
     },
     [client],
   )
@@ -566,8 +692,21 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
               onDone: () => void handleDone(),
               onExitEdit: () => setMode('view'),
               onSave: () => void runSave(activeDoc, false),
-              onSaveAs: () => void runSave(activeDoc, true),
+              ...(openedDoc.kind.editable && typeof openedDoc.doc.save === 'function'
+                ? { onSaveAs: () => void runSave(activeDoc, true) }
+                : {}),
               onShare: () => void handleShare(),
+              ...(typeof openedDoc.doc.exportPdf === 'function'
+                ? {
+                    onPrint: () => void runPdfAction('print'),
+                    ...(activeDoc.session.format !== 'pdf'
+                      ? { onSharePdf: () => void runPdfAction('share') }
+                      : {}),
+                    ...(openedDoc.doc.exportPdfScope
+                      ? { printScope: openedDoc.doc.exportPdfScope }
+                      : {}),
+                  }
+                : {}),
               onOpenBackups: () => {
                 void refreshHomeData()
                 setScreen('settings')
@@ -585,6 +724,22 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
           open={unsavedPromptDoc !== null}
           docTitle={unsavedPromptDoc ?? ''}
           onChoice={resolveUnsavedChoice}
+        />
+        <HomeAppLayer
+          host={homeHost}
+          screen={screen}
+          activeDoc={
+            activeDoc
+              ? {
+                  session: activeDoc.session,
+                  encrypted: activeDoc.encrypted,
+                  distribution: activeDoc.distribution,
+                  isUntitled: activeDoc.isUntitled,
+                  editable: openedDoc ? openedDoc.doc.editable !== false : true,
+                }
+              : null
+          }
+          mode={mode}
         />
         <ToastHost toast={toast} onDismiss={dismissToast} />
       </BackStackProvider>
