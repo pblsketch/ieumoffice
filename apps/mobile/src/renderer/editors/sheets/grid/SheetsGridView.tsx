@@ -6,9 +6,11 @@
  * the document's `dispose()` tears it down.
  */
 import { useEffect, useRef, useState } from 'react'
+import { ThemeService } from '@univerjs/core'
 import type { Lang } from '@genoffice/i18n'
 import type { DocumentMode } from '@genoffice/mobile-bridge/view-edit-gate'
 import type { MobileTheme } from '@genoffice/mobile-bridge/transport'
+import { isResolvedThemeDark, useNativeSystemDark } from '../../../theme'
 import type { EditorHost } from '../../editorKind'
 import type { OpenedSheetsWorkbook } from '../session'
 import type { SheetsGridAccess } from '../workspace/slots'
@@ -39,17 +41,6 @@ export interface SheetsGridViewProps {
   readonly access: SheetsGridAccess
 }
 
-function prefersDark(theme: MobileTheme): boolean {
-  if (theme === 'dark') return true
-  if (theme === 'light') return false
-  if (typeof document !== 'undefined') {
-    const resolved = document.documentElement.getAttribute('data-theme')
-    if (resolved === 'dark') return true
-    if (resolved === 'light') return false
-  }
-  return window.matchMedia('(prefers-color-scheme: dark)').matches
-}
-
 export default function SheetsGridView({
   opened,
   host,
@@ -66,13 +57,17 @@ export default function SheetsGridView({
   const [grid, setGrid] = useState<MobileGrid | null>(access.grid)
   const onEnterEditRef = useRef(onEnterEdit)
   onEnterEditRef.current = onEnterEdit
+  const nativeSystemDark = useNativeSystemDark()
+  const darkMode = isResolvedThemeDark(theme, nativeSystemDark)
+  const darkModeRef = useRef(darkMode)
+  darkModeRef.current = darkMode
 
   useEffect(() => {
     let grid = access.grid
     if (!grid) {
       grid = createMobileGrid({
         lang,
-        darkMode: prefersDark(theme),
+        darkMode: darkModeRef.current,
         onMessage: (message) => console.info('[sheets]', message),
         onEditRequestInView: () => onEnterEditRef.current(),
         onCellEditing: (next) => setEditing(next),
@@ -113,7 +108,23 @@ export default function SheetsGridView({
       // Detach only: the grid lives as long as the document (back from settings re-attaches it).
       live.element.remove()
     }
-  }, [opened, host, access, lang, theme])
+  }, [opened, host, access, lang])
+
+  // Keep the persistent Univer grid's darkMode synced when switching theme in Settings or OS night mode.
+  useEffect(() => {
+    if (!grid) return
+    const apply = () => {
+      const nextDark = isResolvedThemeDark(theme, nativeSystemDark)
+      const themeService = grid.runtime.univer.__getInjector().get(ThemeService)
+      themeService.setDarkMode(nextDark)
+    }
+    apply()
+    if (theme !== 'system' || typeof nativeSystemDark === 'boolean') return
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return
+    const mq = window.matchMedia('(prefers-color-scheme: dark)')
+    mq.addEventListener?.('change', apply)
+    return () => mq.removeEventListener?.('change', apply)
+  }, [grid, theme, nativeSystemDark])
 
   useEffect(() => {
     access.grid?.setViewMode(mode === 'view')

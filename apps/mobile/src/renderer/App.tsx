@@ -42,6 +42,7 @@ import { SettingsScreen } from './settings/SettingsScreen'
 import { BackStackProvider } from './shell/backStack'
 import type { EditorSaveState } from './shell/EditorShell'
 import { useViewportLayout } from './shell/useViewportLayout'
+import { applyDocumentTheme, useNativeSystemDark } from './theme'
 
 function editorSaveState(saving: boolean, dirty: boolean): EditorSaveState {
   if (saving) return 'saving'
@@ -140,33 +141,11 @@ export function MobileApp({ client: injectedClient }: MobileAppProps) {
   })
   const { refreshAiState, resetForDocument: resetAiForDocument, cancel: cancelAiRun } = ai
 
-  const [nativeSystemDark, setNativeSystemDark] = useState<boolean | undefined>(() => {
-    if (typeof window === 'undefined') return undefined
-    const initial = (window as { __ieumSystemDark?: unknown }).__ieumSystemDark
-    return typeof initial === 'boolean' ? initial : undefined
-  })
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    const onSystemDark = (event: Event) => {
-      const detail = (event as CustomEvent<unknown>).detail
-      if (typeof detail === 'boolean') setNativeSystemDark(detail)
-    }
-    window.addEventListener('ieum:system-dark', onSystemDark)
-    return () => window.removeEventListener('ieum:system-dark', onSystemDark)
-  }, [])
+  const nativeSystemDark = useNativeSystemDark()
 
   useEffect(() => {
     if (typeof document === 'undefined') return
-    if (prefs.theme === 'system') {
-      if (typeof nativeSystemDark === 'boolean') {
-        document.documentElement.setAttribute('data-theme', nativeSystemDark ? 'dark' : 'light')
-      } else {
-        document.documentElement.removeAttribute('data-theme')
-      }
-    } else {
-      document.documentElement.setAttribute('data-theme', prefs.theme)
-    }
+    applyDocumentTheme(document, prefs.theme, nativeSystemDark)
   }, [prefs.theme, nativeSystemDark])
 
   const refreshHomeData = useCallback(async () => {

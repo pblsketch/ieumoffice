@@ -361,7 +361,7 @@ fn hwp_save_fixes_and_pre_overwrite_backup_gate() {
 fn recovery_lifecycle_and_prefs_persistence() {
     let tmp = tempfile::tempdir().unwrap();
     let bridge = Arc::new(HostFileBridge::new());
-    let svc = MobileFileService::new(tmp.path().to_path_buf(), bridge).unwrap();
+    let svc = MobileFileService::new(tmp.path().to_path_buf(), bridge.clone()).unwrap();
 
     svc.recovery_write(
         "doc1234567890abc",
@@ -395,5 +395,14 @@ fn recovery_lifecycle_and_prefs_persistence() {
     assert_eq!(prefs.theme, "dark");
     assert_eq!(prefs.hwp_default_format, MobileDocFormat::Hwpx);
     assert!(!prefs.ai_enabled);
+    assert_eq!(bridge.app_theme(), "dark");
     assert_eq!(svc.get_app_prefs().unwrap(), prefs);
+    assert_eq!(bridge.app_theme(), "dark");
+
+    svc.set_app_prefs(MobileAppPrefsPatch {
+        theme: Some("light".into()),
+        ..Default::default()
+    })
+    .unwrap();
+    assert_eq!(bridge.app_theme(), "light");
 }

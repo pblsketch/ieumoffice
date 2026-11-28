@@ -291,6 +291,10 @@ pub trait NativeFileBridge: Send + Sync {
     fn take_incoming_batch(&self) -> Option<NativeIncomingBatch>;
     /// Keeps the screen from turning off (`true`) or lets it sleep again (`false`).
     fn set_keep_screen_on(&self, on: bool) -> Result<(), NativeHomeError>;
+    /// Syncs the user's app theme preference (`"system" | "light" | "dark"`) to native window chrome.
+    fn set_app_theme(&self, _theme: &str) -> Result<(), NativeHomeError> {
+        Ok(())
+    }
     /// Opens an `https://` URL in the system browser. Anything else is `InvalidArgument`.
     fn open_external_url(&self, url: &str) -> Result<(), NativeHomeError>;
     /// The app cache directory and the share-out temporary copy directory.
@@ -387,6 +391,7 @@ struct HostFsState {
     /// MIME type of every received copy, kept after its batch is taken.
     incoming_mimes: BTreeMap<PathBuf, String>,
     keep_screen_on: bool,
+    app_theme: String,
     opened_urls: Vec<String>,
     last_shared_files: Vec<SharedFile>,
     cache_dir: Option<PathBuf>,
@@ -770,6 +775,16 @@ impl HostFileBridge {
     /// Whether the screen is currently kept on.
     pub fn keep_screen_on(&self) -> bool {
         self.state.lock().unwrap().keep_screen_on
+    }
+
+    /// The last theme passed to `set_app_theme` (`"system"` before the first call).
+    pub fn app_theme(&self) -> String {
+        let theme = &self.state.lock().unwrap().app_theme;
+        if theme.is_empty() {
+            "system".to_string()
+        } else {
+            theme.clone()
+        }
     }
 
     /// Every URL `open_external_url` accepted, oldest first.
@@ -1177,6 +1192,15 @@ impl NativeFileBridge for HostFileBridge {
 
     fn set_keep_screen_on(&self, on: bool) -> Result<(), NativeHomeError> {
         self.state.lock().unwrap().keep_screen_on = on;
+        Ok(())
+    }
+
+    fn set_app_theme(&self, theme: &str) -> Result<(), NativeHomeError> {
+        let normalized = match theme {
+            "light" | "dark" | "system" => theme,
+            _ => "system",
+        };
+        self.state.lock().unwrap().app_theme = normalized.to_string();
         Ok(())
     }
 

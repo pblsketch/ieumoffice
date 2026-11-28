@@ -103,6 +103,11 @@ class KeepScreenOnArgs {
 }
 
 @InvokeArg
+class AppThemeArgs {
+    var theme: String = "system"
+}
+
+@InvokeArg
 class UrlArgs {
     var url: String = ""
 }
@@ -144,6 +149,7 @@ class IeumFilePlugin(private val activity: Activity) : Plugin(activity) {
     private val batchCounter = AtomicLong(0)
     private val printIoExecutor = Executors.newSingleThreadExecutor()
     @Volatile private var activeWebView: WebView? = null
+    @Volatile private var appTheme: String = "system"
     private var configCallbacks: ComponentCallbacks? = null
 
     // One worker for received files: copies run in arrival order, and a batch query queued
@@ -165,11 +171,11 @@ class IeumFilePlugin(private val activity: Activity) : Plugin(activity) {
         webView.settings.setSupportZoom(false)
         webView.settings.builtInZoomControls = false
         webView.settings.displayZoomControls = false
-        // Expose prefers-color-scheme: dark on API 33+ when Android night mode is active.
-        // Because the renderer declares color-scheme: light dark, WebView applies our dark CSS
-        // tokens directly without algorithmic inversion.
+        // Disable Android WebView algorithmic darkening on API 33+ so explicit "light" mode and
+        // light document iframes (HWP flow/page, HTML, PDF) are never force-inverted under OS dark mode.
+        // App theme styling is driven directly via data-theme and CSS color-scheme tokens.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            webView.settings.isAlgorithmicDarkeningAllowed = true
+            webView.settings.isAlgorithmicDarkeningAllowed = false
         }
         applySystemBarInsets()
         installDarkModeObserver(webView)
@@ -179,16 +185,38 @@ class IeumFilePlugin(private val activity: Activity) : Plugin(activity) {
     private fun isSystemNightMode(config: Configuration = activity.resources.configuration): Boolean =
         (config.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
 
+    private fun isEffectiveDark(config: Configuration = activity.resources.configuration): Boolean =
+        when (appTheme) {
+            "dark" -> true
+            "light" -> false
+            else -> isSystemNightMode(config)
+        }
+
+    /** Matches Android status/navigation bar icon tone and background to the active app theme. */
+    private fun applySystemBarAppearance(isDark: Boolean) {
+        activity.runOnUiThread {
+            val window = activity.window ?: return@runOnUiThread
+            val decorView = window.decorView
+            val insetsController = WindowInsetsControllerCompat(window, decorView)
+            insetsController.isAppearanceLightStatusBars = !isDark
+            insetsController.isAppearanceLightNavigationBars = !isDark
+            // Matches --chrome-bg (#252525 in dark, #ffffff in light) behind edge-to-edge bar padding.
+            val barBg = if (isDark) Color.parseColor("#252525") else Color.WHITE
+            decorView.setBackgroundColor(barBg)
+            decorView.findViewById<View>(android.R.id.content)?.setBackgroundColor(barBg)
+        }
+    }
+
     /** Mirrors Android's live UI_MODE_NIGHT state into the WebView so system theme always matches. */
     private fun pushSystemDarkMode(webView: WebView, isNight: Boolean) {
         val flag = if (isNight) "true" else "false"
+        val effectiveDark = when (appTheme) {
+            "dark" -> true
+            "light" -> false
+            else -> isNight
+        }
+        applySystemBarAppearance(effectiveDark)
         activity.runOnUiThread {
-            val window = activity.window
-            if (window != null) {
-                val insetsController = WindowInsetsControllerCompat(window, window.decorView)
-                insetsController.isAppearanceLightStatusBars = !isNight
-                insetsController.isAppearanceLightNavigationBars = !isNight
-            }
             webView.evaluateJavascript(
                 "window.__ieumSystemDark=$flag;window.dispatchEvent(new CustomEvent('ieum:system-dark',{detail:$flag}));",
                 null
@@ -225,15 +253,10 @@ class IeumFilePlugin(private val activity: Activity) : Plugin(activity) {
     }
 
     private fun applySystemBarInsets() {
+        applySystemBarAppearance(isEffectiveDark())
         activity.runOnUiThread {
             val window = activity.window ?: return@runOnUiThread
             val decorView = window.decorView
-            val isNight =
-                (activity.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
-                    Configuration.UI_MODE_NIGHT_YES
-            val insetsController = WindowInsetsControllerCompat(window, decorView)
-            insetsController.isAppearanceLightStatusBars = !isNight
-            insetsController.isAppearanceLightNavigationBars = !isNight
 
             val content = decorView.findViewById<View>(android.R.id.content) ?: return@runOnUiThread
             ViewCompat.setOnApplyWindowInsetsListener(content) { view, windowInsets ->
@@ -815,6 +838,18 @@ class IeumFilePlugin(private val activity: Activity) : Plugin(activity) {
             }
             invoke.resolve(JSObject().apply { put("ok", true) })
         }
+    }
+
+    /** Applies the user's explicit theme preference ("system", "light", "dark") to Android system bars. */
+    @Command
+    fun setAppTheme(invoke: Invoke) {
+        val args = invoke.parseArgs(AppThemeArgs::class.java)
+        appTheme = when (args.theme) {
+            "light", "dark", "system" -> args.theme
+            else -> "system"
+        }
+        applySystemBarAppearance(isEffectiveDark())
+        invoke.resolve(JSObject().apply { put("ok", true) })
     }
 
     @Command

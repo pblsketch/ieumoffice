@@ -1195,11 +1195,15 @@ impl MobileFileService {
     }
 
     pub fn get_app_prefs(&self) -> MobileResult<MobileAppPrefs> {
-        self.prefs.load()
+        let prefs = self.prefs.load()?;
+        let _ = self.bridge.set_app_theme(&prefs.theme);
+        Ok(prefs)
     }
 
     pub fn set_app_prefs(&self, patch: MobileAppPrefsPatch) -> MobileResult<MobileAppPrefs> {
-        self.prefs.update(patch)
+        let prefs = self.prefs.update(patch)?;
+        let _ = self.bridge.set_app_theme(&prefs.theme);
+        Ok(prefs)
     }
 
     // Track T6 home helpers (used by `home::HomeService`).
@@ -1285,6 +1289,8 @@ impl MobileFileService {
         patch: MobileAppPrefsPatch,
         home: MobileHomePrefsPatch,
     ) -> MobileResult<MobileAppPrefs> {
-        self.prefs.update_with_home(patch, home)
+        let prefs = self.prefs.update_with_home(patch, home)?;
+        let _ = self.bridge.set_app_theme(&prefs.theme);
+        Ok(prefs)
     }
 }

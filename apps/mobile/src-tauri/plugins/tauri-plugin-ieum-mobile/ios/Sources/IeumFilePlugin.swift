@@ -48,6 +48,10 @@ struct KeepScreenOnArgs: Decodable {
     let on: Bool
 }
 
+struct AppThemeArgs: Decodable {
+    let theme: String
+}
+
 struct UrlArgs: Decodable {
     let url: String
 }
@@ -116,6 +120,8 @@ public final class IeumFilePlugin: Plugin {
     private let lock = NSLock()
     private var activePickerDelegate: DocumentPickerDelegate?
     private var scrollOffsetObservation: NSKeyValueObservation?
+    private weak var activeWebView: WKWebView?
+    private var appTheme: String = "system"
     private var liveUrlsByToken: [String: URL] = [:]
     private var liveUrlOrder: [String] = []
 
@@ -123,6 +129,8 @@ public final class IeumFilePlugin: Plugin {
     /// fixed app header into the status bar or Dynamic Island; inner CSS containers scroll instead.
     @objc public override func load(webview: WKWebView) {
         super.load(webview: webview)
+        self.activeWebView = webview
+        self.applyAppTheme(self.appTheme)
         DispatchQueue.main.async { [weak self, weak webview] in
             guard let self, let webview else { return }
             let scrollView = webview.scrollView
@@ -818,6 +826,34 @@ public final class IeumFilePlugin: Plugin {
             UIApplication.shared.isIdleTimerDisabled = args.on
             invoke.resolve(["ok": true])
         }
+    }
+
+    /// Overrides the iOS interface style on window, controller, and WKWebView so explicit
+    /// light/dark choices stay locked regardless of the device's Dark Mode setting.
+    private func applyAppTheme(_ theme: String) {
+        let style: UIUserInterfaceStyle
+        switch theme {
+        case "light":
+            style = .light
+        case "dark":
+            style = .dark
+        default:
+            style = .unspecified
+        }
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.activeWebView?.overrideUserInterfaceStyle = style
+            self.manager.viewController?.overrideUserInterfaceStyle = style
+            self.manager.viewController?.view.window?.overrideUserInterfaceStyle = style
+        }
+    }
+
+    @objc public func setAppTheme(_ invoke: Invoke) throws {
+        let args = try invoke.parseArgs(AppThemeArgs.self)
+        let normalized = (args.theme == "light" || args.theme == "dark") ? args.theme : "system"
+        self.appTheme = normalized
+        self.applyAppTheme(normalized)
+        invoke.resolve(["ok": true])
     }
 
     @objc public func openExternalUrl(_ invoke: Invoke) throws {

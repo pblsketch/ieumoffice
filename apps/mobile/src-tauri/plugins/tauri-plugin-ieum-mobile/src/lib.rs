@@ -141,6 +141,12 @@ mod mobile_bridge {
 
     #[derive(Serialize)]
     #[serde(rename_all = "camelCase")]
+    struct AppThemeArgs<'a> {
+        theme: &'a str,
+    }
+
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
     struct UrlArgs<'a> {
         url: &'a str,
     }
@@ -409,6 +415,14 @@ mod mobile_bridge {
             let _: serde_json::Value = self
                 .handle
                 .run_mobile_plugin("setKeepScreenOn", KeepScreenOnArgs { on })
+                .map_err(map_home_invoke_err)?;
+            Ok(())
+        }
+
+        fn set_app_theme(&self, theme: &str) -> Result<(), NativeHomeError> {
+            let _: serde_json::Value = self
+                .handle
+                .run_mobile_plugin("setAppTheme", AppThemeArgs { theme })
                 .map_err(map_home_invoke_err)?;
             Ok(())
         }

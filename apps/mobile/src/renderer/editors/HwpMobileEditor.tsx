@@ -18,6 +18,7 @@ import {
 } from '@genoffice/mobile-bridge/hwp'
 import blankHwpUrl from '../../../../hwp/src/renderer/assets/blank.hwp?url'
 import { registerMobileKoreanFonts } from '../assets/fonts'
+import { resolveMobileTheme, useNativeSystemDark } from '../theme'
 import { attachPinchZoom } from './pinchZoom'
 
 export type HwpQuickAction =
@@ -420,6 +421,25 @@ export const HwpMobileEditor = forwardRef<HwpMobileEditorHandle, HwpMobileEditor
     const interactiveEditRef = useRef(interactiveEdit)
     interactiveEditRef.current = interactiveEdit
 
+    const nativeSystemDark = useNativeSystemDark()
+    const effectiveTheme = resolveMobileTheme(theme, nativeSystemDark)
+    const effectiveThemeRef = useRef(effectiveTheme)
+    effectiveThemeRef.current = effectiveTheme
+
+    useEffect(() => {
+      if (typeof localStorage !== 'undefined') {
+        const current = localStorage.getItem(MOBILE_STUDIO_SETTINGS_KEY)
+        localStorage.setItem(
+          MOBILE_STUDIO_SETTINGS_KEY,
+          seedMobileHwpStudioSettings(current, effectiveTheme),
+        )
+      }
+      const ed = editorRef.current
+      if (ed) {
+        void ed.commands.execute(`view:theme-${effectiveTheme}`).catch(() => {})
+      }
+    }, [effectiveTheme])
+
     useEffect(() => {
       if (editorRef.current) {
         syncStudioEditLock(editorRef.current, interactiveEdit)
@@ -453,7 +473,7 @@ export const HwpMobileEditor = forwardRef<HwpMobileEditorHandle, HwpMobileEditor
             const current = localStorage.getItem(MOBILE_STUDIO_SETTINGS_KEY)
             localStorage.setItem(
               MOBILE_STUDIO_SETTINGS_KEY,
-              seedMobileHwpStudioSettings(current, theme),
+              seedMobileHwpStudioSettings(current, effectiveThemeRef.current),
             )
           }
           await registerMobileKoreanFonts()
@@ -547,7 +567,7 @@ export const HwpMobileEditor = forwardRef<HwpMobileEditorHandle, HwpMobileEditor
           // Ignore teardown errors when switching documents quickly.
         }
       }
-    }, [documentBytes, lang, theme])
+    }, [documentBytes, lang])
 
     // Run frame teardown in a layout cleanup so iframe.contentDocument is still attached
     // when Canvas2D backing stores are shrunk and navigated to about:blank before React unmounts.
@@ -555,7 +575,7 @@ export const HwpMobileEditor = forwardRef<HwpMobileEditorHandle, HwpMobileEditor
       return () => {
         releaseStudioFrame(editorRef.current)
       }
-    }, [documentBytes, lang, theme])
+    }, [documentBytes, lang])
 
     // Refit page width when rotating between portrait and landscape.
     useEffect(() => {

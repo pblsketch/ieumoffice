@@ -26,6 +26,7 @@ import {
 import { translateMobile } from '../../../i18n'
 import type { MobileStringKey } from '../../../i18n/strings'
 import { EditorShell, type EditorQuickActionItem } from '../../../shell/EditorShell'
+import { readNativeSystemDark, subscribeNativeSystemDark } from '../../../theme'
 import type { EditorWorkspaceProps } from '../../editorKind'
 import { attachPinchZoom } from '../../pinchZoom'
 import { useReaderKeepScreenOn } from '../shared/keepScreenOn'
@@ -202,13 +203,21 @@ const darkQuery = (): MediaQueryList | null =>
 function subscribeSystemDark(listener: () => void): () => void {
   const query = darkQuery()
   query?.addEventListener?.('change', listener)
-  return () => query?.removeEventListener?.('change', listener)
+  const unsubNative = subscribeNativeSystemDark(listener)
+  return () => {
+    query?.removeEventListener?.('change', listener)
+    unsubNative()
+  }
 }
 
 function useSystemDark(): boolean {
   return useSyncExternalStore(
     subscribeSystemDark,
-    () => darkQuery()?.matches ?? false,
+    () => {
+      const nativeDark = readNativeSystemDark()
+      if (typeof nativeDark === 'boolean') return nativeDark
+      return darkQuery()?.matches ?? false
+    },
     () => false,
   )
 }
