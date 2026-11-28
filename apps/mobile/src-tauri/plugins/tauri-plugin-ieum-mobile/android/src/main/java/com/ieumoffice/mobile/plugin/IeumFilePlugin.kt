@@ -200,8 +200,9 @@ class IeumFilePlugin(private val activity: Activity) : Plugin(activity) {
             val insetsController = WindowInsetsControllerCompat(window, decorView)
             insetsController.isAppearanceLightStatusBars = !isDark
             insetsController.isAppearanceLightNavigationBars = !isDark
-            // Matches --chrome-bg (#252525 in dark, #ffffff in light) behind edge-to-edge bar padding.
-            val barBg = if (isDark) Color.parseColor("#252525") else Color.WHITE
+            // Matches --bg-content (#1a1a1a in dark, #fafafa in light) so the status bar blends
+            // seamlessly into the borderless home canvas and stays visually anchored above the editor bar.
+            val barBg = if (isDark) Color.parseColor("#1a1a1a") else Color.parseColor("#fafafa")
             decorView.setBackgroundColor(barBg)
             decorView.findViewById<View>(android.R.id.content)?.setBackgroundColor(barBg)
         }

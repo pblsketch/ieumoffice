@@ -51,8 +51,9 @@
   display: flex;
   align-items: center;
   gap: var(--m-space-2);
-  min-height: var(--m-appbar-h);
-  padding: 0 var(--m-space-2);
+  min-height: calc(var(--m-appbar-h) + var(--m-safe-top));
+  padding: var(--m-safe-top) calc(var(--m-space-2) + var(--m-safe-right)) 0
+    calc(var(--m-space-2) + var(--m-safe-left));
   background: var(--m-surface-raised);
   border-bottom: 1px solid var(--border-subtle);
 }

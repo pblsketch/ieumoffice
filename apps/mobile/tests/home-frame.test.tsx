@@ -544,3 +544,26 @@ describe('PDF tools link', () => {
     expect(byTestId('home-create-pdf-tools')).toBeNull()
   })
 })
+
+describe('home header layout and scroll collapse', () => {
+  it('renders a unified home header that compacts on body scroll and resets on tab switch', async () => {
+    const fake = fakeHost()
+    await renderHome({ host: fake.host })
+    const header = byTestId('home-header')
+    expect(header).not.toBeNull()
+    expect(header?.classList.contains('home-frame-header')).toBe(true)
+    expect(header?.getAttribute('data-scrolled')).toBeNull()
+
+    const body = document.body.querySelector<HTMLElement>('.home-frame-body')
+    expect(body).not.toBeNull()
+    Object.defineProperty(body!, 'scrollTop', { value: 48, configurable: true })
+    act(() => {
+      body!.dispatchEvent(new Event('scroll'))
+    })
+    expect(header?.getAttribute('data-scrolled')).toBe('true')
+
+    click(byTestId('home-tab-folders'))
+    await flush()
+    expect(header?.getAttribute('data-scrolled')).toBeNull()
+  })
+})

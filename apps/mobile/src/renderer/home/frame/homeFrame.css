@@ -17,9 +17,59 @@
   flex-direction: column;
 }
 
-/* Room under the last row so the [+] button never covers it. */
+/* Unified home header: shares the page canvas at rest with no harsh bar divider,
+   then compacts with a subtle border once content scrolls underneath. */
+.home-frame-header {
+  min-height: calc(var(--m-appbar-h) + var(--m-safe-top));
+  padding: calc(var(--m-safe-top) + var(--m-space-4)) calc(var(--m-space-4) + var(--m-safe-right))
+    var(--m-space-2) calc(var(--m-space-4) + var(--m-safe-left));
+  background: var(--bg-content);
+  border-bottom: 1px solid transparent;
+  transition:
+    background-color var(--m-motion-fast) var(--m-ease-standard),
+    border-color var(--m-motion-fast) var(--m-ease-standard),
+    padding var(--m-motion-fast) var(--m-ease-standard);
+}
+
+.home-frame-header .mobile-brand-wrap {
+  gap: var(--m-space-2);
+}
+
+.home-frame-header .mobile-brand-img {
+  border-radius: var(--radius-8);
+  transition: transform var(--m-motion-fast) var(--m-ease-standard);
+}
+
+.home-frame-header .mobile-appbar-title {
+  font-size: var(--m-text-title-l);
+  font-weight: 700;
+  line-height: var(--m-line-tight);
+  letter-spacing: -0.025em;
+  color: var(--text-strong);
+  transition: font-size var(--m-motion-fast) var(--m-ease-standard);
+}
+
+.home-frame-header[data-scrolled='true'] {
+  min-height: calc(var(--m-hit) + var(--m-safe-top));
+  padding-top: calc(var(--m-safe-top) + var(--m-space-1));
+  padding-bottom: var(--m-space-1);
+  background: var(--chrome-bg);
+  border-bottom-color: var(--border-subtle);
+}
+
+.home-frame-header[data-scrolled='true'] .mobile-brand-img {
+  transform: scale(0.86);
+}
+
+.home-frame-header[data-scrolled='true'] .mobile-appbar-title {
+  font-size: var(--m-text-title-m);
+}
+
+/* Room under the last row so the [+] button never covers it, and tight rhythm below the unified header. */
 .home-frame-body {
+  padding-top: var(--m-space-2);
   padding-bottom: calc(var(--m-fab-size) + var(--m-space-10) + var(--m-safe-bottom));
+  gap: var(--m-space-5);
 }
 
 .home-frame-panel {
@@ -28,6 +78,30 @@
   overflow-y: auto;
   display: flex;
   flex-direction: column;
+  padding: var(--m-space-2) calc(var(--m-space-4) + var(--m-safe-right))
+    calc(var(--m-fab-size) + var(--m-space-10) + var(--m-safe-bottom))
+    calc(var(--m-space-4) + var(--m-safe-left));
+}
+
+:root[data-window='medium'] .home-frame-header,
+:root[data-window='expanded'] .home-frame-header,
+:root[data-window='large'] .home-frame-header {
+  padding-left: calc(var(--m-space-6) + var(--m-safe-left));
+  padding-right: calc(var(--m-space-6) + var(--m-safe-right));
+}
+
+:root[data-window='medium'] .home-frame-panel,
+:root[data-window='expanded'] .home-frame-panel,
+:root[data-window='large'] .home-frame-panel {
+  padding-left: calc(var(--m-space-6) + var(--m-safe-left));
+  padding-right: calc(var(--m-space-6) + var(--m-safe-right));
+}
+
+/* In rail layout, the left navigation rail already absorbs --m-safe-left. */
+.home-frame[data-layout='rail'] .home-frame-header,
+.home-frame[data-layout='rail'] .home-frame-body,
+.home-frame[data-layout='rail'] .home-frame-panel {
+  padding-left: var(--m-space-6);
 }
 
 /* ── Tabs (compact) and rail (medium and up) ── */
@@ -123,12 +197,26 @@
   grid-auto-flow: column;
   grid-auto-columns: minmax(calc(var(--m-hit) * 2.75), 1fr);
   gap: var(--m-space-3);
+  margin-inline: calc(-1 * var(--m-space-4));
+  padding-inline: var(--m-space-4);
   overflow-x: auto;
   scrollbar-width: none;
 }
 
+:root[data-window='medium'] .home-frame-card-row,
+:root[data-window='expanded'] .home-frame-card-row,
+:root[data-window='large'] .home-frame-card-row {
+  margin-inline: calc(-1 * var(--m-space-6));
+  padding-inline: var(--m-space-6);
+}
+
 .home-frame-card-row::-webkit-scrollbar {
   display: none;
+}
+
+.home-frame-card {
+  min-height: 104px;
+  gap: var(--m-space-3);
 }
 
 /* ── Filter chips ── */

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState, type UIEvent } from 'react'
 import {
   linkFolder,
   openFavorite,
@@ -121,8 +121,18 @@ export function HomeScreen({
   const pdfToolsReady = host !== undefined && link !== null && isEditorOn(PDF_TOOLS_ID)
   const [createOpen, setCreateOpen] = useState(false)
   const [flowStart, setFlowStart] = useState<PdfToolStart | null>(null)
+  const [scrolled, setScrolled] = useState(false)
   const activeFolderPath = useActiveFolderPath()
   const listPrefs = useHomeListPrefs()
+
+  useEffect(() => {
+    setScrolled(false)
+  }, [tab])
+
+  const handleBodyScroll = useCallback((event: UIEvent<HTMLElement>) => {
+    const next = event.currentTarget.scrollTop > 8
+    setScrolled((prev) => (prev === next ? prev : next))
+  }, [])
 
   // ── Chips and lists ──
   const chips = useMemo(
@@ -274,7 +284,7 @@ export function HomeScreen({
   const listCount = showFavorites ? shownFavorites.length : recent.length
 
   const recentBody = (
-    <main className="mobile-page-body home-frame-body">
+    <main className="mobile-page-body home-frame-body" onScroll={handleBodyScroll}>
       {recoveryEntries.length > 0 && (
         <section
           className="mobile-card mobile-recovery-banner"
@@ -422,7 +432,11 @@ export function HomeScreen({
         {selecting ? (
           <HomeSelectionHeader count={selection.selectedKeys.length} onClose={selection.clear} />
         ) : (
-          <header className="mobile-appbar">
+          <header
+            className="mobile-appbar home-frame-header"
+            data-testid="home-header"
+            data-scrolled={scrolled ? 'true' : undefined}
+          >
             <div className="mobile-brand-wrap">
               <IeumAppIcon size={28} />
               <h1 className="mobile-appbar-title">{t('appTitle')}</h1>
@@ -443,7 +457,11 @@ export function HomeScreen({
         )}
 
         {TabContent && host ? (
-          <main className="home-frame-panel" data-testid={`home-panel-${tab}`}>
+          <main
+            className="home-frame-panel"
+            data-testid={`home-panel-${tab}`}
+            onScroll={handleBodyScroll}
+          >
             <TabContent host={host} />
           </main>
         ) : (
