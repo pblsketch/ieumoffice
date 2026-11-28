@@ -88,13 +88,13 @@ export function ReadOnlyStrip({ origin, busy, onEditCopy, onClose }: ReadOnlyStr
       </button>
       <button
         type="button"
-        className="mobile-icon-btn"
+        className="mobile-icon-btn home-run-strip-close"
         data-testid="home-run-strip-close"
         aria-label={t('homeRunStripClose')}
         title={t('homeRunStripClose')}
         onClick={onClose}
       >
-        <IconClose size={18} />
+        <IconClose size={16} />
       </button>
     </div>
   )

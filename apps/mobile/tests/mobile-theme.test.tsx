@@ -294,4 +294,25 @@ describe('native mobile theme plugins', () => {
     expect(swift).toContain('case "dark":')
     expect(swift).toContain('style = .unspecified')
   })
+
+  it('prevents double top safe-area insets on Android while preserving CSS safe-area on iOS', () => {
+    const ktPath = resolve(
+      PLUGIN_ROOT,
+      'android/src/main/java/com/ieumoffice/mobile/plugin/IeumFilePlugin.kt',
+    )
+    const kt = readFileSync(ktPath, 'utf8')
+    expect(kt).toContain('view.setPadding(insets.left, insets.top, insets.right, insets.bottom)')
+    expect(kt).toContain('WindowInsetsCompat.CONSUMED')
+
+    const swiftPath = resolve(PLUGIN_ROOT, 'ios/Sources/IeumFilePlugin.swift')
+    const swift = readFileSync(swiftPath, 'utf8')
+    expect(swift).toContain('scrollView.contentInsetAdjustmentBehavior = .never')
+
+    const tokensCss = readFileSync(
+      resolve(HERE, '..', 'src', 'renderer', 'styles', 'mobile-tokens.css'),
+      'utf8',
+    )
+    expect(tokensCss).toContain('--m-editor-bar-h: 48px;')
+    expect(tokensCss).toContain('min-height: calc(var(--m-editor-bar-h) + var(--m-safe-top));')
+  })
 })

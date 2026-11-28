@@ -267,7 +267,9 @@ class IeumFilePlugin(private val activity: Activity) : Plugin(activity) {
                         WindowInsetsCompat.Type.ime()
                 )
                 view.setPadding(insets.left, insets.top, insets.right, insets.bottom)
-                windowInsets
+                // Consume insets once applied natively so Chromium WebView does not also
+                // report the same status-bar / cutout height via CSS env(safe-area-inset-*).
+                WindowInsetsCompat.CONSUMED
             }
             ViewCompat.requestApplyInsets(content)
         }
