@@ -9,6 +9,7 @@ import {
   useState,
 } from 'react'
 import type {
+  CSSProperties,
   DragEvent as ReactDragEvent,
   PointerEvent as ReactPointerEvent,
   ReactElement,
@@ -30,6 +31,7 @@ import type {
   FolderEntry,
   FolderListing,
   FolderRoot,
+  FolderRootKind,
   HomeApi,
   MoveConflictPolicy,
   RecentEntry,
@@ -209,17 +211,92 @@ export function FileBadge({ ext, size }: { ext: string; size: number }) {
   )
 }
 
-export function FolderIcon({ size = 16, open = false }: { size?: number; open?: boolean }) {
+export function FolderIcon({
+  size = 16,
+  open = false,
+  kind,
+}: {
+  size?: number
+  open?: boolean
+  kind?: FolderRootKind
+}) {
+  if (kind === 'drive') {
+    return (
+      <svg width={size} height={size} viewBox="0 0 16 16" fill="none" aria-hidden="true">
+        <rect
+          x="1.5"
+          y="4.5"
+          width="13"
+          height="7"
+          rx="1.6"
+          fill="var(--explorer-drive-body)"
+          stroke="var(--explorer-drive-border)"
+          strokeWidth="1.1"
+        />
+        <line
+          x1="1.8"
+          y1="8.2"
+          x2="14.2"
+          y2="8.2"
+          stroke="var(--explorer-drive-border)"
+          strokeWidth="0.9"
+        />
+        <circle cx="11.8" cy="9.8" r="0.95" fill="var(--accent)" />
+        <rect x="3.2" y="9.3" width="5.2" height="1" rx="0.5" fill="var(--explorer-drive-border)" />
+      </svg>
+    )
+  }
+  if (kind === 'desktop') {
+    return (
+      <svg width={size} height={size} viewBox="0 0 16 16" fill="none" aria-hidden="true">
+        <rect
+          x="1.5"
+          y="2.5"
+          width="13"
+          height="8.8"
+          rx="1.4"
+          fill="var(--explorer-desktop-screen)"
+          stroke="var(--explorer-desktop-border)"
+          strokeWidth="1.1"
+        />
+        <path
+          d="M5.5 13.5h5M8 11.3v2.2"
+          stroke="var(--explorer-desktop-border)"
+          strokeWidth="1.2"
+          strokeLinecap="round"
+        />
+      </svg>
+    )
+  }
   return (
     <svg width={size} height={size} viewBox="0 0 16 16" fill="none" aria-hidden="true">
       <path
-        d="M1.5 4A1.5 1.5 0 0 1 3 2.5h3.1c.44 0 .85.19 1.13.52L8.4 4.4H13A1.5 1.5 0 0 1 14.5 5.9v5.6A1.5 1.5 0 0 1 13 13H3a1.5 1.5 0 0 1-1.5-1.5V4z"
-        stroke="currentColor"
-        strokeWidth="1.2"
+        d="M1.5 3.6A1.3 1.3 0 0 1 2.8 2.3h3.3c.38 0 .74.16.99.45l1.02 1.15H13.2a1.3 1.3 0 0 1 1.3 1.3v6.5a1.3 1.3 0 0 1-1.3 1.3H2.8a1.3 1.3 0 0 1-1.3-1.3V3.6z"
+        fill="var(--explorer-folder-back)"
+        stroke="var(--explorer-folder-stroke)"
+        strokeWidth="1"
         strokeLinejoin="round"
-        fill={open ? 'currentColor' : 'none'}
-        fillOpacity={open ? 0.12 : 0}
       />
+      <path
+        d={
+          open
+            ? 'M1.2 6.3A1.1 1.1 0 0 1 2.3 5.2h11.4a1.1 1.1 0 0 1 1.08 1.3l-.9 5.5a1.2 1.2 0 0 1-1.18 1H2.3a1.1 1.1 0 0 1-1.08-1.3l.58-5.4z'
+            : 'M1.5 5.4A1.1 1.1 0 0 1 2.6 4.3h10.8a1.1 1.1 0 0 1 1.1 1.1v6.4a1.2 1.2 0 0 1-1.2 1.2H2.7a1.2 1.2 0 0 1-1.2-1.2V5.4z'
+        }
+        fill="var(--explorer-folder-front)"
+        stroke="var(--explorer-folder-stroke)"
+        strokeWidth="1"
+        strokeLinejoin="round"
+      />
+      {kind === 'downloads' && (
+        <path
+          d="M8 6.2v4.1M6.3 8.8L8 10.5l1.7-1.7"
+          stroke="var(--explorer-folder-badge)"
+          strokeWidth="1.25"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      )}
     </svg>
   )
 }
@@ -1414,8 +1491,14 @@ export function Home({
     if (seededRoot.current !== root.path) {
       seededRoot.current = root.path
       if (treeState.root !== root.path) {
-        // a layout saved for another root is not ours: start from the root rows
-        setExpanded(new Set(roots.map((r) => r.path)))
+        // a layout saved for another root is not ours: start with the default save folder and custom roots open, keeping system drives collapsed
+        setExpanded(
+          new Set(
+            roots
+              .filter((r) => !r.kind || r.kind === 'save' || r.kind === 'custom')
+              .map((r) => r.path),
+          ),
+        )
         return
       }
     }
@@ -1783,7 +1866,7 @@ export function Home({
   }
 
   const selectFolder = (dir: string) => {
-    setSelectedFolder(dir)
+    setSelectedFolder((prev) => (prev === dir ? null : dir))
     setAskMode(false)
     setDriveMode(false)
     setProjectsMode(false)
@@ -2300,6 +2383,10 @@ export function Home({
           onClick={() => {
             if (!unavailable) selectFolder(entry.path)
           }}
+          onDoubleClick={() => {
+            if (!unavailable && selectedFolder !== entry.path) setSelectedFolder(entry.path)
+            if (showChevron) toggleExpanded(entry.path)
+          }}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !unavailable) selectFolder(entry.path)
             if (e.key === 'ArrowRight' && !isOpen) toggleExpanded(entry.path)
@@ -2333,7 +2420,7 @@ export function Home({
             <Chevron open={isOpen} />
           </button>
           <span className="tree-icon" aria-hidden="true">
-            <FolderIcon open={isOpen} />
+            <FolderIcon open={isOpen} kind={rootEntry?.kind} />
           </span>
           {isRenaming ? (
             <input
@@ -2360,7 +2447,11 @@ export function Home({
           {renderFolderMenu(entry, rootEntry)}
         </div>
         {isOpen && (children.length > 0 || creating?.parent === entry.path) && (
-          <ul className="tree-children" role="group">
+          <ul
+            className="tree-children"
+            role="group"
+            style={{ '--tree-guide-x': `${13 + depth * 14}px` } as CSSProperties}
+          >
             {creating?.parent === entry.path && renderNewFolderInput(depth + 1)}
             {children.map((child) => renderTreeNode(child, depth + 1))}
           </ul>
@@ -3212,6 +3303,27 @@ export function Home({
               renderSearchHeading()
             ) : (
               <div className="recents-heading folder-heading">
+                <button
+                  type="button"
+                  className="folder-back-recent-btn"
+                  onClick={() => changeView('recent')}
+                >
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                    <path
+                      d="M10 3.5L5.5 8l4.5 4.5"
+                      stroke="currentColor"
+                      strokeWidth="1.6"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                  <span>{t('navRecent')}</span>
+                </button>
+                {selectedFolder && (
+                  <span className="folder-current-label" title={selectedFolder}>
+                    {fileName(selectedFolder) || selectedFolder}
+                  </span>
+                )}
                 <span className="file-count">
                   {t(total === 1 ? 'itemCountOne' : 'itemCount', { n: total })}
                 </span>
@@ -3245,8 +3357,8 @@ export function Home({
                 <span />
               </div>
               <ul className="recent-list">
-                {folderSubfolders.map((entry) => renderSubfolderRow(entry))}
                 {sortedFiles.map((entry) => renderFileRow(entry, 'folder'))}
+                {folderSubfolders.map((entry) => renderSubfolderRow(entry))}
               </ul>
             </div>
           )}

@@ -45,12 +45,12 @@ function instructions(name: string): string[] {
     .filter((line) => line !== '' && !line.startsWith(';'))
 }
 
-const PROGID = 'IeumOffice.OpenDocumentSpreadsheet'
+const PROGID = 'PosidOffice.OpenDocumentSpreadsheet'
 
 describe('the ODS "Open with" registration', () => {
   it('uses a ProgId of this product that the upstream app never registers', () => {
     expect(nsh).toContain(`!define GENOFFICE_ODS_PROGID "${PROGID}"`)
-    expect(PROGID).toMatch(/^IeumOffice\.[A-Za-z][A-Za-z0-9]*$/)
+    expect(PROGID).toMatch(/^PosidOffice\.[A-Za-z][A-Za-z0-9]*$/)
     // Windows limits a ProgId to 39 characters
     expect(PROGID.length).toBeLessThanOrEqual(39)
     expect(PROGID.toLowerCase()).not.toContain('genoffice')
@@ -65,7 +65,7 @@ describe('the ODS "Open with" registration', () => {
       (association: { ext: string }) => association.ext === 'ods',
     ) as { name: string } | undefined
     expect(entry, 'mac / Linux do not offer the app for .ods').toBeTruthy()
-    expect(`IeumOffice.${entry!.name.replace(/[^A-Za-z0-9]/g, '')}`).toBe(PROGID)
+    expect(`PosidOffice.${entry!.name.replace(/[^A-Za-z0-9]/g, '')}`).toBe(PROGID)
   })
 
   it('writes the ProgId with an open command and the xlsx icon, and offers it for .ods', () => {

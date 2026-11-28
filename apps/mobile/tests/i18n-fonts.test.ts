@@ -25,10 +25,10 @@ describe('mobile i18n completeness and branding', () => {
   })
 
   it('applies brandText substitution for product names across languages', () => {
-    expect(translateMobile('ko', 'appTitle')).toBe('이음오피스')
-    expect(translateMobile('en', 'appTitle')).toBe('IeumOffice')
-    expect(translateMobile('ko', 'aiSharingDeclinedDesc')).toContain('이음오피스')
-    expect(translateMobile('en', 'aiSharingDeclinedDesc')).toContain('IeumOffice')
+    expect(translateMobile('ko', 'appTitle')).toBe('PosidOffice')
+    expect(translateMobile('en', 'appTitle')).toBe('PosidOffice')
+    expect(translateMobile('ko', 'aiSharingDeclinedDesc')).toContain('PosidOffice')
+    expect(translateMobile('en', 'aiSharingDeclinedDesc')).toContain('PosidOffice')
   })
 })
 

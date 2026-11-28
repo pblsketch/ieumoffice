@@ -195,7 +195,7 @@ describe('checkUpdatesMenuItem / manual update check wiring', () => {
     expect(helpCheckUpdatesItems(en, 'darwin').map((i) => i.label)).toEqual([en.checkUpdates])
   })
 
-  it('ends the ☰ popup with Settings… and the check on their own, after the window menus', () => {
+  it('ends the ☰ popup with Settings… on its own, after the window menus, with no update item', () => {
     const menus = [{ label: 'File', submenu: [] }, helpMenuTemplate(en, [], 'win32')]
     const popup = appMenuPopupTemplate(menus, en)
     expect(popup.slice(0, 2)).toEqual(menus)
@@ -203,13 +203,8 @@ describe('checkUpdatesMenuItem / manual update check wiring', () => {
     expect(popup[3]!.label).toBe(en.settings)
     // the popup only prints Ctrl+,; the shell's key handler takes the press
     expect(popup[3]).toMatchObject({ accelerator: 'CmdOrCtrl+,', registerAccelerator: false })
-    expect(popup[4]!.label).toBe(en.checkUpdates)
-    expect(popup).toHaveLength(5)
-
-    const invoke = vi.fn()
-    setUpdateCheckInvoker(invoke)
-    ;(popup[4] as { click: () => void }).click()
-    expect(invoke).toHaveBeenCalledOnce()
+    expect(popup).toHaveLength(4)
+    expect(popup.map((i) => i.label)).not.toContain(en.checkUpdates)
 
     const open = vi.fn()
     setOpenSettingsInvoker(open)
@@ -238,45 +233,23 @@ describe('checkUpdatesMenuItem / manual update check wiring', () => {
     expect(invoke).toHaveBeenCalledOnce()
   })
 
-  it('About dialog offers the check button only when a check is registered', async () => {
+  it('About dialog shows only the OK button', async () => {
     electronMock.showMessageBox.mockResolvedValue({ response: 0 })
     const about = aboutMenuItem(en) as { click: () => Promise<void> }
 
-    await about.click()
-    expect(electronMock.showMessageBox.mock.calls.at(-1)![0].buttons).toEqual(['OK', en.copy])
-
     setUpdateCheckInvoker(() => {})
     await about.click()
-    expect(electronMock.showMessageBox.mock.calls.at(-1)![0].buttons).toEqual([
-      'OK',
-      en.copy,
-      en.checkUpdates,
-    ])
-  })
-
-  it('About dialog third button triggers the registered check', async () => {
-    const invoke = vi.fn()
-    setUpdateCheckInvoker(invoke)
-    electronMock.showMessageBox.mockResolvedValue({ response: 2 })
-    await (aboutMenuItem(en) as { click: () => Promise<void> }).click()
-    expect(invoke).toHaveBeenCalledOnce()
-    expect(electronMock.writeText).not.toHaveBeenCalled()
-  })
-
-  it('About dialog copy button still copies name + version', async () => {
-    electronMock.showMessageBox.mockResolvedValue({ response: 1 })
-    await (aboutMenuItem(en) as { click: () => Promise<void> }).click()
-    expect(electronMock.writeText).toHaveBeenCalledWith('IeumOffice 1.2.3')
+    expect(electronMock.showMessageBox.mock.calls.at(-1)![0].buttons).toEqual(['OK'])
   })
 
   it('names the product in the About entry of every language', () => {
-    expect(en.about).toBe('About IeumOffice')
-    expect(appMenuLabels('ko').about).toBe('이음오피스 정보')
-    expect(appMenuLabels('ja').about).toBe('IeumOffice について')
+    expect(en.about).toBe('About PosidOffice')
+    expect(appMenuLabels('ko').about).toBe('PosidOffice 정보')
+    expect(appMenuLabels('ja').about).toBe('PosidOffice について')
     for (const lang of [...LANGS, 'vi']) {
       const about = appMenuLabels(lang).about
       expect(about, lang).not.toContain('GenOffice')
-      expect(about, lang).toContain(lang === 'ko' ? '이음오피스' : 'IeumOffice')
+      expect(about, lang).toContain(lang === 'ko' ? 'PosidOffice' : 'PosidOffice')
     }
   })
 
@@ -287,14 +260,14 @@ describe('checkUpdatesMenuItem / manual update check wiring', () => {
       setUiLang('en')
       await about.click()
       expect(electronMock.showMessageBox.mock.calls.at(-1)![0]).toMatchObject({
-        title: 'IeumOffice',
-        message: 'IeumOffice',
+        title: 'PosidOffice',
+        message: 'PosidOffice',
       })
       setUiLang('ko')
       await about.click()
       expect(electronMock.showMessageBox.mock.calls.at(-1)![0]).toMatchObject({
-        title: '이음오피스',
-        message: '이음오피스',
+        title: 'PosidOffice',
+        message: 'PosidOffice',
       })
     } finally {
       setUiLang('zh')
@@ -306,12 +279,11 @@ describe('macAppMenuTemplate / Settings… and the update check where Mac users 
   const items = (tpl: ReturnType<typeof macAppMenuTemplate>) =>
     tpl.submenu as { role?: string; type?: string; label?: string; accelerator?: string }[]
 
-  it('is the app menu with About, the check and Settings… (⌘,) above the system items', () => {
+  it('is the app menu with About and Settings… (⌘,) above the system items, no update check', () => {
     const tpl = macAppMenuTemplate(en)
     expect(tpl.role).toBe('appMenu')
     expect(items(tpl).map((i) => i.label ?? i.role ?? i.type)).toEqual([
       en.about,
-      en.checkUpdates,
       'separator',
       en.settings,
       'separator',
@@ -323,7 +295,7 @@ describe('macAppMenuTemplate / Settings… and the update check where Mac users 
       'separator',
       'quit',
     ])
-    const settings = items(tpl)[3] as { accelerator?: string; registerAccelerator?: boolean }
+    const settings = items(tpl)[2] as { accelerator?: string; registerAccelerator?: boolean }
     expect(settings.accelerator).toBe('CmdOrCtrl+,')
     expect(settings.registerAccelerator).toBeUndefined()
   })
@@ -334,10 +306,10 @@ describe('macAppMenuTemplate / Settings… and the update check where Mac users 
       extraItems: [{ label: 'Word Preferences…' }],
     })
     const list = items(tpl)
-    expect(list[3]!.label).toBe(en.settings)
-    expect(list[3]!.accelerator).toBeUndefined()
-    expect(list[4]!.label).toBe('Word Preferences…')
-    expect(list[5]!.type).toBe('separator')
+    expect(list[2]!.label).toBe(en.settings)
+    expect(list[2]!.accelerator).toBeUndefined()
+    expect(list[3]!.label).toBe('Word Preferences…')
+    expect(list[4]!.type).toBe('separator')
   })
 
   it('runs the shell-registered opener on click, and no-ops unregistered', () => {

@@ -278,7 +278,15 @@ describe('the default view', () => {
     const labels = [...host.querySelectorAll('.set-nav-item')].map((item) =>
       item.textContent?.trim(),
     )
-    expect(labels).toEqual(['Account', 'AI', 'Skills', 'General', 'Integrations', 'About'])
+    expect(labels).toEqual([
+      'Account',
+      'AI',
+      'Ollama',
+      'Skills',
+      'General',
+      'Integrations',
+      'About',
+    ])
   })
 
   it('shows both subscription cards, the free cards, and no paid key input', async () => {

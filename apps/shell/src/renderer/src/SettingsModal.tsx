@@ -58,6 +58,8 @@ import type { AiCatalogEntry, DocTheme, UiTheme } from '../../shared/home-api'
 import { ProviderLogo } from './provider-logos'
 import { IntegrationsPane, skillUpdateDue } from './IntegrationsPane'
 import { AiSection, SubscriptionSummary } from './SettingsAiSection'
+import { OllamaPane } from './OllamaPane'
+import { ollamaText } from './i18n/strings-ollama'
 import { HomeKindsField } from './SettingsHomeKinds'
 import { QuickLookField } from './SettingsQuickLook'
 import { SlidesFontsField } from './SettingsSlidesFonts'
@@ -226,6 +228,7 @@ const SECTIONS: readonly SectionEntry[] = [
   { id: 'account', labelKey: 'setSecAccount' },
   // one AI entry: 'aiMedia' stays a valid target and opens it on the Advanced media area
   { id: 'aiModel', labelKey: 'setSecAi' },
+  { id: 'ollama', label: (lang) => ollamaText(lang, 'title') },
   { id: 'skills', label: (lang) => skillsText(lang, 'navLabel') },
   { id: 'general', labelKey: 'setSecGeneral' },
   { id: 'editorChoice', label: (lang) => editorPickText(lang, 'settingsTabName') },
@@ -234,6 +237,15 @@ const SECTIONS: readonly SectionEntry[] = [
 ]
 
 function SectionIcon({ id }: { id: SectionId }) {
+  if (id === 'ollama') {
+    return (
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+        <rect x="2" y="2" width="12" height="5" rx="1" stroke="currentColor" />
+        <rect x="2" y="9" width="12" height="5" rx="1" stroke="currentColor" />
+        <path d="M4 4.5h2M4 11.5h2" stroke="currentColor" />
+      </svg>
+    )
+  }
   if (id === 'aiModel') {
     return (
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
@@ -2017,6 +2029,7 @@ export function SettingsModal({
                 openItems={openItems}
               />
             )}
+            {section === 'ollama' && <OllamaPane />}
             {section === 'general' && (
               <>
                 <h3 className="set-pane-title">{t('setSecGeneral')}</h3>

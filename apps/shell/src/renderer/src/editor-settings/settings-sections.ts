@@ -8,6 +8,7 @@
 export const SETTINGS_SECTION_IDS = [
   'account',
   'aiModel',
+  'ollama',
   'aiMedia',
   'skills',
   'general',
@@ -22,6 +23,7 @@ export type SectionId = (typeof SETTINGS_SECTION_IDS)[number]
 export const AI_ONLY_SECTIONS: ReadonlySet<SectionId> = new Set<SectionId>([
   'account',
   'aiModel',
+  'ollama',
   'aiMedia',
   'skills',
 ])

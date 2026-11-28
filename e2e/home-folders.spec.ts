@@ -137,12 +137,14 @@ test.describe('home folders panel', () => {
     try {
       const tree = page.locator('.folder-panel .tree')
       const rootRows = tree.locator(':scope > .tree-item > .tree-row')
-      await expect(rootRows).toHaveCount(2)
+      // PosidOffice also lists the PC's home, Desktop, Documents, Downloads and
+      // drives as roots, as many as exist on the machine: find the added one by name
+      const extraRows = rootRows.filter({ hasText: extra.split('/').pop()! })
+      await expect(extraRows).toHaveCount(1)
       await expect(rootRows.nth(0)).toContainText(root.split('/').pop()!)
-      await expect(rootRows.nth(1)).toContainText(extra.split('/').pop()!)
 
       // every root row opens on a fresh profile, so the added root shows its real contents
-      await expect(rootRows.nth(1)).toHaveAttribute('aria-expanded', 'true')
+      await expect(extraRows.first()).toHaveAttribute('aria-expanded', 'true')
       await expect(tree.locator('.tree-name', { hasText: 'Projects' })).toBeVisible()
       await tree.locator('.tree-name', { hasText: 'Projects' }).click()
       await expect(page.locator('.recent-list .recent-name', { hasText: 'plan.md' })).toBeVisible()
@@ -160,10 +162,11 @@ test.describe('home folders panel', () => {
       await page.screenshot({ path: screenshotPath('home-folders-extra-root') })
 
       // remove from the list: the row goes, the setting empties, the disk is untouched
-      await rootRows.nth(1).hover()
-      await rootRows.nth(1).locator('.folder-more-btn').click()
+      await extraRows.first().hover()
+      await extraRows.first().locator('.folder-more-btn').click()
       await page.locator('.folder-menu button', { hasText: 'Remove from list' }).click()
-      await expect(rootRows).toHaveCount(1)
+      await expect(extraRows).toHaveCount(0)
+      await expect(rootRows.nth(0)).toContainText(root.split('/').pop()!)
       await expect(page.locator('.recent-list .recent-name', { hasText: 'plan.md' })).toHaveCount(0)
       await expect
         .poll(() => {

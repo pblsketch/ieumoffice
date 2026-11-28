@@ -9,6 +9,7 @@ import { streamClaudeCodeCli } from './claude-code-cli'
 import { streamChatGpt } from './chatgpt/responses'
 import { streamAntigravityPanel } from './antigravity-panel'
 import type { StreamCallbacks } from './protocols/shared'
+import { ollamaEffortPresetOf } from './custom-endpoints'
 import { keyEffortBody } from './key-effort'
 import { getProviderAdapter, type AiProtocol } from './registry'
 import { AiRunError } from './run-error'
@@ -89,6 +90,8 @@ export async function streamForProvider(
           useMaxCompletionTokens: endpoint.useMaxCompletionTokens,
           bodyExtras: effortBody ? { ...endpoint.bodyExtras, ...effortBody } : endpoint.bodyExtras,
           ...(options.timeoutMs !== undefined ? { timeoutMs: options.timeoutMs } : {}),
+          effort: ollamaEffortPresetOf(config.effort) ?? endpoint.effort,
+          isCustomProvider: provider === 'custom',
         })
       case 'openai-responses':
         return streamOpenAiResponses(baseUrl, config, system, messages, tools, cap, cb, {

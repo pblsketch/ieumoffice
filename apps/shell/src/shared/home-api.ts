@@ -13,6 +13,7 @@ import type {
   AiStreamChunk,
   AiStreamRequest,
   CodexModelCatalog,
+  OllamaModelInfo,
   FreeAiConnectResult,
   FreeAiProviderId,
   FreeAiQuota,
@@ -337,6 +338,8 @@ export interface HomeApi {
   setAutoUpdateCheck(on: boolean): Promise<void>
   /** a tab asked for the settings modal (composer model chip → AI Model section) */
   onOpenSettings(handler: (target: { section: string; field?: string }) => void): () => void
+  /** open the shell's Ollama model manager from first-run setup */
+  openOllamaSettings(): Promise<void>
   /** app version (from package.json / electron app.getVersion) */
   getAppVersion(): Promise<string>
   /** live updater state (null until an update was first seen); Settings → About */
@@ -430,6 +433,8 @@ export interface HomeApi {
   getCodexModels(cliPath?: string): Promise<CodexModelCatalog>
   /** live model list advertised by a user-hosted OpenAI-compatible endpoint; empty when it cannot answer */
   getCustomModels(baseUrl: string, apiKey?: string): Promise<CodexModelCatalog>
+  /** one model's capabilities from Ollama's /api/show; empty capabilities means not checked (not Ollama, offline) */
+  getOllamaModelInfo(baseUrl: string, model: string, apiKey?: string): Promise<OllamaModelInfo>
   /** models a local AI server advertises (Ollama's own API or OpenAI-compatible `/models`) */
   getLocalModels(input: { baseUrl: string; apiKey?: string }): Promise<AiLocalDiscoveryResult>
   /** what one model on a local server reports about itself (context window, tools, vision) */
@@ -511,6 +516,8 @@ export interface NewFileOpts {
 
 // ── Folder tree (home "Folders" panel: the default save folder plus any folder the user added) ──
 
+export type FolderRootKind = 'save' | 'desktop' | 'documents' | 'downloads' | 'drive' | 'custom'
+
 export interface FolderRoot {
   path: string
   /** folder name shown on the root row */
@@ -521,6 +528,8 @@ export interface FolderRoot {
   readable: boolean
   /** an added folder: can be taken off the list; the default save folder cannot */
   removable: boolean
+  /** optional visual role for Explorer-style root rows */
+  kind?: FolderRootKind
 }
 
 export interface FolderEntry {

@@ -104,6 +104,36 @@ describe('chatForProvider', () => {
     )
   })
 
+  it('custom: returns known Ollama failures as friendly assistant text', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(errorResponse(404, 'model "llama3" not found')),
+    )
+    const result = await chatForProvider(
+      'custom',
+      { apiKey: '', model: 'llama3', baseUrl: 'http://localhost:11434/v1' },
+      'sys',
+      '확인해줘',
+    )
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.content).toMatch(/Ollama 서버에서 찾을 수 없습니다/)
+      expect(result.content).toContain('llama3')
+    }
+  })
+
+  it('custom: keeps unknown errors as errors', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(errorResponse(401, 'invalid API key')))
+    const result = await chatForProvider(
+      'custom',
+      { apiKey: '', model: 'llama3', baseUrl: 'http://localhost:11434/v1' },
+      'sys',
+      '확인해줘',
+    )
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.error).toContain('invalid API key')
+  })
+
   it('custom: rejects without a base URL, without calling fetch', async () => {
     const fetchMock = vi.fn()
     vi.stubGlobal('fetch', fetchMock)

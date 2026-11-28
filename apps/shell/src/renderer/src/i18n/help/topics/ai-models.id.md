@@ -41,3 +41,11 @@ Di **Lanjutan ▸ Media & Pencarian AI**, kunci dan base URL sebuah penyedia cuk
 ## Kapan perubahan berlaku
 
 - Perubahan model dan endpoint berlaku seketika; percakapan yang sedang berjalan memakai konfigurasi lama sampai putaran berikutnya.
+
+## Server dan model Ollama
+
+Saat pertama dibuka, **Ollama lokal** muncul secara bawaan dan mengambil daftar modelnya. Jika dihapus, server ini tidak dibuat ulang.
+
+Di **Pengaturan → Ollama → Tambah server**, masukkan nama dan alamat. Alamat bawaan adalah `http://localhost:11434/v1`; kunci API opsional. Penambahan mengambil daftar model terpasang. **Daftarkan** menampilkan model di pengaturan AI dan pemilih model dokumen tanpa mengubah AI saat ini.
+
+Klik nama server untuk mengedit nama, alamat, atau kunci; penyimpanan juga memperbarui model terdaftar. **Uji koneksi** memuat ulang daftar. Menghapus server menghapus entri terdaftarnya, tetapi tidak menghapus berkas model di server. Server lokal dengan model yang sudah siap dapat digunakan tanpa Internet. Pengeditan dokumen memerlukan dukungan pemanggilan alat.

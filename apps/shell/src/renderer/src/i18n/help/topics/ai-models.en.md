@@ -41,3 +41,11 @@ Under **Advanced ▸ AI Media & Search**, a provider's key and base URL are ente
 ## When changes apply
 
 - Model and endpoint changes apply immediately; an in-flight conversation keeps the old configuration until its next turn.
+
+## Ollama servers and models
+
+On the first visit, **Local Ollama** appears by default and fetches its models. If you remove it, it will not be recreated.
+
+In **Settings → Ollama → Add server**, enter a name and address. The default is `http://localhost:11434/v1`; the API key is optional. Adding a server fetches its installed models. **Register** adds a model to **AI → AI to use** and document model pickers without changing the current AI.
+
+Click a server name to edit its name, address or key; saving also updates its registered models. **Test connection** refreshes the model list. Removing a server removes its registered entries, but keeps model files on the server. Once a local server and models are ready, they can work offline. Document editing requires tool-call support.

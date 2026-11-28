@@ -1,0 +1,297 @@
+.ollama-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.ollama-card,
+.ollama-form {
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  padding: 16px;
+  background: var(--surface);
+}
+
+.ollama-card-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ollama-pane .set-pane-title,
+.ollama-pane .set-btn-row {
+  margin: 0;
+}
+
+.ollama-server-heading {
+  min-width: 0;
+  flex: 1 1 180px;
+}
+
+.ollama-name {
+  border: none;
+  padding: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-weight: 600;
+  text-align: start;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+
+.ollama-name:hover {
+  text-decoration: underline;
+}
+
+.ollama-url {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 4px;
+  overflow-wrap: anywhere;
+}
+
+.ollama-timeout {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.ollama-timeout input {
+  width: 52px;
+  padding: 2px 4px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text-primary);
+  font: inherit;
+}
+
+.ollama-timeout input:focus {
+  outline: none;
+  border-color: var(--accent, var(--text-primary));
+}
+
+.ollama-timeout input:disabled {
+  opacity: 0.55;
+}
+
+.ollama-form fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.ollama-form legend {
+  font-weight: 600;
+}
+
+.ollama-form .set-field {
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.ollama-form .set-input {
+  flex: 1 1 220px;
+  width: auto;
+  min-width: 0;
+}
+
+.ollama-form .set-btn-row {
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+
+.ollama-card > .ollama-form,
+.ollama-confirm {
+  margin-top: 16px;
+}
+
+.ollama-form summary {
+  cursor: pointer;
+  color: var(--text-secondary);
+}
+
+.ollama-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.ollama-status.ok {
+  color: var(--success);
+}
+
+.ollama-error,
+.ollama-status.error {
+  color: var(--danger);
+}
+
+.ollama-model-columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr));
+  gap: 16px;
+}
+
+.ollama-model-columns section {
+  min-width: 0;
+}
+
+.ollama-model-columns h4 {
+  margin: 0 0 8px;
+  font-size: 13px;
+}
+
+.ollama-model-columns p,
+.ollama-empty {
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.ollama-models {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 280px;
+  overflow: auto;
+}
+
+.ollama-models li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.ollama-models li.ollama-model-row {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+}
+
+.ollama-model-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.ollama-model-title,
+.ollama-registered-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+
+.ollama-model-raw {
+  font-size: 11px;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.ollama-vision-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 6px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  font-size: 10px;
+  font-weight: 400;
+  line-height: 16px;
+  color: var(--text-secondary);
+  vertical-align: middle;
+}
+
+.ollama-model-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ollama-effort-bar {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 240px;
+  height: 22px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--surface-subtle);
+  font-size: 11px;
+}
+
+.ollama-effort-seg {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  border-left: 1px solid var(--border-subtle);
+  padding: 0 4px;
+  background: transparent;
+  color: var(--text-tertiary);
+  font: inherit;
+  cursor: pointer;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.ollama-effort-seg:first-child {
+  border-left: 0;
+}
+
+.ollama-effort-seg:hover:not(:disabled):not(.on) {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.ollama-effort-seg.on {
+  background: var(--color-btn-primary);
+  color: var(--color-btn-primary-text);
+}
+
+.ollama-effort-seg.registered {
+  background: var(--success);
+  color: var(--color-btn-primary-text);
+  cursor: default;
+}
+
+.ollama-effort-seg:disabled {
+  cursor: default;
+}
+
+.ollama-effort-seg:disabled:not(.on) {
+  opacity: 0.55;
+}
+
+.ollama-models li.ollama-registered-row {
+  justify-content: space-between;
+}
+
+.ollama-registered-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 2px;
+}
+
+.ollama-models li > span {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+
+.ollama-models .set-btn {
+  flex-shrink: 0;
+}

@@ -251,7 +251,7 @@ async function runToolsCheck(
       [PROBE_TOOL],
       TOOL_MAX_TOKENS,
       callbacks,
-      { timeoutMs: remaining, maxTokens: TOOL_MAX_TOKENS, temperature: 0 },
+      { timeoutMs: remaining, maxTokens: TOOL_MAX_TOKENS, temperature: 0, rawErrors: true },
     )
     return probeCalled ? { status: 'pass' } : { status: 'fail', code: 'no-tool-call' }
   } catch (error) {

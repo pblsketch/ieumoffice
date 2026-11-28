@@ -21,13 +21,13 @@ link="/usr/bin/ieumoffice"
 # same ownership rule as the post-install: only a link into our install dir is ours
 if [ -L "$link" ]; then
   case "$(readlink "$link")" in
-    /opt/IeumOffice/*) rm -f "$link" ;;
+    /opt/PosidOffice/*) rm -f "$link" ;;
   esac
 fi
 # Drop the KDE "Create New" templates the post-install step installed. Only
 # our exact file names are removed, so the directory and every other app's
 # templates stay (genoffice#2384).
-for name in "IeumOffice Document.docx" "IeumOffice Spreadsheet.xlsx" "IeumOffice Presentation.pptx"; do
+for name in "PosidOffice Document.docx" "PosidOffice Spreadsheet.xlsx" "PosidOffice Presentation.pptx"; do
   rm -f "/usr/share/templates/$name"
 done
 exit 0

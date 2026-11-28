@@ -101,7 +101,7 @@ describe('Whiteboard shell wiring', () => {
 
   it('registers .excalidraw as Open-With only in NSIS installer without hijacking default', () => {
     const nsh = readFileSync(join(__dirname, '../build/installer.nsh'), 'utf8')
-    expect(nsh).toContain('GENOFFICE_EXCALIDRAW_PROGID "IeumOffice.ExcalidrawDrawing"')
+    expect(nsh).toContain('GENOFFICE_EXCALIDRAW_PROGID "PosidOffice.ExcalidrawDrawing"')
     expect(nsh).toContain('Software\\Classes\\.excalidraw\\OpenWithProgids')
     expect(nsh).toContain('GenOfficeRegisterOpenWithExcalidraw')
     expect(nsh).toContain('GenOfficeUnregisterOpenWithExcalidraw')

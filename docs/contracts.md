@@ -417,6 +417,7 @@ metadata:
 | `headlessSubscriptionConsentVersion` | 자동 호출 스위치를 켤 때 동의한 경고의 판(정수)                                   | 없음                                                       |
 | `subscriptionNoticeSeen`             | 참/거짓. 첫 연결 안내를 봤는지                                                    | 거짓                                                       |
 | `customEndpoints`, `customEndpoint`  | 직접 운영하는 서버 목록과 지금 쓰는 것의 식별자                                   | 없음                                                       |
+| `ollamaServers`                      | Ollama 서버 정보와 등록 모델 식별자 목록                                          | 없음                                                       |
 | `maxOutputTokens`                    | 모델 한 차례의 출력 상한                                                          | 코드의 기본값                                              |
 | `media`, `search`                    | 이미지·분석·검색 제공자 선택과 그 키                                              | 이미지 분석은 `chat`, 영상 분석은 `none`, 검색은 무료 경로 |
 | `readUrl`                            | `{ githubToken }`                                                                 | 없음                                                       |
@@ -426,6 +427,8 @@ metadata:
 - `customEndpoint: ''`는 "쓸 사용자 서버 없음"이다. 이때 `providers.custom`은 `{ apiKey: '', model: '', baseUrl: '' }`로 비고, `customEndpoint` 값이 아예 없는 예전 파일만 첫 서버를 고른다.
 - 키와 토큰(`providers.*.apiKey`, `customEndpoints[].apiKey`, `media.providers.*.apiKey`, `search.providers.*.apiKey`, `readUrl.githubToken`)은 Windows와 Linux(GNOME 키링·KWallet이 있을 때)에서 앱이 저장할 때 `sealed:v1:<base64>`로 봉인된다(결정 0063). 사람이 평문으로 적어 넣어도 읽히고, 앱이 다음에 저장하거나 시작할 때 봉인된다. 명령어와 MCP는 봉인된 값을 앱에게 풀어 받아 쓰고(처음 한 번 1~2초), 풀지 못한 값은 빈 키로 읽는다. 명령어는 봉인하지 않는다. macOS는 봉인하지 않는다.
 - `readUrl.githubToken`은 비공개 GitHub 파일을 읽는 읽기 토큰이다. 키와 같은 방식으로 저장되고, `api.github.com` 요청에만 실린다. 다른 사이트나 리다이렉트 홉에는 보내지 않는다.
+- `ollamaServers`는 모델을 아직 등록하지 않은 서버도 보관한다. 등록 모델은 기존 `customEndpoints`에 저장하고 `endpointIds`로 서버와 연결한다. 서버 이름·주소·키를 저장하면 연결된 모델에도 반영하며, 기존 Custom 연결은 자동으로 Ollama 서버로 분류하지 않는다. 서버는 최대 100개다. API 키의 저장 방식은 기존 제공자 키와 같다.
+- 서버 항목은 `{ id, name, baseUrl, apiKey, endpointIds }`다. `ollamaServers`가 없으면 Ollama 탭에 `http://localhost:11434/v1`의 로컬 서버를 기본 표시한다. 서버나 모델을 변경할 때 함께 저장하며, 빈 배열은 사용자가 모두 삭제한 것으로 보고 기본 서버를 다시 만들지 않는다.
 - `headlessSubscriptionEnabled`가 참이어도 `headlessSubscriptionConsentVersion`이 지금 경고의 판(2)보다 작거나 없으면 꺼진 것으로 읽는다. 판 1은 시간당 한도가 있던 예전 경고이고, 그때는 판을 저장하지 않았다.
 - 이미지 생성 제공자의 저장값 기본은 `codex`다. 화면 이름은 "ChatGPT 요금제(Codex 프로그램)"이다. 앱에서는 Codex 프로그램에 로그인한 ChatGPT 요금제로 만든다(결정 0145, 0076을 대체). 터미널 명령어와 MCP도 같은 길을 쓰되, `headlessSubscriptionEnabled`와 지금 판의 동의(`headlessSubscriptionConsentVersion` ≥ 2)가 있을 때만이다. 없으면 Codex는 쓸 수 없는 것으로 치고 키 방식 이미지 제공자를 본다. 동의 판은 그림 때문에 올리지 않았다.
 - 구독 제공자의 식별자는 `claude-code`, `chatgpt`, `codex`다. 인증 방식은 `claude-subscription`, `chatgpt-plan`, `codex-chatgpt`, `api-key` 넷이다. `provider`에 `chatgpt`를 저장할 수 있고, `providers.chatgpt.model`이 그 모델이다(빈 값은 요금제 목록의 첫 모델). `meteredAccepted`에는 `chatgpt` 항목이 없다(요금제 범위 연결이라 종량 로그인이 없다).

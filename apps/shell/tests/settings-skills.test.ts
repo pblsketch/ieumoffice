@@ -381,7 +381,8 @@ describe('Settings → Skills screen', () => {
     })
     await flush()
     const nav = [...host.querySelectorAll('.set-nav-item')].map((b) => b.textContent?.trim())
-    expect(nav[nav.indexOf('AI') + 1]).toBe('스킬')
+    // posidoffice puts the Ollama screen right after AI
+    expect(nav.slice(nav.indexOf('AI') + 1).filter((n) => n !== 'Ollama')[0]).toBe('스킬')
     const active = host.querySelector('.set-nav-item.active')
     expect(active?.textContent?.trim()).toBe('스킬')
     expect(host.querySelector('[data-skill-id="builtin:meeting-minutes"]')).toBeTruthy()

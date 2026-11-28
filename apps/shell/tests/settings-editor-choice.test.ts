@@ -208,6 +208,8 @@ describe('Settings → Editors and AI: which sections show', () => {
     expect(navLabels()).toEqual([
       'Account',
       'AI',
+      // PosidOffice: the Ollama screen sits between AI and Skills
+      'Ollama',
       'Skills',
       'General',
       'Editors and AI',
@@ -227,7 +229,7 @@ describe('Settings → Editors and AI: which sections show', () => {
   })
 
   it('opens a hidden section as Editors and AI while AI is off', async () => {
-    for (const section of ['account', 'aiModel', 'aiMedia', 'skills'] as const) {
+    for (const section of ['account', 'aiModel', 'ollama', 'aiMedia', 'skills'] as const) {
       await open(fakeChoice({ aiFeatures: false }), { section })
       expect(activeNav(), section).toBe('Editors and AI')
       expect(host.querySelector('[data-testid="editor-choice-section"]'), section).toBeTruthy()

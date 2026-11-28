@@ -62,8 +62,8 @@ function baseStatus(): IntegrationsStatus {
       status: 'missing',
       location: '/usr/local/bin/ieumoffice',
       manual:
-        'sudo ln -sf /Applications/IeumOffice.app/Contents/Resources/cli/ieumoffice /usr/local/bin/ieumoffice',
-      launcherDir: '/Applications/IeumOffice.app/Contents/Resources/cli',
+        'sudo ln -sf /Applications/PosidOffice.app/Contents/Resources/cli/ieumoffice /usr/local/bin/ieumoffice',
+      launcherDir: '/Applications/PosidOffice.app/Contents/Resources/cli',
       ephemeral: false,
       version: '0.4.0',
     },
@@ -151,7 +151,7 @@ describe('Settings → Integrations', () => {
       "Older copy in Codex's own folder. Codex now reads the skill from the shared folder (~/.agents); once it is installed there, you can remove this copy.",
     )
     // CLI block: launcher path, PATH state in plain words, the manual command as copyable code
-    expect(host.textContent).toContain('/Applications/IeumOffice.app/Contents/Resources/cli')
+    expect(host.textContent).toContain('/Applications/PosidOffice.app/Contents/Resources/cli')
     expect(host.textContent).toContain("not on your terminal's PATH")
     expect(host.querySelector('.set-intg-cli code')?.textContent).toContain('sudo ln -sf')
     expect(host.textContent).toContain('skill 2.1.0')
@@ -164,12 +164,12 @@ describe('Settings → Integrations', () => {
     // MCP block: the launcher itself while genoffice is not on the PATH, as a command and as JSON
     const mcp = [...host.querySelectorAll('.set-intg-mcp code')].map((c) => c.textContent)
     expect(mcp[0]).toBe(
-      'claude mcp add --transport stdio ieumoffice -- /Applications/IeumOffice.app/Contents/Resources/cli/ieumoffice mcp',
+      'claude mcp add --transport stdio ieumoffice -- /Applications/PosidOffice.app/Contents/Resources/cli/ieumoffice mcp',
     )
     expect(JSON.parse(mcp[1]!)).toEqual({
       mcpServers: {
         ieumoffice: {
-          command: '/Applications/IeumOffice.app/Contents/Resources/cli/ieumoffice',
+          command: '/Applications/PosidOffice.app/Contents/Resources/cli/ieumoffice',
           args: ['mcp'],
         },
       },
@@ -181,12 +181,12 @@ describe('Settings → Integrations', () => {
     expect(
       mcpLaunch({
         status: 'present',
-        launcherDir: '/Applications/IeumOffice.app/Contents/Resources/cli',
+        launcherDir: '/Applications/PosidOffice.app/Contents/Resources/cli',
       }),
     ).toEqual({ command: 'ieumoffice', args: ['mcp'] })
-    const winDir = 'C:\\Users\\Jane Doe\\AppData\\Local\\Programs\\IeumOffice\\resources\\cli'
+    const winDir = 'C:\\Users\\Jane Doe\\AppData\\Local\\Programs\\PosidOffice\\resources\\cli'
     const win = {
-      command: `${winDir}\\..\\..\\IeumOffice.exe`,
+      command: `${winDir}\\..\\..\\PosidOffice.exe`,
       args: [`${winDir}\\genoffice.cjs`, 'mcp'],
       env: { ELECTRON_RUN_AS_NODE: '1' },
     }

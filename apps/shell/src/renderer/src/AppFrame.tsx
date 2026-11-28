@@ -327,6 +327,7 @@ export function AppFrame({ initialOnboardingSeen }: AppFrameProps) {
         <Suspense fallback={null}>
           <Onboarding
             onDone={finishOnboarding}
+            onOpenOllamaSettings={() => window.aiOffice.openOllamaSettings()}
             connection={connection}
             noticeDue={notice.due}
             onNoticeAcknowledge={notice.acknowledge}

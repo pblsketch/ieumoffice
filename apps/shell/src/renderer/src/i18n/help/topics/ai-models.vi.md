@@ -41,3 +41,11 @@ Trong **Nâng cao ▸ Phương tiện AI & Tìm kiếm**, khóa và URL cơ sở
 ## Thay đổi có hiệu lực khi nào
 
 - Thay đổi mô hình và điểm cuối có hiệu lực ngay lập tức; một cuộc trò chuyện đang diễn ra vẫn dùng cấu hình cũ cho tới lượt kế tiếp của nó.
+
+## Máy chủ và mô hình Ollama
+
+Lần đầu mở, **Ollama cục bộ** xuất hiện mặc định và lấy danh sách mô hình. Nếu bạn xóa, máy chủ này sẽ không được tạo lại.
+
+Trong **Cài đặt → Ollama → Thêm máy chủ**, nhập tên và địa chỉ. Địa chỉ mặc định là `http://localhost:11434/v1`; khóa API là tùy chọn. Khi thêm, danh sách mô hình đã cài sẽ được lấy về. **Đăng ký** đưa mô hình vào phần chọn AI trong cài đặt và tài liệu mà không đổi AI hiện tại.
+
+Nhấn tên máy chủ để sửa tên, địa chỉ hoặc khóa; lưu cũng cập nhật các mô hình đã đăng ký. **Kiểm tra kết nối** làm mới danh sách. Xóa máy chủ sẽ xóa các mục đăng ký nhưng giữ tệp mô hình trên máy chủ. Máy chủ cục bộ với mô hình đã chuẩn bị có thể hoạt động ngoại tuyến. Chỉnh sửa tài liệu cần hỗ trợ gọi công cụ.

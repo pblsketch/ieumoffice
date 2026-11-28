@@ -2790,6 +2790,9 @@ const aiProviderConfigSchema = z
     models: z.array(z.string()).optional(),
     effort: z.string().optional(),
     modelEfforts: z.record(z.string(), aiModelEffortSchema).optional(),
+    // PosidOffice Ollama: a slow model load's first-response wait, and image input as probed
+    connectTimeoutMs: z.number().positive().optional(),
+    vision: z.boolean().optional(),
   })
   .strict()
 
@@ -2832,6 +2835,20 @@ const aiCustomEndpointSchema = z
     modelProfiles: z.record(z.string().max(256), aiLocalModelProfileSchema).optional(),
     timeoutMs: z.number().int().min(60_000).max(600_000).optional(),
     effort: z.string().optional(),
+    connectTimeoutMs: z.number().positive().optional(),
+    vision: z.boolean().optional(),
+  })
+  .strict()
+
+// PosidOffice: an Ollama server and the endpoint ids of the models registered from it
+const aiOllamaServerSchema = z
+  .object({
+    id: z.string().min(1),
+    name: z.string(),
+    baseUrl: z.string(),
+    apiKey: z.string(),
+    endpointIds: z.array(z.string()),
+    connectTimeoutMs: z.number().positive().optional(),
   })
   .strict()
 
@@ -2841,6 +2858,7 @@ export const aiSettingsInputSchema = z
     providers: z.record(z.string(), aiProviderConfigSchema),
     customEndpoints: z.array(aiCustomEndpointSchema).optional(),
     customEndpoint: z.string().optional(),
+    ollamaServers: z.array(aiOllamaServerSchema).optional(),
     media: z
       .object({
         imageProvider: z.string().min(1).optional(),

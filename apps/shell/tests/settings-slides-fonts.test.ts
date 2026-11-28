@@ -68,7 +68,7 @@ async function openGeneral(
     )
     await flush()
   })
-  const general = Array.from(host.querySelectorAll<HTMLButtonElement>('.set-nav-item'))[3]
+  const general = Array.from(host.querySelectorAll<HTMLButtonElement>('.set-nav-item'))[4] // after the Ollama entry
   await click(general!)
 }
 

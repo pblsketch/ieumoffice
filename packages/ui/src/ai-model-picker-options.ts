@@ -9,6 +9,8 @@ import {
   isSubscriptionProvider,
   keyModelEffort,
   keyProviderModels,
+  ollamaEndpointLabel,
+  prettyModelName,
   providerSelectionOf,
   resolveCustomEndpoints,
   selectAiProvider,
@@ -187,10 +189,41 @@ export function aiProviderPickerGroups(
       ...(details ? { details } : {}),
     })
   }
+  // Ollama models: placed directly after subscriptions, before other providers
+  const ollamaEndpointIds = new Set(settings.ollamaServers?.flatMap((s) => s.endpointIds) ?? [])
+  const customEndpoints = settings.customEndpoints ?? []
+  for (const ep of customEndpoints) {
+    if (!ollamaEndpointIds.has(ep.id)) continue
+    if (!ep.baseUrl || !ep.model) continue
+    const models = [ep.model, ...(ep.models ?? []).filter((m) => m !== ep.model)]
+    const server = settings.ollamaServers?.find((s) => s.endpointIds.includes(ep.id))
+    const label = ollamaEndpointLabel(ep, server?.name || 'Ollama')
+    const pretty = prettyModelName(ep.model)
+    const effort = ep.effort ?? 'medium'
+    const modelDetailName = ep.effort ? `${pretty} ${effort}` : label
+    const details = new Map<string, AiPickerModelDetail>()
+    for (const m of models) {
+      details.set(m, {
+        name: modelDetailName,
+        concrete: m !== modelDetailName ? m : undefined,
+      })
+    }
+    groups.push({
+      kind: 'key',
+      id: 'custom',
+      endpoint: ep.id,
+      label,
+      models,
+      details,
+      metered: false,
+    })
+  }
+
   for (const meta of AI_PROVIDERS) {
     if (isSubscriptionProvider(meta.id)) continue
     if (meta.id === 'custom') {
-      for (const ep of settings.customEndpoints ?? []) {
+      for (const ep of customEndpoints) {
+        if (ollamaEndpointIds.has(ep.id)) continue
         if (!ep.baseUrl || !ep.model) continue
         const models = [ep.model, ...(ep.models ?? []).filter((m) => m !== ep.model)]
         groups.push({

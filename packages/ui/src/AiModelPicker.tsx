@@ -1,6 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Lang } from '@genoffice/i18n'
-import type { AiEffort, AiSettings, AiSubscriptionStatuses } from '@genoffice/ai-provider/browser'
+import {
+  ollamaEffortPresetOf,
+  prettyModelName,
+  type AiEffort,
+  type AiSettings,
+  type OllamaEffortPreset,
+  type AiSubscriptionStatuses,
+} from '@genoffice/ai-provider/browser'
 import {
   aiEffortChoice,
   aiProviderPickerGroups,
@@ -70,6 +77,116 @@ function PickerMark({ group }: { readonly group: Pick<AiProviderPickerGroup, 'ki
   )
 }
 
+interface OllamaEffortOption {
+  readonly effort: OllamaEffortPreset
+  readonly endpointId: string
+}
+
+interface OllamaModelItem {
+  readonly rawModel: string
+  readonly prettyName: string
+  readonly efforts: readonly OllamaEffortOption[]
+  readonly currentEffort?: OllamaEffortPreset | undefined
+  readonly activeEndpointId: string
+  readonly isSelected: boolean
+}
+
+interface OllamaServerDisplayGroup {
+  readonly serverId: string
+  readonly serverName: string
+  readonly items: readonly OllamaModelItem[]
+}
+
+function effortLabel(effort: OllamaEffortPreset | string): string {
+  switch (effort) {
+    case 'low':
+      return 'Low'
+    case 'medium':
+      return 'Medium'
+    case 'high':
+      return 'High'
+    default:
+      return effort
+  }
+}
+
+function getOllamaServerGroups(
+  settings: AiSettings,
+  current: AiProviderPickerSelection | null,
+): OllamaServerDisplayGroup[] {
+  const ollamaServers = settings.ollamaServers ?? []
+  const customEndpoints = settings.customEndpoints ?? []
+  const allOllamaEndpointIds = new Set(ollamaServers.flatMap((s) => s.endpointIds))
+
+  const ollamaEndpoints = customEndpoints.filter(
+    (ep) => allOllamaEndpointIds.has(ep.id) && ep.baseUrl && ep.model,
+  )
+
+  const serverGroups: OllamaServerDisplayGroup[] = []
+  const EFFORT_ORDER: Record<string, number> = { low: 0, medium: 1, high: 2 }
+
+  for (const server of ollamaServers) {
+    const serverEps = ollamaEndpoints.filter((ep) => server.endpointIds.includes(ep.id))
+    if (serverEps.length === 0) continue
+
+    const modelMap = new Map<string, typeof serverEps>()
+    for (const ep of serverEps) {
+      const list = modelMap.get(ep.model) ?? []
+      list.push(ep)
+      modelMap.set(ep.model, list)
+    }
+
+    const items: OllamaModelItem[] = []
+
+    for (const [rawModel, eps] of modelMap.entries()) {
+      const prettyName = prettyModelName(rawModel)
+      const efforts: OllamaEffortOption[] = []
+      for (const ep of eps) {
+        const preset = ollamaEffortPresetOf(ep.effort)
+        if (preset) {
+          efforts.push({ effort: preset, endpointId: ep.id })
+        }
+      }
+      efforts.sort((a, b) => (EFFORT_ORDER[a.effort] ?? 99) - (EFFORT_ORDER[b.effort] ?? 99))
+
+      const selectedEp = eps.find(
+        (ep) => current?.provider === 'custom' && current?.endpoint === ep.id,
+      )
+      const isSelected = Boolean(selectedEp)
+
+      let currentEffort: OllamaEffortPreset | undefined = ollamaEffortPresetOf(selectedEp?.effort)
+      if (!currentEffort && efforts.length > 0) {
+        currentEffort = efforts.some((e) => e.effort === 'medium') ? 'medium' : efforts[0]?.effort
+      }
+
+      const activeEndpointId =
+        selectedEp?.id ??
+        efforts.find((e) => e.effort === currentEffort)?.endpointId ??
+        eps[0]?.id ??
+        ''
+
+      items.push({
+        rawModel,
+        prettyName,
+        efforts,
+        currentEffort,
+        activeEndpointId,
+        isSelected,
+      })
+    }
+
+    if (items.length > 0) {
+      serverGroups.push({
+        serverId: server.id,
+        serverName: server.name || 'Ollama',
+        items,
+      })
+    }
+  }
+
+  return serverGroups
+}
+
 /**
  * Model chip showing the active provider + model; the popover lists every
  * usable provider's models for a one-click switch (saved globally, the same
@@ -106,8 +223,12 @@ export function AiModelPicker({
   const [settings, setSettings] = useState<AiSettings | null>(null)
   const [open, setOpen] = useState(false)
   const [popStyle, setPopStyle] = useState<React.CSSProperties>({})
+  const [activeSubmenu, setActiveSubmenu] = useState<string | null>(null)
+  const [submenuPos, setSubmenuPos] = useState<React.CSSProperties>({})
+  const leaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const chipRef = useRef<HTMLButtonElement | null>(null)
   const popRef = useRef<HTMLDivElement | null>(null)
+  const submenuRef = useRef<HTMLDivElement | null>(null)
   const refreshedAt = useRef(0)
 
   // tests render panels without a preload bridge: a throwing getter must not take the panel down
@@ -132,9 +253,12 @@ export function AiModelPicker({
     }
   }, [bridge, refresh])
 
-  const close = useCallback(() => setOpen(false), [])
+  const close = useCallback(() => {
+    setOpen(false)
+    setActiveSubmenu(null)
+  }, [])
   useDismissablePopover(open, close, {
-    inside: () => [chipRef.current, popRef.current],
+    inside: () => [chipRef.current, popRef.current, submenuRef.current],
   })
 
   const groups = useMemo<AiProviderPickerGroup[]>(() => {
@@ -146,6 +270,27 @@ export function AiModelPicker({
   const sameGroup = (g: { id: string; endpoint?: string | undefined }) =>
     g.id === current?.provider && (g.id !== 'custom' || g.endpoint === current?.endpoint)
   const currentUsable = groups.some(sameGroup)
+
+  const ollamaServerGroups = useMemo(() => {
+    if (!settings) return []
+    return getOllamaServerGroups(settings, current)
+  }, [settings, current])
+
+  const allOllamaEndpointIds = useMemo(() => {
+    return new Set(settings?.ollamaServers?.flatMap((s) => s.endpointIds) ?? [])
+  }, [settings])
+
+  const activeOllamaItem = useMemo(() => {
+    if (!activeSubmenu) return null
+    for (const s of ollamaServerGroups) {
+      for (const item of s.items) {
+        if (`${s.serverId}:${item.rawModel}` === activeSubmenu) {
+          return item
+        }
+      }
+    }
+    return null
+  }, [activeSubmenu, ollamaServerGroups])
 
   const toggle = () => {
     if (!open) {
@@ -164,7 +309,10 @@ export function AiModelPicker({
         onRefreshSubscriptions()
       }
     }
-    setOpen((v) => !v)
+    setOpen((v) => {
+      if (v) setActiveSubmenu(null)
+      return !v
+    })
   }
 
   const save = (change: (latest: AiSettings) => AiSettings) => {
@@ -179,6 +327,7 @@ export function AiModelPicker({
 
   const pick = (sel: AiProviderPickerSelection) => {
     setOpen(false)
+    setActiveSubmenu(null)
     // a level the newly picked model does not take is dropped, so the chip does not show it
     save((latest) =>
       withAiEffortFitted(withAiProviderSelection(latest, sel), subscriptionStatuses ?? {}),
@@ -192,8 +341,62 @@ export function AiModelPicker({
 
   const manage = () => {
     setOpen(false)
+    setActiveSubmenu(null)
     void bridge.openModelSettings?.()
   }
+
+  const openSubmenu = useCallback((modelKey: string, el: HTMLElement) => {
+    if (leaveTimer.current) {
+      clearTimeout(leaveTimer.current)
+      leaveTimer.current = null
+    }
+    const rect = el.getBoundingClientRect()
+    const submenuWidth = 110
+    let left = rect.right + 4
+    if (left + submenuWidth > window.innerWidth - 8) {
+      left = Math.max(8, rect.left - submenuWidth - 4)
+    }
+    let top = rect.top - 2
+    if (top + 130 > window.innerHeight) {
+      top = Math.max(8, window.innerHeight - 140)
+    }
+    setSubmenuPos({ top, left })
+    setActiveSubmenu(modelKey)
+  }, [])
+
+  const handleRowMouseEnter = useCallback(
+    (modelKey: string, el: HTMLElement, hasMultipleEfforts: boolean) => {
+      if (hasMultipleEfforts) {
+        openSubmenu(modelKey, el)
+      } else {
+        if (leaveTimer.current) {
+          clearTimeout(leaveTimer.current)
+          leaveTimer.current = null
+        }
+        setActiveSubmenu(null)
+      }
+    },
+    [openSubmenu],
+  )
+
+  const handleRowMouseLeave = useCallback(() => {
+    leaveTimer.current = setTimeout(() => {
+      setActiveSubmenu(null)
+    }, 200)
+  }, [])
+
+  const handleSubmenuMouseEnter = useCallback(() => {
+    if (leaveTimer.current) {
+      clearTimeout(leaveTimer.current)
+      leaveTimer.current = null
+    }
+  }, [])
+
+  const handleSubmenuMouseLeave = useCallback(() => {
+    leaveTimer.current = setTimeout(() => {
+      setActiveSubmenu(null)
+    }, 200)
+  }, [])
 
   if (!settings) return null
   const currentGroup = groups.find(sameGroup)
@@ -219,7 +422,8 @@ export function AiModelPicker({
         : aiSubscriptionText(lang, 'pickerAutoUsing', { provider: currentGroup.label })
       : modelName && currentGroup
         ? `${currentGroup.label} · ${modelName}`
-        : current.model || (currentGroup?.label ?? '')
+        : (currentGroup?.details?.get(current.model)?.name ?? current.model) ||
+          (currentGroup?.label ?? '')
   // The composer footer is narrow: under automatic the chip names the model and leaves the
   // provider to the tooltip and the list, so the model is not the part that gets cut off.
   const chipText =
@@ -233,14 +437,185 @@ export function AiModelPicker({
     ? `${strings.title}: ${withEffort(fullText)}${modelId ? ` (${modelId})` : ''}`
     : strings.title
 
+  const subscriptionAndAutoGroups = groups.filter(
+    (g) => g.kind === 'auto' || g.kind === 'subscription',
+  )
+  const otherGroups = groups.filter(
+    (g) =>
+      g.kind !== 'auto' &&
+      g.kind !== 'subscription' &&
+      (!g.endpoint || !allOllamaEndpointIds.has(g.endpoint)),
+  )
+
+  const renderStandardGroup = (g: AiProviderPickerGroup) => (
+    <div key={g.endpoint ? `${g.id}:${g.endpoint}` : g.id} className="ai-model-group">
+      {g.kind !== 'auto' && (
+        <div className="ai-model-group-head">
+          <PickerMark group={g} />
+          <span>{g.label}</span>
+          {g.metered ? (
+            <span className="ai-model-cost" title={paidTitle}>
+              {paid}
+            </span>
+          ) : (
+            g.kind === 'subscription' && (
+              <span className="ai-model-tag">{aiSubscriptionText(lang, 'pickerSubscription')}</span>
+            )
+          )}
+        </div>
+      )}
+      {/* said where Codex is chosen; a key provider of the same name is not this connection */}
+      {g.kind === 'subscription' && g.id === 'codex' && <AiCodexNotice lang={lang} compact />}
+      {(g.models.length > 0 ? g.models : ['']).map((m) => {
+        const selected = sameGroup(g) && (g.kind === 'auto' || current?.model === m)
+        // what the CLI itself says about this model, when it listed its models
+        const detail = g.details?.get(m)
+        const autoModel =
+          g.kind === 'auto'
+            ? aiSubscriptionModelName(settings, subscriptionStatuses ?? {}, g.resolved)
+            : undefined
+        return (
+          <button
+            key={`${g.id}:${g.endpoint ?? ''}:${m}`}
+            type="button"
+            role="option"
+            aria-selected={selected}
+            className={`ai-model-item${g.kind === 'auto' ? ' ai-model-auto' : ''}${selected ? ' selected' : ''}`}
+            onClick={() => pick({ provider: g.id, endpoint: g.endpoint, model: m })}
+          >
+            {g.kind === 'auto' && <PickerMark group={g} />}
+            <span className="ai-model-item-text">
+              {g.kind === 'auto'
+                ? autoModel
+                  ? aiSubscriptionText(lang, 'pickerAutoUsingModel', {
+                      provider: g.label,
+                      model: autoModel,
+                    })
+                  : aiSubscriptionText(lang, 'pickerAutoUsing', { provider: g.label })
+                : g.kind === 'subscription'
+                  ? m
+                    ? (detail?.name ?? m)
+                    : detail
+                      ? aiSubscriptionText(lang, 'pickerDefaultModelNamed', {
+                          model: detail.name,
+                        })
+                      : aiSubscriptionText(lang, 'pickerDefaultModel')
+                  : (detail?.name ?? m) || g.label}
+              {detail?.concrete && (
+                <>
+                  {' '}
+                  <span className="ai-model-item-id">{detail.concrete}</span>
+                </>
+              )}
+            </span>
+            {selected && (
+              <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden>
+                <path
+                  d="M2.5 6.5 5 9l4.5-6"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.6"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            )}
+          </button>
+        )
+      })}
+    </div>
+  )
+
+  const renderOllamaServerGroup = (server: OllamaServerDisplayGroup) => (
+    <div key={server.serverId} className="ai-model-group">
+      <div className="ai-model-group-head">
+        <span className="gs-provider-logo" aria-hidden="true">
+          <ProviderLogo id="custom" />
+        </span>
+        <span>{server.serverName}</span>
+      </div>
+      {server.items.map((item) => {
+        const modelKey = `${server.serverId}:${item.rawModel}`
+        const isSubmenuOpen = activeSubmenu === modelKey
+        const hasMultipleEfforts = item.efforts.length > 1
+        return (
+          <button
+            key={modelKey}
+            type="button"
+            role="option"
+            aria-selected={item.isSelected}
+            aria-haspopup={hasMultipleEfforts ? 'true' : undefined}
+            aria-expanded={hasMultipleEfforts ? isSubmenuOpen : undefined}
+            className={`ai-model-item ai-model-ollama-item${item.isSelected ? ' selected' : ''}${isSubmenuOpen ? ' submenu-open' : ''}`}
+            title={item.rawModel}
+            onMouseEnter={(e) => handleRowMouseEnter(modelKey, e.currentTarget, hasMultipleEfforts)}
+            onMouseLeave={handleRowMouseLeave}
+            onClick={(e) => {
+              if (hasMultipleEfforts) {
+                if (isSubmenuOpen) {
+                  setActiveSubmenu(null)
+                } else {
+                  openSubmenu(modelKey, e.currentTarget)
+                }
+              } else {
+                pick({ provider: 'custom', endpoint: item.activeEndpointId, model: item.rawModel })
+              }
+            }}
+          >
+            <span className="ai-model-item-text ai-model-ollama-text">
+              <span className="ai-model-ollama-name">{item.prettyName}</span>
+              {item.currentEffort && (
+                <span className="ai-model-effort-badge">{effortLabel(item.currentEffort)}</span>
+              )}
+            </span>
+            {hasMultipleEfforts && (
+              <svg
+                className="ai-model-chevron"
+                width="12"
+                height="12"
+                viewBox="0 0 12 12"
+                aria-hidden
+              >
+                <path
+                  d="m4.5 2.5 3.5 3.5-3.5 3.5"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.6"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            )}
+            {item.isSelected && (
+              <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden>
+                <path
+                  d="M2.5 6.5 5 9l4.5-6"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.6"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            )}
+          </button>
+        )
+      })}
+    </div>
+  )
+
   return (
     <div
       className="ai-model-picker"
       onKeyDown={(e) => {
         if (e.key === 'Escape' && open) {
           e.stopPropagation()
-          setOpen(false)
-          chipRef.current?.focus()
+          if (activeSubmenu) {
+            setActiveSubmenu(null)
+          } else {
+            setOpen(false)
+            chipRef.current?.focus()
+          }
         }
       }}
     >
@@ -285,90 +660,57 @@ export function AiModelPicker({
           aria-label={strings.title}
           style={popStyle}
         >
-          <div className="ai-model-pop-list">
-            {groups.map((g) => (
-              <div key={g.endpoint ? `${g.id}:${g.endpoint}` : g.id} className="ai-model-group">
-                {g.kind !== 'auto' && (
-                  <div className="ai-model-group-head">
-                    <PickerMark group={g} />
-                    <span>{g.label}</span>
-                    {g.metered ? (
-                      <span className="ai-model-cost" title={paidTitle}>
-                        {paid}
-                      </span>
-                    ) : (
-                      g.kind === 'subscription' && (
-                        <span className="ai-model-tag">
-                          {aiSubscriptionText(lang, 'pickerSubscription')}
-                        </span>
-                      )
-                    )}
-                  </div>
-                )}
-                {/* said where Codex is chosen; a key provider of the same name is not this connection */}
-                {g.kind === 'subscription' && g.id === 'codex' && (
-                  <AiCodexNotice lang={lang} compact />
-                )}
-                {(g.models.length > 0 ? g.models : ['']).map((m) => {
-                  const selected = sameGroup(g) && (g.kind === 'auto' || current?.model === m)
-                  // what the CLI itself says about this model, when it listed its models
-                  const detail = g.details?.get(m)
-                  const autoModel =
-                    g.kind === 'auto'
-                      ? aiSubscriptionModelName(settings, subscriptionStatuses ?? {}, g.resolved)
-                      : undefined
-                  return (
-                    <button
-                      key={`${g.id}:${g.endpoint ?? ''}:${m}`}
-                      type="button"
-                      role="option"
-                      aria-selected={selected}
-                      className={`ai-model-item${g.kind === 'auto' ? ' ai-model-auto' : ''}${selected ? ' selected' : ''}`}
-                      onClick={() => pick({ provider: g.id, endpoint: g.endpoint, model: m })}
-                    >
-                      {g.kind === 'auto' && <PickerMark group={g} />}
-                      <span className="ai-model-item-text">
-                        {g.kind === 'auto'
-                          ? autoModel
-                            ? aiSubscriptionText(lang, 'pickerAutoUsingModel', {
-                                provider: g.label,
-                                model: autoModel,
-                              })
-                            : aiSubscriptionText(lang, 'pickerAutoUsing', { provider: g.label })
-                          : g.kind === 'subscription'
-                            ? m
-                              ? (detail?.name ?? m)
-                              : detail
-                                ? aiSubscriptionText(lang, 'pickerDefaultModelNamed', {
-                                    model: detail.name,
-                                  })
-                                : aiSubscriptionText(lang, 'pickerDefaultModel')
-                            : m || g.label}
-                        {detail?.concrete && (
-                          <>
-                            {' '}
-                            <span className="ai-model-item-id">{detail.concrete}</span>
-                          </>
-                        )}
-                      </span>
-                      {selected && (
-                        <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden>
-                          <path
-                            d="M2.5 6.5 5 9l4.5-6"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="1.6"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          />
-                        </svg>
-                      )}
-                    </button>
-                  )
-                })}
-              </div>
-            ))}
+          <div className="ai-model-pop-list" onScroll={() => setActiveSubmenu(null)}>
+            {subscriptionAndAutoGroups.map(renderStandardGroup)}
+            {ollamaServerGroups.map(renderOllamaServerGroup)}
+            {otherGroups.map(renderStandardGroup)}
           </div>
+          {activeOllamaItem && activeOllamaItem.efforts.length > 1 && (
+            <div
+              ref={submenuRef}
+              className="ai-model-submenu-pop"
+              role="menu"
+              style={submenuPos}
+              onMouseEnter={handleSubmenuMouseEnter}
+              onMouseLeave={handleSubmenuMouseLeave}
+            >
+              {activeOllamaItem.efforts.map(({ effort, endpointId }) => {
+                const isSelectedEffort =
+                  current?.provider === 'custom' && current?.endpoint === endpointId
+                return (
+                  <button
+                    key={effort}
+                    type="button"
+                    role="menuitem"
+                    className={`ai-model-submenu-item${isSelectedEffort ? ' selected' : ''}`}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setActiveSubmenu(null)
+                      pick({
+                        provider: 'custom',
+                        endpoint: endpointId,
+                        model: activeOllamaItem.rawModel,
+                      })
+                    }}
+                  >
+                    <span className="ai-model-submenu-label">{effortLabel(effort)}</span>
+                    {isSelectedEffort && (
+                      <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden>
+                        <path
+                          d="M2.5 6.5 5 9l4.5-6"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.6"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                    )}
+                  </button>
+                )
+              })}
+            </div>
+          )}
           {effortChoice && (
             <div className="ai-effort" role="group" aria-label={effortStrings.title}>
               <div className="ai-effort-head" data-tip={effortStrings.hint}>

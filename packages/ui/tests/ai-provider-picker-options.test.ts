@@ -402,6 +402,54 @@ describe('aiProviderPickerGroups', () => {
       }
     }
   })
+
+  describe('Ollama endpoint groups in picker', () => {
+    it('places Ollama endpoints right after subscriptions and before key providers and general custom endpoints', () => {
+      const settings: AiSettings = {
+        ...withAnthropicKey(),
+        customEndpoints: [
+          {
+            id: 'ollama-1',
+            name: 'Local Ollama / llama3.2 medium',
+            baseUrl: 'http://localhost:11434/v1',
+            apiKey: '',
+            model: 'llama3.2:latest',
+            effort: 'medium',
+          },
+          {
+            id: 'custom-general',
+            name: 'My Custom API',
+            baseUrl: 'https://api.example.com/v1',
+            apiKey: 'k',
+            model: 'model-x',
+          },
+        ],
+        ollamaServers: [
+          {
+            id: 'srv-1',
+            name: 'Local Ollama',
+            baseUrl: 'http://localhost:11434',
+            endpointIds: ['ollama-1'],
+          },
+        ],
+      }
+      const groups = aiProviderPickerGroups(settings, ready)
+      expect(groups.map((g) => [g.kind, g.id, g.endpoint])).toEqual([
+        ['auto', 'auto', undefined],
+        ['subscription', 'claude-code', undefined],
+        ['subscription', 'codex', undefined],
+        ['key', 'custom', 'ollama-1'],
+        ['key', 'anthropic', undefined],
+        ['key', 'custom', 'custom-general'],
+      ])
+
+      const ollamaGroup = groups.find((g) => g.endpoint === 'ollama-1')!
+      expect(ollamaGroup.details?.get('llama3.2:latest')).toEqual({
+        name: 'Llama3.2 medium',
+        concrete: 'llama3.2:latest',
+      })
+    })
+  })
 })
 
 describe('selection under the subscription contract', () => {

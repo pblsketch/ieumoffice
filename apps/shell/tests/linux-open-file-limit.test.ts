@@ -69,7 +69,7 @@ describe.skipIf(process.platform !== 'linux')('Linux launcher in a sandbox (#488
   /** An app tree whose "binary" reports the limits and arguments it was started with. */
   function makeApp() {
     const root = mkdtempSync(join(tmpdir(), 'genoffice-nofile-'))
-    const app = join(root, 'opt', 'IeumOffice')
+    const app = join(root, 'opt', 'PosidOffice')
     mkdirSync(join(app, 'resources'), { recursive: true })
     const binary = join(app, 'ieumoffice')
     writeFileSync(
@@ -143,7 +143,7 @@ describe.skipIf(process.platform === 'win32')(
     // linux-kde-templates.test.ts), so it needs no root and touches no real entry.
     function makeRoot(options: { launcher: boolean; exec?: (app: string) => string }) {
       const root = mkdtempSync(join(tmpdir(), 'genoffice-desktop-entry-'))
-      const app = join(root, 'opt', 'IeumOffice')
+      const app = join(root, 'opt', 'PosidOffice')
       const bin = join(root, 'usr', 'bin')
       const applications = join(root, 'usr', 'share', 'applications')
       mkdirSync(join(app, 'resources', 'cli'), { recursive: true })
@@ -160,7 +160,7 @@ describe.skipIf(process.platform === 'win32')(
       const entry = join(applications, 'ieumoffice.desktop')
       const lines = (exec: string) => [
         '[Desktop Entry]',
-        'Name=IeumOffice',
+        'Name=PosidOffice',
         `Exec=${exec}`,
         'Terminal=false',
         'Type=Application',
@@ -175,7 +175,7 @@ describe.skipIf(process.platform === 'win32')(
       writeFileSync(
         file,
         readFileSync(INSTALL_SCRIPT, 'utf-8')
-          .replaceAll('/opt/IeumOffice', app)
+          .replaceAll('/opt/PosidOffice', app)
           .replaceAll('/usr/share/applications', applications)
           .replaceAll('/usr/bin/', `${bin}/`),
       )

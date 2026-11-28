@@ -10,10 +10,12 @@ export type {
   AiMediaSettings,
   AiAnalysisProtocol,
   AiImageProtocol,
+  OllamaEffortPreset,
   AiSearchProviderId,
   AiSearchProviderMeta,
   AiSearchSettings,
   CodexModelCatalog,
+  OllamaModelInfo,
   AiProviderConfig,
   AiProviderId,
   AiProviderMeta,
@@ -160,9 +162,13 @@ export {
   withStoredUnknownFields,
 } from './providers'
 export {
+  OLLAMA_EFFORT_PRESETS,
+  ollamaEffortPresetOf,
   activeCustomEndpoint,
   customEndpointLabel,
   newCustomEndpointId,
+  ollamaEndpointLabel,
+  prettyModelName,
   removeCustomEndpoint,
   resolveCustomEndpoints,
   selectCustomEndpoint,
@@ -296,7 +302,14 @@ export {
   AI_CONNECT_TIMEOUT_MS,
   AI_IDLE_TIMEOUT_MS,
   AiTimeoutError,
+  connectTimeoutMsOf,
   createStreamWatchdog,
+  OLLAMA_CONNECT_TIMEOUT_MS,
 } from './watchdog'
 export type { StreamWatchdog } from './watchdog'
+export {
+  explainOllamaSystemError,
+  explainOllamaVisionUnsupported,
+  isOllamaOrCustomRequest,
+} from './ollama-friendly-error'
 export * from './user-skills'

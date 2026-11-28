@@ -163,10 +163,10 @@ describe('createDefaultAppService', () => {
         if (key.includes('.pptx')) throw new Error('no user choice')
         return key.includes('.docx')
           ? '    ProgId    REG_SZ    Word.Document.12\r\n'
-          : '    ProgId    REG_SZ    IeumOffice.ExcelWorkbook\r\n'
+          : '    ProgId    REG_SZ    PosidOffice.ExcelWorkbook\r\n'
       }
       if (key === 'HKCR\\.pptx')
-        return '    (Default)    REG_SZ    IeumOffice.PowerPointPresentation\r\n'
+        return '    (Default)    REG_SZ    PosidOffice.PowerPointPresentation\r\n'
       if (key === 'HKCR\\Word.Document.12')
         return '    (Default)    REG_SZ    Microsoft Word Document\r\n'
       throw new Error('missing')

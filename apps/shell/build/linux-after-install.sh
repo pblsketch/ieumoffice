@@ -2,7 +2,7 @@
 # deb/rpm post-install. Replaces electron-builder's default template, so its
 # chrome-sandbox and AppArmor steps are repeated here (genoffice#2150).
 set -e
-app="/opt/IeumOffice"
+app="/opt/PosidOffice"
 # Chromium aborts when the SUID helper exists without 4755; Chrome's deb sets it unconditionally.
 [ -f "$app/chrome-sandbox" ] && { chown root:root "$app/chrome-sandbox" 2>/dev/null || true; chmod 4755 "$app/chrome-sandbox" 2>/dev/null || true; }
 # Ubuntu 24.04+ restricts unprivileged userns; --skip-kernel-load doubles as the abi/4.0 check.
@@ -48,9 +48,9 @@ if [ -d "$shell_new" ]; then
   mkdir -p "$templates_dir"
   for ext in docx xlsx pptx; do
     case "$ext" in
-      docx) name="IeumOffice Document.docx" ;;
-      xlsx) name="IeumOffice Spreadsheet.xlsx" ;;
-      pptx) name="IeumOffice Presentation.pptx" ;;
+      docx) name="PosidOffice Document.docx" ;;
+      xlsx) name="PosidOffice Spreadsheet.xlsx" ;;
+      pptx) name="PosidOffice Presentation.pptx" ;;
     esac
     # cp -f is the fallback for a busybox install(1) without -m. A template
     # that cannot be written must not fail the whole package install.
@@ -66,7 +66,7 @@ link="/usr/bin/ieumoffice"
 [ -x "$launcher" ] || exit 0
 if [ -L "$link" ]; then
   case "$(readlink "$link")" in
-    /opt/IeumOffice/*) ;;
+    /opt/PosidOffice/*) ;;
     *) [ -e "$link" ] && { echo "ieumoffice: $link is another program, left as is; run: ln -s $launcher $link" >&2; exit 0; } ;;
   esac
 elif [ -e "$link" ]; then

@@ -41,3 +41,11 @@ Bir sağlayıcıya doğrudan ödeme yapmayı ya da kendi modelini çalıştırma
 ## Değişiklikler ne zaman uygulanır
 
 - Model ve uç nokta değişiklikleri hemen uygulanır; sürmekte olan bir sohbet, sonraki turuna kadar eski yapılandırmayı korur.
+
+## Ollama sunucuları ve modelleri
+
+İlk ziyarette **Yerel Ollama** varsayılan olarak görünür ve modellerini getirir. Kaldırırsanız yeniden oluşturulmaz.
+
+**Ayarlar → Ollama → Sunucu ekle** bölümünde bir ad ve adres girin. Varsayılan adres `http://localhost:11434/v1`'dir; API anahtarı isteğe bağlıdır. Sunucu eklendiğinde yüklü modelleri getirilir. **Kaydet**, geçerli AI'yi değiştirmeden modeli **AI → Kullanılacak AI** listesine ve belge model seçicilerine ekler.
+
+Adını, adresini veya anahtarını düzenlemek için sunucu adına tıklayın; kaydetmek kayıtlı modellerini de günceller. **Bağlantıyı sına** model listesini yeniler. Bir sunucuyu kaldırmak kayıtlı girişlerini kaldırır, ancak sunucudaki model dosyaları yerinde kalır. Yerel sunucu ve modeller hazır olduğunda çevrimdışı da çalışabilirler. Belge düzenleme, araç çağrısı desteği gerektirir.

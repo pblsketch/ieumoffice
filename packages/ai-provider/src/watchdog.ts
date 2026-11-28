@@ -7,6 +7,11 @@
 
 export const AI_CONNECT_TIMEOUT_MS = 60_000
 /**
+ * Default connect timeout for endpoints registered from an Ollama server:
+ * a local server can spend minutes loading a model before the first byte.
+ */
+export const OLLAMA_CONNECT_TIMEOUT_MS = 300_000
+/**
  * Generous on purpose: on long-context requests the gateway can legitimately go
  * silent for minutes (thinking/buffering before the first token and between
  * chunks). 60s here killed real in-progress generations that were still billed,
@@ -38,6 +43,15 @@ export function normalizeWatchdogTimeout(ms: number, fallbackMs: number): number
   if (!Number.isFinite(ms) || ms > AI_WATCHDOG_MAX_TIMEOUT_MS) return AI_WATCHDOG_MAX_TIMEOUT_MS
   if (ms < AI_WATCHDOG_MIN_TIMEOUT_MS) return AI_WATCHDOG_MIN_TIMEOUT_MS
   return ms
+}
+
+/**
+ * A stored connect timeout: finite positive milliseconds capped at the
+ * watchdog maximum. Anything else is dropped so the caller default applies.
+ */
+export function connectTimeoutMsOf(raw: unknown): number | undefined {
+  if (typeof raw !== 'number' || !Number.isFinite(raw) || raw <= 0) return undefined
+  return Math.min(Math.floor(raw), AI_WATCHDOG_MAX_TIMEOUT_MS)
 }
 
 export class AiTimeoutError extends Error {

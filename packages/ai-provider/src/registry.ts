@@ -1,7 +1,14 @@
 import { ANTHROPIC_BASE_URL } from './protocols/anthropic'
 import { GEMINI_BASE_URL } from './protocols/gemini'
 import { AI_PROVIDERS, DEEPSEEK_V41_FLASH } from './providers'
-import type { AiProviderConfig, AiProviderId, AiProviderMeta, AiProviderSelection } from './types'
+import { ollamaEffortPresetOf } from './custom-endpoints'
+import type {
+  AiProviderConfig,
+  AiProviderId,
+  AiProviderMeta,
+  AiProviderSelection,
+  OllamaEffortPreset,
+} from './types'
 
 /** Wire protocols every provider maps onto, including the subscription bridges. */
 export type AiProtocol =
@@ -37,6 +44,8 @@ export interface ResolvedEndpoint {
   bodyExtras?: Record<string, unknown>
   /** id to put on the wire when the vendor spells the configured model differently */
   model?: string
+  /** PosidOffice: the Ollama context/sampling preset (low, medium, high) */
+  effort?: OllamaEffortPreset
 }
 
 export interface ProviderAdapter {
@@ -468,10 +477,12 @@ export const AI_PROVIDER_ADAPTERS: Record<AiProviderId, ProviderAdapter> = {
     capabilities: { auth: 'api-key', vision: true },
     resolveEndpoint(config) {
       if (!config.baseUrl) throw new Error('A custom provider requires a Base URL')
+      const effort = ollamaEffortPresetOf(config.effort)
       return {
         protocol: 'openai-compatible',
         baseUrl: normalizeBaseUrl(config.baseUrl, ''),
         ...(modelHasFixedSampling(config.model) ? { omitTemperature: true } : {}),
+        ...(effort ? { effort } : {}),
       }
     },
   },

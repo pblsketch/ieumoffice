@@ -1290,7 +1290,7 @@ pub mod dev_loopback {
             "default-src 'none'; script-src 'sha256-{hash}'; style-src 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'"
         );
         let html = format!(
-            "<!doctype html><html lang=\"en\"><meta charset=\"utf-8\"><title>Return to IeumOffice</title><h1>Return to IeumOffice</h1><p>You can close this tab.</p><script>{script}</script></html>"
+            "<!doctype html><html lang=\"en\"><meta charset=\"utf-8\"><title>Return to PosidOffice</title><h1>Return to PosidOffice</h1><p>You can close this tab.</p><script>{script}</script></html>"
         );
         (csp, html)
     }

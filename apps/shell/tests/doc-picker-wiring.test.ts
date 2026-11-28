@@ -40,8 +40,8 @@ describe('doc-picker strings', () => {
       const dict = docPickerStrings[lang] as Record<string, string>
       for (const value of Object.values(dict)) expect(value, lang).not.toMatch(/IeumOffice/)
     }
-    expect(docPickerText('ko', 'docPickTitle')).toContain('이음오피스')
-    expect(docPickerText('en', 'docPickTitle')).toContain('IeumOffice')
+    expect(docPickerText('ko', 'docPickTitle')).toContain('PosidOffice')
+    expect(docPickerText('en', 'docPickTitle')).toContain('PosidOffice')
   })
 })
 

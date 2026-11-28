@@ -1,0 +1,42 @@
+import type { zh } from './zh'
+export const nl = {
+  title: 'Ollama',
+  localServer: 'Lokale Ollama',
+  description:
+    'Voeg servers toe en registreer modellen. Kies daarna een model in de AI-instellingen of in een document. Documenten bewerken vereist een model dat gereedschapsaanroepen ondersteunt.',
+  addServer: 'Server toevoegen',
+  empty: 'Nog geen servers toegevoegd.',
+  serverName: 'Servernaam',
+  editServer: 'Server bewerken',
+  installed: 'Geïnstalleerde modellen',
+  registered: 'Geregistreerde modellen',
+  register: 'Registreren',
+  registeredBadge: 'Geregistreerd',
+  noModels: 'Er zijn geen modellen op deze server geïnstalleerd.',
+  noRegistered: 'Registreer een model uit de lijst met geïnstalleerde modellen.',
+  apiKeyOptional: 'API-sleutel (optioneel)',
+  invalidUrl: 'Voer een geldig HTTP- of HTTPS-adres zonder gebruikersnaam of wachtwoord in.',
+  loadFailed: 'Instellingen konden niet worden gelezen. Probeer het opnieuw.',
+  saveFailed: 'Wijzigingen konden niet worden opgeslagen. Probeer het opnieuw.',
+  connectFailed:
+    'Modellen konden niet worden opgehaald. Controleer de server, het adres en de API-sleutel.',
+  removeConfirm:
+    'Deze server en zijn geregistreerde modellen uit de lijst verwijderen? Modelbestanden op de server blijven behouden.',
+  loading: 'Instellingen lezen…',
+  retry: 'Opnieuw proberen',
+  refresh: 'Verbinding testen en modellen vernieuwen',
+  effortLow: 'Laag (Low)',
+  effortMedium: 'Gemiddeld (Medium)',
+  effortHigh: 'Hoog (High)',
+  localLocked: 'Een Ollama-server die op deze pc draait, kan niet worden verwijderd.',
+  connectTimeout: 'Time-out eerste reactie (minuten)',
+  connectTimeoutHint: 'Verhoog de waarde voor servers die modellen traag laden.',
+  visionBadge: 'Visie',
+  onboardingChecking: 'Lokale Ollama-verbinding controleren…',
+  onboardingConnected: 'Verbonden met Ollama.',
+  onboardingNoModels: 'Verbonden, maar er is nog geen model gedownload.',
+  onboardingUnavailable: 'Geen actieve Ollama-server gevonden.',
+  onboardingGuide:
+    'Als Ollama nog niet is geïnstalleerd, installeer het dan via het interne bedrijfsprikbord. Download daarna een model in Ollama, vernieuw de lijst en registreer het gewenste model in AI-modelbeheer.',
+  onboardingOpenManager: 'Ollama-instellingen',
+} satisfies Record<keyof typeof zh, string>

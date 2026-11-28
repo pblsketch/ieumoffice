@@ -7,7 +7,7 @@
       content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data: blob: genoffice-app:; worker-src 'self' blob:; connect-src 'self' ws://localhost:*"
     />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>IeumOffice</title>
+    <title>PosidOffice</title>
     <!-- First paint, before the bundle loads: nativeTheme.themeSource follows the saved theme, so
          prefers-color-scheme already resolves to the right surface instead of a white flash.
          Values mirror --surface in packages/ui/src/tokens.css. -->
@@ -29,7 +29,23 @@
     </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div
+        style="
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 100vw;
+          height: 100vh;
+        "
+      >
+        <img
+          src="./src/assets/posid-signature.png"
+          alt="PosidOffice"
+          style="max-width: 280px; width: 45%; height: auto; opacity: 0.9"
+        />
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

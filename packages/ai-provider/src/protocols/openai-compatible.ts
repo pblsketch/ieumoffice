@@ -1,9 +1,15 @@
 import type { AgentMessage, AgentToolCall, AgentToolDef } from '@genoffice/agent-core'
 import { aiFetch } from '../fetch'
 import { httpBodyDetail } from '../http-error'
+import { OLLAMA_EFFORT_PRESETS, ollamaEffortPresetOf } from '../custom-endpoints'
+import {
+  explainOllamaSystemError,
+  explainOllamaVisionUnsupported,
+  isOllamaOrCustomRequest,
+} from '../ollama-friendly-error'
 import { opencodeSessionHeaders } from '../providers'
 import { modelEchoesReasoning } from '../registry'
-import type { AiChatResponse, AiProviderConfig } from '../types'
+import type { AiChatResponse, AiProviderConfig, OllamaEffortPreset } from '../types'
 import { createStreamWatchdog, type StreamWatchdog } from '../watchdog'
 import {
   endpointUrl,
@@ -164,6 +170,15 @@ export interface OpenAiRequestOptions {
   maxTokens?: number | undefined
   /** sampling temperature; 0.3 when not given */
   temperature?: number | undefined
+  /** PosidOffice: the Ollama context/sampling preset (low, medium, high) */
+  effort?: OllamaEffortPreset | undefined
+  /** whether this turn came from the custom/Ollama provider slot */
+  isCustomProvider?: boolean | undefined
+  /**
+   * throw transport errors as they are instead of turning them into the Ollama
+   * help text: the local connection test classifies them itself
+   */
+  rawErrors?: boolean | undefined
 }
 
 const usageRejectedGateways = new Set<string>()
@@ -183,24 +198,68 @@ export async function streamOpenAiCompatible(
   cb: StreamCallbacks,
   options: OpenAiRequestOptions = {},
 ): Promise<void> {
-  const wd = createStreamWatchdog(cb.signal, options.timeoutMs, options.timeoutMs)
-  return wd.guard(() =>
-    openAiCompatibleTurn(baseUrl, config, system, messages, tools, maxTokens, cb, wd, {
-      ...options,
-      requestUsage: !usageRejectedGateways.has(baseUrl),
-    }).catch((e) => {
-      // Some gateways reject the (spec) stream_options field outright; a 400 that
-      // names it is retried once without it, and the gateway is remembered so
-      // later turns skip the extra round trip — those providers never report usage.
-      if (!/HTTP 4\d\d:[\s\S]*stream_options/i.test(e instanceof Error ? e.message : String(e)))
-        throw e
-      usageRejectedGateways.add(baseUrl)
-      return openAiCompatibleTurn(baseUrl, config, system, messages, tools, maxTokens, cb, wd, {
-        ...options,
-        requestUsage: false,
-      })
-    }),
+  if (
+    config.vision === false &&
+    messages.some((m) => m.role === 'user' && m.images && m.images.length > 0)
+  ) {
+    cb.onDelta(explainOllamaVisionUnsupported(config, messages, system))
+    cb.onStopReason?.('end_turn')
+    return
+  }
+  const friendlyEligible =
+    !options.rawErrors && isOllamaOrCustomRequest(baseUrl, options.isCustomProvider)
+  let emittedAnyDelta = false
+  const wrappedCb: StreamCallbacks = friendlyEligible
+    ? {
+        ...cb,
+        onDelta: (text) => {
+          emittedAnyDelta = true
+          cb.onDelta(text)
+        },
+      }
+    : cb
+  // a per-request budget (the local connection test) wins; an Ollama endpoint's
+  // own connect timeout widens the wait for a slow first model load
+  const wd = createStreamWatchdog(
+    cb.signal,
+    options.timeoutMs ?? config.connectTimeoutMs,
+    options.timeoutMs,
   )
+  return wd
+    .guard(() =>
+      openAiCompatibleTurn(baseUrl, config, system, messages, tools, maxTokens, wrappedCb, wd, {
+        ...options,
+        requestUsage: !usageRejectedGateways.has(baseUrl),
+      }).catch((e) => {
+        // Some gateways reject the (spec) stream_options field outright; a 400 that
+        // names it is retried once without it, and the gateway is remembered so
+        // later turns skip the extra round trip — those providers never report usage.
+        if (!/HTTP 4\d\d:[\s\S]*stream_options/i.test(e instanceof Error ? e.message : String(e)))
+          throw e
+        usageRejectedGateways.add(baseUrl)
+        return openAiCompatibleTurn(
+          baseUrl,
+          config,
+          system,
+          messages,
+          tools,
+          maxTokens,
+          wrappedCb,
+          wd,
+          {
+            ...options,
+            requestUsage: false,
+          },
+        )
+      }),
+    )
+    .catch((err) => {
+      if (!friendlyEligible || cb.signal.aborted) throw err
+      const friendly = explainOllamaSystemError(err, config, messages, system)
+      if (!friendly) throw err
+      cb.onDelta(emittedAnyDelta ? `\n\n${friendly}` : friendly)
+      cb.onStopReason?.('end_turn')
+    })
 }
 
 async function openAiCompatibleTurn(
@@ -221,6 +280,9 @@ async function openAiCompatibleTurn(
   // A caller that shapes one request (the local connection test) can cap the
   // output through the options; otherwise the turn's positional cap stands.
   const maxOutputTokens = options.maxTokens ?? maxTokens
+  const effort = ollamaEffortPresetOf(config.effort) ?? options.effort
+  const effortPreset = effort ? OLLAMA_EFFORT_PRESETS[effort] : undefined
+  const temperature = options.temperature ?? (effortPreset ? effortPreset.temperature : 0.3)
   const response = await aiFetch(endpointUrl(baseUrl, 'chat/completions'), {
     method: 'POST',
     signal: wd.signal,
@@ -243,7 +305,15 @@ async function openAiCompatibleTurn(
             })),
           }
         : {}),
-      ...(options.omitTemperature ? {} : { temperature: options.temperature ?? 0.3 }),
+      ...(options.omitTemperature ? {} : { temperature }),
+      ...(effortPreset
+        ? {
+            options: {
+              num_ctx: effortPreset.num_ctx,
+              num_predict: effortPreset.num_predict,
+            },
+          }
+        : {}),
       ...options.bodyExtras,
       stream: true,
       // OpenAI-class providers only report usage in a stream when asked (a final

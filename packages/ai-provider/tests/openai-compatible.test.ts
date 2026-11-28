@@ -196,7 +196,8 @@ describe('streamOpenAiCompatible options', () => {
         [],
         64,
         collector().cb,
-        { timeoutMs: 60_000 },
+        // the Ollama help text would otherwise answer the timeout
+        { timeoutMs: 60_000, rawErrors: true },
       ),
     ).rejects.toBeInstanceOf(AiTimeoutError)
     await vi.advanceTimersByTimeAsync(60_000)

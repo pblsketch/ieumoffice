@@ -35,11 +35,16 @@ beforeEach(() => {
   host = document.createElement('div')
   document.body.append(host)
   root = createRoot(host)
+  vi.stubGlobal('aiOffice', {
+    getCustomModels: vi.fn(async () => ({ models: [], defaultModel: '', reachable: false })),
+    openOllamaSettings: vi.fn(async () => {}),
+  })
 })
 
 afterEach(() => {
   act(() => root.unmount())
   host.remove()
+  vi.unstubAllGlobals()
 })
 
 function statuses(claude: AiSubscriptionState, codex: AiSubscriptionState): SubscriptionStatusMap {
@@ -89,6 +94,7 @@ interface RenderOptions {
   connection?: SubscriptionConnection
   noticeDue?: boolean
   onNoticeAcknowledge?: () => void
+  onOpenOllamaSettings?: () => Promise<void>
   covered?: boolean
   editorChoice?: PickApi
 }
@@ -101,6 +107,7 @@ function renderOnboarding(options: RenderOptions = {}): void {
         { initial: 'en' },
         createElement(Onboarding, {
           onDone: options.onDone ?? vi.fn(async () => true),
+          onOpenOllamaSettings: options.onOpenOllamaSettings ?? vi.fn(async () => {}),
           connection: options.connection ?? connectionOf(statuses('not-installed', 'signed-out')),
           noticeDue: options.noticeDue ?? false,
           onNoticeAcknowledge: options.onNoticeAcknowledge ?? vi.fn(),
@@ -450,6 +457,34 @@ describe('Onboarding', () => {
     )
     await click('.onb-slide[data-step="connect"] [data-provider="codex"] [data-action="login"]')
     expect(connection.login).toHaveBeenCalledWith('codex')
+  })
+
+  it('shows Ollama status and the internal installation and model-registration steps', async () => {
+    vi.stubGlobal('aiOffice', {
+      getCustomModels: vi.fn(async () => ({ models: [], defaultModel: '', reachable: false })),
+      openOllamaSettings: vi.fn(async () => {}),
+    })
+    renderOnboarding()
+    await click('.onb-next')
+
+    const card = host.querySelector<HTMLElement>('.onb-ollama-card')!
+    expect(card.querySelector('[role="status"]')?.textContent).toBe(
+      'No running Ollama server was detected.',
+    )
+    expect(card.textContent).toContain('company bulletin board')
+    expect(card.textContent).toContain('Download a model')
+    expect(card.textContent).toContain('AI Model Manager')
+    expect(card.querySelector('button')?.textContent).toBe('Ollama Settings')
+  })
+
+  it('finishes first-run setup and opens the Ollama model manager from its card', async () => {
+    const onDone = vi.fn(async () => true)
+    const onOpenOllamaSettings = vi.fn(async () => {})
+    renderOnboarding({ onDone, onOpenOllamaSettings })
+    await click('.onb-next')
+    await click('.onb-ollama-action')
+    expect(onDone).toHaveBeenCalledOnce()
+    expect(onOpenOllamaSettings).toHaveBeenCalledOnce()
   })
 
   it('says a launch could not start, under the card of that path', async () => {

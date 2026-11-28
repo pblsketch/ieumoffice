@@ -16,6 +16,7 @@ import type {
   AiLocalTestResult,
   AiSettings,
   CodexModelCatalog,
+  OllamaModelInfo,
 } from '@genoffice/ai-provider/browser'
 import { installDropOpenBridge } from '@genoffice/electron-utils/drop-open'
 import { mcpToolsBridge } from '@genoffice/electron-utils/mcp-tools-bridge'
@@ -414,6 +415,9 @@ const homeApi: HomeApi = {
   onOpenSettings(handler) {
     return openSettingsInbox.subscribe(handler)
   },
+  async openOllamaSettings() {
+    await ipcRenderer.invoke('ai:open-model-settings', 'ollama')
+  },
   async getAppVersion() {
     const result: unknown = await ipcRenderer.invoke(HOME_CHANNELS.getAppVersion)
     return typeof result === 'string' ? result : ''
@@ -635,6 +639,13 @@ const homeApi: HomeApi = {
   },
   async getCustomModels(baseUrl, apiKey) {
     return (await ipcRenderer.invoke('ai:custom-models', { baseUrl, apiKey })) as CodexModelCatalog
+  },
+  async getOllamaModelInfo(baseUrl, model, apiKey) {
+    return (await ipcRenderer.invoke('ai:ollama-show', {
+      baseUrl,
+      model,
+      apiKey,
+    })) as OllamaModelInfo
   },
   async getLocalModels(input) {
     return (await ipcRenderer.invoke('ai:local-models', input)) as AiLocalDiscoveryResult

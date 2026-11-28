@@ -41,3 +41,11 @@ En **Avanzado ▸ Medios de IA y búsqueda**, la clave y la URL base de un prove
 ## Cuándo se aplican los cambios
 
 - Los cambios de modelo y de endpoint se aplican de inmediato; una conversación en curso mantiene la configuración anterior hasta su siguiente vuelta.
+
+## Servidores y modelos Ollama
+
+Al abrir por primera vez, **Ollama local** aparece por defecto y consulta sus modelos. Si lo quitas, no se volverá a crear.
+
+En **Ajustes → Ollama → Añadir servidor**, introduce un nombre y una dirección. El valor predeterminado es `http://localhost:11434/v1`; la clave API es opcional. Al añadirlo se consultan sus modelos instalados. **Registrar** muestra el modelo en los ajustes de IA y en los documentos sin cambiar la IA actual.
+
+Pulsa el nombre del servidor para editar nombre, dirección o clave; al guardar también se actualizan sus modelos registrados. **Probar conexión** actualiza la lista. Quitar un servidor elimina sus registros, pero conserva sus archivos de modelos. Un servidor local con los modelos preparados puede funcionar sin Internet. La edición de documentos requiere llamadas a herramientas.

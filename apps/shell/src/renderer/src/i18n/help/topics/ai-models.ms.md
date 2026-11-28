@@ -41,3 +41,11 @@ Di bawah **Lanjutan ▸ Media & Carian AI**, kunci dan URL asas sesebuah penyedi
 ## Bila perubahan berkuat kuasa
 
 - Perubahan pada model dan titik akhir berkuat kuasa serta-merta. Perbualan yang sedang berjalan akan menggunakan konfigurasi lama sehingga pusingan seterusnya.
+
+## Pelayan dan model Ollama
+
+Pada lawatan pertama, **Ollama setempat** dipaparkan secara lalai dan mendapatkan modelnya. Jika dialih keluar, ia tidak akan dicipta semula.
+
+Dalam **Tetapan → Ollama → Tambah pelayan**, masukkan nama dan alamat. Alamat lalai ialah `http://localhost:11434/v1`; kunci API adalah pilihan. Penambahan mendapatkan senarai model yang dipasang. **Daftar** memaparkan model dalam tetapan AI dan dokumen tanpa menukar AI semasa.
+
+Klik nama pelayan untuk menyunting nama, alamat atau kunci; penyimpanan turut mengemas kini model berdaftar. **Uji sambungan** menyegar semula senarai. Mengalih keluar pelayan membuang rekodnya tetapi mengekalkan fail model pada pelayan. Pelayan setempat dengan model yang telah disediakan boleh berfungsi tanpa Internet. Penyuntingan dokumen memerlukan sokongan panggilan alat.

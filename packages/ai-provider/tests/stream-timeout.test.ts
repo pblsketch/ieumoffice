@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { streamForProvider } from '../src/stream'
-import { AI_CONNECT_TIMEOUT_MS, AiTimeoutError } from '../src/watchdog'
+import { AI_CONNECT_TIMEOUT_MS } from '../src/watchdog'
 
 /**
  * A local server loads the model on the first request, so the settings screen
@@ -34,7 +34,12 @@ function hangingFetch(): void {
   )
 }
 
+// PosidOffice: a timed-out turn on a custom (Ollama) endpoint ends with the
+// Ollama help text instead of an error, so the tests read the reply
+let replied = ''
+
 function run(toolsTimeoutMs?: number): Promise<void> {
+  replied = ''
   return streamForProvider(
     'custom',
     { apiKey: '', model: 'qwen3:8b', baseUrl: 'http://127.0.0.1:11434/v1' },
@@ -42,7 +47,13 @@ function run(toolsTimeoutMs?: number): Promise<void> {
     [{ role: 'user', text: 'hi' }],
     [],
     100,
-    { signal: new AbortController().signal, onDelta: () => undefined, onToolCall: () => undefined },
+    {
+      signal: new AbortController().signal,
+      onDelta: (text) => {
+        replied += text
+      },
+      onToolCall: () => undefined,
+    },
     toolsTimeoutMs === undefined ? undefined : { timeoutMs: toolsTimeoutMs },
   )
 }
@@ -50,31 +61,31 @@ function run(toolsTimeoutMs?: number): Promise<void> {
 describe('streamForProvider timeout', () => {
   it('aborts a delayed response at the timeout it was given', async () => {
     hangingFetch()
-    let settled: unknown
-    const outcome = run(5_000).catch((error: unknown) => {
-      settled = error
+    let settled = false
+    const outcome = run(5_000).then(() => {
+      settled = true
     })
 
     await vi.advanceTimersByTimeAsync(4_999)
-    expect(settled).toBeUndefined()
+    expect(settled).toBe(false)
 
     await vi.advanceTimersByTimeAsync(1)
     await outcome
-    expect(settled).toBeInstanceOf(AiTimeoutError)
+    expect(replied).toMatch(/timed out/)
   })
 
   it('keeps the default connect timeout when no timeout is given', async () => {
     hangingFetch()
-    let settled: unknown
-    const outcome = run().catch((error: unknown) => {
-      settled = error
+    let settled = false
+    const outcome = run().then(() => {
+      settled = true
     })
 
     await vi.advanceTimersByTimeAsync(AI_CONNECT_TIMEOUT_MS - 1)
-    expect(settled).toBeUndefined()
+    expect(settled).toBe(false)
 
     await vi.advanceTimersByTimeAsync(1)
     await outcome
-    expect(settled).toBeInstanceOf(AiTimeoutError)
+    expect(replied).toMatch(/timed out/)
   })
 })

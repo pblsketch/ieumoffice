@@ -133,14 +133,14 @@ jobs:
           for pair in mac-arm64:arm64 mac:x86_64; do
             dir="${pair%%:*}"
             cpu="${pair##*:}"
-            app="apps/shell/release/$dir/IeumOffice.app"
+            app="apps/shell/release/$dir/PosidOffice.app"
             codesign --verify --deep --strict --verbose=2 "$app"
             # read the whole report first: grep -q quitting early would break the pipe
             signature="$(codesign -dv "$app" 2>&1)"
             echo "$signature"
             grep -q 'Signature=adhoc' <<<"$signature"
             for bin in \
-              "$app/Contents/MacOS/IeumOffice" \
+              "$app/Contents/MacOS/PosidOffice" \
               "$app/Contents/Resources/native/xlsx-sidecar" \
               "$app/Contents/Resources/native/ieum-parse-sidecar" \
               "$app/Contents/Resources/ocr/vision-ocr"; do
@@ -151,7 +151,7 @@ jobs:
             test -f "$app/Contents/Resources/wasm/print_layout_bg.wasm" || { echo "missing: print_layout_bg.wasm"; exit 1; }
           done
           # each dmg names its CPU (config.dmg.artifactName)
-          ls apps/shell/release/IeumOffice-*-arm64.dmg apps/shell/release/IeumOffice-*-x64.dmg
+          ls apps/shell/release/PosidOffice-*-arm64.dmg apps/shell/release/PosidOffice-*-x64.dmg
 
       # The Mac app installs its updates from these zips itself (decision
       # 0097, apps/shell/src/main/mac-update.ts). Each zip in the feed must
@@ -164,8 +164,8 @@ jobs:
           release=apps/shell/release
           feed=$(ls $release/*-mac.yml)
           version=$(sed -n 's/^version: *//p' "$feed" | tr -d "'\"")
-          id=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$release/mac-arm64/IeumOffice.app/Contents/Info.plist")
-          for name in "IeumOffice-$version-arm64-mac.zip" "IeumOffice-$version-mac.zip"; do
+          id=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$release/mac-arm64/PosidOffice.app/Contents/Info.plist")
+          for name in "PosidOffice-$version-arm64-mac.zip" "PosidOffice-$version-mac.zip"; do
             grep -qF "url: $name" "$feed" || { echo "not in $feed: $name"; exit 1; }
             out="$RUNNER_TEMP/unzip-$name"
             rm -rf "$out"
@@ -191,22 +191,22 @@ jobs:
           ' "$RUNNER_TEMP/swap.sh"
           apps_dir="$RUNNER_TEMP/Applications"
           rm -rf "$apps_dir"
-          mkdir -p "$apps_dir/.IeumOffice.app.update"
-          ditto "$release/mac/IeumOffice.app" "$apps_dir/IeumOffice.app"
-          ditto -x -k "$release/IeumOffice-$version-arm64-mac.zip" "$apps_dir/.IeumOffice.app.update"
+          mkdir -p "$apps_dir/.PosidOffice.app.update"
+          ditto "$release/mac/PosidOffice.app" "$apps_dir/PosidOffice.app"
+          ditto -x -k "$release/PosidOffice-$version-arm64-mac.zip" "$apps_dir/.PosidOffice.app.update"
           true & gone=$!
           wait "$gone"
           /bin/sh -c "$(cat "$RUNNER_TEMP/swap.sh")" ieumoffice-update "$gone" \
-            "$apps_dir/IeumOffice.app" "$apps_dir/.IeumOffice.app.update/IeumOffice.app" \
-            "$apps_dir/.IeumOffice.app.update" "$apps_dir/.IeumOffice.app.previous" \
+            "$apps_dir/PosidOffice.app" "$apps_dir/.PosidOffice.app.update/PosidOffice.app" \
+            "$apps_dir/.PosidOffice.app.update" "$apps_dir/.PosidOffice.app.previous" \
             "$RUNNER_TEMP/update-log.txt" /usr/bin/true
           cat "$RUNNER_TEMP/update-log.txt"
           grep -q 'installed the new version' "$RUNNER_TEMP/update-log.txt"
           ls -A "$apps_dir"
-          test "$(ls -A "$apps_dir")" = "IeumOffice.app"
+          test "$(ls -A "$apps_dir")" = "PosidOffice.app"
           # the swapped-in app is the arm64 one, intact
-          lipo -archs "$apps_dir/IeumOffice.app/Contents/MacOS/IeumOffice" | grep -qw arm64
-          codesign --verify --deep --strict "$apps_dir/IeumOffice.app"
+          lipo -archs "$apps_dir/PosidOffice.app/Contents/MacOS/PosidOffice" | grep -qw arm64
+          codesign --verify --deep --strict "$apps_dir/PosidOffice.app"
 
       # the Intel app runs on this runner only through Rosetta, which an image
       # may not carry yet
@@ -225,7 +225,7 @@ jobs:
           for pair in mac-arm64:arm64 mac:x86_64; do
             dir="${pair%%:*}"
             cpu="${pair##*:}"
-            exe="apps/shell/release/$dir/IeumOffice.app/Contents/MacOS/IeumOffice"
+            exe="apps/shell/release/$dir/PosidOffice.app/Contents/MacOS/PosidOffice"
             work="$RUNNER_TEMP/smoke-$cpu"
             mkdir -p "$work"
             printf '# Smoke test\n\nHello from the macOS build.\n' > "$work/note.md"

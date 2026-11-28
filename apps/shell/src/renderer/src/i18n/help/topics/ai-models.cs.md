@@ -41,3 +41,11 @@ V části **Pokročilé ▸ AI média a vyhledávání** se klíč a základní 
 ## Kdy se změny projeví
 
 - Změny modelu a koncového bodu působí okamžitě; probíhající konverzace si drží původní nastavení až do svého dalšího kroku.
+
+## Servery a modely Ollama
+
+Při prvním otevření se automaticky zobrazí **Místní Ollama** a načte své modely. Po odebrání se znovu nevytvoří.
+
+V **Nastavení → Ollama → Přidat server** zadejte název a adresu. Výchozí adresa je `http://localhost:11434/v1`; klíč API je nepovinný. Přidáním se načte seznam nainstalovaných modelů. **Zaregistrovat** zpřístupní model v nastavení AI a dokumentech bez změny aktuální AI.
+
+Kliknutím na název serveru upravíte název, adresu nebo klíč. Uložení aktualizuje i registrované modely. **Otestovat připojení** obnoví seznam. Odebrání serveru odstraní jeho záznamy, ale zachová soubory modelů na serveru. Připravený místní server s modely funguje i bez internetu. Úprava dokumentů vyžaduje podporu volání nástrojů.

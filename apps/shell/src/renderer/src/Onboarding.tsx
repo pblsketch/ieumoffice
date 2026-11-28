@@ -10,6 +10,8 @@ import appIcon from './assets/app-icon.png'
 import { FirstConnectionDialog } from './FirstConnectionNotice'
 import { FreeAiCards, useAiSettings as useFreeAiSettings } from './FreeAiCards'
 import { FREE_AI_PROVIDER_NAMES } from './free-ai-cards'
+import { LOCAL_OLLAMA_URL } from './ollama-settings'
+import { ollamaText, type OllamaStringKey } from './i18n/strings-ollama'
 import { useI18n } from './locale'
 import {
   leavesPickStep,
@@ -32,6 +34,8 @@ import './onboarding.css'
 interface OnboardingProps {
   /** persists completion */
   onDone: () => Promise<boolean>
+  /** opens Settings → Ollama after completing first-run setup */
+  onOpenOllamaSettings: () => Promise<void>
   /** the live subscription connection: the connect step shows it and acts on it */
   connection: SubscriptionConnection
   /** a subscription can be used and the first-connection notice was not acknowledged yet */
@@ -41,6 +45,75 @@ interface OnboardingProps {
   covered?: boolean
   /** saves the pick step's choice; the shell's bridge unless a test hands in a fake */
   editorChoice?: Pick<EditorChoiceApi, 'set' | 'markPickSeen'>
+}
+
+type OllamaConnectionState = 'checking' | 'connected' | 'no-models' | 'unavailable'
+
+function OllamaConnectionCard({
+  lang,
+  disabled,
+  onOpenManager,
+}: {
+  lang: Parameters<typeof ollamaText>[0]
+  disabled: boolean
+  onOpenManager: () => void
+}) {
+  const [state, setState] = useState<OllamaConnectionState>('checking')
+  const t = (key: OllamaStringKey) => ollamaText(lang, key)
+
+  useEffect(() => {
+    let alive = true
+    const api = window.aiOffice
+    if (!api || typeof api.getCustomModels !== 'function') {
+      setState('unavailable')
+      return
+    }
+    void window.aiOffice.getCustomModels(LOCAL_OLLAMA_URL).then(
+      (catalog) => {
+        if (!alive) return
+        if (catalog.reachable) setState(catalog.models.length > 0 ? 'connected' : 'no-models')
+        else setState(catalog.models.length > 0 ? 'connected' : 'unavailable')
+      },
+      () => {
+        if (alive) setState('unavailable')
+      },
+    )
+    return () => {
+      alive = false
+    }
+  }, [])
+
+  const statusKey: Record<OllamaConnectionState, OllamaStringKey> = {
+    checking: 'onboardingChecking',
+    connected: 'onboardingConnected',
+    'no-models': 'onboardingNoModels',
+    unavailable: 'onboardingUnavailable',
+  }
+
+  return (
+    <section className="onb-ollama-card" aria-label={t('title')}>
+      <div className="onb-ollama-heading">
+        <strong>{t('title')}</strong>
+        <span
+          className={`onb-ollama-status ${state}`}
+          role="status"
+          aria-live="polite"
+          data-state={state}
+        >
+          {t(statusKey[state])}
+        </span>
+      </div>
+      <p>{t('onboardingGuide')}</p>
+      <button
+        type="button"
+        className="onb-ollama-action"
+        disabled={disabled}
+        onClick={onOpenManager}
+      >
+        {t('onboardingOpenManager')}
+      </button>
+    </section>
+  )
 }
 
 /* exact vectors from the design spec:
@@ -89,6 +162,7 @@ function SlideArt({ step }: { step: OnboardingStepId }) {
 
 export function Onboarding({
   onDone,
+  onOpenOllamaSettings,
   connection,
   noticeDue,
   onNoticeAcknowledge,
@@ -132,6 +206,20 @@ export function Onboarding({
     void onDone()
       .catch(() => false)
       .finally(() => setSubmitting(false))
+  }
+
+  const openOllamaManager = () => {
+    if (submitting) return
+    setSubmitting(true)
+    void onDone()
+      .then(async (completed) => {
+        if (!completed) {
+          setSubmitting(false)
+          return
+        }
+        await onOpenOllamaSettings().catch(() => undefined)
+      })
+      .catch(() => setSubmitting(false))
   }
 
   /**
@@ -293,6 +381,11 @@ export function Onboarding({
               }
             />
           </div>
+          <OllamaConnectionCard
+            lang={lang}
+            disabled={connection.busy || submitting}
+            onOpenManager={openOllamaManager}
+          />
           <p className="onb-note">{t('onbConnectSkipNote')}</p>
         </>
       )

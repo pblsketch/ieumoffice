@@ -4,6 +4,8 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   describeExtraRoot,
+  describeSystemRoot,
+  discoverLocalDriveRoots,
   readExtraRoots,
   withExtraRoot,
   withoutExtraRoot,
@@ -73,5 +75,22 @@ describe('describeExtraRoot', () => {
     } finally {
       chmodSync(ro, 0o755)
     }
+  })
+
+  it('describeSystemRoot tags OS locations as non-removable with their Explorer role', () => {
+    expect(describeSystemRoot(join(dir, 'missing'), 'desktop')).toBeNull()
+    expect(describeSystemRoot(dir, 'desktop', 'Desktop')).toEqual({
+      path: dir,
+      name: 'Desktop',
+      usable: true,
+      readable: true,
+      removable: false,
+      kind: 'desktop',
+    })
+  })
+
+  it('discoverLocalDriveRoots returns empty on non-Windows platforms', () => {
+    expect(discoverLocalDriveRoots('linux')).toEqual([])
+    expect(discoverLocalDriveRoots('darwin')).toEqual([])
   })
 })

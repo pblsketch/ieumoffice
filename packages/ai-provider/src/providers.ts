@@ -1,5 +1,6 @@
 import { openAiSecrets } from './settings-secrets'
 import { resolveCustomEndpoints } from './custom-endpoints'
+import { normalizeOllamaServers } from './ollama-servers'
 import { aiModelEffortsOf } from './effort'
 import { defaultAiMediaSettings, resolveAiMediaSettings } from './media'
 import { defaultAiSearchSettings, resolveAiSearchSettings } from './search-settings'
@@ -748,6 +749,7 @@ const KNOWN_SETTINGS_FIELDS: Record<keyof AiSettings | keyof LegacyAiSettings, t
   providers: true,
   customEndpoints: true,
   customEndpoint: true,
+  ollamaServers: true,
   media: true,
   search: true,
   readUrl: true,
@@ -774,6 +776,8 @@ const KNOWN_PROVIDER_FIELDS: Record<keyof AiProviderConfig, true> = {
   models: true,
   effort: true,
   modelEfforts: true,
+  connectTimeoutMs: true,
+  vision: true,
 }
 
 /** The fields of `stored` this build does not know and `next` does not carry */
@@ -1001,6 +1005,9 @@ export function resolveAiSettings(stored: unknown, defaults: AiSettings): AiSett
     provider: settings.provider ?? defaults.provider,
     customEndpoints: settings.customEndpoints,
     customEndpoint: settings.customEndpoint,
+    ...(Array.isArray(settings.ollamaServers)
+      ? { ollamaServers: normalizeOllamaServers(settings.ollamaServers) }
+      : {}),
     ...(readUrl ? { readUrl } : {}),
     // Trim before migrating: a pasted " deepseek-reasoner " must still hit
     // the retired-id remap instead of being sent to the API verbatim.

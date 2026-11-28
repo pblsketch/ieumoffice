@@ -41,3 +41,11 @@ Sous **Avancé ▸ Médias IA et recherche**, la clé et l’URL de base d’un 
 ## Quand les changements s’appliquent
 
 - Les changements de modèle et de point de terminaison s’appliquent immédiatement ; une conversation en cours conserve l’ancienne configuration jusqu’à son tour suivant.
+
+## Serveurs et modèles Ollama
+
+À la première ouverture, **Ollama local** apparaît par défaut et récupère ses modèles. Si vous le retirez, il ne sera pas recréé.
+
+Dans **Réglages → Ollama → Ajouter un serveur**, saisissez un nom et une adresse. L’adresse par défaut est `http://localhost:11434/v1` ; la clé API est facultative. L’ajout récupère les modèles installés. **Enregistrer** rend le modèle disponible dans les réglages IA et les documents, sans changer l’IA actuelle.
+
+Cliquez sur le nom du serveur pour modifier son nom, son adresse ou sa clé ; l’enregistrement met aussi à jour ses modèles enregistrés. **Tester la connexion** actualise la liste. Retirer un serveur retire ses entrées, mais conserve ses fichiers de modèles. Un serveur local avec ses modèles prêts peut fonctionner hors ligne. La modification de documents nécessite la prise en charge des appels d’outils.

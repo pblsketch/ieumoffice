@@ -155,7 +155,7 @@ import {
   ACP_TOOL_RESULT_CHANNEL,
   createAcpToolBroker,
 } from '@genoffice/electron-utils/acp-tool-channels'
-import { listCustomModelsForIpc } from '@genoffice/ai-provider/custom-models'
+import { listCustomModelsForIpc, showOllamaModelForIpc } from '@genoffice/ai-provider/custom-models'
 import { createKeyModelRefresher, withStoredMainFields } from '@genoffice/ai-provider/key-models'
 import {
   createSubscriptionIpcDeps,
@@ -4613,6 +4613,7 @@ export function registerAiIpc(): void {
 
   ipcMain.handle('ai:custom-models', (_event, input: unknown) => listCustomModelsForIpc(input))
 
+  ipcMain.handle('ai:ollama-show', (_event, input: unknown) => showOllamaModelForIpc(input))
   // local AI card: discovery, one model's server-reported profile, and the
   // four-step connection test. Payload validation lives in @genoffice/ai-provider
   // (local-ipc.ts), so a malformed payload answers shape and sends nothing.

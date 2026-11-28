@@ -172,7 +172,7 @@ jobs:
           done
           test -f "$dir/resources/wasm/hwp5_bg.wasm" || { echo "missing: hwp5_bg.wasm"; exit 1; }
           test -f "$dir/resources/wasm/print_layout_bg.wasm" || { echo "missing: print_layout_bg.wasm"; exit 1; }
-          compgen -G "apps/shell/release/IeumOffice-*.AppImage" >/dev/null
+          compgen -G "apps/shell/release/PosidOffice-*.AppImage" >/dev/null
           compgen -G "apps/shell/release/ieumoffice_*_amd64.deb" >/dev/null
           compgen -G "apps/shell/release/ieumoffice-*.x86_64.rpm" >/dev/null
           test -f "apps/shell/release/latest-linux.yml"
@@ -324,14 +324,14 @@ jobs:
               apt-get install -y -qq --no-install-recommends /pkg/ieumoffice_*_amd64.deb \
                 libgbm1 libasound2 xvfb xauth > /dev/null
               ldd --version | sed -n 1p
-              /opt/IeumOffice/resources/native/xlsx-sidecar < /dev/null
-              /opt/IeumOffice/resources/native/ieum-parse-sidecar < /dev/null
+              /opt/PosidOffice/resources/native/xlsx-sidecar < /dev/null
+              /opt/PosidOffice/resources/native/ieum-parse-sidecar < /dev/null
               # the post-install step pointed the desktop entry at the launcher (#488)
-              test -x /opt/IeumOffice/resources/ieumoffice-launch
-              grep -q "^Exec=/opt/IeumOffice/resources/ieumoffice-launch " /usr/share/applications/ieumoffice.desktop
-              if ldd /opt/IeumOffice/ieumoffice | grep "not found"; then exit 1; fi
+              test -x /opt/PosidOffice/resources/ieumoffice-launch
+              grep -q "^Exec=/opt/PosidOffice/resources/ieumoffice-launch " /usr/share/applications/ieumoffice.desktop
+              if ldd /opt/PosidOffice/ieumoffice | grep "not found"; then exit 1; fi
               mkdir -p /tmp/out
-              xvfb-run --auto-servernum -- /opt/IeumOffice/ieumoffice --headless-export /work/table.csv --to pdf --out /tmp/out/table.pdf --json --no-sandbox
+              xvfb-run --auto-servernum -- /opt/PosidOffice/ieumoffice --headless-export /work/table.csv --to pdf --out /tmp/out/table.pdf --json --no-sandbox
               test -s /tmp/out/table.pdf
             '
 

@@ -30,7 +30,14 @@ describe('which settings sections show', () => {
   })
 
   it('hides account, AI, AI media and skills while AI is off', () => {
-    expect([...AI_ONLY_SECTIONS].sort()).toEqual(['account', 'aiMedia', 'aiModel', 'skills'])
+    // PosidOffice: the Ollama screen is an AI section too
+    expect([...AI_ONLY_SECTIONS].sort()).toEqual([
+      'account',
+      'aiMedia',
+      'aiModel',
+      'ollama',
+      'skills',
+    ])
     const shown = shownSettingsSections(false)
     for (const id of AI_ONLY_SECTIONS) {
       expect(shown).not.toContain(id)

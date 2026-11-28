@@ -1,0 +1,42 @@
+import type { zh } from './zh'
+export const de = {
+  title: 'Ollama',
+  localServer: 'Lokales Ollama',
+  description:
+    'Fügen Sie Server hinzu und registrieren Sie Modelle. Wählen Sie diese anschließend in den KI-Einstellungen oder im Dokument aus. Zum Bearbeiten von Dokumenten muss das Modell Werkzeugaufrufe unterstützen.',
+  addServer: 'Server hinzufügen',
+  empty: 'Noch keine Server hinzugefügt.',
+  serverName: 'Servername',
+  editServer: 'Server bearbeiten',
+  installed: 'Installierte Modelle',
+  registered: 'Registrierte Modelle',
+  register: 'Registrieren',
+  registeredBadge: 'Registriert',
+  noModels: 'Auf diesem Server sind keine Modelle installiert.',
+  noRegistered: 'Registrieren Sie ein Modell aus der Liste der installierten Modelle.',
+  apiKeyOptional: 'API-Schlüssel (optional)',
+  invalidUrl: 'Geben Sie eine gültige HTTP- oder HTTPS-Adresse ohne Benutzername und Passwort ein.',
+  loadFailed: 'Einstellungen konnten nicht gelesen werden. Bitte erneut versuchen.',
+  saveFailed: 'Änderungen konnten nicht gespeichert werden. Bitte erneut versuchen.',
+  connectFailed:
+    'Modelle konnten nicht abgerufen werden. Prüfen Sie Server, Adresse und API-Schlüssel.',
+  removeConfirm:
+    'Diesen Server und seine registrierten Modelle aus der Liste entfernen? Die Modelldateien auf dem Server bleiben erhalten.',
+  loading: 'Einstellungen werden gelesen…',
+  retry: 'Erneut versuchen',
+  refresh: 'Verbindung testen und Modelle aktualisieren',
+  effortLow: 'Niedrig (Low)',
+  effortMedium: 'Mittel (Medium)',
+  effortHigh: 'Hoch (High)',
+  localLocked: 'Ein auf diesem PC laufender Ollama-Server kann nicht entfernt werden.',
+  connectTimeout: 'Zeitlimit für die erste Antwort (Minuten)',
+  connectTimeoutHint: 'Erhöhen Sie den Wert für Server, die Modelle langsam laden.',
+  visionBadge: 'Vision',
+  onboardingChecking: 'Lokale Ollama-Verbindung wird geprüft …',
+  onboardingConnected: 'Mit Ollama verbunden.',
+  onboardingNoModels: 'Verbunden, aber noch kein Modell heruntergeladen.',
+  onboardingUnavailable: 'Kein laufender Ollama-Server gefunden.',
+  onboardingGuide:
+    'Falls Ollama noch nicht installiert ist, installieren Sie es über das interne Firmen-Board. Laden Sie anschließend in Ollama ein Modell herunter und aktualisieren Sie im KI-Modellmanager die Modellliste, um das gewünschte Modell zu registrieren.',
+  onboardingOpenManager: 'Ollama-Einstellungen',
+} satisfies Record<keyof typeof zh, string>

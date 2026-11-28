@@ -1,0 +1,42 @@
+import type { zh } from './zh'
+export const pt = {
+  title: 'Ollama',
+  localServer: 'Ollama local',
+  description:
+    'Adicione servidores e registre modelos, depois escolha um nas configurações de IA ou no documento. A edição de documentos requer um modelo com suporte a chamadas de ferramentas.',
+  addServer: 'Adicionar servidor',
+  empty: 'Nenhum servidor adicionado.',
+  serverName: 'Nome do servidor',
+  editServer: 'Editar servidor',
+  installed: 'Modelos instalados',
+  registered: 'Modelos registrados',
+  register: 'Registrar',
+  registeredBadge: 'Registrado',
+  noModels: 'Não há modelos instalados neste servidor.',
+  noRegistered: 'Registre um modelo da lista de modelos instalados.',
+  apiKeyOptional: 'Chave API (opcional)',
+  invalidUrl: 'Insira um endereço HTTP ou HTTPS válido sem nome de usuário ou senha.',
+  loadFailed: 'Não foi possível ler as configurações. Tente novamente.',
+  saveFailed: 'Não foi possível salvar as alterações. Tente novamente.',
+  connectFailed:
+    'Não foi possível obter os modelos. Verifique o servidor, o endereço e a chave API.',
+  removeConfirm:
+    'Remover este servidor e seus modelos registrados da lista? Os arquivos de modelos no servidor serão mantidos.',
+  loading: 'Lendo configurações…',
+  retry: 'Tentar novamente',
+  refresh: 'Testar conexão e atualizar modelos',
+  effortLow: 'Baixo (Low)',
+  effortMedium: 'Médio (Medium)',
+  effortHigh: 'Alto (High)',
+  localLocked: 'Um servidor Ollama em execução neste PC não pode ser removido.',
+  connectTimeout: 'Tempo limite da primeira resposta (minutos)',
+  connectTimeoutHint: 'Aumente o valor em servidores que demoram a carregar os modelos.',
+  visionBadge: 'Visão',
+  onboardingChecking: 'Verificando a conexão local do Ollama…',
+  onboardingConnected: 'Conectado ao Ollama.',
+  onboardingNoModels: 'Conectado, mas nenhum modelo foi baixado ainda.',
+  onboardingUnavailable: 'Nenhum servidor Ollama em execução foi detectado.',
+  onboardingGuide:
+    'Se o Ollama não estiver instalado, instale-o pelo mural interno da empresa. Baixe um modelo no Ollama e, em seguida, atualize a lista e registre o modelo desejado no gerenciador de modelos de IA.',
+  onboardingOpenManager: 'Configurações do Ollama',
+} satisfies Record<keyof typeof zh, string>

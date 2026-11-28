@@ -41,3 +41,11 @@ Onder **Geavanceerd ▸ AI-media en zoeken** vul je de sleutel en de basis-URL v
 ## Wanneer wijzigingen ingaan
 
 - Wijzigingen aan model en eindpunt gaan meteen in; een lopend gesprek houdt de oude configuratie aan tot de volgende beurt.
+
+## Ollama-servers en modellen
+
+Bij het eerste bezoek verschijnt **Lokale Ollama** standaard en haalt het zijn modellen op. Na verwijdering wordt het niet opnieuw aangemaakt.
+
+Voer bij **Instellingen → Ollama → Server toevoegen** een naam en adres in. Het standaardadres is `http://localhost:11434/v1`; de API-sleutel is optioneel. Bij het toevoegen worden de geïnstalleerde modellen opgehaald. **Registreren** maakt een model beschikbaar in de AI-instellingen en documenten zonder de huidige AI te wijzigen.
+
+Klik op de servernaam om naam, adres of sleutel te bewerken. Opslaan werkt ook de geregistreerde modellen bij. **Verbinding testen** vernieuwt de lijst. Een server verwijderen verwijdert zijn registraties, maar behoudt modelbestanden op de server. Een voorbereide lokale server met modellen werkt offline. Documenten bewerken vereist ondersteuning voor gereedschapsaanroepen.

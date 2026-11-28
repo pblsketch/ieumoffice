@@ -5,6 +5,7 @@ import { chatOpenAiResponses } from './protocols/openai-responses'
 import { ResponseBodyTooLargeError } from './protocols/shared'
 import { chatCodexAppServer } from './codex-app-server'
 import { chatClaudeCodeCli } from './claude-code-cli'
+import { explainOllamaSystemError, isOllamaOrCustomRequest } from './ollama-friendly-error'
 import { chatChatGpt } from './chatgpt/responses'
 import { keyEffortBody } from './key-effort'
 import { getProviderAdapter, type ResolvedEndpoint } from './registry'
@@ -20,8 +21,14 @@ export async function chatForProvider(
   signal?: AbortSignal,
 ): Promise<AiChatResponse> {
   // non-streaming: the server generates the full answer before the headers arrive,
-  // so the connect phase gets the long budget; the body read then gets the idle budget
-  const wd = createStreamWatchdog(signal, AI_CHAT_RESPONSE_TIMEOUT_MS)
+  // so the connect phase gets the long budget; the body read then gets the idle budget.
+  // An endpoint's own timeout (e.g. a slow-loading Ollama server) can only widen it.
+  const wd = createStreamWatchdog(
+    signal,
+    Math.max(AI_CHAT_RESPONSE_TIMEOUT_MS, config.connectTimeoutMs ?? 0),
+  )
+  const userMessages = [{ role: 'user' as const, text: user }]
+  const friendlyEligible = isOllamaOrCustomRequest(config.baseUrl ?? '', provider === 'custom')
   const result = wd.guard(() => {
     let endpoint: ResolvedEndpoint
     try {
@@ -58,6 +65,7 @@ export async function chatForProvider(
         return chatOpenAiCompatible(wd, endpoint.baseUrl, config, system, user, {
           omitTemperature: endpoint.omitTemperature,
           bodyExtras: effortBody ? { ...endpoint.bodyExtras, ...effortBody } : endpoint.bodyExtras,
+          isCustomProvider: provider === 'custom',
         })
       case 'openai-responses':
         return chatOpenAiResponses(wd, endpoint.baseUrl, config, system, user, {
@@ -65,8 +73,20 @@ export async function chatForProvider(
         })
     }
   })
-  return result.catch((e) => {
-    if (e instanceof ResponseBodyTooLargeError) return { ok: false as const, error: e.message }
-    throw e
-  })
+  return result
+    .then((res) => {
+      if (!res.ok && friendlyEligible && !signal?.aborted) {
+        const friendly = explainOllamaSystemError(res.error, config, userMessages, system)
+        if (friendly) return { ok: true as const, content: friendly }
+      }
+      return res
+    })
+    .catch((e) => {
+      if (friendlyEligible && !signal?.aborted) {
+        const friendly = explainOllamaSystemError(e, config, userMessages, system)
+        if (friendly) return { ok: true as const, content: friendly }
+      }
+      if (e instanceof ResponseBodyTooLargeError) return { ok: false as const, error: e.message }
+      throw e
+    })
 }

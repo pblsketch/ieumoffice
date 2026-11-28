@@ -41,3 +41,11 @@ W części **Zaawansowane ▸ Media i wyszukiwanie AI** klucz i bazowy adres URL
 ## Kiedy zmiany zaczynają obowiązywać
 
 - Zmiany modelu i punktu końcowego działają natychmiast; trwająca rozmowa zachowuje poprzednią konfigurację do swojej następnej tury.
+
+## Serwery i modele Ollama
+
+Przy pierwszym otwarciu domyślnie pojawia się **Lokalny Ollama** i pobiera listę modeli. Po usunięciu nie zostanie utworzony ponownie.
+
+W **Ustawienia → Ollama → Dodaj serwer** wpisz nazwę i adres. Domyślny adres to `http://localhost:11434/v1`; klucz API jest opcjonalny. Dodanie pobiera listę zainstalowanych modeli. **Zarejestruj** udostępnia model w ustawieniach AI i dokumentach bez zmiany obecnego AI.
+
+Kliknij nazwę serwera, aby edytować nazwę, adres lub klucz. Zapis aktualizuje też zarejestrowane modele. **Testuj połączenie** odświeża listę. Usunięcie serwera usuwa jego wpisy, ale pozostawia pliki modeli na serwerze. Przygotowany lokalny serwer z modelami działa bez Internetu. Edycja dokumentów wymaga obsługi wywołań narzędzi.

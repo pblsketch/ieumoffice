@@ -41,3 +41,11 @@ Unter **Erweitert ▸ KI-Medien & Suche** werden Schlüssel und Basis-URL eines 
 ## Wann Änderungen wirksam werden
 
 - Änderungen an Modell und Endpunkt gelten sofort; eine laufende Unterhaltung behält die alte Konfiguration bis zu ihrem nächsten Durchgang.
+
+## Ollama-Server und Modelle
+
+Beim ersten Öffnen erscheint **Lokales Ollama** automatisch und ruft seine Modelle ab. Wenn Sie es entfernen, wird es nicht erneut angelegt.
+
+Unter **Einstellungen → Ollama → Server hinzufügen** geben Sie Name und Adresse ein. Die Vorgabe ist `http://localhost:11434/v1`; der API-Schlüssel ist optional. Beim Hinzufügen werden die installierten Modelle abgerufen. **Registrieren** zeigt ein Modell in den KI-Einstellungen und Dokumenten an, ohne die aktuelle KI zu ändern.
+
+Klicken Sie auf den Servernamen, um Name, Adresse oder Schlüssel zu bearbeiten. Speichern aktualisiert auch die registrierten Modelle. **Verbindung testen** aktualisiert die Liste. Das Entfernen eines Servers entfernt seine Einträge, aber keine Modelldateien auf dem Server. Ein vorbereiteter lokaler Server mit Modellen funktioniert offline. Die Dokumentbearbeitung erfordert Werkzeugaufrufe.

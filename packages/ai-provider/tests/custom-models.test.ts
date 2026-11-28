@@ -89,6 +89,7 @@ describe('listCustomModels against recorded real servers', () => {
     expect(await listCustomModels('http://127.0.0.1:11434/v1')).toEqual({
       models: ['gemma3:4b'],
       defaultModel: '',
+      reachable: true,
     })
   })
 
@@ -97,6 +98,7 @@ describe('listCustomModels against recorded real servers', () => {
     expect(await listCustomModels('http://127.0.0.1:1234/v1')).toEqual({
       models: ['text-embedding-nomic-embed-text-v1.5'],
       defaultModel: '',
+      reachable: true,
     })
   })
 
@@ -197,7 +199,11 @@ describe('a server that cannot answer leaves the text box in place', () => {
 
   it('returns empty when the server answers with no models at all', async () => {
     stubFetch(jsonBody('{"object":"list","data":[]}'))
-    expect(await listCustomModels(BASE_URL)).toEqual({ models: [], defaultModel: '' })
+    expect(await listCustomModels(BASE_URL)).toEqual({
+      models: [],
+      defaultModel: '',
+      reachable: true,
+    })
   })
 
   it('returns empty when `data` is not an array', async () => {
@@ -277,6 +283,7 @@ describe('the ids it keeps', () => {
     expect(await listCustomModels(BASE_URL)).toEqual({
       models: ['b', 'a', 'z'],
       defaultModel: '',
+      reachable: true,
     })
   })
 

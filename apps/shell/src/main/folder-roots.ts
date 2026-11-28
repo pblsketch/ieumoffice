@@ -1,6 +1,6 @@
 import { accessSync, constants, statSync } from 'node:fs'
 import { basename, isAbsolute, resolve } from 'node:path'
-import type { FolderRoot } from '../shared/home-api'
+import type { FolderRoot, FolderRootKind } from '../shared/home-api'
 
 /** app-settings.json key: folders the user added to the home tree beside the default save folder */
 export const FOLDER_ROOTS_KEY = 'folderRoots'
@@ -51,4 +51,49 @@ export function describeExtraRoot(path: string): FolderRoot {
     // a missing, unplugged or unwritable folder keeps whatever was established above
   }
   return { path, name: basename(path) || path, usable, readable, removable: true }
+}
+
+/** a pinned OS location or drive root: non-removable, carries its Explorer icon role */
+export function describeSystemRoot(
+  path: string,
+  kind: FolderRootKind,
+  label?: string,
+): FolderRoot | null {
+  try {
+    if (!statSync(path).isDirectory()) return null
+    accessSync(path, constants.R_OK)
+    let usable = false
+    try {
+      accessSync(path, constants.W_OK)
+      usable = true
+    } catch {
+      usable = false
+    }
+    const fallbackName = basename(path) || path.replace(/[\\/]+$/, '') || path
+    return {
+      path,
+      name: label ?? fallbackName,
+      usable,
+      readable: true,
+      removable: false,
+      kind,
+    }
+  } catch {
+    return null
+  }
+}
+
+/** Mounted Windows drive roots (`C:\\`, `D:\\`, ...) that exist and can be read. */
+export function discoverLocalDriveRoots(
+  platform: NodeJS.Platform = process.platform,
+): FolderRoot[] {
+  if (platform !== 'win32') return []
+  const drives: FolderRoot[] = []
+  for (let code = 67; code <= 90; code++) {
+    const letter = String.fromCharCode(code)
+    const drivePath = `${letter}:\\`
+    const root = describeSystemRoot(drivePath, 'drive', `${letter}:\\`)
+    if (root) drives.push(root)
+  }
+  return drives
 }

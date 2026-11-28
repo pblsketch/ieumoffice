@@ -74,7 +74,15 @@ import menuWhiteboardIcon1x from './assets/menu-whiteboard.png?asset'
 import menuWhiteboardIcon2x from './assets/menu-whiteboard@2x.png?asset'
 import menuHomeIcon1x from './assets/menu-home.png?asset'
 import menuHomeIcon2x from './assets/menu-home@2x.png?asset'
-import { createI18n, isLang, normalizeLang, setUiLang, type Lang } from '@genoffice/i18n'
+import posidSignatureAsset from './assets/posid-signature.png?asset'
+import {
+  createI18n,
+  isLang,
+  normalizeLang,
+  PRODUCT_NAME,
+  setUiLang,
+  type Lang,
+} from '@genoffice/i18n'
 import { DEV_USER_DATA_DIR_NAME, PRODUCT_CONTACT_EMAIL, productName } from '@genoffice/i18n'
 import {
   DEFAULT_SAVE_DIR_KEY,
@@ -549,6 +557,8 @@ import {
 import {
   FOLDER_ROOTS_KEY,
   describeExtraRoot,
+  describeSystemRoot,
+  discoverLocalDriveRoots,
   readExtraRoots,
   withExtraRoot,
   withoutExtraRoot,
@@ -765,7 +775,7 @@ import {
   setDockHost,
   takeTornTab,
 } from './detached-windows'
-import { applyUpdateChannel, checkForUpdatesNow, initAutoUpdater } from './updater'
+import { applyUpdateChannel } from './updater'
 import { cancelUpdateRestart, reopenedByInstaller, updateRestartRequested } from './update-restart'
 import { isUpdateChannel, type UpdateChannel } from '../shared/update-api'
 
@@ -5136,12 +5146,47 @@ function extraFolderRoots(): string[] {
   return readExtraRoots(readAppSettings(APP_SETTINGS_PATH()), defaultSaveDir())
 }
 
+/** Explorer-style system roots (Desktop, Documents, Downloads, local drives) */
+function systemExplorerRoots(): FolderRoot[] {
+  const out: FolderRoot[] = []
+  const seen = new Set<string>([
+    resolve(defaultSaveDir()),
+    ...extraFolderRoots().map((p) => resolve(p)),
+  ])
+  const tryAdd = (root: FolderRoot | null) => {
+    if (!root) return
+    const key = resolve(root.path)
+    if (seen.has(key)) return
+    seen.add(key)
+    out.push(root)
+  }
+  const safeAppPath = (name: 'desktop' | 'documents' | 'downloads'): string | null => {
+    try {
+      return app.getPath(name)
+    } catch {
+      return null
+    }
+  }
+  const desktop = safeAppPath('desktop')
+  if (desktop) tryAdd(describeSystemRoot(desktop, 'desktop'))
+  const documents = safeAppPath('documents')
+  if (documents) tryAdd(describeSystemRoot(documents, 'documents'))
+  const downloads = safeAppPath('downloads')
+  if (downloads) tryAdd(describeSystemRoot(downloads, 'downloads'))
+  for (const drive of discoverLocalDriveRoots()) tryAdd(drive)
+  return out
+}
+
 function folderRootPaths(): string[] {
   return [defaultSaveDir(), ...extraFolderRoots()]
 }
 
+function allBrowsableRootPaths(): string[] {
+  return [defaultSaveDir(), ...extraFolderRoots(), ...systemExplorerRoots().map((r) => r.path)]
+}
+
 function insideAnyRoot(path: string): boolean {
-  return folderRootPaths().some((root) => isInsideRoot(root, path))
+  return allBrowsableRootPaths().some((root) => isInsideRoot(root, path))
 }
 
 /** Whether the home UI can legitimately be showing this path: the folder
@@ -5169,7 +5214,7 @@ function isBesideOpenDocument(path: string): boolean {
 
 function isAnyRoot(path: string): boolean {
   const key = resolve(path)
-  return folderRootPaths().some((root) => resolve(root) === key)
+  return allBrowsableRootPaths().some((root) => resolve(root) === key)
 }
 
 const pendingNewFileDir = new Map<string, { dir: string; setAt: number }>()
@@ -5825,6 +5870,73 @@ function refreshTitleBarOverlay(): void {
   shellWindow.setTitleBarOverlay(tabStripOverlay(nativeTheme.shouldUseDarkColors, currentUiScale))
 }
 
+let splashWindow: BrowserWindow | null = null
+let splashShownAt = 0
+const SPLASH_MIN_MS = 900
+
+function showSplashWindow(): void {
+  // e2e takes the app's first window as the shell: a splash in front of it
+  // would be picked instead and then close under the test
+  if (process.env.GENOFFICE_E2E === '1') return
+  if (splashWindow && !splashWindow.isDestroyed()) return
+  try {
+    const imgB64 = readFileSync(posidSignatureAsset).toString('base64')
+    const dark = nativeTheme.shouldUseDarkColors
+    const bg = dark ? '#1f2023' : '#ffffff'
+    const border = dark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)'
+    const track = dark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.07)'
+    const html = `<!doctype html><html><head><meta charset="utf-8"><style>
+      *{box-sizing:border-box;margin:0;padding:0}
+      html,body{width:100%;height:100%;overflow:hidden;background:transparent;user-select:none;-webkit-app-region:drag;font-family:-apple-system,'Segoe UI',sans-serif}
+      .card{width:100%;height:100%;background:${bg};border:1px solid ${border};border-radius:18px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;padding:32px 40px;box-shadow:0 16px 40px rgba(0,0,0,0.22)}
+      img{max-width:320px;width:82%;height:auto;display:block;-webkit-user-drag:none}
+      .bar{width:140px;height:3px;border-radius:999px;background:${track};overflow:hidden;position:relative}
+      .bar::after{content:'';position:absolute;inset:0;width:45%;border-radius:999px;background:linear-gradient(90deg,#f58220,#e53935);animation:slide 1.1s ease-in-out infinite}
+      @keyframes slide{0%{transform:translateX(-110%)}100%{transform:translateX(230%)}}
+    </style></head><body><div class="card"><img src="data:image/png;base64,${imgB64}" alt="PosidOffice"/><div class="bar"></div></div></body></html>`
+    const win = new BrowserWindow({
+      width: 460,
+      height: 230,
+      frame: false,
+      transparent: true,
+      resizable: false,
+      minimizable: false,
+      maximizable: false,
+      fullscreenable: false,
+      alwaysOnTop: true,
+      skipTaskbar: true,
+      center: true,
+      show: true,
+      title: PRODUCT_NAME,
+      webPreferences: {
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: true,
+      },
+    })
+    splashWindow = win
+    splashShownAt = Date.now()
+    win.once('closed', () => {
+      if (splashWindow === win) splashWindow = null
+    })
+    void win.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`)
+    setTimeout(() => closeSplashWindow(), 8000)
+  } catch {
+    // splash is best-effort
+  }
+}
+
+function closeSplashWindow(): void {
+  const win = splashWindow
+  if (!win || win.isDestroyed()) return
+  const elapsed = Date.now() - splashShownAt
+  const wait = Math.max(0, SPLASH_MIN_MS - elapsed)
+  setTimeout(() => {
+    if (!win.isDestroyed()) win.close()
+    if (splashWindow === win) splashWindow = null
+  }, wait)
+}
+
 /** name the active document in the taskbar and Alt+Tab (shellWindowTitle) */
 function syncShellWindowTitle(): void {
   const win = shellWindow
@@ -5844,12 +5956,18 @@ function createShellWindow(): void {
   const win = new BrowserWindow({
     width: restored?.width ?? SHELL_WINDOW_DEFAULT_WIDTH,
     height: restored?.height ?? SHELL_WINDOW_DEFAULT_HEIGHT,
+    // stay hidden until the renderer has painted its first frame — the splash
+    // covers the gap, so the user never sees a blank shell window
+    show: false,
     // x/y only when a saved position survived validation; omitting them keeps
     // Electron's default placement on a first run
     ...(restored ? { x: restored.x, y: restored.y } : {}),
     minWidth: SHELL_WINDOW_MIN_WIDTH,
     minHeight: SHELL_WINDOW_MIN_HEIGHT,
     title: productName(currentLang()),
+    // dev runs the stock electron.exe, whose icon wins on the taskbar unless
+    // the window declares its own; packaged builds already use build/icon.ico
+    icon: join(__dirname, '../../build/icon.png'),
     // Paint the theme's surface before the renderer's first frame so the window
     // does not flash white in dark mode. nativeTheme.themeSource is already set
     // from the saved theme in app.whenReady, before this window is created.
@@ -6286,6 +6404,14 @@ function createShellWindow(): void {
   } else {
     void win.loadFile(join(__dirname, '../renderer/index.html'))
   }
+  win.once('ready-to-show', () => {
+    win.show()
+    closeSplashWindow()
+  })
+  win.webContents.once('did-fail-load', () => {
+    if (!win.isDestroyed()) win.show()
+    closeSplashWindow()
+  })
 }
 
 // ---- routing: one dispatch function for every open path ----
@@ -7878,7 +8004,12 @@ function registerHomeIpc(): void {
 
   ipcMain.handle(HOME_CHANNELS.folderRoots, (): FolderRoot[] => {
     // describeRoot creates a missing save folder, so its watcher has something to attach to
-    const roots = [describeRoot(defaultSaveDir()), ...extraFolderRoots().map(describeExtraRoot)]
+    const saveRoot: FolderRoot = { ...describeRoot(defaultSaveDir()), kind: 'save' }
+    const extras: FolderRoot[] = extraFolderRoots().map((p) => ({
+      ...describeExtraRoot(p),
+      kind: 'custom',
+    }))
+    const roots = [saveRoot, ...systemExplorerRoots(), ...extras]
     ensureFolderWatchers()
     noticeSaveDirFallback()
     return roots
@@ -10796,7 +10927,9 @@ function openHomeSettings(target: { section: string; field?: string }): void {
   tabManager?.openHomeTab()
   win.webContents.send(HOME_CHANNELS.openSettings, target)
 }
-ipcMain.handle('ai:open-model-settings', () => openHomeSettings({ section: 'aiModel' }))
+ipcMain.handle('ai:open-model-settings', (_event, requestedSection?: unknown) =>
+  openHomeSettings({ section: requestedSection === 'ollama' ? 'ollama' : 'aiModel' }),
+)
 // the slides template gallery's "Change" beside the default fonts (decision 0115)
 ipcMain.handle('slides:open-font-settings', () =>
   openHomeSettings({ section: 'general', field: 'slidesAiFonts' }),
@@ -11143,6 +11276,8 @@ app.whenReady().then(async () => {
     await runHeadlessExportEntry(headlessArgv)
     return
   }
+  // splash before the lock wait too: dev restarts can hold this for seconds
+  showSplashWindow()
   const lockData = () =>
     pendingLaunchPaths.length > 0
       ? { launchPath: pendingLaunchPaths[0], launchPaths: pendingLaunchPaths }
@@ -11679,7 +11814,7 @@ app.whenReady().then(async () => {
         withProject ? enabled : enabled.filter((skill) => skill.source !== 'project'),
         // not under userData: that folder is protected from sessions, and the
         // copied skills' scripts must be readable to run
-        join(process.env.LOCALAPPDATA ?? tmpdir(), 'IeumOffice', 'agent-skills'),
+        join(process.env.LOCALAPPDATA ?? tmpdir(), PRODUCT_NAME, 'agent-skills'),
       )
     },
     projectSkills: {
@@ -11703,10 +11838,12 @@ app.whenReady().then(async () => {
   installBackToHomeItems()
   installDocumentLinkMenuItems()
   installDockMenu()
-  setUpdateCheckInvoker(() => void checkForUpdatesNow())
+  // PosidOffice: update checks and the update popup are disabled entirely —
+  // no invoker is registered and initAutoUpdater is never called, so the
+  // updater stays inactive (applyUpdateChannel then no-ops on channel changes)
+  setUpdateCheckInvoker(null)
   // Settings… in the macOS app menu and the ☰ popup, and ⌘, / Ctrl+,
   setOpenSettingsInvoker(() => openHomeSettings({ section: 'general' }))
-  initAutoUpdater(() => shellWindow, currentUpdateChannel(), autoUpdateCheckEnabled)
   // crash record on this PC (crash-log.jsonl in userData) and, outside
   // headless runs, a prompt when the renderer of an open document dies
   const crashMemory = () =>

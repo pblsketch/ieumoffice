@@ -12,6 +12,7 @@
  * web-search handler, filename sanitizing like the style-template handler).
  */
 import { statSync } from 'node:fs'
+import { normalizeOllamaServers } from './ollama-servers'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 
@@ -19,6 +20,7 @@ import { localEndpointFieldsOf } from './local-profile'
 import { aiEffortOf, aiModelEffortsOf } from './effort'
 import { AI_SUBSCRIPTION_PROVIDERS, readUrlSettingsOf, sanitizeSubscriptionOff } from './providers'
 import { AI_PROVIDER_ADAPTERS, normalizeBaseUrl } from './registry'
+import { connectTimeoutMsOf } from './watchdog'
 import type {
   AiCustomEndpoint,
   AiProviderConfig,
@@ -101,6 +103,9 @@ function sanitizeProviderConfig(input: unknown): AiProviderConfig {
   // known levels only; the request path reads it, and a save takes the file's table instead
   const modelEfforts = aiModelEffortsOf(raw.modelEfforts)
   if (modelEfforts !== undefined) config.modelEfforts = modelEfforts
+  const connectTimeoutMs = connectTimeoutMsOf(raw.connectTimeoutMs)
+  if (connectTimeoutMs !== undefined) config.connectTimeoutMs = connectTimeoutMs
+  if (typeof raw.vision === 'boolean') config.vision = raw.vision
   return config
 }
 
@@ -161,6 +166,10 @@ function sanitizeCustomEndpoints(raw: unknown): AiCustomEndpoint[] {
       ...(config.effort ? { effort: config.effort } : {}),
       // local-only fields: bounded, and dropped rather than rejecting the endpoint
       ...localEndpointFieldsOf(e),
+      ...(config.connectTimeoutMs !== undefined
+        ? { connectTimeoutMs: config.connectTimeoutMs }
+        : {}),
+      ...(config.vision !== undefined ? { vision: config.vision } : {}),
     })
   }
   return out
@@ -250,6 +259,9 @@ export function sanitizeAiSettings(input: unknown): AiSettings | null {
     settings.readUrl = { githubToken: readUrl.githubToken.slice(0, MAX_API_KEY_LENGTH) }
   }
   const customEndpoints = sanitizeCustomEndpoints(raw.customEndpoints)
+  if (Array.isArray(raw.ollamaServers)) {
+    settings.ollamaServers = normalizeOllamaServers(raw.ollamaServers)
+  }
   if (customEndpoints.length > 0) {
     settings.customEndpoints = customEndpoints
     if (typeof raw.customEndpoint === 'string') {

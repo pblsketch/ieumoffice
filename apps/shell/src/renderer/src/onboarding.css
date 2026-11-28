@@ -215,6 +215,71 @@
   color: var(--onb-text-tertiary);
 }
 
+.onb-ollama-card {
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--onb-border-default);
+  border-radius: 12px;
+  background: var(--onb-bg-subtle);
+}
+
+.onb-ollama-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 12px;
+  color: var(--onb-text-primary);
+  font-size: 14px;
+}
+
+.onb-ollama-status {
+  color: var(--onb-text-secondary);
+  font-size: 12px;
+}
+
+.onb-ollama-status.connected {
+  color: var(--onb-brand);
+}
+
+.onb-ollama-status.unavailable,
+.onb-ollama-status.no-models {
+  color: var(--onb-text-secondary);
+}
+
+.onb-ollama-card p {
+  margin: 8px 0 12px;
+  color: var(--onb-text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.onb-ollama-action {
+  padding: 8px 12px;
+  border: 1px solid var(--onb-border-strong);
+  border-radius: 10px;
+  background: var(--onb-bg-subtle);
+  color: var(--onb-text-primary);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background var(--onb-transition),
+    border-color var(--onb-transition);
+}
+
+.onb-ollama-action:hover {
+  border-color: var(--onb-text-tertiary);
+  background: var(--onb-border-default);
+}
+
+.onb-ollama-action:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
 /* footer: progress dots on the start side, Skip / Back / Next grouped on the end side */
 .onb-footer {
   display: flex;

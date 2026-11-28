@@ -129,4 +129,9 @@ describe('home preload API', () => {
     await expect(homeApi.setOnboardingSeen()).resolves.toBe(true)
     expect(electronMocks.invoke).toHaveBeenLastCalledWith(HOME_CHANNELS.setOnboardingSeen)
   })
+
+  it('opens the Ollama model manager from first-run setup', async () => {
+    await homeApi.openOllamaSettings()
+    expect(electronMocks.invoke).toHaveBeenLastCalledWith('ai:open-model-settings', 'ollama')
+  })
 })

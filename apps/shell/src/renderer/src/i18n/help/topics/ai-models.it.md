@@ -41,3 +41,11 @@ In **Avanzate ▸ Media e ricerca IA**, la chiave e l'URL di base di un provider
 ## Quando hanno effetto le modifiche
 
 - Le modifiche a modello ed endpoint hanno effetto immediato; una conversazione in corso mantiene la vecchia configurazione fino al turno successivo.
+
+## Server e modelli Ollama
+
+Alla prima apertura, **Ollama locale** appare per impostazione predefinita e recupera i modelli. Se lo rimuovi, non verrà ricreato.
+
+In **Impostazioni → Ollama → Aggiungi server**, inserisci nome e indirizzo. L’indirizzo predefinito è `http://localhost:11434/v1`; la chiave API è facoltativa. L’aggiunta recupera i modelli installati. **Registra** mostra il modello nelle impostazioni IA e nei documenti senza cambiare l’IA attuale.
+
+Fai clic sul nome del server per modificare nome, indirizzo o chiave; il salvataggio aggiorna anche i modelli registrati. **Verifica connessione** aggiorna l’elenco. Rimuovere un server elimina le sue voci registrate, ma conserva i file dei modelli sul server. Un server locale con modelli pronti funziona offline. La modifica dei documenti richiede il supporto alle chiamate agli strumenti.

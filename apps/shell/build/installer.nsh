@@ -32,7 +32,7 @@
 ; write .odt's default value (APP_ASSOCIATE) and take over the user's ODT
 ; program, so ODT is registered here instead. ODT opens in the Word tab, so the
 ; ProgId borrows the Word icon the installer already places for .docx.
-!define GENOFFICE_ODT_PROGID "IeumOffice.OpenDocumentText"
+!define GENOFFICE_ODT_PROGID "PosidOffice.OpenDocumentText"
 
 !macro GenOfficeRegisterOpenWithOdt
   WriteRegStr SHELL_CONTEXT "Software\Classes\${GENOFFICE_ODT_PROGID}" "" "OpenDocument Text"
@@ -53,7 +53,7 @@
 ; user's ODS program would hide that the original is not what gets written
 ; back. The spreadsheet opens in the Sheets tab, so the ProgId borrows the
 ; spreadsheet icon the installer already places for .xlsx.
-!define GENOFFICE_ODS_PROGID "IeumOffice.OpenDocumentSpreadsheet"
+!define GENOFFICE_ODS_PROGID "PosidOffice.OpenDocumentSpreadsheet"
 
 !macro GenOfficeRegisterOpenWithOds
   WriteRegStr SHELL_CONTEXT "Software\Classes\${GENOFFICE_ODS_PROGID}" "" "OpenDocument Spreadsheet"
@@ -81,14 +81,14 @@
 ; mind-map, book or diagram icon instead of the bare app icon. The ProgIds match
 ; the name-to-ProgId rule electron-builder.cjs uses for its Windows list
 ; (see tests/product-identity.test.ts).
-!define GENOFFICE_HWP_PROGID "IeumOffice.HWPDocument"
-!define GENOFFICE_HWPX_PROGID "IeumOffice.HWPXDocument"
-!define GENOFFICE_MINDMAP_PROGID "IeumOffice.MindMap"
-!define GENOFFICE_EPUB_PROGID "IeumOffice.EPUBBook"
+!define GENOFFICE_HWP_PROGID "PosidOffice.HWPDocument"
+!define GENOFFICE_HWPX_PROGID "PosidOffice.HWPXDocument"
+!define GENOFFICE_MINDMAP_PROGID "PosidOffice.MindMap"
+!define GENOFFICE_EPUB_PROGID "PosidOffice.EPUBBook"
 ; a Visio drawing opens as a new diagram (it is never written), with the diagram icon
-!define GENOFFICE_VSDX_PROGID "IeumOffice.VSDXDrawing"
+!define GENOFFICE_VSDX_PROGID "PosidOffice.VSDXDrawing"
 ; an Excalidraw scene is imported into a new whiteboard (never overwritten), with the whiteboard icon
-!define GENOFFICE_EXCALIDRAW_PROGID "IeumOffice.ExcalidrawDrawing"
+!define GENOFFICE_EXCALIDRAW_PROGID "PosidOffice.ExcalidrawDrawing"
 
 !macro GenOfficeRegisterOpenWithHwp
   WriteRegStr SHELL_CONTEXT "Software\Classes\${GENOFFICE_HWP_PROGID}" "" "HWP Document"
@@ -164,50 +164,50 @@
 
 ; Windows' "Default apps" page picks an app by its registered capabilities and
 ; records the ProgId the app declared for the type. Without this entry Windows
-; only knows the bare IeumOffice.exe application and records
-; Applications\IeumOffice.exe, whose icon is the app logo: a .hwp chosen that way
+; only knows the bare PosidOffice.exe application and records
+; Applications\PosidOffice.exe, whose icon is the app logo: a .hwp chosen that way
 ; shows the logo instead of hwp.ico, while a .hwpx chosen from our Open-With
 ; ProgId shows the document icon. Registering capabilities does not change any
 ; default by itself; it makes the user's choice land on the per-type ProgId
 ; (whose DefaultIcon is the document icon). The .hwp/.hwpx/.xmind/.epub/.vsdx/.odt ProgIds
 ; are the product-own Open-With ones defined above; the rest are the ProgIds
 ; electron-builder writes for the Windows file associations.
-!define GENOFFICE_CAPABILITIES_KEY "Software\IeumOffice\Capabilities"
+!define GENOFFICE_CAPABILITIES_KEY "Software\PosidOffice\Capabilities"
 
 !macro GenOfficeRegisterApplicationCapabilities
   WriteRegStr SHELL_CONTEXT "Software\RegisteredApplications" "${PRODUCT_NAME}" "${GENOFFICE_CAPABILITIES_KEY}"
   WriteRegStr SHELL_CONTEXT "${GENOFFICE_CAPABILITIES_KEY}" "ApplicationName" "${PRODUCT_NAME}"
   WriteRegStr SHELL_CONTEXT "${GENOFFICE_CAPABILITIES_KEY}" "ApplicationIcon" "$appExe,0"
-  WriteRegStr SHELL_CONTEXT "${GENOFFICE_CAPABILITIES_KEY}\FileAssociations" ".docx" "IeumOffice.WordDocument"
-  WriteRegStr SHELL_CONTEXT "${GENOFFICE_CAPABILITIES_KEY}\FileAssociations" ".xlsx" "IeumOffice.ExcelWorkbook"
-  WriteRegStr SHELL_CONTEXT "${GENOFFICE_CAPABILITIES_KEY}\FileAssociations" ".xlsm" "IeumOffice.ExcelMacroEnabledWorkbook"
-  WriteRegStr SHELL_CONTEXT "${GENOFFICE_CAPABILITIES_KEY}\FileAssociations" ".xls" "IeumOffice.Excel972003Workbook"
-  WriteRegStr SHELL_CONTEXT "${GENOFFICE_CAPABILITIES_KEY}\FileAssociations" ".pptx" "IeumOffice.PowerPointPresentation"
-  WriteRegStr SHELL_CONTEXT "${GENOFFICE_CAPABILITIES_KEY}\FileAssociations" ".csv" "IeumOffice.CSVDocument"
-  WriteRegStr SHELL_CONTEXT "${GENOFFICE_CAPABILITIES_KEY}\FileAssociations" ".tsv" "IeumOffice.TSVDocument"
-  WriteRegStr SHELL_CONTEXT "${GENOFFICE_CAPABILITIES_KEY}\FileAssociations" ".pdf" "IeumOffice.PDFDocument"
-  WriteRegStr SHELL_CONTEXT "${GENOFFICE_CAPABILITIES_KEY}\FileAssociations" ".md" "IeumOffice.MarkdownDocument"
-  WriteRegStr SHELL_CONTEXT "${GENOFFICE_CAPABILITIES_KEY}\FileAssociations" ".markdown" "IeumOffice.MarkdownDocument"
-  WriteRegStr SHELL_CONTEXT "${GENOFFICE_CAPABILITIES_KEY}\FileAssociations" ".html" "IeumOffice.HTMLDocument"
-  WriteRegStr SHELL_CONTEXT "${GENOFFICE_CAPABILITIES_KEY}\FileAssociations" ".htm" "IeumOffice.HTMLDocument"
+  WriteRegStr SHELL_CONTEXT "${GENOFFICE_CAPABILITIES_KEY}\FileAssociations" ".docx" "PosidOffice.WordDocument"
+  WriteRegStr SHELL_CONTEXT "${GENOFFICE_CAPABILITIES_KEY}\FileAssociations" ".xlsx" "PosidOffice.ExcelWorkbook"
+  WriteRegStr SHELL_CONTEXT "${GENOFFICE_CAPABILITIES_KEY}\FileAssociations" ".xlsm" "PosidOffice.ExcelMacroEnabledWorkbook"
+  WriteRegStr SHELL_CONTEXT "${GENOFFICE_CAPABILITIES_KEY}\FileAssociations" ".xls" "PosidOffice.Excel972003Workbook"
+  WriteRegStr SHELL_CONTEXT "${GENOFFICE_CAPABILITIES_KEY}\FileAssociations" ".pptx" "PosidOffice.PowerPointPresentation"
+  WriteRegStr SHELL_CONTEXT "${GENOFFICE_CAPABILITIES_KEY}\FileAssociations" ".csv" "PosidOffice.CSVDocument"
+  WriteRegStr SHELL_CONTEXT "${GENOFFICE_CAPABILITIES_KEY}\FileAssociations" ".tsv" "PosidOffice.TSVDocument"
+  WriteRegStr SHELL_CONTEXT "${GENOFFICE_CAPABILITIES_KEY}\FileAssociations" ".pdf" "PosidOffice.PDFDocument"
+  WriteRegStr SHELL_CONTEXT "${GENOFFICE_CAPABILITIES_KEY}\FileAssociations" ".md" "PosidOffice.MarkdownDocument"
+  WriteRegStr SHELL_CONTEXT "${GENOFFICE_CAPABILITIES_KEY}\FileAssociations" ".markdown" "PosidOffice.MarkdownDocument"
+  WriteRegStr SHELL_CONTEXT "${GENOFFICE_CAPABILITIES_KEY}\FileAssociations" ".html" "PosidOffice.HTMLDocument"
+  WriteRegStr SHELL_CONTEXT "${GENOFFICE_CAPABILITIES_KEY}\FileAssociations" ".htm" "PosidOffice.HTMLDocument"
   WriteRegStr SHELL_CONTEXT "${GENOFFICE_CAPABILITIES_KEY}\FileAssociations" ".hwp" "${GENOFFICE_HWP_PROGID}"
   WriteRegStr SHELL_CONTEXT "${GENOFFICE_CAPABILITIES_KEY}\FileAssociations" ".hwpx" "${GENOFFICE_HWPX_PROGID}"
   WriteRegStr SHELL_CONTEXT "${GENOFFICE_CAPABILITIES_KEY}\FileAssociations" ".xmind" "${GENOFFICE_MINDMAP_PROGID}"
   WriteRegStr SHELL_CONTEXT "${GENOFFICE_CAPABILITIES_KEY}\FileAssociations" ".epub" "${GENOFFICE_EPUB_PROGID}"
-  WriteRegStr SHELL_CONTEXT "${GENOFFICE_CAPABILITIES_KEY}\FileAssociations" ".drawio" "IeumOffice.Diagram"
-  WriteRegStr SHELL_CONTEXT "${GENOFFICE_CAPABILITIES_KEY}\FileAssociations" ".dio" "IeumOffice.Diagram"
+  WriteRegStr SHELL_CONTEXT "${GENOFFICE_CAPABILITIES_KEY}\FileAssociations" ".drawio" "PosidOffice.Diagram"
+  WriteRegStr SHELL_CONTEXT "${GENOFFICE_CAPABILITIES_KEY}\FileAssociations" ".dio" "PosidOffice.Diagram"
   WriteRegStr SHELL_CONTEXT "${GENOFFICE_CAPABILITIES_KEY}\FileAssociations" ".vsdx" "${GENOFFICE_VSDX_PROGID}"
-  WriteRegStr SHELL_CONTEXT "${GENOFFICE_CAPABILITIES_KEY}\FileAssociations" ".whiteboard" "IeumOffice.Whiteboard"
+  WriteRegStr SHELL_CONTEXT "${GENOFFICE_CAPABILITIES_KEY}\FileAssociations" ".whiteboard" "PosidOffice.Whiteboard"
   WriteRegStr SHELL_CONTEXT "${GENOFFICE_CAPABILITIES_KEY}\FileAssociations" ".excalidraw" "${GENOFFICE_EXCALIDRAW_PROGID}"
   WriteRegStr SHELL_CONTEXT "${GENOFFICE_CAPABILITIES_KEY}\FileAssociations" ".odt" "${GENOFFICE_ODT_PROGID}"
 !macroend
 
 !macro GenOfficeUnregisterApplicationCapabilities
-  ; only our registration and our key; a future sibling under Software\IeumOffice
+  ; only our registration and our key; a future sibling under Software\PosidOffice
   ; keeps that parent alive
   DeleteRegValue SHELL_CONTEXT "Software\RegisteredApplications" "${PRODUCT_NAME}"
   DeleteRegKey SHELL_CONTEXT "${GENOFFICE_CAPABILITIES_KEY}"
-  DeleteRegKey /ifempty SHELL_CONTEXT "Software\IeumOffice"
+  DeleteRegKey /ifempty SHELL_CONTEXT "Software\PosidOffice"
 !macroend
 
 ; An update the app starts in this installer's own window ("Restart & Install",
@@ -260,9 +260,9 @@
 !macro customInstall
   Push "$INSTDIR\resources\cli"
   Call GenOfficeAddToUserPath
-  !insertmacro GenOfficeRegisterShellNew "docx" "IeumOffice.WordDocument"
-  !insertmacro GenOfficeRegisterShellNew "xlsx" "IeumOffice.ExcelWorkbook"
-  !insertmacro GenOfficeRegisterShellNew "pptx" "IeumOffice.PowerPointPresentation"
+  !insertmacro GenOfficeRegisterShellNew "docx" "PosidOffice.WordDocument"
+  !insertmacro GenOfficeRegisterShellNew "xlsx" "PosidOffice.ExcelWorkbook"
+  !insertmacro GenOfficeRegisterShellNew "pptx" "PosidOffice.PowerPointPresentation"
   !insertmacro GenOfficeRegisterOpenWithOdt
   !insertmacro GenOfficeRegisterOpenWithOds
   !insertmacro GenOfficeRegisterOpenWithHwp
@@ -279,9 +279,9 @@
   Push "$INSTDIR\resources\cli"
   Call un.GenOfficeRemoveFromUserPath
   Push $0
-  !insertmacro GenOfficeUnregisterShellNew "docx" "IeumOffice.WordDocument"
-  !insertmacro GenOfficeUnregisterShellNew "xlsx" "IeumOffice.ExcelWorkbook"
-  !insertmacro GenOfficeUnregisterShellNew "pptx" "IeumOffice.PowerPointPresentation"
+  !insertmacro GenOfficeUnregisterShellNew "docx" "PosidOffice.WordDocument"
+  !insertmacro GenOfficeUnregisterShellNew "xlsx" "PosidOffice.ExcelWorkbook"
+  !insertmacro GenOfficeUnregisterShellNew "pptx" "PosidOffice.PowerPointPresentation"
   !insertmacro GenOfficeUnregisterOpenWithOdt
   !insertmacro GenOfficeUnregisterOpenWithOds
   !insertmacro GenOfficeUnregisterOpenWithHwp
