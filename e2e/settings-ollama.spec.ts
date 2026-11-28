@@ -59,11 +59,17 @@ test('Ollama servers register models through real IPC and survive reopening sett
     }
     await expect.poll(async () => (await readSettings()).customEndpoints?.length).toBe(2)
     expect((await readSettings()).provider).toBe('auto')
-    expect(requests).toEqual(['/local/v1/models', '/lab/v1/models'])
+    // each listed model is also asked about its image input (Ollama's /api/show)
+    expect(requests.filter((url) => url !== '/api/show')).toEqual([
+      '/local/v1/models',
+      '/lab/v1/models',
+    ])
+    expect(requests).toContain('/api/show')
     await page.screenshot({ path: screenshotPath('settings-ollama-ko') })
     await page.locator('.set-nav-item').filter({ hasText: /^AI$/ }).click()
     await page.getByRole('button', { name: '사용할 AI', exact: true }).click()
-    await page.getByRole('option', { name: '연구실 서버 / qwen3:8b', exact: true }).click()
+    // Ollama rows show the model and its effort; the second server's comes second
+    await page.getByRole('option', { name: 'Qwen3 8b medium', exact: true }).nth(1).click()
     await expect
       .poll(async () => (await readSettings()).providers.custom.baseUrl)
       .toBe(`${base}/lab/v1`)
