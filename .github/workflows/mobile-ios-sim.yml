@@ -61,7 +61,7 @@ jobs:
           npm run studio -w @genoffice/hwp
           npm run build -w @genoffice/mobile
           npm run typecheck -w @genoffice/mobile
-          npx --prefix apps/mobile vitest run tests/shell-ui.test.tsx tests/store-native-config.test.ts tests/print-pdf-export.test.tsx
+          npx --prefix apps/mobile vitest run tests/shell-ui.test.tsx tests/store-native-config.test.ts tests/print-pdf-export.test.tsx tests/mobile-ux-polish.test.tsx
           test -f apps/mobile/dist/studio/index.html
 
       - name: Initialize iOS project and inject native config
@@ -1811,11 +1811,61 @@ jobs:
           ART_DIR: ${{ steps.build_sim.outputs.art_dir }}
           APP_PATH: ${{ steps.build_sim.outputs.app_path }}
           BUNDLE_ID: ${{ steps.build_sim.outputs.bundle_id }}
+          AXE_READY: ${{ steps.install_axe.outputs.axe_ready }}
         run: |
           set -euo pipefail
           xcrun simctl shutdown all 2>/dev/null || true
 
-          python3 - <<'PY'
+          # Compile a tiny CoreGraphics helper to strip alpha channels so every PNG
+          # is opaque 24-bit RGB (colorType=2) as required by App Store Connect.
+          STRIP_ALPHA_BIN="$RUNNER_TEMP/strip-png-alpha"
+          cat > "$RUNNER_TEMP/strip-png-alpha.swift" <<'SWIFT'
+          import Foundation
+          import CoreGraphics
+          import ImageIO
+          import UniformTypeIdentifiers
+
+          for path in CommandLine.arguments.dropFirst() {
+              let url = URL(fileURLWithPath: path)
+              guard let src = CGImageSourceCreateWithURL(url as CFURL, nil),
+                    let img = CGImageSourceCreateImageAtIndex(src, 0, nil) else {
+                  fputs("Failed to read PNG: \(path)\n", stderr)
+                  exit(1)
+              }
+              let w = img.width
+              let h = img.height
+              let cs = img.colorSpace ?? CGColorSpace(name: CGColorSpace.sRGB)!
+              guard let ctx = CGContext(
+                  data: nil,
+                  width: w,
+                  height: h,
+                  bitsPerComponent: 8,
+                  bytesPerRow: 0,
+                  space: cs,
+                  bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue
+              ) else {
+                  fputs("Failed to create RGB CGContext: \(path)\n", stderr)
+                  exit(1)
+              }
+              ctx.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: 1))
+              ctx.fill(CGRect(x: 0, y: 0, width: w, height: h))
+              ctx.draw(img, in: CGRect(x: 0, y: 0, width: w, height: h))
+              guard let rgb = ctx.makeImage(),
+                    let dst = CGImageDestinationCreateWithURL(url as CFURL, UTType.png.identifier as CFString, 1, nil) else {
+                  fputs("Failed to encode RGB PNG: \(path)\n", stderr)
+                  exit(1)
+              }
+              CGImageDestinationAddImage(dst, rgb, nil)
+              if !CGImageDestinationFinalize(dst) {
+                  fputs("Failed to finalize RGB PNG: \(path)\n", stderr)
+                  exit(1)
+              }
+          }
+          SWIFT
+          swiftc -O "$RUNNER_TEMP/strip-png-alpha.swift" -o "$STRIP_ALPHA_BIN"
+
+          STRIP_ALPHA_BIN="$STRIP_ALPHA_BIN" python3 - <<'PY'
+          import io
           import json
           import os
           import plistlib
@@ -1825,11 +1875,16 @@ jobs:
           import sys
           import time
           import uuid
+          import zipfile
+          import zlib
           from pathlib import Path
 
           art_dir = Path(os.environ["ART_DIR"])
           app_path = os.environ["APP_PATH"]
           bundle_id = os.environ.get("BUNDLE_ID", "com.ieumoffice.mobile")
+          axe_ready = os.environ.get("AXE_READY") == "true"
+          strip_alpha_bin = os.environ["STRIP_ALPHA_BIN"]
+          repo_root = Path.cwd()
           shots_root = art_dir / "store-shots"
           shots_root.mkdir(parents=True, exist_ok=True)
           logs_dir = art_dir / "logs"
@@ -1846,6 +1901,20 @@ jobs:
                   return p.returncode, p.stdout, p.stderr
               except Exception as exc:
                   return -1, "", str(exc)
+
+          def apply_clean_status_bar(udid):
+              run_cmd([
+                  "xcrun", "simctl", "status_bar", udid, "override",
+                  "--time", "9:41",
+                  "--dataNetwork", "wifi",
+                  "--wifiMode", "active",
+                  "--wifiBars", "3",
+                  "--cellularMode", "active",
+                  "--cellularBars", "4",
+                  "--operatorName", "",
+                  "--batteryState", "charged",
+                  "--batteryLevel", "100",
+              ], timeout=15)
 
           def pick_sim_device(preferred_substrings):
               rc, out, err = run_cmd(["xcrun", "simctl", "list", "devices", "available", "-j"], timeout=20)
@@ -2127,6 +2196,25 @@ jobs:
                 return null;
               }})()""")
 
+          def dismiss_tips_and_check_clean(insp, wait_toast_s=4.0):
+              deadline = time.time() + wait_toast_s
+              while True:
+                  info = insp.eval_js("""(() => {
+                    const tip = document.querySelector('[data-testid="home-run-tip"]');
+                    if (tip) {
+                      const btn = tip.querySelector('button');
+                      if (btn) btn.click();
+                    }
+                    const tipAfter = !!document.querySelector('[data-testid="home-run-tip"]');
+                    const rec = !!document.querySelector('[data-testid="home-recovery-banner"]');
+                    const toast = document.querySelector('[data-testid="mobile-toast"]');
+                    const toastText = toast ? (toast.innerText || '').trim() : '';
+                    return { tip: tipAfter, recovery: rec, toast: !!toast, toastText };
+                  })()""") or {}
+                  if not info.get("toast") or time.time() >= deadline:
+                      return info
+                  time.sleep(0.5)
+
           def wait_hwp_flow(insp, timeout_s=30.0):
               deadline = time.time() + timeout_s
               while time.time() < deadline:
@@ -2173,22 +2261,258 @@ jobs:
                   time.sleep(0.7)
               return False
 
-          def png_dims(path):
-              rc, out, _ = run_cmd(["sips", "-g", "pixelWidth", "-g", "pixelHeight", str(path)], timeout=10)
-              w = h = None
-              if rc == 0:
-                  for line in out.splitlines():
-                      if "pixelWidth:" in line:
-                          w = int(line.split(":")[1].strip())
-                      elif "pixelHeight:" in line:
-                          h = int(line.split(":")[1].strip())
-              return w, h
+          def png_meta(path):
+              try:
+                  raw = Path(path).read_bytes()
+                  if len(raw) >= 26 and raw[:8] == b"\x89PNG\r\n\x1a\n":
+                      w, h, bit_depth, color_type = struct.unpack(">IIBB", raw[16:26])
+                      return w, h, color_type
+              except Exception:
+                  pass
+              return None, None, None
 
           def take_shot(udid, out_path):
-              rc, _, err = run_cmd(["xcrun", "simctl", "io", udid, "screenshot", str(out_path)], timeout=20)
-              ok = rc == 0 and out_path.exists()
-              w, h = png_dims(out_path) if ok else (None, None)
-              return {"file": out_path.name, "ok": ok, "width": w, "height": h, "error": err.strip() if rc != 0 else ""}
+              last_err = ""
+              for attempt in range(1, 4):
+                  rc, _, err = run_cmd(["xcrun", "simctl", "io", udid, "screenshot", str(out_path)], timeout=45)
+                  if rc == 0 and out_path.exists() and out_path.stat().st_size > 1024:
+                      rc_s, _, err_s = run_cmd([strip_alpha_bin, str(out_path)], timeout=20)
+                      if rc_s != 0:
+                          trace(f"  [WARN] strip-png-alpha failed on {out_path.name}: {err_s.strip()}")
+                      w, h, ct = png_meta(out_path)
+                      return {
+                          "file": out_path.name,
+                          "ok": True,
+                          "width": w,
+                          "height": h,
+                          "color_type": ct,
+                          "error": "",
+                      }
+                  last_err = err.strip()
+                  trace(f"  screenshot {out_path.name} attempt {attempt} failed (rc={rc}): {last_err[:120]}")
+                  time.sleep(2.0)
+              return {"file": out_path.name, "ok": False, "width": None, "height": None, "color_type": None, "error": last_err}
+
+          def describe_ax_nodes(udid):
+              if not axe_ready:
+                  return []
+              rc, out, _ = run_cmd(["axe", "describe-ui", "--udid", udid], timeout=15)
+              if rc != 0 or not out.strip():
+                  return []
+              try:
+                  tree = json.loads(out)
+              except Exception:
+                  return []
+              nodes = []
+              def walk(node):
+                  if isinstance(node, list):
+                      for item in node:
+                          walk(item)
+                  elif isinstance(node, dict):
+                      frame = node.get("frame") or {}
+                      w = float(frame.get("width") or 0)
+                      h = float(frame.get("height") or 0)
+                      x = float(frame.get("x") or 0)
+                      y = float(frame.get("y") or 0)
+                      nodes.append({
+                          "label": str(node.get("AXLabel") or ""),
+                          "title": str(node.get("AXTitle") or ""),
+                          "uid": str(node.get("AXUniqueId") or ""),
+                          "type": str(node.get("type") or node.get("role") or ""),
+                          "enabled": node.get("enabled", node.get("AXEnabled", True)) is not False,
+                          "w": w, "h": h,
+                          "cx": int(round(x + w / 2.0)),
+                          "cy": int(round(y + h / 2.0)),
+                      })
+                      for ch in (node.get("children") or []):
+                          walk(ch)
+              walk(tree)
+              return nodes
+
+          def find_ax_button(nodes, keywords):
+              for kw in keywords:
+                  kw_l = kw.lower()
+                  for n in nodes:
+                      if not n["enabled"] or n["w"] <= 0 or n["h"] <= 0:
+                          continue
+                      texts = [n["label"].strip().lower(), n["title"].strip().lower(), n["uid"].strip().lower()]
+                      if kw_l in texts:
+                          return n
+              for kw in keywords:
+                  kw_l = kw.lower()
+                  for n in nodes:
+                      if not n["enabled"] or n["w"] <= 0 or n["h"] <= 0:
+                          continue
+                      hay = f"{n['label']} {n['title']} {n['uid']}".lower()
+                      if kw_l in hay:
+                          return n
+              return None
+
+          # --- Synthetic clean sample file builders (no PII, no third-party brands) ---
+
+          def make_rgb_png(width, height, pixels_rgb):
+              def chunk(tag, data):
+                  return struct.pack(">I", len(data)) + tag + data + struct.pack(">I", zlib.crc32(tag + data) & 0xFFFFFFFF)
+              raw_rows = bytearray()
+              stride = width * 3
+              for y in range(height):
+                  raw_rows.append(0)
+                  raw_rows.extend(pixels_rgb[y * stride : (y + 1) * stride])
+              ihdr = struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)
+              return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", ihdr) + chunk(b"IDAT", zlib.compress(bytes(raw_rows), 6)) + chunk(b"IEND", b"")
+
+          def build_spreadsheet_thumb_png():
+              w, h = 240, 180
+              buf = bytearray([255, 255, 255] * (w * h))
+              def fill(x0, y0, x1, y1, rgb):
+                  r, g, b = rgb
+                  for y in range(max(0, y0), min(h, y1)):
+                      off = (y * w + max(0, x0)) * 3
+                      for _ in range(max(0, x0), min(w, x1)):
+                          buf[off] = r
+                          buf[off + 1] = g
+                          buf[off + 2] = b
+                          off += 3
+              # Clean spreadsheet top banner + header row + grid + chart bars
+              fill(0, 0, w, 26, (22, 163, 74))
+              fill(14, 9, 108, 17, (255, 255, 255))
+              fill(12, 34, 228, 50, (240, 253, 244))
+              for row in range(6):
+                  ry = 50 + row * 16
+                  fill(12, ry, 228, ry + 1, (226, 232, 240))
+                  if row < 5:
+                      fill(18, ry + 5, 74, ry + 11, (100, 116, 139))
+                      fill(96, ry + 5, 136 + (row * 9) % 24, ry + 11, (71, 85, 105))
+                      fill(176, ry + 5, 218, ry + 11, (22, 163, 74))
+              for cx in (12, 86, 162, 228):
+                  fill(cx, 34, cx + 1, 130, (226, 232, 240))
+              # Mini summary bars at bottom
+              bar_heights = (20, 30, 24, 34, 28, 38)
+              for idx, bh in enumerate(bar_heights):
+                  bx = 22 + idx * 32
+                  fill(bx, 170 - bh, bx + 18, 170, (34, 197, 94) if idx % 2 == 0 else (16, 185, 129))
+              return make_rgb_png(w, h, bytes(buf))
+
+          def build_clean_pdf(title_ascii, subtitle_ascii, rows):
+              # Build a clean single-page PDF 1.4 with vector header, table, and chart
+              # so iOS PDFKit renders a crisp visual thumbnail on Home.
+              cmds = [
+                  "q",
+                  "0.11 0.31 0.62 rg",
+                  "0 740 595 102 re f",
+                  "1 1 1 rg",
+                  "BT /F2 22 Tf 44 794 Td (" + title_ascii + ") Tj ET",
+                  "0.84 0.91 0.99 rg",
+                  "BT /F1 11 Tf 44 766 Td (" + subtitle_ascii + ") Tj ET",
+                  "0.95 0.97 1.00 rg",
+                  "44 646 507 66 re f",
+                  "0.12 0.16 0.23 rg",
+                  "BT /F2 13 Tf 60 686 Td (Executive Summary) Tj ET",
+                  "0.30 0.35 0.44 rg",
+                  "BT /F1 10.5 Tf 60 666 Td (Unified mobile office workspace for documents, spreadsheets, PDFs, and notes.) Tj ET",
+                  "0.11 0.31 0.62 rg",
+                  "44 596 507 26 re f",
+                  "1 1 1 rg",
+                  "BT /F2 10.5 Tf 58 605 Td (Category) Tj 210 0 Td (Status) Tj 130 0 Td (Progress) Tj ET",
+              ]
+              y = 568
+              for i, (col1, col2, col3) in enumerate(rows):
+                  if i % 2 == 0:
+                      cmds.append(f"0.97 0.98 0.99 rg 44 {y - 8} 507 26 re f")
+                  cmds.append("0.15 0.20 0.28 rg")
+                  cmds.append(f"BT /F1 10.5 Tf 58 {y} Td ({col1}) Tj 210 0 Td ({col2}) Tj 130 0 Td ({col3}) Tj ET")
+                  cmds.append(f"0.86 0.89 0.93 RG 0.6 w 44 {y - 8} m 551 {y - 8} l S")
+                  y -= 28
+              # Clean bar chart block
+              cmds.append("0.12 0.16 0.23 rg BT /F2 13 Tf 44 398 Td (Quarterly Highlights) Tj ET")
+              bars = [(70, 95), (140, 130), (210, 112), (280, 152), (350, 138), (420, 168)]
+              for idx, (bx, bh) in enumerate(bars):
+                  color = "0.15 0.39 0.92 rg" if idx % 2 == 0 else "0.23 0.51 0.96 rg"
+                  cmds.append(f"{color} {bx} 186 40 {bh} re f")
+              cmds.append("0.80 0.84 0.90 RG 1 w 44 186 m 520 186 l S")
+              cmds.append("Q")
+              stream = "\n".join(cmds).encode("ascii")
+
+              objs = [
+                  b"1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n",
+                  b"2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj\n",
+                  b"3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R /F2 5 0 R >> >> /Contents 6 0 R >> endobj\n",
+                  b"4 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj\n",
+                  b"5 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >> endobj\n",
+                  b"6 0 obj << /Length " + str(len(stream)).encode("ascii") + b" >> stream\n" + stream + b"\nendstream endobj\n",
+              ]
+              out = bytearray(b"%PDF-1.4\n")
+              offsets = [0]
+              for obj in objs:
+                  offsets.append(len(out))
+                  out.extend(obj)
+              xref_pos = len(out)
+              out.extend(f"xref\n0 {len(offsets)}\n0000000000 65535 f \n".encode("ascii"))
+              for off in offsets[1:]:
+                  out.extend(f"{off:010d} 00000 n \n".encode("ascii"))
+              out.extend(f"trailer << /Size {len(offsets)} /Root 1 0 R >>\nstartxref\n{xref_pos}\n%%EOF\n".encode("ascii"))
+              return bytes(out)
+
+          def build_clean_xlsx(dest_path):
+              thumb_png = build_spreadsheet_thumb_png()
+              with zipfile.ZipFile(dest_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+                  zf.writestr(
+                      "[Content_Types].xml",
+                      '<?xml version="1.0" encoding="UTF-8"?>'
+                      '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+                      '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+                      '<Default Extension="xml" ContentType="application/xml"/>'
+                      '<Default Extension="png" ContentType="image/png"/>'
+                      '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
+                      '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
+                      '</Types>',
+                  )
+                  zf.writestr(
+                      "_rels/.rels",
+                      '<?xml version="1.0" encoding="UTF-8"?>'
+                      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+                      '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>'
+                      '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/thumbnail" Target="docProps/thumbnail.png"/>'
+                      '</Relationships>',
+                  )
+                  zf.writestr(
+                      "xl/workbook.xml",
+                      '<?xml version="1.0" encoding="UTF-8"?>'
+                      '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '
+                      'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+                      '<sheets><sheet name="Summary" sheetId="1" r:id="rId1"/></sheets></workbook>',
+                  )
+                  zf.writestr(
+                      "xl/_rels/workbook.xml.rels",
+                      '<?xml version="1.0" encoding="UTF-8"?>'
+                      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+                      '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>'
+                      '</Relationships>',
+                  )
+                  zf.writestr(
+                      "xl/worksheets/sheet1.xml",
+                      '<?xml version="1.0" encoding="UTF-8"?>'
+                      '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+                      '<sheetData>'
+                      '<row r="1"><c r="A1" t="inlineStr"><is><t>Item</t></is></c><c r="B1" t="inlineStr"><is><t>Amount</t></is></c></row>'
+                      '<row r="2"><c r="A2" t="inlineStr"><is><t>Design</t></is></c><c r="B2"><v>420</v></c></row>'
+                      '<row r="3"><c r="A3" t="inlineStr"><is><t>Engineering</t></is></c><c r="B3"><v>860</v></c></row>'
+                      '<row r="4"><c r="A4" t="inlineStr"><is><t>QA</t></is></c><c r="B4"><v>310</v></c></row>'
+                      '</sheetData></worksheet>',
+                  )
+                  zf.writestr("docProps/thumbnail.png", thumb_png)
+
+          def copy_hwpx_with_preview(src_hwpx, dest_hwpx, preview_text):
+              with zipfile.ZipFile(src_hwpx, "r") as zin, zipfile.ZipFile(dest_hwpx, "w", compression=zipfile.ZIP_DEFLATED) as zout:
+                  wrote_txt = False
+                  for item in zin.infolist():
+                      if item.filename == "Preview/PrvText.txt":
+                          zout.writestr("Preview/PrvText.txt", preview_text.encode("utf-8"))
+                          wrote_txt = True
+                      else:
+                          zout.writestr(item, zin.read(item.filename))
+                  if not wrote_txt:
+                      zout.writestr("Preview/PrvText.txt", preview_text.encode("utf-8"))
 
           MD_SAMPLE = {
               "ko-KR": (
@@ -2213,6 +2537,128 @@ jobs:
               ),
           }
 
+          HWPX_PREVIEW_TEXT = {
+              "ko-KR": (
+                  "이음오피스 모바일 안내\n"
+                  "한글(HWP·HWPX), 워드, 엑셀, 파워포인트, PDF, 마크다운 문서를 한 앱에서 열고 편집합니다.\n"
+                  "작은 화면에서는 읽기 화면으로 편하게 보고, 필요할 때 쪽 화면으로 바로 전환하세요."
+              ),
+              "en-US": (
+                  "Welcome to IeumOffice Mobile\n"
+                  "Open and edit Hangul (HWP/HWPX), Word, Excel, PowerPoint, PDF, and Markdown in one app.\n"
+                  "Read comfortably in Reading view and switch directly to Page view whenever needed."
+              ),
+          }
+
+          def seed_app_container(udid, loc_tag, short_lang):
+              rc, out, err = run_cmd(["xcrun", "simctl", "get_app_container", udid, bundle_id, "data"], timeout=15)
+              if rc != 0 or not out.strip():
+                  raise RuntimeError(f"get_app_container failed (rc={rc}): {err}")
+              data_dir = Path(out.strip())
+              samples_dir = data_dir / "Documents" / "Samples"
+              samples_dir.mkdir(parents=True, exist_ok=True)
+
+              src_hwpx = repo_root / "apps/mobile/src-tauri/src/storage/samples" / (
+                  "welcome-ko.hwpx" if short_lang == "ko" else "welcome-en.hwpx"
+              )
+              hwpx_path = samples_dir / "sample-welcome.hwpx"
+              pdf_path = samples_dir / "sample-report.pdf"
+              md_path = samples_dir / "sample-notes.md"
+              xlsx_path = samples_dir / "sample-budget.xlsx"
+
+              copy_hwpx_with_preview(src_hwpx, hwpx_path, HWPX_PREVIEW_TEXT[loc_tag])
+              pdf_bytes = build_clean_pdf(
+                  "Q2 Operations Report" if short_lang == "en" else "2026 Q2 Project Brief",
+                  "IeumOffice Mobile  |  Document Overview",
+                  [
+                      ("Hangul & Office Readers", "Ready", "100%"),
+                      ("PDF Export & AirPrint", "Ready", "100%"),
+                      ("Offline Document Storage", "Verified", "100%"),
+                      ("Tablet Reading Layout", "Verified", "100%"),
+                  ],
+              )
+              pdf_path.write_bytes(pdf_bytes)
+              md_path.write_text(MD_SAMPLE[loc_tag], encoding="utf-8")
+              build_clean_xlsx(xlsx_path)
+
+              now_ms = int(time.time() * 1000)
+              if short_lang == "ko":
+                  names = (
+                      "이음오피스 시작하기.hwpx",
+                      "2026년 2분기 업무 보고서.pdf",
+                      "주간 프로젝트 메모.md",
+                      "월간 예산 정리표.xlsx",
+                  )
+              else:
+                  names = (
+                      "Welcome to IeumOffice.hwpx",
+                      "Q2 Operations Report.pdf",
+                      "Weekly Project Notes.md",
+                      "Monthly Budget Sheet.xlsx",
+                  )
+
+              recent_entries = [
+                  {
+                      "id": "demo-hwpx",
+                      "doc_key": "demo-hwpx",
+                      "uri": hwpx_path.as_uri(),
+                      "name": names[0],
+                      "format": "hwpx",
+                      "opened_at": now_ms - 180_000,
+                  },
+                  {
+                      "id": "demo-pdf",
+                      "doc_key": "demo-pdf",
+                      "uri": pdf_path.as_uri(),
+                      "name": names[1],
+                      "format": "pdf",
+                      "opened_at": now_ms - 1_500_000,
+                  },
+                  {
+                      "id": "demo-md",
+                      "doc_key": "demo-md",
+                      "uri": md_path.as_uri(),
+                      "name": names[2],
+                      "format": "md",
+                      "opened_at": now_ms - 5_400_000,
+                  },
+                  {
+                      "id": "demo-xlsx",
+                      "doc_key": "demo-xlsx",
+                      "uri": xlsx_path.as_uri(),
+                      "name": names[3],
+                      "format": "xlsx",
+                      "opened_at": now_ms - 86_400_000,
+                  },
+              ]
+
+              prefs = {
+                  "lang": short_lang,
+                  "theme": "system",
+                  "hwpDefaultFormat": "hwpx",
+                  "aiEnabled": False,
+                  "editorsOff": [],
+                  "homeKindsHidden": [],
+                  "homeKindsOrder": [],
+                  "keepScreenOnWhileReading": True,
+                  "firstRunDone": True,
+                  "tipsSeen": ["editButton", "flowView", "firstEdit", "firstKeyboard"],
+                  "lastSeenVersion": "0.1.0",
+              }
+
+              # Write to both Application Support/<bundle_id> (Tauri iOS app_data_dir)
+              # and Application Support root so lookup succeeds regardless of layout.
+              for target_dir in (
+                  data_dir / "Library" / "Application Support" / bundle_id,
+                  data_dir / "Library" / "Application Support",
+              ):
+                  target_dir.mkdir(parents=True, exist_ok=True)
+                  (target_dir / "prefs.json").write_text(json.dumps(prefs, ensure_ascii=False, indent=2), encoding="utf-8")
+                  (target_dir / "recent.json").write_text(json.dumps(recent_entries, ensure_ascii=False, indent=2), encoding="utf-8")
+
+              trace(f"  Seeded container {data_dir} with 4 samples + prefs.json + recent.json")
+              return data_dir
+
           DEVICES = [
               ("iphone-6.9", ["iPhone 17 Pro Max", "iPhone 16 Pro Max", "Pro Max"]),
               ("ipad-13", ["iPad Pro 13-inch (M5)", "iPad Pro 13-inch", "13-inch"]),
@@ -2226,10 +2672,12 @@ jobs:
 
           for dev_key, dev_prefs in DEVICES:
               rt, dev_name, udid = pick_sim_device(dev_prefs)
+              is_ipad = dev_key.startswith("ipad")
               trace(f"=== Store Shots Device: {dev_key} -> {dev_name} ({rt}) [{udid}] ===")
               run_cmd(["xcrun", "simctl", "boot", udid], timeout=45)
               run_cmd(["xcrun", "simctl", "bootstatus", udid, "-b"], timeout=180)
-              time.sleep(5.0)
+              time.sleep(6.0)
+              apply_clean_status_bar(udid)
 
               try:
                   for loc_tag, apple_locale, apple_langs, short_lang in LOCALES:
@@ -2242,6 +2690,7 @@ jobs:
                           "udid": udid,
                           "locale": loc_tag,
                           "shots": [],
+                          "checks": {},
                           "errors": [],
                       }
                       trace(f"--- Capturing {dev_key} / {loc_tag} ---")
@@ -2253,34 +2702,32 @@ jobs:
                       run_cmd(["xcrun", "simctl", "spawn", udid, "defaults", "write", "-g", "AppleLanguages", "-array", *apple_langs], timeout=15)
                       run_cmd(["xcrun", "simctl", "spawn", udid, "defaults", "write", "-g", "AppleLocale", "-string", apple_locale], timeout=15)
                       run_cmd(["xcrun", "simctl", "ui", udid, "appearance", "light"], timeout=15)
-                      run_cmd([
-                          "xcrun", "simctl", "status_bar", udid, "override",
-                          "--time", "9:41",
-                          "--batteryState", "charged",
-                          "--batteryLevel", "100",
-                          "--wifiBars", "3",
-                          "--cellularBars", "4",
-                      ], timeout=15)
+                      apply_clean_status_bar(udid)
 
-                      rc_l, out_l, err_l = -1, "", ""
-                      for launch_try in range(1, 3):
-                          rc_l, out_l, err_l = run_cmd([
-                              "xcrun", "simctl", "launch", udid, bundle_id,
-                              "-AppleLanguages", f"({loc_tag})",
-                              "-AppleLocale", apple_locale,
-                          ], timeout=90)
-                          if rc_l == 0:
-                              break
-                          trace(f"  launch attempt {launch_try} failed (rc={rc_l}): {err_l[:120]}")
-                          time.sleep(5.0)
-                      if rc_l != 0:
-                          msg = f"launch failed: {err_l}"
+                      seed_app_container(udid, loc_tag, short_lang)
+
+                      def launch_app_once():
+                          for launch_try in range(1, 3):
+                              rc_l, out_l, err_l = run_cmd([
+                                  "xcrun", "simctl", "launch", udid, bundle_id,
+                                  "-AppleLanguages", f"({loc_tag})",
+                                  "-AppleLocale", apple_locale,
+                              ], timeout=90)
+                              if rc_l == 0:
+                                  return True, out_l
+                              trace(f"  launch attempt {launch_try} failed (rc={rc_l}): {err_l[:120]}")
+                              time.sleep(5.0)
+                          return False, err_l
+
+                      ok_l, info_l = launch_app_once()
+                      if not ok_l:
+                          msg = f"launch failed: {info_l}"
                           trace(f"  [ERROR] {msg}")
                           run_info["errors"].append(msg)
                           report["runs"].append(run_info)
                           continue
 
-                      time.sleep(3.0)
+                      time.sleep(3.5)
                       insp = connect_inspector(udid)
                       if not insp:
                           msg = "WebInspector failed to connect"
@@ -2289,14 +2736,20 @@ jobs:
                           report["runs"].append(run_info)
                           continue
 
-                      try:
-                          # Dismiss first-run welcome screen -> Home
-                          if wait_visible(insp, ['[data-testid="home-run-first-start"]'], timeout_s=25.0):
-                              click_ui(insp, ['[data-testid="home-run-first-start"]'])
-                          if not wait_visible(insp, ['[data-testid="home-empty-sample"]'], timeout_s=20.0):
-                              run_info["errors"].append("home-empty-sample not visible after start")
+                      # Re-apply 9:41 status bar AFTER SpringBoard and the app are awake
+                      # so iPad ko-KR never falls back to system clock time.
+                      apply_clean_status_bar(udid)
+                      time.sleep(1.5)
 
-                          # Verify active UI language matches requested locale; switch via Settings if needed.
+                      try:
+                          # Ensure Home screen is ready (and skip FirstRun if somehow shown)
+                          if wait_visible(insp, ['[data-testid="home-run-first-start"]'], timeout_s=3.0, poll_s=0.4):
+                              trace("  FirstRun overlay appeared unexpectedly; clicking Start")
+                              click_ui(insp, ['[data-testid="home-run-first-start"]'])
+                          if not wait_visible(insp, ['[data-testid="home-recent-list"]', '[data-testid="home-empty-sample"]'], timeout_s=20.0):
+                              run_info["errors"].append("Home list not visible after launch")
+
+                          # Verify active UI language matches requested locale
                           doc_lang = str(insp.eval_js("document.documentElement.lang || ''") or "")
                           trace(f"  Active document.documentElement.lang = {doc_lang!r} (want {short_lang!r})")
                           if not doc_lang.lower().startswith(short_lang):
@@ -2313,17 +2766,54 @@ jobs:
                                   }})()""")
                                   time.sleep(1.0)
                               click_ui(insp, ['[data-testid="settings-back-btn"]', 'header button'], ["뒤로", "Back"])
-                              wait_visible(insp, ['[data-testid="home-empty-sample"]'], timeout_s=12.0)
+                              wait_visible(insp, ['[data-testid="home-recent-list"]', '[data-testid="home-empty-sample"]'], timeout_s=12.0)
 
-                          # Scene 1: Home (showing sample document entry)
-                          time.sleep(1.5)
+                          # Switch Home recent list to Card Grid view so document thumbnails stand out clearly
+                          cur_view = insp.eval_js("document.querySelector('[data-testid=\"home-recent-list\"]')?.getAttribute('data-view') || ''")
+                          if cur_view != "grid":
+                              click_ui(insp, ['[data-testid="home-view-mode-btn"]'])
+                              time.sleep(0.8)
+
+                          # Wait up to 12s for lazy document thumbnails (PDFKit + HWPX + MD + XLSX) to render
+                          thumb_info = {}
+                          thumb_deadline = time.time() + 12.0
+                          while time.time() < thumb_deadline:
+                              thumb_info = insp.eval_js("""(() => {
+                                const list = document.querySelector('[data-testid="home-recent-list"]');
+                                const thumbs = Array.from(document.querySelectorAll('[data-testid^="home-file-thumb-"]'));
+                                const items = thumbs.map(el => {
+                                  const img = el.querySelector('img');
+                                  return {
+                                    id: el.getAttribute('data-testid'),
+                                    kind: el.getAttribute('data-thumb-kind'),
+                                    imgReady: img ? (img.complete && img.naturalWidth > 0) : null,
+                                  };
+                                });
+                                const readyCount = items.filter(x => x.kind === 'text' || (x.kind === 'image' && x.imgReady)).length;
+                                return { view: list ? list.getAttribute('data-view') : null, count: items.length, readyCount, items };
+                              })()""") or {}
+                              if thumb_info.get("count", 0) >= 4 and thumb_info.get("readyCount", 0) >= 4:
+                                  break
+                              time.sleep(0.8)
+                          run_info["checks"]["home_thumbnails"] = thumb_info
+                          trace(f"  Home thumbnails: view={thumb_info.get('view')} ready={thumb_info.get('readyCount')}/{thumb_info.get('count')} items={thumb_info.get('items')}")
+
+                          # Scene 1: Home (recent docs + thumbnails, zero tips/toasts)
+                          clean1 = dismiss_tips_and_check_clean(insp)
+                          run_info["checks"]["01_home_clean"] = clean1
+                          apply_clean_status_bar(udid)
+                          time.sleep(1.2)
                           s1 = take_shot(udid, out_dir / "01-home.png")
+                          s1["ready"] = (thumb_info.get("readyCount", 0) >= 3) and not clean1.get("tip") and not clean1.get("toast")
                           run_info["shots"].append(s1)
-                          trace(f"  [SHOT] 01-home.png ok={s1['ok']} {s1['width']}x{s1['height']}")
+                          trace(f"  [SHOT] 01-home.png ok={s1['ok']} ready={s1['ready']} {s1['width']}x{s1['height']} ct={s1['color_type']}")
 
-                          # Scene 2: Sample HWP Reading View (flow view).
-                          # On tablet/iPad, HWP defaults to Page view, so switch to Reading view first if needed.
-                          click_ui(insp, ['[data-testid="home-empty-sample"]'])
+                          # Scene 2: Sample HWP Reading View (flow view; tablet 40rem centered)
+                          opened_hwpx = click_ui(insp, [
+                              '[data-testid="home-file-row-open-recent:demo-hwpx"]',
+                              '[data-testid="home-empty-sample"]',
+                          ])
+                          trace(f"  Opened HWPX via: {opened_hwpx}")
                           wait_visible(
                               insp,
                               ['[data-testid="view-tool-pageView"]', '[data-testid="view-tool-flowView"]'],
@@ -2334,82 +2824,213 @@ jobs:
                               trace("  HWP opened in Page view (tablet default); switching to Reading view for 02-hwp-reading.png")
                               click_ui(insp, ['[data-testid="view-tool-flowView"]'], ["읽기 화면", "Reading view"])
                           flow_ok = wait_hwp_flow(insp, timeout_s=35.0)
-                          time.sleep(2.2)
+                          clean2 = dismiss_tips_and_check_clean(insp)
+                          flow_metrics = insp.eval_js("""(() => {
+                            const f = document.querySelector('iframe.mobile-hwp-flow-frame');
+                            if (!f || !f.contentDocument) return null;
+                            const body = f.contentDocument.body;
+                            const st = f.contentWindow.getComputedStyle(body);
+                            const main = body.firstElementChild;
+                            const mr = main ? main.getBoundingClientRect() : null;
+                            return {
+                              viewportW: window.innerWidth,
+                              bodyMaxW: st.maxWidth,
+                              mainW: mr ? Math.round(mr.width) : null,
+                              mainLeft: mr ? Math.round(mr.left) : null,
+                            };
+                          })()""")
+                          run_info["checks"]["02_hwp_reading"] = {"clean": clean2, "metrics": flow_metrics}
+                          trace(f"  02-hwp-reading metrics={flow_metrics} clean={clean2}")
+                          time.sleep(1.8)
                           s2 = take_shot(udid, out_dir / "02-hwp-reading.png")
-                          s2["ready"] = flow_ok
+                          s2["ready"] = flow_ok and not clean2.get("tip")
                           run_info["shots"].append(s2)
-                          trace(f"  [SHOT] 02-hwp-reading.png ok={s2['ok']} ready={flow_ok} {s2['width']}x{s2['height']}")
+                          trace(f"  [SHOT] 02-hwp-reading.png ok={s2['ok']} ready={s2['ready']} {s2['width']}x{s2['height']} ct={s2['color_type']}")
 
                           # Scene 3: Sample HWP Page View
                           click_ui(insp, ['[data-testid="view-tool-pageView"]'], ["쪽 화면", "Page view"])
                           page_ok = wait_hwp_page(insp, timeout_s=35.0)
-                          time.sleep(2.5)
+                          clean3 = dismiss_tips_and_check_clean(insp)
+                          run_info["checks"]["03_hwp_page_clean"] = clean3
+                          time.sleep(2.2)
                           s3 = take_shot(udid, out_dir / "03-hwp-page.png")
-                          s3["ready"] = page_ok
+                          s3["ready"] = page_ok and not clean3.get("tip")
                           run_info["shots"].append(s3)
-                          trace(f"  [SHOT] 03-hwp-page.png ok={s3['ok']} ready={page_ok} {s3['width']}x{s3['height']}")
+                          trace(f"  [SHOT] 03-hwp-page.png ok={s3['ok']} ready={s3['ready']} {s3['width']}x{s3['height']} ct={s3['color_type']}")
 
-                          # Scene 5: [...] More sheet (sectioned Document + File actions with Print / Share as PDF)
+                          # Scene 5: [...] More sheet (Document + File sections with Print & Share as PDF)
                           click_ui(insp, ['[data-testid="editor-more-btn"]'])
                           more_ok = bool(wait_visible(insp, ['[data-testid="editor-more-sheet"]'], timeout_s=10.0))
                           time.sleep(1.2)
                           s5 = take_shot(udid, out_dir / "05-more-sheet.png")
                           s5["ready"] = more_ok
                           run_info["shots"].append(s5)
-                          trace(f"  [SHOT] 05-more-sheet.png ok={s5['ok']} ready={more_ok} {s5['width']}x{s5['height']}")
+                          trace(f"  [SHOT] 05-more-sheet.png ok={s5['ok']} ready={more_ok} {s5['width']}x{s5['height']} ct={s5['color_type']}")
 
-                          # Close [...] sheet and return to Home
-                          click_ui(insp, ['[data-testid="editor-more-sheet"] header button'])
-                          time.sleep(0.6)
-                          click_ui(insp, ['[data-testid="editor-back-btn"]'])
-                          wait_visible(insp, ['[data-testid="home-fab"]'], timeout_s=15.0)
-                          time.sleep(1.0)
+                          # Scene 6: Print / Share as PDF native iOS system sheet
+                          print_clicked = click_ui(insp, ['[data-testid="editor-print-btn"]'])
+                          trace(f"  Clicked print button: {print_clicked}")
+                          print_sheet_kind = "unknown"
+                          ax_nodes_print = []
+                          p_deadline = time.time() + 18.0
+                          while time.time() < p_deadline:
+                              time.sleep(1.5)
+                              ax_nodes_print = describe_ax_nodes(udid)
+                              hit = find_ax_button(ax_nodes_print, [
+                                  "프린트 옵션", "Print Options", "프린터", "Printer",
+                                  "프린트", "Print", "매수", "Copies",
+                                  "취소", "Cancel",
+                              ])
+                              if hit:
+                                  print_sheet_kind = f"print_sheet({hit['label'] or hit['title']})"
+                                  time.sleep(2.5)
+                                  break
+                          if print_sheet_kind == "unknown":
+                              # Fallback: try Share as PDF if AirPrint sheet did not report in AX tree
+                              toast_now = insp.eval_js("document.querySelector('[data-testid=\"mobile-toast\"]')?.innerText || ''")
+                              trace(f"  Print sheet AX not matched (toast={toast_now!r}); trying editor-share-pdf-btn fallback if still on editor")
+                              if wait_visible(insp, ['[data-testid="editor-more-btn"]'], timeout_s=2.0, poll_s=0.4):
+                                  click_ui(insp, ['[data-testid="editor-more-btn"]'])
+                                  if wait_visible(insp, ['[data-testid="editor-share-pdf-btn"]'], timeout_s=5.0):
+                                      click_ui(insp, ['[data-testid="editor-share-pdf-btn"]'])
+                                      time.sleep(4.5)
+                                      ax_nodes_print = describe_ax_nodes(udid)
+                                      print_sheet_kind = "share_pdf_fallback"
+                          s6 = take_shot(udid, out_dir / "06-print-share.png")
+                          s6["ready"] = print_sheet_kind != "unknown"
+                          run_info["checks"]["06_print_share"] = {
+                              "kind": print_sheet_kind,
+                              "ax_sample": [
+                                  f"{n['type']}[{n['label'] or n['title']!r} @({n['cx']},{n['cy']})]"
+                                  for n in ax_nodes_print if (n["label"] or n["title"]) and n["w"] > 0
+                              ][:25],
+                          }
+                          run_info["shots"].append(s6)
+                          trace(f"  [SHOT] 06-print-share.png ok={s6['ok']} kind={print_sheet_kind} {s6['width']}x{s6['height']} ct={s6['color_type']}")
 
-                          # Scene 4: [+] Create sheet
+                          # Dismiss native Print / Share sheet cleanly so we can return to Home
+                          if axe_ready:
+                              cancel_btn = find_ax_button(ax_nodes_print, ["취소", "Cancel", "닫기", "Close"])
+                              if cancel_btn:
+                                  run_cmd(["axe", "tap", "-x", str(cancel_btn["cx"]), "-y", str(cancel_btn["cy"]), "--udid", udid], timeout=15)
+                                  trace(f"  Dismissed native sheet via AX button {cancel_btn['label'] or cancel_btn['title']!r} @({cancel_btn['cx']},{cancel_btn['cy']})")
+                              elif is_ipad:
+                                  run_cmd(["axe", "tap", "-x", "40", "-y", "140", "--udid", udid], timeout=15)
+                                  trace("  Dismissed iPad popover via outside tap (40,140)")
+                              else:
+                                  run_cmd(["axe", "swipe", "--start-x", "210", "--start-y", "110", "--end-x", "210", "--end-y", "820", "--udid", udid], timeout=15)
+                                  trace("  Dismissed iPhone sheet via swipe down")
+                              time.sleep(2.0)
+
+                          # Return from HWP to Home (if native sheet stayed modal, relaunch cleanly since container is seeded)
+                          back_clicked = None
+                          try:
+                              if wait_visible(insp, ['[data-testid="editor-back-btn"]'], timeout_s=6.0):
+                                  back_clicked = click_ui(insp, ['[data-testid="editor-back-btn"]'])
+                                  wait_visible(insp, ['[data-testid="home-fab"]'], timeout_s=12.0)
+                          except Exception as exc:
+                              trace(f"  Could not navigate back via WebInspector after native sheet: {exc}")
+
+                          if not wait_visible(insp, ['[data-testid="home-fab"]'], timeout_s=3.0, poll_s=0.5):
+                              trace("  Relaunching app cleanly to reach Home after native Print sheet")
+                              insp.close()
+                              run_cmd(["xcrun", "simctl", "terminate", udid, bundle_id], timeout=15)
+                              time.sleep(1.5)
+                              launch_app_once()
+                              time.sleep(3.5)
+                              insp = connect_inspector(udid)
+                              if not insp:
+                                  raise RuntimeError("WebInspector failed to reconnect after relaunch")
+                              apply_clean_status_bar(udid)
+                              wait_visible(insp, ['[data-testid="home-fab"]'], timeout_s=20.0)
+                              # Restore Card Grid view on Home
+                              if insp.eval_js("document.querySelector('[data-testid=\"home-recent-list\"]')?.getAttribute('data-view') || ''") != "grid":
+                                  click_ui(insp, ['[data-testid="home-view-mode-btn"]'])
+                                  time.sleep(1.0)
+
+                          dismiss_tips_and_check_clean(insp, wait_toast_s=5.0)
+                          time.sleep(0.8)
+
+                          # Scene 4: [+] Create sheet (verify last button is not clipped)
                           click_ui(insp, ['[data-testid="home-fab"]'])
                           create_ok = bool(wait_visible(insp, ['[data-testid="home-create-sheet"]'], timeout_s=10.0))
                           time.sleep(1.2)
+                          sheet_metrics = insp.eval_js("""(() => {
+                            const sheet = document.querySelector('[data-testid="home-create-sheet"]');
+                            const lastBtn = document.querySelector('[data-testid="home-create-add-folder"]')
+                              || Array.from(document.querySelectorAll('.home-frame-create-action')).slice(-1)[0];
+                            const sr = sheet ? sheet.getBoundingClientRect() : null;
+                            const lr = lastBtn ? lastBtn.getBoundingClientRect() : null;
+                            return {
+                              innerH: window.innerHeight,
+                              sheetTop: sr ? Math.round(sr.top) : null,
+                              sheetBottom: sr ? Math.round(sr.bottom) : null,
+                              lastBtnId: lastBtn ? lastBtn.getAttribute('data-testid') : null,
+                              lastBtnBottom: lr ? Math.round(lr.bottom) : null,
+                              clipped: lr ? lr.bottom > window.innerHeight - 2 : null,
+                            };
+                          })()""")
+                          run_info["checks"]["04_create_sheet"] = sheet_metrics
+                          trace(f"  04-create-sheet metrics={sheet_metrics}")
                           s4 = take_shot(udid, out_dir / "04-create-sheet.png")
-                          s4["ready"] = create_ok
+                          s4["ready"] = create_ok and not (sheet_metrics or {}).get("clipped")
                           run_info["shots"].append(s4)
-                          trace(f"  [SHOT] 04-create-sheet.png ok={s4['ok']} ready={create_ok} {s4['width']}x{s4['height']}")
+                          trace(f"  [SHOT] 04-create-sheet.png ok={s4['ok']} ready={s4['ready']} {s4['width']}x{s4['height']} ct={s4['color_type']}")
 
-                          # Scene 6: New Markdown Editing (with realistic localized sample text)
-                          click_ui(insp, ['[data-testid="home-create-md"]', '[data-testid="home-create-markdown"]'])
-                          md_ok = bool(wait_visible(insp, ['[data-testid="markdown-editor-textarea"]'], timeout_s=20.0))
+                          # Close [+] Create sheet before opening seeded Markdown note
+                          click_ui(insp, ['[data-testid="home-create-sheet"] header button'])
+                          time.sleep(0.8)
+
+                          # Scene 7: Markdown Editing (open seeded localized note -> Edit mode, zero tip bubbles)
+                          opened_md = click_ui(insp, ['[data-testid="home-file-row-open-recent:demo-md"]'])
+                          trace(f"  Opened seeded MD via: {opened_md}")
+                          md_ok = False
+                          if opened_md and wait_visible(insp, ['[data-testid="editor-mode-toggle"]'], timeout_s=15.0):
+                              click_ui(insp, ['[data-testid="editor-mode-toggle"]'])
+                              md_ok = bool(wait_visible(insp, ['[data-testid="markdown-editor-textarea"]'], timeout_s=15.0))
+                          if not md_ok:
+                              # Fallback via [+] -> New Markdown
+                              click_ui(insp, ['[data-testid="home-fab"]'])
+                              if wait_visible(insp, ['[data-testid="home-create-md"]'], timeout_s=8.0):
+                                  click_ui(insp, ['[data-testid="home-create-md"]'])
+                                  md_ok = bool(wait_visible(insp, ['[data-testid="markdown-editor-textarea"]'], timeout_s=15.0))
+                                  if md_ok:
+                                      sample_md = MD_SAMPLE[loc_tag]
+                                      insp.eval_js(f"""(() => {{
+                                        const ta = document.querySelector('[data-testid="markdown-editor-textarea"]');
+                                        if (!ta) return false;
+                                        const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
+                                        setter.call(ta, {json.dumps(sample_md, ensure_ascii=False)});
+                                        ta.dispatchEvent(new Event('input', {{ bubbles: true }}));
+                                        return true;
+                                      }})()""")
                           if md_ok:
-                              sample_md = MD_SAMPLE[loc_tag]
-                              insp.eval_js(f"""(() => {{
-                                const ta = document.querySelector('[data-testid="markdown-editor-textarea"]');
-                                if (!ta) return false;
-                                const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
-                                setter.call(ta, {json.dumps(sample_md, ensure_ascii=False)});
-                                ta.dispatchEvent(new Event('input', {{ bubbles: true }}));
-                                ta.blur();
-                                return ta.value.length > 10;
-                              }})()""")
-                          time.sleep(2.5)
-                          s6 = take_shot(udid, out_dir / "06-markdown-edit.png")
-                          s6["ready"] = md_ok
-                          run_info["shots"].append(s6)
-                          trace(f"  [SHOT] 06-markdown-edit.png ok={s6['ok']} ready={md_ok} {s6['width']}x{s6['height']}")
+                              insp.eval_js("document.querySelector('[data-testid=\"markdown-editor-textarea\"]')?.blur();")
+                          clean7 = dismiss_tips_and_check_clean(insp)
+                          run_info["checks"]["07_markdown_clean"] = clean7
+                          time.sleep(1.8)
+                          s7 = take_shot(udid, out_dir / "07-markdown-edit.png")
+                          s7["ready"] = md_ok and not clean7.get("tip")
+                          run_info["shots"].append(s7)
+                          trace(f"  [SHOT] 07-markdown-edit.png ok={s7['ok']} ready={s7['ready']} {s7['width']}x{s7['height']} ct={s7['color_type']}")
 
-                          # Return to Home (discard unsaved sample markdown)
+                          # Return to Home from Markdown editor
                           click_ui(insp, ['[data-testid="editor-back-btn"]'])
                           time.sleep(0.8)
-                          if wait_visible(insp, [], ["저장 안 함", "Discard"], timeout_s=3.0, poll_s=0.4):
+                          if wait_visible(insp, [], ["저장 안 함", "Discard"], timeout_s=2.5, poll_s=0.4):
                               click_ui(insp, [], ["저장 안 함", "Discard"])
-                          wait_visible(insp, ['[data-testid="home-tab-settings"]', '[data-testid="home-settings-btn"]'], timeout_s=12.0)
+                          wait_visible(insp, ['[data-testid="home-recent-list"]', '[data-testid="home-fab"]'], timeout_s=12.0)
 
-                          # Scene 7: Settings in Dark Mode
+                          # Scene 8: Dark Mode Home (recent docs + thumbnails in dark theme, clean 9:41)
                           run_cmd(["xcrun", "simctl", "ui", udid, "appearance", "dark"], timeout=15)
-                          time.sleep(2.5)
-                          click_ui(insp, ['[data-testid="home-tab-settings"]', '[data-testid="home-settings-btn"]'])
-                          set_ok = bool(wait_visible(insp, ['[data-testid="mobile-settings-screen"]'], timeout_s=12.0))
-                          if set_ok:
-                              bg = str(insp.eval_js("window.getComputedStyle(document.body).backgroundColor || ''") or "")
-                              trace(f"  Settings dark body backgroundColor = {bg}")
-                              if "255, 255, 255" in bg or "248, 250, 252" in bg:
+                          apply_clean_status_bar(udid)
+                          time.sleep(2.2)
+                          bg_dark = str(insp.eval_js("window.getComputedStyle(document.body).backgroundColor || ''") or "")
+                          trace(f"  Dark Home body backgroundColor = {bg_dark}")
+                          if "255, 255, 255" in bg_dark or "248, 250, 252" in bg_dark:
+                              trace("  Switching theme to dark explicitly via Settings...")
+                              click_ui(insp, ['[data-testid="home-tab-settings"]', '[data-testid="home-settings-btn"]'])
+                              if wait_visible(insp, ['[data-testid="settings-theme-select"]'], timeout_s=10.0):
                                   insp.eval_js("""(() => {
                                     const sel = document.querySelector('[data-testid="settings-theme-select"]');
                                     if (!sel) return false;
@@ -2418,20 +3039,32 @@ jobs:
                                     sel.dispatchEvent(new Event('change', { bubbles: true }));
                                     return true;
                                   })()""")
-                                  time.sleep(1.2)
-                          time.sleep(2.0)
-                          s7 = take_shot(udid, out_dir / "07-settings-dark.png")
-                          s7["ready"] = set_ok
-                          run_info["shots"].append(s7)
-                          trace(f"  [SHOT] 07-settings-dark.png ok={s7['ok']} ready={set_ok} {s7['width']}x{s7['height']}")
+                                  time.sleep(1.0)
+                              click_ui(insp, ['[data-testid="settings-back-btn"]', 'header button'], ["뒤로", "Back"])
+                              wait_visible(insp, ['[data-testid="home-recent-list"]'], timeout_s=12.0)
+                              bg_dark = str(insp.eval_js("window.getComputedStyle(document.body).backgroundColor || ''") or "")
+                          if insp.eval_js("document.querySelector('[data-testid=\"home-recent-list\"]')?.getAttribute('data-view') || ''") != "grid":
+                              click_ui(insp, ['[data-testid="home-view-mode-btn"]'])
+                              time.sleep(1.0)
+                          clean8 = dismiss_tips_and_check_clean(insp)
+                          apply_clean_status_bar(udid)
+                          time.sleep(1.5)
+                          run_info["checks"]["08_dark_home"] = {"bg": bg_dark, "clean": clean8}
+                          s8 = take_shot(udid, out_dir / "08-dark-home.png")
+                          s8["ready"] = ("255, 255, 255" not in bg_dark) and not clean8.get("tip") and not clean8.get("toast")
+                          run_info["shots"].append(s8)
+                          trace(f"  [SHOT] 08-dark-home.png ok={s8['ok']} ready={s8['ready']} {s8['width']}x{s8['height']} ct={s8['color_type']} bg={bg_dark}")
                       except Exception as exc:
                           trace(f"  [ERROR] Exception during capture: {exc}")
                           run_info["errors"].append(str(exc))
                       finally:
-                          insp.close()
+                          try:
+                              insp.close()
+                          except Exception:
+                              pass
                           run_cmd(["xcrun", "simctl", "terminate", udid, bundle_id], timeout=15)
 
-                      # Order shots 01..07 in summary
+                      # Order shots 01..08 in summary
                       run_info["shots"].sort(key=lambda x: x["file"])
                       report["runs"].append(run_info)
               finally:
@@ -2444,7 +3077,9 @@ jobs:
           for r in report["runs"]:
               summary_lines.append(f"=== {r['device_key']} ({r['device_name']}, {r['runtime']}) / {r['locale']} ===")
               for s in r["shots"]:
-                  summary_lines.append(f"  - {s['file']}: ok={s['ok']} ready={s.get('ready', True)} dims={s['width']}x{s['height']}")
+                  summary_lines.append(
+                      f"  - {s['file']}: ok={s['ok']} ready={s.get('ready', True)} dims={s['width']}x{s['height']} colorType={s.get('color_type')}"
+                  )
               if r["errors"]:
                   summary_lines.append(f"  ERRORS: {r['errors']}")
           (shots_root / "summary.txt").write_text("\n".join(summary_lines) + "\n", encoding="utf-8")
