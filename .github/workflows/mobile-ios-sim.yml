@@ -531,7 +531,7 @@ jobs:
 
                   return socket_setup_sent
 
-              def eval_js(self, expression, timeout_s=15.0):
+              def eval_js(self, expression, timeout_s=30.0):
                   cmd_id = self.next_id
                   self.next_id += 1
                   inner = {
@@ -1874,6 +1874,7 @@ jobs:
           import subprocess
           import sys
           import time
+          import unicodedata
           import uuid
           import zipfile
           import zlib
@@ -2057,7 +2058,7 @@ jobs:
                                   pass
                   return socket_setup_sent
 
-              def eval_js(self, expression, timeout_s=15.0):
+              def eval_js(self, expression, timeout_s=30.0):
                   cmd_id = self.next_id
                   self.next_id += 1
                   inner = {
@@ -2561,10 +2562,28 @@ jobs:
               src_hwpx = repo_root / "apps/mobile/src-tauri/src/storage/samples" / (
                   "welcome-ko.hwpx" if short_lang == "ko" else "welcome-en.hwpx"
               )
-              hwpx_path = samples_dir / "sample-welcome.hwpx"
-              pdf_path = samples_dir / "sample-report.pdf"
-              md_path = samples_dir / "sample-notes.md"
-              xlsx_path = samples_dir / "sample-budget.xlsx"
+              if short_lang == "ko":
+                  names = tuple(
+                      unicodedata.normalize("NFC", s)
+                      for s in (
+                          "이음오피스 시작하기.hwpx",
+                          "2026년 2분기 업무 보고서.pdf",
+                          "주간 프로젝트 메모.md",
+                          "월간 예산 정리표.xlsx",
+                      )
+                  )
+              else:
+                  names = (
+                      "Welcome to IeumOffice.hwpx",
+                      "Q2 Operations Report.pdf",
+                      "Weekly Project Notes.md",
+                      "Monthly Budget Sheet.xlsx",
+                  )
+
+              hwpx_path = samples_dir / names[0]
+              pdf_path = samples_dir / names[1]
+              md_path = samples_dir / names[2]
+              xlsx_path = samples_dir / names[3]
 
               copy_hwpx_with_preview(src_hwpx, hwpx_path, HWPX_PREVIEW_TEXT[loc_tag])
               pdf_bytes = build_clean_pdf(
@@ -2582,20 +2601,6 @@ jobs:
               build_clean_xlsx(xlsx_path)
 
               now_ms = int(time.time() * 1000)
-              if short_lang == "ko":
-                  names = (
-                      "이음오피스 시작하기.hwpx",
-                      "2026년 2분기 업무 보고서.pdf",
-                      "주간 프로젝트 메모.md",
-                      "월간 예산 정리표.xlsx",
-                  )
-              else:
-                  names = (
-                      "Welcome to IeumOffice.hwpx",
-                      "Q2 Operations Report.pdf",
-                      "Weekly Project Notes.md",
-                      "Monthly Budget Sheet.xlsx",
-                  )
 
               recent_entries = [
                   {
@@ -2768,33 +2773,99 @@ jobs:
                               click_ui(insp, ['[data-testid="settings-back-btn"]', 'header button'], ["뒤로", "Back"])
                               wait_visible(insp, ['[data-testid="home-recent-list"]', '[data-testid="home-empty-sample"]'], timeout_s=12.0)
 
+                          # Install lightweight read-only diagnostics hook for toasts, console errors,
+                          # and print/share IPC lifecycles.
+                          def install_shot_diag(client):
+                              try:
+                                  client.eval_js("""(() => {
+                                    if (window.__ieumShotDiag) return true;
+                                    const d = { toasts: [], errors: [], ipc: [], inFlight: {} };
+                                    window.__ieumShotDiag = d;
+                                    const origErr = console.error.bind(console);
+                                    console.error = (...args) => {
+                                      try { d.errors.push(args.map(a => String(a)).join(' ').slice(0, 300)); } catch {}
+                                      return origErr(...args);
+                                    };
+                                    window.addEventListener('unhandledrejection', (e) => {
+                                      try { d.errors.push('unhandledrejection: ' + String(e.reason).slice(0, 300)); } catch {}
+                                    });
+                                    const obs = new MutationObserver(() => {
+                                      const el = document.querySelector('[data-testid="mobile-toast"]');
+                                      if (el) {
+                                        const txt = (el.innerText || '').trim();
+                                        if (txt && d.toasts[d.toasts.length - 1] !== txt) d.toasts.push(txt);
+                                      }
+                                    });
+                                    obs.observe(document.body, { childList: true, subtree: true, characterData: true });
+                                    const ti = window.__TAURI_INTERNALS__;
+                                    if (ti && typeof ti.invoke === 'function' && !ti.__ieumWrapped) {
+                                      const origInvoke = ti.invoke.bind(ti);
+                                      ti.__ieumWrapped = true;
+                                      ti.invoke = function(cmd, args, options) {
+                                        const track = typeof cmd === 'string' && (cmd.includes('print') || cmd.includes('share'));
+                                        const id = track ? (cmd + '#' + (d.ipc.length + 1)) : null;
+                                        if (track) {
+                                          d.inFlight[id] = Date.now();
+                                          d.ipc.push({ id, cmd, state: 'pending' });
+                                        }
+                                        const p = origInvoke(cmd, args, options);
+                                        if (track && p && typeof p.then === 'function') {
+                                          return p.then(
+                                            (val) => {
+                                              delete d.inFlight[id];
+                                              d.ipc.push({ id, cmd, state: 'ok' });
+                                              return val;
+                                            },
+                                            (err) => {
+                                              delete d.inFlight[id];
+                                              d.ipc.push({ id, cmd, state: 'err', err: String(err && (err.message || err.detail || JSON.stringify(err)) || err).slice(0, 300) });
+                                              throw err;
+                                            }
+                                          );
+                                        }
+                                        return p;
+                                      };
+                                    }
+                                    return true;
+                                  })()""")
+                              except Exception as exc:
+                                  trace(f"  install_shot_diag warning: {exc}")
+
+                          install_shot_diag(insp)
+
                           # Switch Home recent list to Card Grid view so document thumbnails stand out clearly
-                          cur_view = insp.eval_js("document.querySelector('[data-testid=\"home-recent-list\"]')?.getAttribute('data-view') || ''")
+                          try:
+                              cur_view = insp.eval_js("document.querySelector('[data-testid=\"home-recent-list\"]')?.getAttribute('data-view') || ''")
+                          except Exception:
+                              cur_view = ""
                           if cur_view != "grid":
                               click_ui(insp, ['[data-testid="home-view-mode-btn"]'])
-                              time.sleep(0.8)
+                              time.sleep(1.0)
 
-                          # Wait up to 12s for lazy document thumbnails (PDFKit + HWPX + MD + XLSX) to render
+                          # Wait up to 20s for lazy document thumbnails (PDFKit + HWPX + MD + XLSX) to render
                           thumb_info = {}
-                          thumb_deadline = time.time() + 12.0
+                          thumb_deadline = time.time() + 20.0
                           while time.time() < thumb_deadline:
-                              thumb_info = insp.eval_js("""(() => {
-                                const list = document.querySelector('[data-testid="home-recent-list"]');
-                                const thumbs = Array.from(document.querySelectorAll('[data-testid^="home-file-thumb-"]'));
-                                const items = thumbs.map(el => {
-                                  const img = el.querySelector('img');
-                                  return {
-                                    id: el.getAttribute('data-testid'),
-                                    kind: el.getAttribute('data-thumb-kind'),
-                                    imgReady: img ? (img.complete && img.naturalWidth > 0) : null,
-                                  };
-                                });
-                                const readyCount = items.filter(x => x.kind === 'text' || (x.kind === 'image' && x.imgReady)).length;
-                                return { view: list ? list.getAttribute('data-view') : null, count: items.length, readyCount, items };
-                              })()""") or {}
-                              if thumb_info.get("count", 0) >= 4 and thumb_info.get("readyCount", 0) >= 4:
-                                  break
-                              time.sleep(0.8)
+                              try:
+                                  thumb_info = insp.eval_js("""(() => {
+                                    const list = document.querySelector('[data-testid="home-recent-list"]');
+                                    const thumbs = Array.from(document.querySelectorAll('[data-testid^="home-file-thumb-"]'));
+                                    const items = thumbs.map(el => {
+                                      const img = el.querySelector('img');
+                                      return {
+                                        id: el.getAttribute('data-testid'),
+                                        kind: el.getAttribute('data-thumb-kind'),
+                                        imgReady: img ? (img.complete && img.naturalWidth > 0) : null,
+                                      };
+                                    });
+                                    const readyCount = items.filter(x => x.kind === 'text' || (x.kind === 'image' && x.imgReady)).length;
+                                    return { view: list ? list.getAttribute('data-view') : null, count: items.length, readyCount, items };
+                                  })()""", timeout_s=25.0) or {}
+                                  if thumb_info.get("count", 0) >= 4 and thumb_info.get("readyCount", 0) >= 4:
+                                      break
+                              except Exception as exc:
+                                  trace(f"  thumbnail poll transient error: {exc}")
+                              time.sleep(1.0)
                           run_info["checks"]["home_thumbnails"] = thumb_info
                           trace(f"  Home thumbnails: view={thumb_info.get('view')} ready={thumb_info.get('readyCount')}/{thumb_info.get('count')} items={thumb_info.get('items')}")
 
@@ -2868,38 +2939,86 @@ jobs:
                           trace(f"  [SHOT] 05-more-sheet.png ok={s5['ok']} ready={more_ok} {s5['width']}x{s5['height']} ct={s5['color_type']}")
 
                           # Scene 6: Print / Share as PDF native iOS system sheet
+                          def read_shot_diag(client):
+                              try:
+                                  return client.eval_js("window.__ieumShotDiag || null", timeout_s=10.0) or {}
+                              except Exception as exc:
+                                  return {"eval_error": str(exc)}
+
+                          def wait_native_sheet_presented(client, wait_s=20.0):
+                              deadline = time.time() + wait_s
+                              last_diag = {}
+                              last_ax = []
+                              while time.time() < deadline:
+                                  time.sleep(1.5)
+                                  last_diag = read_shot_diag(client)
+                                  in_flight = last_diag.get("inFlight") or {}
+                                  ipc = last_diag.get("ipc") or []
+                                  # Native Print/Share call stays pending while the iOS modal sheet is presented.
+                                  pending_native = [
+                                      k for k in in_flight
+                                      if "print_stage_finish" in k or "print_session_pdf" in k or "share_file" in k
+                                  ]
+                                  if pending_native:
+                                      time.sleep(2.5)
+                                      return "ipc_pending:" + pending_native[0], last_diag, describe_ax_nodes(udid)
+                                  if last_diag.get("eval_error"):
+                                      # WebView paused behind a presented native sheet.
+                                      time.sleep(2.0)
+                                      return "webview_paused_modal", last_diag, describe_ax_nodes(udid)
+                                  last_ax = describe_ax_nodes(udid)
+                                  hit = find_ax_button(last_ax, [
+                                      "프린트 옵션", "Print Options", "프린터", "Printer",
+                                      "프린트", "Print", "매수", "Copies", "AirDrop",
+                                  ])
+                                  if hit:
+                                      time.sleep(2.0)
+                                      return f"ax:{hit['label'] or hit['title']}", last_diag, last_ax
+                                  # Stop waiting early if an error toast or IPC error already occurred.
+                                  errs = [x for x in ipc if x.get("state") == "err"]
+                                  toasts = last_diag.get("toasts") or []
+                                  if errs or any(("실패" in t or "못" in t or "could not" in t.lower() or "failed" in t.lower()) for t in toasts):
+                                      return None, last_diag, last_ax
+                              return None, last_diag, last_ax
+
                           print_clicked = click_ui(insp, ['[data-testid="editor-print-btn"]'])
-                          trace(f"  Clicked print button: {print_clicked}")
-                          print_sheet_kind = "unknown"
-                          ax_nodes_print = []
-                          p_deadline = time.time() + 18.0
-                          while time.time() < p_deadline:
-                              time.sleep(1.5)
-                              ax_nodes_print = describe_ax_nodes(udid)
-                              hit = find_ax_button(ax_nodes_print, [
-                                  "프린트 옵션", "Print Options", "프린터", "Printer",
-                                  "프린트", "Print", "매수", "Copies",
-                                  "취소", "Cancel",
-                              ])
-                              if hit:
-                                  print_sheet_kind = f"print_sheet({hit['label'] or hit['title']})"
-                                  time.sleep(2.5)
-                                  break
-                          if print_sheet_kind == "unknown":
-                              # Fallback: try Share as PDF if AirPrint sheet did not report in AX tree
-                              toast_now = insp.eval_js("document.querySelector('[data-testid=\"mobile-toast\"]')?.innerText || ''")
-                              trace(f"  Print sheet AX not matched (toast={toast_now!r}); trying editor-share-pdf-btn fallback if still on editor")
-                              if wait_visible(insp, ['[data-testid="editor-more-btn"]'], timeout_s=2.0, poll_s=0.4):
-                                  click_ui(insp, ['[data-testid="editor-more-btn"]'])
-                                  if wait_visible(insp, ['[data-testid="editor-share-pdf-btn"]'], timeout_s=5.0):
-                                      click_ui(insp, ['[data-testid="editor-share-pdf-btn"]'])
-                                      time.sleep(4.5)
-                                      ax_nodes_print = describe_ax_nodes(udid)
-                                      print_sheet_kind = "share_pdf_fallback"
+                          trace(f"  Clicked HWP print button: {print_clicked}")
+                          print_sheet_kind, hwp_print_diag, ax_nodes_print = wait_native_sheet_presented(insp, wait_s=22.0)
+                          trace(f"  HWP print result={print_sheet_kind} diag={hwp_print_diag}")
+
+                          # If HWP print failed (e.g., SVG export error), open seeded PDF and trigger native Print sheet
+                          # directly via mobile_print_session_pdf, or Share sheet as final fallback.
+                          pdf_print_diag = None
+                          if not print_sheet_kind:
+                              trace("  HWP print did not present native sheet; trying direct PDF print via seeded PDF document...")
+                              try:
+                                  if wait_visible(insp, ['[data-testid="editor-back-btn"]'], timeout_s=6.0):
+                                      click_ui(insp, ['[data-testid="editor-back-btn"]'])
+                                      wait_visible(insp, ['[data-testid="home-recent-list"]'], timeout_s=12.0)
+                                  if click_ui(insp, ['[data-testid="home-file-row-open-recent:demo-pdf"]']):
+                                      if wait_visible(insp, ['[data-testid="editor-more-btn"]'], timeout_s=15.0):
+                                          time.sleep(1.5)
+                                          click_ui(insp, ['[data-testid="editor-more-btn"]'])
+                                          if wait_visible(insp, ['[data-testid="editor-print-btn"]'], timeout_s=8.0):
+                                              insp.eval_js("if (window.__ieumShotDiag) { window.__ieumShotDiag.toasts = []; window.__ieumShotDiag.ipc = []; window.__ieumShotDiag.inFlight = {}; }", timeout_s=10.0)
+                                              click_ui(insp, ['[data-testid="editor-print-btn"]'])
+                                              print_sheet_kind, pdf_print_diag, ax_nodes_print = wait_native_sheet_presented(insp, wait_s=12.0)
+                                              trace(f"  PDF print result={print_sheet_kind} diag={pdf_print_diag}")
+                                  if not print_sheet_kind and wait_visible(insp, ['[data-testid="editor-more-btn"]'], timeout_s=4.0):
+                                      click_ui(insp, ['[data-testid="editor-more-btn"]'])
+                                      if wait_visible(insp, ['[data-testid="editor-sheet-share-btn"]'], timeout_s=6.0):
+                                          click_ui(insp, ['[data-testid="editor-sheet-share-btn"]'])
+                                          print_sheet_kind, share_diag, ax_nodes_print = wait_native_sheet_presented(insp, wait_s=10.0)
+                                          trace(f"  PDF share fallback result={print_sheet_kind} diag={share_diag}")
+                              except Exception as exc:
+                                  trace(f"  PDF print fallback error: {exc}")
+
                           s6 = take_shot(udid, out_dir / "06-print-share.png")
-                          s6["ready"] = print_sheet_kind != "unknown"
+                          s6["ready"] = bool(print_sheet_kind)
                           run_info["checks"]["06_print_share"] = {
-                              "kind": print_sheet_kind,
+                              "kind": print_sheet_kind or "not_presented",
+                              "hwp_print_diag": hwp_print_diag,
+                              "pdf_print_diag": pdf_print_diag,
                               "ax_sample": [
                                   f"{n['type']}[{n['label'] or n['title']!r} @({n['cx']},{n['cy']})]"
                                   for n in ax_nodes_print if (n["label"] or n["title"]) and n["w"] > 0
@@ -2922,18 +3041,21 @@ jobs:
                                   trace("  Dismissed iPhone sheet via swipe down")
                               time.sleep(2.0)
 
-                          # Return from HWP to Home (if native sheet stayed modal, relaunch cleanly since container is seeded)
-                          back_clicked = None
+                          # Return to Home (if native sheet stayed modal or WebInspector paused, relaunch cleanly)
+                          back_ok = False
                           try:
                               if wait_visible(insp, ['[data-testid="editor-back-btn"]'], timeout_s=6.0):
-                                  back_clicked = click_ui(insp, ['[data-testid="editor-back-btn"]'])
-                                  wait_visible(insp, ['[data-testid="home-fab"]'], timeout_s=12.0)
+                                  click_ui(insp, ['[data-testid="editor-back-btn"]'])
+                              back_ok = bool(wait_visible(insp, ['[data-testid="home-fab"]'], timeout_s=10.0))
                           except Exception as exc:
                               trace(f"  Could not navigate back via WebInspector after native sheet: {exc}")
 
-                          if not wait_visible(insp, ['[data-testid="home-fab"]'], timeout_s=3.0, poll_s=0.5):
+                          if not back_ok:
                               trace("  Relaunching app cleanly to reach Home after native Print sheet")
-                              insp.close()
+                              try:
+                                  insp.close()
+                              except Exception:
+                                  pass
                               run_cmd(["xcrun", "simctl", "terminate", udid, bundle_id], timeout=15)
                               time.sleep(1.5)
                               launch_app_once()
@@ -2941,12 +3063,16 @@ jobs:
                               insp = connect_inspector(udid)
                               if not insp:
                                   raise RuntimeError("WebInspector failed to reconnect after relaunch")
+                              install_shot_diag(insp)
                               apply_clean_status_bar(udid)
                               wait_visible(insp, ['[data-testid="home-fab"]'], timeout_s=20.0)
                               # Restore Card Grid view on Home
-                              if insp.eval_js("document.querySelector('[data-testid=\"home-recent-list\"]')?.getAttribute('data-view') || ''") != "grid":
-                                  click_ui(insp, ['[data-testid="home-view-mode-btn"]'])
-                                  time.sleep(1.0)
+                              try:
+                                  if insp.eval_js("document.querySelector('[data-testid=\"home-recent-list\"]')?.getAttribute('data-view') || ''") != "grid":
+                                      click_ui(insp, ['[data-testid="home-view-mode-btn"]'])
+                                      time.sleep(1.0)
+                              except Exception:
+                                  pass
 
                           dismiss_tips_and_check_clean(insp, wait_toast_s=5.0)
                           time.sleep(0.8)
@@ -3058,6 +3184,13 @@ jobs:
                           trace(f"  [ERROR] Exception during capture: {exc}")
                           run_info["errors"].append(str(exc))
                       finally:
+                          # Capture native iOS app logs for this locale (Print/Share/Thumbnail diagnostics)
+                          _, log_out, _ = run_cmd([
+                              "xcrun", "simctl", "spawn", udid, "log", "show", "--last", "4m", "--style", "compact",
+                              "--predicate", 'processImagePath CONTAINS "IeumOffice" OR subsystem BEGINSWITH "com.ieumoffice"',
+                          ], timeout=25)
+                          if log_out:
+                              (logs_dir / f"store-sim-{dev_key}-{loc_tag}.txt").write_text(log_out[-120000:], encoding="utf-8")
                           try:
                               insp.close()
                           except Exception:
