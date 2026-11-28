@@ -106,9 +106,11 @@ export const de = {
   appChartNoRepoint: 'Bei diesem Diagramm können die Datenbereiche nicht neu zugewiesen werden.',
   appKeepOneSeries: 'Behalten Sie mindestens eine Reihe.',
   appNoCategoriesToSwitch: 'Keine Kategorien zum Wechseln.',
-  appComboNoSelectData:
-    'Das Ändern der Datenquelle eines Verbunddiagramms wird noch nicht unterstützt.',
+  appSelectDataUnsupported:
+    'Das Ändern der Datenquelle dieses Diagrammtyps wird nicht unterstützt.',
   appSeriesName: 'Reihenname',
+  appSeriesType: 'Reihentyp',
+  appSecondaryAxis: 'Sekundärachse',
   appValuesRange: 'Wertebereich',
   appCategoriesRange: 'Kategoriebereich',
   appKeepUnchanged: 'Unverändert lassen',
@@ -194,6 +196,13 @@ export const de = {
   appInvalidPageField: 'Ungültiges Berichtsfilterfeld.',
   appPivotPageItemMissing:
     'Das Berichtsfilterelement „{item}“ ist kein Element des Felds „{label}“.',
+  appInvalidPivotBaseField:
+    'Das Basisfeld von „Werte anzeigen als“ muss sich in Zeilen oder Spalten befinden.',
+  appPivotBaseFieldMissing:
+    'Der Modus „Werte anzeigen als“ eines Wertefelds benötigt ein Basisfeld.',
+  appPivotBaseFieldNotAxis:
+    'Basisfeld „{label}“ muss sich in den Zeilen oder Spalten der PivotTable befinden.',
+  appPivotBaseItemMissing: 'Basiselement „{item}“ ist kein Mitglied des Felds „{label}“.',
   appInvalidLabelFilterField: 'Das Feld des Beschriftungsfilters ist ungültig.',
   appInvalidValueFieldIndex: 'Wertfeldindex {index} ist ungültig.',
   appInvalidValueField: 'Ungültiges Wertfeld.',
@@ -342,8 +351,8 @@ export const de = {
     'Dieses Blatt enthält eine PivotTable — das Verschieben von Bereichen wird noch nicht unterstützt.',
   appMergeOverTable:
     'Die Auswahl überschneidet sich mit einer Excel-Tabelle — das Verbinden von Zellen in einer Tabelle wird noch nicht unterstützt.',
-  appTableFilterNoEdit:
-    'Der Filter dieses Blatts gehört zu einer Excel-Tabelle — seine Bearbeitung kann noch nicht gespeichert werden.',
+  appFilterToggleFailed:
+    'Der Filter wurde nicht angewendet — wählen Sie zuerst den Bereich mit den Daten aus.',
   appAutofillStreaming:
     'Automatisches Ausfüllen in einen noch per Streaming geladenen Bereich ist noch nicht erlaubt.',
   appDvNeedsIndexed:
@@ -401,6 +410,9 @@ export const de = {
     'Der Tabellenname "{name}" wird bereits von einer Tabelle in der Datei verwendet.',
   appTableOverlapsSession:
     'Der Bereich überschneidet sich mit der in dieser Sitzung erstellten Tabelle „{name}“.',
+  appTableOverlapsFile: 'Der Bereich überschneidet sich mit der Tabelle „{name}“ in der Datei.',
+  appTableAlreadyInTable:
+    'Die Auswahl liegt bereits in der Tabelle „{name}“ – ändern Sie den Stil unter Tabellenentwurf.',
   appTablesNeedFile:
     'Öffnen Sie zuerst eine XLSX-Datei — Tabellen werden in die Datei geschrieben.',
   appTableSelectRange:
@@ -489,6 +501,7 @@ export const de = {
   appGridlinesHidden: 'Gitternetzlinien ausgeblendet.',
   appGridlinesShown: 'Gitternetzlinien eingeblendet.',
   appShowingFormulas: 'Formeln werden angezeigt — erneut umschalten für Werte.',
+  appShowingFormulasActive: 'Formeln angezeigt',
   appShowingValues: 'Berechnete Werte werden angezeigt.',
   appTraceNoFormula: 'Spur zum Vorgänger: Die aktive Zelle hat keine Formel.',
   appTraceNoRefs: 'Spur zum Vorgänger: Diese Formel hat keine Zellbezüge.',
@@ -589,6 +602,9 @@ export const de = {
     'Der CSV-Export erfordert die vollständig geladene Arbeitsmappe — warten Sie, bis das Laden abgeschlossen ist.',
   appCsvExportTooLarge: 'Das Blatt ist zu groß für den CSV-Export.',
   appCsvExportCanceled: 'CSV-Export abgebrochen.',
+  appOdsExported: '{path} exportiert.',
+  appOdsExportCanceled: 'ODS-Export abgebrochen.',
+  appOdsExportFailed: 'ODS-Export fehlgeschlagen.',
   appCsvExported: '{path} exportiert.',
   appCsvExportedActiveOnly:
     'CSV-Dateien enthalten nur ein Blatt — das aktive Blatt „{name}“ wurde nach {path} exportiert.',
@@ -607,8 +623,6 @@ export const de = {
   appSaveFailed: 'Die Arbeitsmappe kann nicht gespeichert werden.',
   appCfRuleUnsaveable:
     'Diese Regel für bedingte Formatierung kann nicht in xlsx gespeichert werden — verwenden Sie einen anderen Regeltyp.',
-  appSaveErrX14Dv:
-    'Dieses Blatt enthält erweiterte (x14) Datenüberprüfung; das Bearbeiten ihrer Überprüfungsregeln wird noch nicht unterstützt.',
   appSaveErrMultiSelectList:
     'Mehrfachauswahl-Listenüberprüfung kann nicht in xlsx gespeichert werden — löschen Sie die Regel vor dem Speichern.',
   appSaveErrX14Cf:
@@ -629,6 +643,10 @@ export const de = {
     'Dem Stylesheet dieser Arbeitsmappe fehlt die Grundstruktur; Stiländerungen können nicht gespeichert werden.',
   appSaveErrPackageGuard:
     'Das Speichern würde die Paketstruktur der Arbeitsmappe verändern — zum Schutz der Datei abgebrochen.',
+  appSaveErrSheetNotFound:
+    'Ein Blatt, auf das sich diese Speicherung bezieht, wurde in der Arbeitsmappe nicht gefunden — das Speichern wurde abgebrochen, die Datei blieb unverändert.',
+  appSaveErrSheetNameReused:
+    'Ein neues Blatt verwendet den alten Namen eines umbenannten Blatts, daher kann nicht gespeichert werden. Geben Sie dem neuen Blatt vorerst einen anderen Namen, speichern Sie und benennen Sie es dann um. Die Datei blieb unverändert.',
   appSaveErrChartUnsupported:
     'Dieser Diagrammtyp unterstützt diese Bearbeitung nicht; Speichern abgebrochen — machen Sie die Diagrammänderung rückgängig.',
   appSaveErrMoveOverlap:
@@ -743,6 +761,13 @@ export const de = {
   appSaveAs: 'Speichern unter',
   appUndo: 'Rückgängig',
   appRedo: 'Wiederholen',
+  appQuickAccessCustomize: 'Symbolleiste für den Schnellzugriff anpassen',
+  appQuickAccessHint:
+    'Drücken Sie Alt und eine Ziffer, um die Schaltfläche an dieser Position von links auszuführen.',
+  appQuickAccessMoveEarlier: 'Nach vorn verschieben',
+  appQuickAccessMoveLater: 'Nach hinten verschieben',
+  appQuickAccessReset: 'Auf Standard zurücksetzen',
+  appQuickAccessFull: 'Die Symbolleiste fasst höchstens 10 Schaltflächen.',
   appUnsavedEditOne: '● {count} ungespeicherte Bearbeitung',
   appUnsavedEditMany: '● {count} ungespeicherte Bearbeitungen',
   appSavedState: 'Gespeichert',
@@ -772,7 +797,6 @@ export const de = {
   appLinkPlaceholder: 'https://example.com oder Sheet1!A1',
   appRemoveLink: 'Link entfernen',
   appNotAvailableYet: 'Noch nicht verfügbar',
-  appComingSoon: 'Demnächst verfügbar',
   appGroupChartLayouts: 'Diagrammlayouts',
   appAddChartElement: 'Diagrammelement hinzufügen',
   appAddChartElementTitle: 'Titel, Datenbeschriftungen, Legende',
@@ -1206,6 +1230,8 @@ export const de = {
   appRefreshAll: 'Alle aktualisieren',
   appWorkbookNoPivot: 'Keine Pivot-Tabellen in dieser Arbeitsmappe.',
   appRefreshAllTitle: 'Alle Pivot-Tabellen aktualisieren',
+  appQueriesConnections: 'Abfragen und Verbindungen',
+  appQueriesConnectionsTitle: 'Abfragen und Datenverbindungen der Arbeitsmappe anzeigen',
   appErrorCheckingDetail: 'Blatt auf Fehlerwerte prüfen',
   appErrorsFound: '{count} Fehler — bei {cell}: {value}',
   appCheckingErrors: 'Das ganze Blatt wird auf Fehler gescannt…',
@@ -1240,6 +1266,7 @@ export const de = {
   appGroupForecast: 'Prognose',
   appWhatIfAnalysis: 'Was-wäre-wenn-Analyse',
   appGoalSeek: 'Zielwertsuche',
+  appDataTable: 'Datentabelle',
   appWhatIfTitle: 'Eingabe für einen Zielwert bestimmen',
   appGoalSeekNeedsFormula: 'Die Zielzelle muss eine Formel enthalten.',
   appGoalSeekByCellNotNumber: 'Die veränderbare Zelle muss eine Zahl enthalten oder leer sein.',
@@ -1503,6 +1530,16 @@ export const de = {
   appTableRowsNotLoaded:
     'Die Tabellenzeilen werden noch geladen – versuchen Sie es gleich noch einmal.',
   appTableTotalLabel: 'Ergebnis',
+  appNotePicturesPaneTitle: 'Bilder in Notizen',
+  appNotePicturesClose: 'Schließen',
+  appNotePicturesNone: 'Keine Notiz in dieser Arbeitsmappe zeigt ein Bild.',
+  appNotePictureUnavailable: 'Dieses Bild kann nicht angezeigt werden.',
+  appNotePicturesToggle: 'Bilder in Notizen',
+  appNoteInsertPicture: 'Bild einfügen',
+  appNotePictureInserted:
+    'Bild dem Kommentar in {cell} hinzugefügt. Speichern, um es in die Datei zu schreiben.',
+  appNotePictureRemoved: 'Bild aus dem Kommentar in {cell} entfernt.',
+  appNotePictureRemove: 'Bild entfernen',
   appCommentsPaneTitle: 'Kommentare',
   appThreadReply: 'Antworten',
   appThreadReplyPlaceholder: 'Antworten…',
@@ -1571,4 +1608,36 @@ export const de = {
   appVisualFlipV: 'Vertikal spiegeln',
   appVisualFlipH: 'Horizontal spiegeln',
   appCtxPasteVisual: 'Bild oder Form einfügen',
+
+  // ── Spelling check (F7 / Review ▸ Proofing) ──
+  appSpellTitle: 'Rechtschreibung',
+  appSpellBtnDetail: 'Blatttext prüfen (F7)',
+  appSpellToggle: 'Rechtschreibung prüfen',
+  appSpellToggleTip:
+    'Aktiviert die Rechtschreibprüfung (F7 und die Review-Schaltfläche); ausgeschaltet zeigen Kommentarfelder keine Wellenlinien mehr',
+  appSpellOn: 'Rechtschreibprüfung eingeschaltet.',
+  appSpellOff:
+    'Die Rechtschreibprüfung ist aus. Aktivieren Sie sie unter Review ▸ Korrekturhilfen.',
+  appSpellRecheck: 'Erneut prüfen',
+  appSpellNone: 'Keine verdächtigen Rechtschreibfehler gefunden.',
+  appSpellFindings:
+    '{count} verdächtige Fehler. Klicken Sie auf eine Zeile, um dorthin zu springen.',
+  appSpellTruncated: 'Zu viele Textzellen; nur die ersten wurden geprüft.',
+  appSpellColWord: 'Verdächtig',
+  appSpellIgnore: 'Ignorieren',
+  appSpellIgnoreAll: 'Alle ignorieren',
+  appSpellLearn: 'Zum Wörterbuch hinzufügen',
+  appSpellNoSuggestions: 'Keine Vorschläge',
+  appSpellIgnoredAll: '„{word}“ wird in dieser Sitzung nicht mehr markiert.',
+  appSpellLearned: '„{word}“ wurde zum Wörterbuch hinzugefügt.',
+  appSpellChanged: '{address} korrigiert.',
+  appSpellChangeFailed: '{address} konnte nicht korrigiert werden.',
+  appSpellUnavailable: 'Die Rechtschreibprüfung ist in diesem Fenster nicht verfügbar.',
+  appSpellReplaceAll: 'Alle durch „{suggestion}“ ersetzen',
+  appSpellChangedAll: '{count} Zellen mit „{word}“ korrigiert.',
+
+  // ── ODS import ──
+  appOdsImportNotice:
+    'Die ODS-Datei wurde als xlsx-Kopie geöffnet. Beim Speichern wird eine xlsx-Datei geschrieben.',
+  appOdsFormulasDropped: 'Bei {count} Formeln blieben nur die Werte erhalten.',
 } satisfies Record<keyof typeof zh, string>

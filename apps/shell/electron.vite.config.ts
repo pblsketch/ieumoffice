@@ -7,8 +7,17 @@ export default defineConfig({
   // imported docs/sheets main modules are TS source with no build artifacts,
   // so externalizing them would break Node ESM resolution at runtime.
   main: {
-    // node:sqlite is a Node 22+ builtin the bundler's builtin list may predate
-    build: { rollupOptions: { external: ['node:sqlite'] } },
+    // node:sqlite is a Node 22+ builtin the bundler's builtin list may predate;
+    // index.js is a thin V8 compile-cache bootstrap that synchronously requires ./shell-main.js.
+    build: {
+      rollupOptions: {
+        input: {
+          index: resolve(__dirname, 'src/main/bootstrap.ts'),
+          'shell-main': resolve(__dirname, 'src/main/index.ts'),
+        },
+        external: ['node:sqlite', './shell-main.js'],
+      },
+    },
     // the Google client for Drive (decision 0033) comes from the build's
     // environment only; without it the build offers no Drive at all
     define: {
@@ -36,12 +45,16 @@ export default defineConfig({
           'pdf-tools': resolve(__dirname, 'src/preload/pdf-tools.ts'),
           // dedicated preload for the agent window (see src/main/agent/agent-window.ts)
           agent: resolve(__dirname, 'src/preload/agent.ts'),
-          // dedicated preload for the attach-from-Drive window (see src/main/drive/drive-picker-window.ts)
-          'drive-picker': resolve(__dirname, 'src/preload/drive-picker.ts'),
           // dedicated preload for the attach-a-document window (see src/main/doc-picker/doc-picker-window.ts)
           'doc-picker': resolve(__dirname, 'src/preload/doc-picker.ts'),
+          // dedicated preload for the Google Drive attachment picker window (see src/main/drive/drive-picker-window.ts)
+          'drive-picker': resolve(__dirname, 'src/preload/drive-picker.ts'),
+          // dedicated preload for the Obsidian / Notion attachment picker window
+          'connector-picker': resolve(__dirname, 'src/preload/connector-picker.ts'),
           // dedicated preload for the Quick Look preview window (see src/main/quick-look/quick-look-window.ts)
           'quick-look': resolve(__dirname, 'src/preload/quick-look.ts'),
+          // dedicated preload for the Global Quick Switcher popup window
+          'quick-switcher': resolve(__dirname, 'src/preload/quick-switcher.ts'),
         },
       },
     },
@@ -62,12 +75,16 @@ export default defineConfig({
           'pdf-tools': resolve(__dirname, 'src/renderer/pdf-tools.html'),
           // agent window (see src/main/agent/agent-window.ts)
           agent: resolve(__dirname, 'src/renderer/agent.html'),
-          // attach-from-Drive window (see src/main/drive/drive-picker-window.ts)
-          'drive-picker': resolve(__dirname, 'src/renderer/drive-picker.html'),
           // attach-a-document window (see src/main/doc-picker/doc-picker-window.ts)
           'doc-picker': resolve(__dirname, 'src/renderer/doc-picker.html'),
+          // Google Drive attachment picker window (see src/main/drive/drive-picker-window.ts)
+          'drive-picker': resolve(__dirname, 'src/renderer/drive-picker.html'),
+          // Obsidian / Notion attachment picker window
+          'connector-picker': resolve(__dirname, 'src/renderer/connector-picker.html'),
           // Quick Look preview window (see src/main/quick-look/quick-look-window.ts)
           'quick-look': resolve(__dirname, 'src/renderer/quick-look.html'),
+          // Global Quick Switcher popup window (Ctrl+Shift+P / Cmd+Shift+P)
+          'quick-switcher': resolve(__dirname, 'src/renderer/quick-switcher.html'),
         },
       },
     },

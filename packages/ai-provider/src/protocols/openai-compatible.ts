@@ -1,7 +1,7 @@
 import type { AgentMessage, AgentToolCall, AgentToolDef } from '@genoffice/agent-core'
 import { aiFetch } from '../fetch'
 import { httpBodyDetail } from '../http-error'
-import { OLLAMA_EFFORT_PRESETS } from '../custom-endpoints'
+import { OLLAMA_EFFORT_PRESETS, ollamaEffortPresetOf } from '../custom-endpoints'
 import {
   explainOllamaSystemError,
   explainOllamaVisionUnsupported,
@@ -9,7 +9,7 @@ import {
 } from '../ollama-friendly-error'
 import { opencodeSessionHeaders } from '../providers'
 import { modelEchoesReasoning } from '../registry'
-import type { AiChatResponse, AiModelEffort, AiProviderConfig } from '../types'
+import type { AiChatResponse, AiProviderConfig, OllamaEffortPreset } from '../types'
 import { createStreamWatchdog, type StreamWatchdog } from '../watchdog'
 import {
   endpointUrl,
@@ -22,10 +22,21 @@ import {
   throwIfCreditsNotice,
   throwIfToolCountOverBudget,
   throwIfToolJsonOverBudget,
-  usageCount,
+  openAiUsage,
   type StreamCallbacks,
 } from './shared'
 import type { AiTokenUsage } from '../types'
+
+interface ChatUsage {
+  prompt_tokens?: unknown
+  completion_tokens?: unknown
+  prompt_tokens_details?: { cached_tokens?: unknown } | null
+}
+
+function chatUsage(raw: ChatUsage | undefined): AiTokenUsage | undefined {
+  if (!raw) return undefined
+  return openAiUsage(raw.prompt_tokens, raw.completion_tokens, raw.prompt_tokens_details)
+}
 
 function openAiMessages(
   system: string,
@@ -93,7 +104,7 @@ function emitOpenAiJsonMessage(bodyText: string, cb: StreamCallbacks): void {
       }
       finish_reason?: string | null
     }>
-    usage?: { prompt_tokens?: unknown; completion_tokens?: unknown }
+    usage?: ChatUsage
     error?: { message?: string } | string
   }
   try {
@@ -138,16 +149,8 @@ function emitOpenAiJsonMessage(bodyText: string, cb: StreamCallbacks): void {
   for (const call of toolCalls) cb.onToolCall(call)
   if (!emitted) throw new Error(`The model returned no content: ${httpBodyDetail(bodyText)}`)
   if (choice?.finish_reason === 'length') cb.onStopReason?.('max_tokens')
-  const jsonUsage = msg.usage as
-    { prompt_tokens?: unknown; completion_tokens?: unknown } | undefined
-  if (jsonUsage) {
-    const usage: AiTokenUsage = {}
-    const input = usageCount(jsonUsage.prompt_tokens)
-    const output = usageCount(jsonUsage.completion_tokens)
-    if (input !== undefined) usage.inputTokens = input
-    if (output !== undefined) usage.outputTokens = output
-    if (usage.inputTokens !== undefined || usage.outputTokens !== undefined) cb.onUsage?.(usage)
-  }
+  const usage = chatUsage(msg.usage as ChatUsage | undefined)
+  if (usage) cb.onUsage?.(usage)
 }
 
 /** Per-endpoint request shaping resolved from the provider registry. */
@@ -157,10 +160,25 @@ export interface OpenAiRequestOptions {
   useMaxCompletionTokens?: boolean | undefined
   /** vendor-specific fields merged into the request body (e.g. DeepSeek's `thinking`) */
   bodyExtras?: Record<string, unknown> | undefined
-  /** reasoning/context effort preset (used by Ollama and custom endpoints) */
-  effort?: AiModelEffort | undefined
+  /**
+   * Both the connect timeout and the idle timeout of this request. Turns on a
+   * watchdog of its own, so a caller that only holds a whole-run signal can give
+   * one request a smaller budget. Absent keeps the caller's watchdog as it is.
+   */
+  timeoutMs?: number | undefined
+  /** output cap for one-shot chat; on a streamed turn it overrides the positional cap */
+  maxTokens?: number | undefined
+  /** sampling temperature; 0.3 when not given */
+  temperature?: number | undefined
+  /** PosidOffice: the Ollama context/sampling preset (low, medium, high) */
+  effort?: OllamaEffortPreset | undefined
   /** whether this turn came from the custom/Ollama provider slot */
   isCustomProvider?: boolean | undefined
+  /**
+   * throw transport errors as they are instead of turning them into the Ollama
+   * help text: the local connection test classifies them itself
+   */
+  rawErrors?: boolean | undefined
 }
 
 const usageRejectedGateways = new Set<string>()
@@ -188,7 +206,8 @@ export async function streamOpenAiCompatible(
     cb.onStopReason?.('end_turn')
     return
   }
-  const friendlyEligible = isOllamaOrCustomRequest(baseUrl, options.isCustomProvider)
+  const friendlyEligible =
+    !options.rawErrors && isOllamaOrCustomRequest(baseUrl, options.isCustomProvider)
   let emittedAnyDelta = false
   const wrappedCb: StreamCallbacks = friendlyEligible
     ? {
@@ -199,7 +218,13 @@ export async function streamOpenAiCompatible(
         },
       }
     : cb
-  const wd = createStreamWatchdog(cb.signal, config.connectTimeoutMs)
+  // a per-request budget (the local connection test) wins; an Ollama endpoint's
+  // own connect timeout widens the wait for a slow first model load
+  const wd = createStreamWatchdog(
+    cb.signal,
+    options.timeoutMs ?? config.connectTimeoutMs,
+    options.timeoutMs,
+  )
   return wd
     .guard(() =>
       openAiCompatibleTurn(baseUrl, config, system, messages, tools, maxTokens, wrappedCb, wd, {
@@ -252,9 +277,12 @@ async function openAiCompatibleTurn(
     wd.touch()
     cb.onActivity?.()
   }
-  const effort = config.effort ?? options.effort
+  // A caller that shapes one request (the local connection test) can cap the
+  // output through the options; otherwise the turn's positional cap stands.
+  const maxOutputTokens = options.maxTokens ?? maxTokens
+  const effort = ollamaEffortPresetOf(config.effort) ?? options.effort
   const effortPreset = effort ? OLLAMA_EFFORT_PRESETS[effort] : undefined
-  const temperature = effortPreset ? effortPreset.temperature : 0.3
+  const temperature = options.temperature ?? (effortPreset ? effortPreset.temperature : 0.3)
   const response = await aiFetch(endpointUrl(baseUrl, 'chat/completions'), {
     method: 'POST',
     signal: wd.signal,
@@ -266,8 +294,8 @@ async function openAiCompatibleTurn(
     body: JSON.stringify({
       model: config.model,
       ...(options.useMaxCompletionTokens
-        ? { max_completion_tokens: maxTokens }
-        : { max_tokens: maxTokens }),
+        ? { max_completion_tokens: maxOutputTokens }
+        : { max_tokens: maxOutputTokens }),
       messages: openAiMessages(system, messages, modelEchoesReasoning(config.model)),
       ...(tools.length > 0
         ? {
@@ -357,22 +385,13 @@ async function openAiCompatibleTurn(
         finish_reason?: string | null
       }>
       /** usage chunk (requested via stream_options): empty choices + the counts */
-      usage?: { prompt_tokens?: unknown; completion_tokens?: unknown }
+      usage?: ChatUsage
       error?: { message?: string } | string
     }
     if (event.error) throw new Error(sseErrorText(event.error, 'Model stream error'))
     // The usage chunk arrives with empty choices right before [DONE]; some
     // providers (DeepSeek et al) attach usage to the last content chunk instead.
-    if (event.usage) {
-      const usage: AiTokenUsage = {}
-      const input = usageCount(event.usage.prompt_tokens)
-      const output = usageCount(event.usage.completion_tokens)
-      if (input !== undefined) usage.inputTokens = input
-      if (output !== undefined) usage.outputTokens = output
-      if (usage.inputTokens !== undefined || usage.outputTokens !== undefined) {
-        turnUsage = usage
-      }
-    }
+    turnUsage = chatUsage(event.usage) ?? turnUsage
     const choice = event.choices?.[0]
     if (!choice) continue
     const reasoning = choice.delta?.reasoning_content ?? choice.delta?.reasoning
@@ -459,6 +478,26 @@ export async function chatOpenAiCompatible(
   user: string,
   options: OpenAiRequestOptions = {},
 ): Promise<AiChatResponse> {
+  const timeoutMs = options.timeoutMs
+  // A one-shot check (the local connection test) owns one budget for its whole
+  // request, so it can hand over the time it has left instead of sharing the
+  // run-wide watchdog. The inner watchdog is linked to the caller's signal, so
+  // a run cancel still stops the request.
+  if (timeoutMs === undefined) {
+    return chatOpenAiCompatibleTurn(wd, baseUrl, config, system, user, options)
+  }
+  const timed = createStreamWatchdog(wd.signal, timeoutMs, timeoutMs)
+  return timed.guard(() => chatOpenAiCompatibleTurn(timed, baseUrl, config, system, user, options))
+}
+
+async function chatOpenAiCompatibleTurn(
+  wd: StreamWatchdog,
+  baseUrl: string,
+  config: AiProviderConfig,
+  system: string,
+  user: string,
+  options: OpenAiRequestOptions,
+): Promise<AiChatResponse> {
   const response = await aiFetch(endpointUrl(baseUrl, 'chat/completions'), {
     method: 'POST',
     signal: wd.signal,
@@ -473,7 +512,8 @@ export async function chatOpenAiCompatible(
         { role: 'system', content: system },
         { role: 'user', content: user },
       ],
-      ...(options.omitTemperature ? {} : { temperature: 0.3 }),
+      ...(options.maxTokens !== undefined ? { max_tokens: options.maxTokens } : {}),
+      ...(options.omitTemperature ? {} : { temperature: options.temperature ?? 0.3 }),
       ...options.bodyExtras,
     }),
   })

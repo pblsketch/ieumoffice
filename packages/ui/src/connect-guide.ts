@@ -6,6 +6,7 @@
  */
 import {
   AI_SUBSCRIPTION_PROVIDERS,
+  subscriptionLoginFailureOf,
   subscriptionStatusErrorKind,
   type AiSubscriptionProviderId,
   type AiSubscriptionStatus,
@@ -14,10 +15,20 @@ import {
 import { aiSubscriptionStatusOf } from './ai-subscription'
 import type { AiSubscriptionStringKey } from './strings-ai-subscription'
 
-/** A way to connect: one of the two subscriptions, or the free connections */
+/** A way to connect: one of the subscriptions, or the free connections */
 export type AiConnectPath = AiSubscriptionProviderId | 'free'
 
-export const AI_CONNECT_PATHS: readonly AiConnectPath[] = [...AI_SUBSCRIPTION_PROVIDERS, 'free']
+/**
+ * The answers to the question. ChatGPT is one answer: its path connects
+ * directly, and the Codex program is a way within it (a link on that path),
+ * so nobody has to choose between two ChatGPT answers (decision 0081).
+ */
+export const AI_CONNECT_PATHS: readonly AiConnectPath[] = [
+  'claude-code',
+  'chatgpt',
+  'antigravity',
+  'free',
+]
 
 export interface AiConnectPathOption {
   readonly path: AiConnectPath
@@ -39,12 +50,31 @@ const PATH_TEXT: Record<
   { titleKey: AiSubscriptionStringKey; bodyKey: AiSubscriptionStringKey }
 > = {
   'claude-code': { titleKey: 'guidePathClaudeTitle', bodyKey: 'guidePathClaudeBody' },
+  chatgpt: { titleKey: 'guidePathCodexTitle', bodyKey: 'guidePathChatGptBody' },
   codex: { titleKey: 'guidePathCodexTitle', bodyKey: 'guidePathCodexBody' },
+  antigravity: { titleKey: 'guidePathAntigravityTitle', bodyKey: 'guidePathAntigravityBody' },
   free: { titleKey: 'guidePathFreeTitle', bodyKey: 'guidePathFreeBody' },
+}
+
+/** The title and the line on what it needs, for any path (the Codex one is not among the answers) */
+export function aiConnectPathText(path: AiConnectPath): {
+  titleKey: AiSubscriptionStringKey
+  bodyKey: AiSubscriptionStringKey
+} {
+  return PATH_TEXT[path]
+}
+
+/** The other way along the ChatGPT answer: Codex from the direct path, and back */
+export function aiConnectAlternatePath(path: AiConnectPath): AiConnectPath | null {
+  if (path === 'chatgpt') return 'codex'
+  if (path === 'codex') return 'chatgpt'
+  return null
 }
 
 function badgeOf(status: AiSubscriptionStatus): AiSubscriptionStringKey | undefined {
   if (status.signingIn) return 'cardSigningIn'
+  // nothing to install: signed out says nothing of its own
+  if (status.provider === 'chatgpt') return status.state === 'ready' ? 'guideBadgeReady' : undefined
   switch (status.state) {
     case 'ready':
       return 'guideBadgeReady'
@@ -53,6 +83,8 @@ function badgeOf(status: AiSubscriptionStatus): AiSubscriptionStringKey | undefi
       return 'guideBadgeInstalled'
     case 'error':
       return 'guideBadgeCheck'
+    case 'off':
+      return 'guideBadgeOff'
     default:
       return undefined
   }
@@ -91,10 +123,25 @@ export function aiConnectGuideView(
         ? freeConnected
           ? 'guideBadgeReady'
           : undefined
-        : badgeOf(aiSubscriptionStatusOf(statuses, path))
+        : path === 'chatgpt'
+          ? chatGptAnswerBadge(statuses)
+          : path === 'antigravity' && !statuses.antigravity
+            ? undefined
+            : badgeOf(aiSubscriptionStatusOf(statuses, path))
     return { path, ...PATH_TEXT[path], ...(badgeKey ? { badgeKey } : {}) }
   })
   return { open, options }
+}
+
+/** The ChatGPT answer covers both ways in: connected or signing in on either shows on it */
+function chatGptAnswerBadge(statuses: AiSubscriptionStatuses): AiSubscriptionStringKey | undefined {
+  const both = [
+    aiSubscriptionStatusOf(statuses, 'chatgpt'),
+    aiSubscriptionStatusOf(statuses, 'codex'),
+  ]
+  if (both.some((status) => status.state === 'ready' && !status.signingIn)) return 'guideBadgeReady'
+  if (both.some((status) => status.signingIn)) return 'cardSigningIn'
+  return undefined
 }
 
 export type AiConnectStepId = 'install' | 'login' | 'ready'
@@ -121,10 +168,15 @@ export interface AiConnectStepsView {
  */
 export function aiConnectStepsView(status: AiSubscriptionStatus): AiConnectStepsView {
   const current = currentStep(status)
-  const at = current ? AI_CONNECT_STEPS.indexOf(current) : -1
+  // ChatGPT reached directly installs nothing: sign in, then connected
+  const ids =
+    status.provider === 'chatgpt'
+      ? AI_CONNECT_STEPS.filter((id) => id !== 'install')
+      : AI_CONNECT_STEPS
+  const at = current ? ids.indexOf(current) : -1
   return {
     current,
-    steps: AI_CONNECT_STEPS.map((id, index) => ({
+    steps: ids.map((id, index) => ({
       id,
       done: current === 'ready' || index < at,
     })),
@@ -134,7 +186,9 @@ export function aiConnectStepsView(status: AiSubscriptionStatus): AiConnectSteps
 function currentStep(status: AiSubscriptionStatus): AiConnectStepId | null {
   if (status.signingIn) return 'login'
   switch (status.state) {
+    // a program turned off in this app is on no step until it is turned back on
     case 'checking':
+    case 'off':
       return null
     case 'not-installed':
       return 'install'
@@ -159,7 +213,8 @@ const VERSION_SHAPE = /^[\w.+-]{1,40}$/
 
 /**
  * Text a user can paste to whoever helps them: per provider its state, the
- * kind of error and the program version, then the app and the system. Nothing
+ * kind of error, the program version and why the app's own ChatGPT sign-in
+ * failed (fixed names), then the app and the system. Nothing
  * else of a status goes in: not the account, not a path, not anything the
  * program printed (an error's own text can name both).
  */
@@ -176,6 +231,16 @@ export function aiConnectInfoText(
       parts.push(`version=${status.version}`)
     if (status.signingIn) parts.push(`signing-in=${status.signingIn}`)
     if (status.state === 'metered') parts.push(`accepted=${status.meteredAccepted}`)
+    // why the app's own sign-in ended without a connection, read again like the version:
+    // fixed names, a status number and an identifier-shaped code only
+    const failure =
+      status.loginUnfinished === true ? subscriptionLoginFailureOf(status.loginFailure) : undefined
+    if (failure) {
+      parts.push(`login-failed=${failure.reason}`)
+      if (failure.step) parts.push(`step=${failure.step}`)
+      if (failure.httpStatus !== undefined) parts.push(`http=${failure.httpStatus}`)
+      if (failure.oauthError) parts.push(`oauth-error=${failure.oauthError}`)
+    }
     return `${provider}: ${parts.join(' ')}`
   })
   if (context.platform) lines.push(`platform: ${oneLine(context.platform)}`)

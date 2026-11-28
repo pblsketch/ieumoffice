@@ -6,7 +6,9 @@
  * the ribbon badge in sync.
  */
 import React, { useEffect, useRef, useState } from 'react'
+import { memoReplyText } from '@genoffice/ui'
 import type { SlideComment } from '../../shared/ipc'
+import { formatSlideCommentReply, groupSlideCommentThreads } from '../ai/comment-reply-tool'
 import { groupCommentsBySlide, type CommentsMode, type CommentSlideGroup } from '../comments-view'
 import { useI18n } from '../i18n/locale'
 import { IconComment, IconSidebarCollapse } from './icons'
@@ -51,11 +53,14 @@ export function CommentsPane({
   onGoToSlide,
   onCollapse,
 }: Props) {
-  const { t, dateLocale } = useI18n()
+  const { lang, t, dateLocale } = useI18n()
   const [draft, setDraft] = useState('')
+  const [replyingTo, setReplyingTo] = useState<number | null>(null)
+  const [replyDraft, setReplyDraft] = useState('')
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const allMode = mode === 'all'
   const groups: CommentSlideGroup[] = allMode ? groupCommentsBySlide(allComments) : []
+  const pageThreads = allMode ? [] : groupSlideCommentThreads(comments)
 
   useEffect(() => {
     if (focusNonce) inputRef.current?.focus()
@@ -172,7 +177,95 @@ export function CommentsPane({
                 <p className="comments-empty-sub">{t('paneCommentsEmptySub')}</p>
               </div>
             )}
-            {comments.map((c) => renderCard(c, slideIndex, false))}
+            {pageThreads.map((thread) => (
+              <div
+                key={`${slideIndex}-${thread.root.authorId}-${thread.root.idx}`}
+                className="comment-thread"
+              >
+                {renderCard(thread.root, slideIndex, false)}
+                {thread.replies.length > 0 && (
+                  <div className="comment-replies">
+                    {thread.replies.map((r) => (
+                      <div
+                        key={`${slideIndex}-${r.comment.authorId}-${r.comment.idx}`}
+                        className="comment-card comment-reply-card"
+                      >
+                        <div className="comment-head">
+                          <span className="comment-avatar">
+                            {(r.comment.initials || r.comment.author).slice(0, 2)}
+                          </span>
+                          <span className="comment-meta">
+                            <span className="comment-author">{r.comment.author}</span>
+                            {r.comment.dt && (
+                              <span className="comment-time">
+                                {fmtDt(r.comment.dt, dateLocale)}
+                              </span>
+                            )}
+                          </span>
+                          <button
+                            className="comment-del"
+                            data-tip={t('paneCommentsDelete')}
+                            aria-label={t('paneCommentsDelete')}
+                            onClick={() => onDelete(r.comment)}
+                          >
+                            ✕
+                          </button>
+                        </div>
+                        <div className="comment-text">{r.body}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {replyingTo === thread.root.idx ? (
+                  <div className="comment-reply-form">
+                    <textarea
+                      className="comment-reply-input"
+                      rows={2}
+                      value={replyDraft}
+                      placeholder={memoReplyText(lang, 'replyPlaceholder')}
+                      onChange={(e) => setReplyDraft(e.target.value)}
+                    />
+                    <div className="comment-reply-actions">
+                      <button
+                        type="button"
+                        className="comment-reply-btn"
+                        onClick={() => {
+                          setReplyingTo(null)
+                          setReplyDraft('')
+                        }}
+                      >
+                        {memoReplyText(lang, 'cancelReply')}
+                      </button>
+                      <button
+                        type="button"
+                        className="comment-reply-btn primary"
+                        disabled={!replyDraft.trim()}
+                        onClick={() => {
+                          const text = replyDraft.trim()
+                          if (!text) return
+                          onAdd(formatSlideCommentReply(thread.root.idx, text, thread.root.author))
+                          setReplyingTo(null)
+                          setReplyDraft('')
+                        }}
+                      >
+                        {memoReplyText(lang, 'sendReply')}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    className="comment-reply-trigger"
+                    onClick={() => {
+                      setReplyingTo(thread.root.idx)
+                      setReplyDraft('')
+                    }}
+                  >
+                    {memoReplyText(lang, 'reply')}
+                  </button>
+                )}
+              </div>
+            ))}
           </div>
 
           <div className="comment-new">

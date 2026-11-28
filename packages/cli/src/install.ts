@@ -1,4 +1,4 @@
-import { spawnSync } from 'node:child_process'
+import { execFile, spawnSync } from 'node:child_process'
 import {
   accessSync,
   constants,
@@ -32,6 +32,8 @@ export interface InstallOptions {
   env?: NodeJS.ProcessEnv
   /** test seam for the Windows registry edit */
   runPowerShell?: (script: string) => { ok: boolean; stdout: string }
+  /** async test seam for non-blocking Windows PATH inspection */
+  runPowerShellAsync?: (script: string) => Promise<{ ok: boolean; stdout: string }>
 }
 
 export type InstallStatus =
@@ -184,6 +186,13 @@ export function inspectCliLink(opts: InstallOptions): InstallOutcome {
   return { status: 'unwritable', location: join(dirs[0] ?? '/usr/local/bin', CLI_COMMAND), manual }
 }
 
+/** Non-blocking twin of `inspectCliLink` for GUI main processes (avoids freezing Electron on Windows). */
+export async function inspectCliLinkAsync(opts: InstallOptions): Promise<InstallOutcome> {
+  const platform = opts.platform ?? process.platform
+  if (platform === 'win32') return inspectWindowsPathAsync(opts)
+  return inspectCliLink(opts)
+}
+
 function manualCommand(launcher: string): string {
   return `sudo mkdir -p /usr/local/bin && sudo ln -sf "${launcher}" /usr/local/bin/${CLI_COMMAND}`
 }
@@ -300,17 +309,34 @@ function installWindowsPath(opts: InstallOptions): InstallOutcome {
 }
 
 function inspectWindowsPath(opts: InstallOptions): InstallOutcome {
-  const dir = win32.dirname(opts.launcher)
+  const { dir, manual, script } = windowsPathInspectSpec(opts.launcher)
+  const run = opts.runPowerShell ?? runPowerShell
+  const r = run(script)
+  if (!r.ok) return { status: 'unwritable', location: dir, manual }
+  return { status: r.stdout.trim() === 'present' ? 'present' : 'missing', location: dir, manual }
+}
+
+async function inspectWindowsPathAsync(opts: InstallOptions): Promise<InstallOutcome> {
+  const { dir, manual, script } = windowsPathInspectSpec(opts.launcher)
+  const run = opts.runPowerShellAsync ?? runPowerShellAsync
+  const r = await run(script)
+  if (!r.ok) return { status: 'unwritable', location: dir, manual }
+  return { status: r.stdout.trim() === 'present' ? 'present' : 'missing', location: dir, manual }
+}
+
+function windowsPathInspectSpec(launcher: string): {
+  dir: string
+  manual: string
+  script: string
+} {
+  const dir = win32.dirname(launcher)
   const manual = `[Environment]::SetEnvironmentVariable('Path', [Environment]::GetEnvironmentVariable('Path','User') + ';${dir}', 'User')`
   const script =
     `$dir = ${psQuote(dir)}; ` +
     "$key = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment'); " +
     "$p = [string]$key.GetValue('Path', '', 'DoNotExpandEnvironmentNames'); " +
     "if (($p -split ';') -contains $dir) { 'present' } else { 'missing' }"
-  const run = opts.runPowerShell ?? runPowerShell
-  const r = run(script)
-  if (!r.ok) return { status: 'unwritable', location: dir, manual }
-  return { status: r.stdout.trim() === 'present' ? 'present' : 'missing', location: dir, manual }
+  return { dir, manual, script }
 }
 
 function runPowerShell(script: string): { ok: boolean; stdout: string } {
@@ -320,4 +346,21 @@ function runPowerShell(script: string): { ok: boolean; stdout: string } {
     timeout: 15_000,
   })
   return { ok: r.status === 0, stdout: r.stdout ?? '' }
+}
+
+function runPowerShellAsync(script: string): Promise<{ ok: boolean; stdout: string }> {
+  return new Promise((resolveResult) => {
+    execFile(
+      'powershell.exe',
+      ['-NoProfile', '-NonInteractive', '-Command', script],
+      {
+        encoding: 'utf-8',
+        windowsHide: true,
+        timeout: 15_000,
+      },
+      (err, stdout) => {
+        resolveResult({ ok: err === null, stdout: stdout ?? '' })
+      },
+    )
+  })
 }

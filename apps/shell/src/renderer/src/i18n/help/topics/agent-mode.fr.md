@@ -4,7 +4,7 @@ L’agent prend comme projet un dossier que vous choisissez et lance dans ce dos
 
 ## Avant de commencer
 
-- Un abonnement Claude ou un abonnement ChatGPT connecté dans **Paramètres ▸ IA**. La rubrique « Connexion par abonnement » explique comment faire.
+- Le programme Claude Code ou Codex connecté dans **Paramètres ▸ IA** (connecté avec un abonnement Claude ou un forfait ChatGPT). ChatGPT connecté directement dans l’application n’est pas utilisé par l’agent. La rubrique « Connexion par abonnement » explique comment faire.
 - Un dossier qui rassemble vos sources. Un lecteur entier, la totalité de votre dossier personnel et les dossiers de données de connexion ou d’application ne peuvent pas être choisis.
 
 ## Démarrer une session

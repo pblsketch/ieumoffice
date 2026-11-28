@@ -1,6 +1,8 @@
 import type { zh } from './zh'
 
 export const ru = {
+  appLegacyPptImported:
+    'Файл .ppt открыт как преобразованная копия .pptx. Исходный файл не изменяется; при сохранении создаётся новый файл .pptx. Заметки докладчика и анимация не переносятся.',
   redactMenuLabel: 'Скрыть выделение от ИИ',
   redactDialogDesc:
     'Выбранное остается в документе и в файле, а модель видит только метку. Дайте ей имя, чтобы было понятно, что она обозначает.',
@@ -174,6 +176,9 @@ export const ru = {
   appPrintLandscape: 'Альбомная',
   appPrintFrame: 'Рамка вокруг слайдов',
   appPrintHidden: 'Печатать скрытые слайды',
+  appPrintRangeSelected: 'Выбранные слайды',
+  appPrintLayoutBlocked:
+    'Выдачи и страницы заметок печатаются по одной странице на лист. Чтобы расположить страницы, выберите «Слайды на всю страницу».',
   appPrintPageCount: 'Страниц: {n}',
   appPrintNoPages: 'Нет слайдов для печати',
   appPrintRendering: 'Создание предварительного просмотра…',
@@ -184,6 +189,7 @@ export const ru = {
   appCtxSendToBack: 'На задний план',
   appCtxBringForward: 'Переместить вперед',
   appCtxSendBackward: 'Переместить назад',
+  appCtxRotate: 'Повернуть',
   appCtxRotateLeft90: 'Повернуть на 90° влево',
   appCtxRotateRight90: 'Повернуть на 90° вправо',
   appCtxFlipH: 'Отразить по горизонтали',
@@ -223,6 +229,8 @@ export const ru = {
   appMasterFillNone: 'Без заливки',
   appMasterStroke: 'Цвет контура…',
   appMasterStrokeNone: 'Без контура',
+  appMasterInsertTextBox: 'Надпись',
+  appMasterInsertShape: 'Фигуры',
   appStartOpening: 'Открытие…',
   appReadingSlideTitle:
     'Щелкните, чтобы перейти к следующему слайду (Esc — выйти из режима чтения)',
@@ -261,4 +269,12 @@ export const ru = {
   appStatusSummaryZoomInserted: 'Вставлен слайд сводного масштабирования с {count} плитками',
   appSectionSummary: 'Сводный раздел',
   appSectionN: 'Раздел {n}',
+  appStatusAnimPainterNone: 'У выделенного элемента нет анимации',
+  appStatusAnimPainterOnce:
+    'Щелкните элемент, к которому нужно применить анимацию; двойной щелчок по кнопке — непрерывный режим',
+  appStatusAnimPainterContinuous: 'Непрерывный режим «Анимация по образцу»; нажмите Esc для выхода',
+  appStatusAnimPainted: 'Анимация применена',
+  appStatusMergeUnsupported:
+    'Эти фигуры нельзя объединить (линии, рисунки, таблицы, диаграммы и некоторые фигуры не учитываются)',
+  appStatusMergeEmpty: 'После объединения ничего не осталось (фигуры не перекрываются)',
 } satisfies Record<keyof typeof zh, string>

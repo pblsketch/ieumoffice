@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs'
-import { copyFile, readFile, stat } from 'node:fs/promises'
-import { basename, dirname, join } from 'node:path'
-import { BrowserWindow, WebContentsView, app, dialog, ipcMain, shell } from 'electron'
+import { readFile, stat } from 'node:fs/promises'
+import { basename, dirname, join, resolve } from 'node:path'
+import { BrowserWindow, WebContentsView, app, dialog, ipcMain, shell, webContents } from 'electron'
 import type { WebContents } from 'electron'
 import {
   configuredDefaultSaveDir,
@@ -10,6 +10,7 @@ import {
   installContextMenu,
   installNavigationGuard,
   installRendererProtocol,
+  isHeadlessMode,
   recordDiskState,
   registerRendererScheme,
   rendererUrl,
@@ -18,14 +19,33 @@ import {
   showSaveDialogWithMemory,
 } from '@genoffice/electron-utils'
 import type { SaveDiskState } from '@genoffice/electron-utils'
+import {
+  LABEL_SPEC_FILE_NAME,
+  ensurePrintLayoutIpc,
+  imageSaveDialogSpec,
+} from '@genoffice/electron-utils/print-arranged'
 import { hwpToText } from '@genoffice/file-parse'
+import { localFontNamesFor } from '@genoffice/font-metrics'
 import { getUiLang } from '@genoffice/i18n'
 import { registerHwpAttachmentIpc } from './attachments-ipc'
-import { atomicWriteFile } from './atomic-write'
+import { registerHwpImageIpc } from './ai-image'
+import { atomicWriteFile, copyFileReplacing } from './atomic-write'
+import { registerHwpBibliographyIpc } from './bibliography-ipc'
+import { readHwpDefaultFormat } from './default-format'
+import { registerHwpMacrosIpc } from './macros-ipc'
+import { validateMacroSyntax } from '../../studio-plugin/macro-interpreter.mjs'
+import {
+  normalizeOutlineStyleMap,
+  readHwpOutlineStyleMap,
+  writeHwpOutlineStyleMap,
+} from './outline-settings'
 import { badJob, printJobToPdf, printJobToPrinter } from './print-document'
+import { registerHwpPrintLayout } from './print-layout'
 import { tm } from './dialog-strings'
 import { fieldKindsOf } from './field-kinds'
+import { fontFileReadsOfProcess } from './font-file-reads'
 import type { FieldKinds } from './field-kinds'
+import { lostMemoCountOf } from './memos'
 import {
   hwpRecoveryBeforeSave,
   hwpRecoveryDontSave,
@@ -40,21 +60,36 @@ import {
 } from './recovery'
 import type { HwpRecoveryHost } from './recovery'
 import { applySaveFixes } from './save-fixes'
-import { backupPathFor, bytesMatchFormat, needsBackup, withFormatExtension } from './save-plan'
+import { backupPathFor, bytesMatchFormat, needsBackup } from './save-plan'
+import {
+  saveAsDefaultPath,
+  saveAsFilters,
+  saveAsHwpxDefaultPath,
+  saveAsHwpxFilters,
+  saveAsTarget,
+} from './save-as-formats'
 import { sectionTailsOf } from './section-tails'
 import type { SectionTails } from './section-tails'
 import { newTabsOf } from './tab-widths'
 import { hasTrackedChanges, withoutTrackedChanges } from './tracked-changes'
 import { HWP_CHANNELS, MAX_HWP_SAVE_BYTES, hwpFormatOfPath } from '../shared/ipc'
 import type {
+  AttachmentImportResult,
   BeginSaveResult,
+  BeginSubmissionSaveResult,
   CommitSaveResult,
+  CommitSubmissionSaveResult,
   HwpFormat,
+  LoadGeneratedHwpxResult,
   MeasuredTab,
+  MemoPathStep,
+  MemoSnapshot,
+  PreviewAction,
   PrintJob,
   PrintMode,
   PrintResult,
   SaveMode,
+  SavePreview,
   TabSpot,
 } from '../shared/ipc'
 
@@ -70,6 +105,34 @@ interface RuntimePaths {
   goHome?: () => void
   /** a new Hangul document in a tab (Hangul's Alt+N) */
   newDocument?: () => void
+  /**
+   * File > Import PDF: the shell asks for a PDF and opens it as a new, untitled Hangul
+   * document in a tab of its own, where the editor's PDF import converts it (decision
+   * 0116). This view's document is not touched. Without a shell the item does nothing.
+   */
+  importPdf?: () => void
+  /**
+   * Project folders (spec 6): the folder an untitled document's save dialog
+   * opens in for this view, or null for the default save folder.
+   */
+  newDocumentDir?: (webContentsId: number) => Promise<string | null>
+  /**
+   * The AI's import_attachment (decision 0135): the shell converts a Markdown
+   * file and opens the result as a new, untitled Hangul document in a tab of
+   * its own, handing `request` (the person's words) to that tab's AI panel.
+   * This view's document is not touched. Without a shell there is no tab to open.
+   */
+  openMarkdownAsDocument?: (
+    webContentsId: number,
+    path: string,
+    request?: string,
+  ) => Promise<AttachmentImportResult>
+  /**
+   * The AI panel's run was stopped by the app's own rule. `stop` is what the
+   * renderer sent, unchecked: the shell keeps the rule and its counts in the
+   * crash record on this PC and nothing else.
+   */
+  noteAiRunStop?: (stop: unknown) => void
 }
 
 let runtime: RuntimePaths = { preloadPath: '' }
@@ -94,13 +157,34 @@ const savePathByWc = new Map<number, string>()
 const untitledCopyByWc = new Map<number, { name: string; format: HwpFormat }>()
 /** Unsaved-changes flags mirrored from the renderer; drives the save prompt before closing a tab/window */
 const dirtyByWc = new Set<number>()
+/**
+ * Views whose memo editor is open. The renderer owns the editor; this copy is what main
+ * checks before a save, close or quit, including a clean tab that would otherwise not ask.
+ */
+const memoModalByWc = new Set<number>()
+/** every HWP view this module set up (the memo lock is only taken from one of these) */
+const hwpViews = new Set<number>()
 const closeSaveWaiters = new Map<number, (ok: boolean) => void>()
 /** Resolvers for menu- and shortcut-triggered saves, settled when the renderer's save ends */
 const saveWaiters = new Map<number, (ok: boolean) => void>()
+/** Resolvers for menu-triggered submission copy saves, completely independent of normal saves */
+const submissionWaiters = new Map<number, (ok: boolean) => void>()
 const readBytesWaiters = new Map<number, (result: unknown) => void>()
 const readTextInFlight = new Map<number, Promise<string>>()
 /** Target a view resolved with beginSave and has not committed yet */
 const pendingSaveByWc = new Map<number, { path: string; format: HwpFormat }>()
+/** Target a view resolved with beginSubmissionSave and has not committed yet */
+const pendingSubmissionByWc = new Map<number, { path: string; format: HwpFormat }>()
+/** The PDF path a view's Save As picked; its next PDF may write exactly that path, once */
+const pdfSaveAsByWc = new Map<number, string>()
+/**
+ * Hidden `--headless-export` windows: the PDF path the command line gave. The renderer
+ * takes it once (consumeHeadlessExport) and its PDF may write exactly that path, once.
+ */
+const headlessTargetByWc = new Map<number, string>()
+const headlessPdfByWc = new Map<number, string>()
+/** settled by the renderer's headless-export-done message, its death or the timeout */
+const headlessWaiters = new Map<number, (report: { ok: boolean; error?: string }) => void>()
 /** Paths each view has already written this session; their first overwrite kept a backup */
 const writtenByWc = new Map<number, Set<string>>()
 /**
@@ -149,13 +233,46 @@ const recoveryHost: HwpRecoveryHost = {
 /** Why a save stood down: the file moved on disk after this copy read or wrote it. */
 const EXTERNAL_MODIFIED = 'hwp: external-modified'
 
+/**
+ * Normalize a file path for open-tab comparison so relative segments, separator styles,
+ * and Windows letter casing resolve to the same canonical key.
+ */
+export function normalizeHwpComparePath(
+  targetPath: string,
+  platform: NodeJS.Platform = process.platform,
+): string {
+  const resolved = resolve(targetPath)
+  return platform === 'win32' ? resolved.toLowerCase() : resolved
+}
+
+/**
+ * Whether `targetPath` refers to the same file as any entry in `openPaths`.
+ * Used to refuse overwriting any currently open HWP tab with a submission copy.
+ */
+export function matchesOpenHwpPath(
+  targetPath: string,
+  openPaths: Iterable<string>,
+  platform: NodeJS.Platform = process.platform,
+): boolean {
+  const needle = normalizeHwpComparePath(targetPath, platform)
+  for (const candidate of openPaths) {
+    if (!candidate) continue
+    if (normalizeHwpComparePath(candidate, platform) === needle) return true
+  }
+  return false
+}
+
+function isPathOpenInAnyHwpTab(targetPath: string): boolean {
+  return matchesOpenHwpPath(targetPath, [...savePathByWc.values(), ...openPathByWc.values()])
+}
+
 function recordedDiskState(wcId: number, path: string): SaveDiskState | undefined {
   return diskStatesByWc.get(wcId)?.get(path)
 }
 
 /** Record what the file holds now; an unreadable file leaves no record and no conflict. */
-async function rememberDiskState(wcId: number, path: string): Promise<void> {
-  const state = await recordDiskState(path)
+async function rememberDiskState(wcId: number, path: string, read?: Uint8Array): Promise<void> {
+  const state = await recordDiskState(path, read)
   if (!state) return
   const states = diskStatesByWc.get(wcId) ?? new Map<string, SaveDiskState>()
   states.set(path, state)
@@ -196,11 +313,39 @@ export function hwpFileRenamed(contents: WebContents, oldPath: string, newPath: 
  * Save / Don't Save / Cancel. On Save, ask the renderer to export + write
  * and await the result; a canceled or failed save keeps the tab open.
  */
+/** Whether this view has a memo editor open (the shell's close and quit guards ask). */
+export function hwpMemoModalOpen(webContentsId: number): boolean {
+  return memoModalByWc.has(webContentsId)
+}
+
 export async function requestHwpClose(
   contents: WebContents,
   parent?: BrowserWindow | null,
 ): Promise<boolean> {
-  if (!dirtyByWc.has(contents.id) || contents.isDestroyed()) return true
+  if (contents.isDestroyed()) return true
+  // a clean tab can still hold memo text that has not reached the document yet. Main asks
+  // itself instead of leaving it to the page: a page that hangs with the memo editor open
+  // must not keep its tab, and the app, from closing.
+  if (memoModalByWc.has(contents.id)) {
+    const memoOptions = {
+      type: 'warning' as const,
+      message: tm('closeMemoMsg'),
+      detail: tm('closeMemoDetail'),
+      buttons: [tm('btnDiscardClose'), tm('btnCancel')],
+      defaultId: 1,
+      cancelId: 1,
+      noLink: true,
+    }
+    const { response } =
+      parent && !parent.isDestroyed()
+        ? await dialog.showMessageBox(parent, memoOptions)
+        : await dialog.showMessageBox(memoOptions)
+    if (response !== 0) return false
+    // the memo text and any unsaved changes are given up: so is their recovery copy
+    if (!contents.isDestroyed() && dirtyByWc.has(contents.id)) hwpRecoveryDontSave(contents)
+    return true
+  }
+  if (!dirtyByWc.has(contents.id)) return true
   const options = {
     type: 'warning' as const,
     message: tm('closeUnsavedMsg'),
@@ -240,14 +385,30 @@ export async function requestHwpClose(
  * keystroke behind, and Ctrl+S right after typing must still save. The
  * renderer asks the editor itself and declines a save with nothing to write.
  */
-/** The File menu or Ctrl+P: the renderer gathers the pages and comes back with printPages. */
+/** The File menu's PDF export: the renderer gathers the pages and comes back with printPages. */
 export function requestHwpPrint(contents: WebContents, mode: PrintMode): void {
   if (!contents.isDestroyed()) contents.send(HWP_CHANNELS.printRequest, mode)
+}
+
+/**
+ * File > Print / Print Preview and Ctrl+P: the renderer opens the preview (and
+ * prints from it when it is already open). The preview draws the same pages the
+ * print job will send, so the system dialog only opens after the user has seen them.
+ */
+export function requestHwpPreview(contents: WebContents, action: PreviewAction): void {
+  if (!contents.isDestroyed()) contents.send(HWP_CHANNELS.previewRequest, action)
 }
 
 /** A hidden window for printing: no preload, no scripts, sandboxed. */
 const printWindow = (): BrowserWindow =>
   new BrowserWindow({ show: false, webPreferences: { sandbox: true, javascript: false } })
+
+/**
+ * The hidden window the advanced print layout prints its face pictures from: no preload,
+ * sandboxed, scripts on for the shared readiness check (the page it loads has none).
+ */
+const arrangedPrintWindow = (): BrowserWindow =>
+  new BrowserWindow({ show: false, webPreferences: { sandbox: true } })
 
 /** The name an exported PDF is offered under: the document's, or the untitled one. */
 function pdfName(wcId: number): string {
@@ -256,8 +417,30 @@ function pdfName(wcId: number): string {
   return `${base || tm('untitledFile')}.pdf`
 }
 
+/** The PDF export's own dialog: where the PDF goes, or null when it was cancelled. */
+async function pickPdfTarget(contents: WebContents): Promise<string | null> {
+  const win =
+    BrowserWindow.fromWebContents(contents) ?? BrowserWindow.getFocusedWindow() ?? undefined
+  const current = savePathByWc.get(contents.id)
+  const picked = await showSaveDialogWithMemory(dialog, win, {
+    title: tm('dlgExportPdfTitle'),
+    defaultPath: join(
+      current ? dirname(current) : configuredDefaultSaveDir(app),
+      pdfName(contents.id),
+    ),
+    filters: [{ name: 'PDF', extensions: ['pdf'] }],
+  })
+  if (picked.canceled || !picked.filePath) return null
+  return /.pdf$/i.test(picked.filePath) ? picked.filePath : `${picked.filePath}.pdf`
+}
+
 export function requestHwpSave(contents: WebContents, mode: SaveMode): Promise<boolean> {
   if (contents.isDestroyed()) return Promise.resolve(false)
+  // a memo editor is open: its text is not in the document yet, so do not save over it
+  if (memoModalByWc.has(contents.id)) {
+    contents.send(HWP_CHANNELS.memoBlocked)
+    return Promise.resolve(false)
+  }
   // one save at a time per view: a request arriving while one is in flight is declined
   if (saveWaiters.has(contents.id)) return Promise.resolve(false)
   return new Promise<boolean>((resolve) => {
@@ -270,6 +453,30 @@ export function requestHwpSave(contents: WebContents, mode: SaveMode): Promise<b
       resolve(ok)
     })
     contents.send(HWP_CHANNELS.saveRequest, mode)
+  })
+}
+
+/**
+ * Menu "Save as Submission Copy": ask the renderer to build a stripped submission copy
+ * and write it to a separate path without altering the active tab's file or dirty state.
+ */
+export function requestHwpSubmissionSave(contents: WebContents): Promise<boolean> {
+  if (contents.isDestroyed()) return Promise.resolve(false)
+  if (memoModalByWc.has(contents.id)) {
+    contents.send(HWP_CHANNELS.memoBlocked)
+    return Promise.resolve(false)
+  }
+  if (submissionWaiters.has(contents.id)) return Promise.resolve(false)
+  return new Promise<boolean>((resolve) => {
+    const timer = setTimeout(() => {
+      submissionWaiters.delete(contents.id)
+      resolve(false)
+    }, 120_000)
+    submissionWaiters.set(contents.id, (ok) => {
+      clearTimeout(timer)
+      resolve(ok)
+    })
+    contents.send(HWP_CHANNELS.submissionSaveRequest)
   })
 }
 
@@ -344,16 +551,203 @@ function settleSave(wcId: number, ok: boolean): void {
   waiter?.(ok)
 }
 
+function settleSubmission(wcId: number, ok: boolean): void {
+  const waiter = submissionWaiters.get(wcId)
+  submissionWaiters.delete(wcId)
+  waiter?.(ok)
+}
+
+function memoPathOf(value: unknown): MemoPathStep[] | null {
+  if (!Array.isArray(value)) return null
+  const steps: MemoPathStep[] = []
+  for (const step of value) {
+    if (!step || typeof step !== 'object') return null
+    const raw = step as Record<string, unknown>
+    if (
+      (raw.type !== 'cell' && raw.type !== 'textbox') ||
+      typeof raw.controlIndex !== 'number' ||
+      typeof raw.paraIndex !== 'number'
+    ) {
+      return null
+    }
+    steps.push({
+      type: raw.type,
+      controlIndex: raw.controlIndex,
+      ...(typeof raw.cellIndex === 'number' ? { cellIndex: raw.cellIndex } : {}),
+      paraIndex: raw.paraIndex,
+    })
+  }
+  return steps
+}
+
+/** The editor's memo list, or null when it is not the shape main can compare. */
+function memoSnapshotsOf(value: unknown): MemoSnapshot[] | null {
+  if (!Array.isArray(value)) return null
+  const memos: MemoSnapshot[] = []
+  for (const item of value) {
+    if (!item || typeof item !== 'object') return null
+    const raw = item as Record<string, unknown>
+    if (
+      typeof raw.author !== 'string' ||
+      typeof raw.text !== 'string' ||
+      typeof raw.place !== 'string' ||
+      (raw.date !== null && typeof raw.date !== 'string')
+    ) {
+      return null
+    }
+    memos.push({
+      author: raw.author,
+      date: raw.date,
+      text: raw.text,
+      place: raw.place,
+      sectionIndex: typeof raw.sectionIndex === 'number' ? raw.sectionIndex : null,
+      paraIndex: typeof raw.paraIndex === 'number' ? raw.paraIndex : null,
+      startCharIdx: typeof raw.startCharIdx === 'number' ? raw.startCharIdx : null,
+      endCharIdx: typeof raw.endCharIdx === 'number' ? raw.endCharIdx : null,
+      path: memoPathOf(raw.path),
+    })
+  }
+  return memos
+}
+
+function commitOptionsOf(raw: unknown): {
+  auto: boolean
+  memos: MemoSnapshot[] | null | undefined
+  preview: SavePreview | undefined
+} {
+  const options = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {}
+  const memos =
+    options.memos === undefined
+      ? undefined
+      : options.memos === null
+        ? null
+        : memoSnapshotsOf(options.memos)
+  return { auto: options.auto === true, memos, preview: savePreviewOf(options.preview) }
+}
+
+/**
+ * The preview the renderer sent. Anything but a well-formed one (null, a failed draw) is
+ * a blank preview: the save writes that over the stale one rather than keep it. Absent
+ * (an older renderer): the preview is left as the engine wrote it.
+ */
+function savePreviewOf(raw: unknown): SavePreview | undefined {
+  if (raw === undefined) return undefined
+  const given = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {}
+  return {
+    text: typeof given.text === 'string' ? given.text : '',
+    image: given.image instanceof Uint8Array ? given.image : null,
+  }
+}
+
 let ipcRegistered = false
 
 function registerHwpIpc(): void {
   // every view calls this; the channels are registered once, by the first
   if (ipcRegistered) return
   ipcRegistered = true
-  registerHwpAttachmentIpc()
+  registerHwpAttachmentIpc(() => ({
+    ...(runtime.openMarkdownAsDocument
+      ? { openMarkdownAsDocument: runtime.openMarkdownAsDocument }
+      : {}),
+    filePathOf: (wcId) => savePathByWc.get(wcId) ?? openPathByWc.get(wcId) ?? null,
+  }))
+  // the AI panel's pictures: search result or generated file → bytes for the plugin
+  registerHwpImageIpc({
+    filePathOf: (wcId) => savePathByWc.get(wcId) ?? openPathByWc.get(wcId) ?? null,
+  })
+  const broadcastToHwpViews = (channel: string, payload: unknown): void => {
+    if (typeof webContents?.fromId !== 'function') return
+    for (const id of hwpViews) {
+      const wc = webContents.fromId(id)
+      if (wc && !wc.isDestroyed()) {
+        wc.send(channel, payload)
+      }
+    }
+  }
+  registerHwpBibliographyIpc({
+    app,
+    hasView: (wcId) => hwpViews.has(wcId),
+    getWindow: (sender) => BrowserWindow.fromWebContents(sender),
+    broadcast: broadcastToHwpViews,
+  })
+  registerHwpMacrosIpc({
+    app,
+    hasView: (wcId) => hwpViews.has(wcId),
+    getWindow: (sender) => BrowserWindow.fromWebContents(sender),
+    broadcast: broadcastToHwpViews,
+    syntaxChecker: (script) => validateMacroSyntax(script),
+  })
   installHwpRecovery(recoveryHost)
   registerHwpRecoveryIpc()
 
+  // advanced print layout: the job PDF is the PDF export's, arranged and printed or saved
+  ensurePrintLayoutIpc({
+    ipcMain,
+    labelSpecPath: () => join(app.getPath('userData'), LABEL_SPEC_FILE_NAME),
+  })
+  registerHwpPrintLayout({
+    ipcMain,
+    createJobWindow: printWindow,
+    createPrintWindow: arrangedPrintWindow,
+    pickSavePath: (event) => pickPdfTarget(event.sender as WebContents),
+    pickImageSavePath: async (event, image) => {
+      const contents = event.sender as WebContents
+      const win =
+        BrowserWindow.fromWebContents(contents) ?? BrowserWindow.getFocusedWindow() ?? undefined
+      const current = savePathByWc.get(contents.id)
+      const base = pdfName(contents.id).replace(/\.pdf$/i, '')
+      const spec = imageSaveDialogSpec(base, image)
+      const picked = await showSaveDialogWithMemory(dialog, win, {
+        title: tm('dlgExportPdfTitle'),
+        defaultPath: join(
+          current ? dirname(current) : configuredDefaultSaveDir(app),
+          spec.defaultFileName,
+        ),
+        filters: spec.filters,
+      })
+      return picked.canceled || !picked.filePath ? null : picked.filePath
+    },
+  })
+
+  // ---- headless export mode (--headless-export) ----
+  ipcMain.handle(HWP_CHANNELS.isHeadlessExport, (e): boolean => headlessTargetByWc.has(e.sender.id))
+  ipcMain.handle(HWP_CHANNELS.consumeHeadlessExport, (e): string | null => {
+    const target = headlessTargetByWc.get(e.sender.id) ?? null
+    headlessTargetByWc.delete(e.sender.id)
+    return target
+  })
+  ipcMain.on(HWP_CHANNELS.aiRunStop, (_e, stop: unknown) => {
+    runtime.noteAiRunStop?.(stop)
+  })
+
+  ipcMain.on(HWP_CHANNELS.headlessExportDone, (e, result: unknown) => {
+    const settle = headlessWaiters.get(e.sender.id)
+    if (!settle) return
+    headlessWaiters.delete(e.sender.id)
+    const state = result as { ok?: unknown; error?: unknown } | null
+    settle({
+      ok: state?.ok === true,
+      ...(typeof state?.error === 'string' ? { error: state.error } : {}),
+    })
+  })
+
+  // the memo editor is renderer state; main keeps only whether this view has one open, so
+  // save, close and quit can wait for it even when the document itself is clean
+  ipcMain.on(HWP_CHANNELS.memoModalOpen, (e, open: unknown) => {
+    // only an HWP view may hold the lock: its own teardown is what clears it again
+    if (!hwpViews.has(e.sender.id)) return
+    if (open === true) memoModalByWc.add(e.sender.id)
+    else memoModalByWc.delete(e.sender.id)
+  })
+  ipcMain.handle(HWP_CHANNELS.memoModalState, () => memoModalByWc.size > 0)
+
+  // the editor's font detection reads within this view's own open-file limit (font-file-reads.ts)
+  ipcMain.handle(HWP_CHANNELS.fontFileReads, (e) =>
+    fontFileReadsOfProcess(e.sender.getOSProcessId()),
+  )
+  // per-face SFNT metadata read from disk in main so the renderer does not call FontData.blob()
+  // across every installed font (#488, #591)
+  ipcMain.handle(HWP_CHANNELS.fontNames, (_e, faces: unknown) => localFontNamesFor(faces))
   ipcMain.handle(HWP_CHANNELS.consumePending, (e) => {
     noteHwpPathConsumed(e.sender.id)
     return openPathByWc.get(e.sender.id) ?? null
@@ -372,7 +766,7 @@ function registerHwpIpc(): void {
     // the document the view holds from now on is this file: what is kept follows it (a
     // restored copy included: its saves correct against the file at its path)
     const wcId = e.sender.id
-    await rememberDiskState(wcId, path)
+    await rememberDiskState(wcId, path, bytes)
     trackedByWc.delete(wcId)
     trackingDroppedByWc.delete(wcId)
     if (bytesMatchFormat(bytes, 'hwp') && hasTrackedChanges(bytes)) {
@@ -396,51 +790,115 @@ function registerHwpIpc(): void {
 
   ipcMain.handle(HWP_CHANNELS.trackingDropped, (e) => trackingDroppedByWc.has(e.sender.id))
 
+  ipcMain.handle(
+    HWP_CHANNELS.loadGeneratedHwpx,
+    async (e, rawPath: unknown, intoCurrentBlank: unknown): Promise<LoadGeneratedHwpxResult> => {
+      if (typeof rawPath !== 'string' || !rawPath.trim()) {
+        return { ok: false, error: 'hwp: file path is required' }
+      }
+      const resolved = resolve(rawPath.trim())
+      const format = hwpFormatOfPath(resolved)
+      if (!format) {
+        return { ok: false, error: 'hwp: only .hwp and .hwpx files can be opened here' }
+      }
+      let info
+      try {
+        info = await stat(resolved)
+      } catch {
+        return { ok: false, error: `hwp: file not found at "${resolved}"` }
+      }
+      if (!info.isFile() || info.size <= 0) {
+        return { ok: false, error: 'hwp: generated file is missing or empty' }
+      }
+      if (info.size > MAX_HWP_SAVE_BYTES) {
+        return { ok: false, error: 'hwp: file is too large to open' }
+      }
+      let bytes: Uint8Array
+      try {
+        bytes = await readFile(resolved)
+      } catch {
+        return { ok: false, error: 'hwp: could not read the generated file' }
+      }
+      if (!bytesMatchFormat(bytes, format)) {
+        return { ok: false, error: `hwp: file is not a valid .${format} document` }
+      }
+      const wcId = e.sender.id
+      const name = basename(resolved)
+      if (intoCurrentBlank === true && !savePathByWc.has(wcId) && !dirtyByWc.has(wcId)) {
+        // Keep the tab untitled so the first Save prompts Save As instead of writing to temp
+        untitledCopyByWc.set(wcId, { name, format })
+        dirtyByWc.add(wcId)
+        trackedByWc.delete(wcId)
+        trackingDroppedByWc.delete(wcId)
+        tailsByWc.delete(wcId)
+        fieldKindsByWc.delete(wcId)
+        return { ok: true, mode: 'current', name, format, bytes }
+      }
+      if (runtime.openGeneratedPath?.(resolved)) {
+        return { ok: true, mode: 'new-tab', name, format }
+      }
+      return { ok: false, error: 'hwp: could not open the generated file in a new tab' }
+    },
+  )
+
   /** one print or PDF at a time per view */
   const printing = new Set<number>()
-  ipcMain.handle(HWP_CHANNELS.printPages, async (e, job: unknown): Promise<PrintResult> => {
-    const wcId = e.sender.id
-    const bad = badJob(job)
-    if (bad) return { ok: false, error: `hwp: ${bad}` }
-    if (printing.has(wcId)) return { ok: false, error: 'hwp: already printing' }
-    printing.add(wcId)
-    try {
-      const printJob = job as PrintJob
-      if (printJob.mode === 'print') {
-        await printJobToPrinter(printJob, printWindow)
-        return { ok: true }
+  ipcMain.handle(
+    HWP_CHANNELS.printPages,
+    async (e, job: unknown, options?: unknown): Promise<PrintResult> => {
+      const wcId = e.sender.id
+      const bad = badJob(job)
+      if (bad) return { ok: false, error: `hwp: ${bad}` }
+      // Save As > PDF: the path its dialog picked, taken once, and only for a PDF; a
+      // headless export's path is the one the command line gave (exportHwpPdfHeadless)
+      const given =
+        options && typeof options === 'object' ? (options as { path?: unknown }).path : undefined
+      if (given !== undefined) {
+        const granted = pdfSaveAsByWc.get(wcId) ?? headlessPdfByWc.get(wcId)
+        if (typeof given !== 'string' || given !== granted || (job as PrintJob).mode !== 'pdf') {
+          return { ok: false, error: 'hwp: this PDF path was not picked in Save As' }
+        }
+        pdfSaveAsByWc.delete(wcId)
+        headlessPdfByWc.delete(wcId)
       }
-      const win =
-        BrowserWindow.fromWebContents(e.sender) ?? BrowserWindow.getFocusedWindow() ?? undefined
-      const current = savePathByWc.get(wcId)
-      const picked = await showSaveDialogWithMemory(dialog, win, {
-        title: tm('dlgExportPdfTitle'),
-        defaultPath: join(
-          current ? dirname(current) : configuredDefaultSaveDir(app),
-          pdfName(wcId),
-        ),
-        filters: [{ name: 'PDF', extensions: ['pdf'] }],
-      })
-      if (picked.canceled || !picked.filePath) return { ok: true, canceled: true }
-      const target = /.pdf$/i.test(picked.filePath) ? picked.filePath : `${picked.filePath}.pdf`
-      const pdf = await printJobToPdf(printJob, printWindow)
-      await atomicWriteFile(target, pdf)
+      if (printing.has(wcId)) return { ok: false, error: 'hwp: already printing' }
+      printing.add(wcId)
       try {
-        if (!runtime.openGeneratedPath?.(target)) shell.showItemInFolder(target)
+        const printJob = job as PrintJob
+        if (printJob.mode === 'print') {
+          await printJobToPrinter(printJob, printWindow)
+          return { ok: true }
+        }
+        const target = given ?? (await pickPdfTarget(e.sender))
+        if (!target) return { ok: true, canceled: true }
+        const pdf = await printJobToPdf(printJob, printWindow)
+        await atomicWriteFile(target, pdf)
+        // a headless export stays silent: no tab, no file manager window
+        if (isHeadlessMode()) return { ok: true, path: target }
+        try {
+          if (!runtime.openGeneratedPath?.(target)) shell.showItemInFolder(target)
+        } catch (err) {
+          console.warn('[hwp] could not open the exported PDF:', err)
+        }
+        return { ok: true, path: target }
       } catch (err) {
-        console.warn('[hwp] could not open the exported PDF:', err)
+        return { ok: false, error: err instanceof Error ? err.message : String(err) }
+      } finally {
+        printing.delete(wcId)
       }
-      return { ok: true, path: target }
-    } catch (err) {
-      return { ok: false, error: err instanceof Error ? err.message : String(err) }
-    } finally {
-      printing.delete(wcId)
-    }
-  })
+    },
+  )
 
   ipcMain.handle(HWP_CHANNELS.beginSave, async (e, mode: unknown): Promise<BeginSaveResult> => {
     const wcId = e.sender.id
     pendingSaveByWc.delete(wcId)
+    pdfSaveAsByWc.delete(wcId)
+    // a memo editor's text is not in the document yet: no dialog, no save
+    if (memoModalByWc.has(wcId)) {
+      e.sender.send(HWP_CHANNELS.memoBlocked)
+      settleSave(wcId, false)
+      return { ok: false, error: 'hwp: a memo editor is open', reason: 'memo' }
+    }
     // before any dialog: under no name and in no format
     if (trackedByWc.has(wcId)) {
       settleSave(wcId, false)
@@ -449,34 +907,56 @@ function registerHwpIpc(): void {
     try {
       const current = savePathByWc.get(wcId)
       const currentFormat = current ? hwpFormatOfPath(current) : null
+      const saveAsHwpx = mode === 'saveAsHwpx'
       let target: string
-      if (mode !== 'saveAs' && current && currentFormat) {
+      if (mode !== 'saveAs' && !saveAsHwpx && current && currentFormat) {
         target = current
       } else {
         const win =
           BrowserWindow.fromWebContents(e.sender) ?? BrowserWindow.getFocusedWindow() ?? undefined
         const copy = untitledCopyByWc.get(wcId)
-        const fallback: HwpFormat = currentFormat ?? copy?.format ?? 'hwp'
-        const hwp = { name: tm('filterHwp'), extensions: ['hwp'] }
-        const hwpx = { name: tm('filterHwpx'), extensions: ['hwpx'] }
+        // a brand-new document takes the format chosen in Settings; one restored without
+        // its file keeps the format of the file it came from (the recovery suggestion)
+        const preferred = readHwpDefaultFormat(app)
+        // a new document whose panel has a project is offered in that folder (spec 6)
+        const newDir = current ? null : await runtime.newDocumentDir?.(wcId)
+        const offered = current
+          ? join(dirname(current), basename(current))
+          : // a copy restored without its file is offered where that file was
+            (hwpRecoverySaveAsDefault(wcId) ??
+            join(
+              newDir ?? configuredDefaultSaveDir(app),
+              copy?.name ?? `${tm('untitledFile')}.${preferred}`,
+            ))
+        const fallback: HwpFormat = saveAsHwpx
+          ? 'hwpx'
+          : (currentFormat ?? copy?.format ?? hwpFormatOfPath(offered) ?? preferred)
+        // Save As also lists PDF, a copy written by the PDF export (save-as-formats.ts)
+        const offerExports = mode === 'saveAs'
         const picked = await showSaveDialogWithMemory(dialog, win, {
           title: tm('dlgSaveTitle'),
           // a new document has no file yet: it is offered under the untitled name in the
           // default save folder, where the shell moves it into the folder it was made from
-          defaultPath: current
-            ? join(dirname(current), basename(current))
-            : // a copy restored without its file is offered where that file was
-              (hwpRecoverySaveAsDefault(wcId) ??
-              join(configuredDefaultSaveDir(app), copy?.name ?? `${tm('untitledFile')}.hwp`)),
+          defaultPath: saveAsHwpx
+            ? saveAsHwpxDefaultPath(offered)
+            : saveAsDefaultPath(offered, offerExports),
           // one type per format, so the user can pick the other one; the document's
           // own format comes first, so it is the dialog's default type
-          filters: fallback === 'hwpx' ? [hwpx, hwp] : [hwp, hwpx],
+          filters: saveAsHwpx ? saveAsHwpxFilters(tm) : saveAsFilters(fallback, offerExports, tm),
         })
         if (picked.canceled || !picked.filePath) {
           settleSave(wcId, false)
           return { ok: true, canceled: true }
         }
-        target = withFormatExtension(picked.filePath, fallback)
+        const answer = saveAsTarget(picked.filePath, fallback, offerExports)
+        if (answer.kind === 'pdf') {
+          // no save: the renderer gathers the pages and the PDF export writes this path.
+          // The document keeps its file, unsaved state and recovery copy.
+          pdfSaveAsByWc.set(wcId, answer.path)
+          settleSave(wcId, false)
+          return { ok: true, path: answer.path, export: 'pdf' }
+        }
+        target = answer.path
       }
       const format = hwpFormatOfPath(target)
       if (!format) throw new Error('hwp: no save format for this file name')
@@ -489,7 +969,7 @@ function registerHwpIpc(): void {
   })
 
   ipcMain.handle(HWP_CHANNELS.newTabs, (e, data: unknown, format: unknown): TabSpot[] => {
-    if (!pendingSaveByWc.has(e.sender.id)) return []
+    if (!pendingSaveByWc.has(e.sender.id) && !pendingSubmissionByWc.has(e.sender.id)) return []
     if (!(data instanceof Uint8Array) || data.length === 0 || data.length > MAX_HWP_SAVE_BYTES) {
       return []
     }
@@ -499,8 +979,9 @@ function registerHwpIpc(): void {
 
   ipcMain.handle(
     HWP_CHANNELS.commitSave,
-    async (e, data: unknown, tabs: unknown, auto?: unknown): Promise<CommitSaveResult> => {
+    async (e, data: unknown, tabs: unknown, options?: unknown): Promise<CommitSaveResult> => {
       const wcId = e.sender.id
+      const saveOptions = commitOptionsOf(options)
       const pending = pendingSaveByWc.get(wcId)
       pendingSaveByWc.delete(wcId)
       const done = (result: CommitSaveResult): CommitSaveResult => {
@@ -522,9 +1003,9 @@ function registerHwpIpc(): void {
         // (decision 0036). This runs before the backup and the write, so neither
         // happens when the save is declined.
         const recorded = recordedDiskState(wcId, target)
-        // today only tests pass auto: HWP has no autosave yet, so every real
-        // save is manual; a future autosave must send the flag through commit-save
-        if (auto === true) {
+        // the app's 30-second autosave sends auto: true, so a copy-pair conflict
+        // stands down quietly instead of asking
+        if (saveOptions.auto) {
           if (await shouldDeferAutoSave(target, recorded)) {
             return done({ ok: false, error: EXTERNAL_MODIFIED })
           }
@@ -545,6 +1026,7 @@ function registerHwpIpc(): void {
           pending.format,
           Array.isArray(tabs) ? (tabs as MeasuredTab[]) : undefined,
           recoveryHost.saveBaseOf(wcId),
+          saveOptions.preview,
         )
         const bytes = fixed.bytes
         const tailsLost = fixed.tailsSkipped !== undefined
@@ -553,12 +1035,33 @@ function registerHwpIpc(): void {
             `hwp: master pages or memos were not put back on save (${fixed.tailsSkipped})`,
           )
         }
+        // HWPX has no section-tail repair, so a memo the engine cannot write would vanish
+        // silently. Read the opened file (not this save's target: a Save As may change it)
+        // and the written bytes, and report only what is actually gone. This must finish
+        // before the write so a verification failure cannot stop the save.
+        let memosLost = 0
+        if (pending.format === 'hwpx' && saveOptions.memos !== undefined) {
+          const opened = savePathByWc.get(wcId)
+          let original: Uint8Array | null = null
+          if (opened && hwpFormatOfPath(opened) === 'hwpx') {
+            try {
+              original = await readFile(opened)
+            } catch {
+              original = null
+            }
+          }
+          memosLost = await lostMemoCountOf({
+            saved: bytes,
+            original,
+            memos: saveOptions.memos,
+          })
+        }
         const recoveryBefore = hwpRecoveryBeforeSave(wcId)
         const written = writtenByWc.get(wcId) ?? new Set<string>()
         let backupPath: string | undefined
         if (needsBackup(target, existsSync(target), written)) {
           backupPath = backupPathFor(target)
-          await copyFile(target, backupPath)
+          await copyFileReplacing(target, backupPath)
         }
         await atomicWriteFile(target, Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength))
         await rememberDiskState(wcId, target)
@@ -582,6 +1085,7 @@ function registerHwpIpc(): void {
           path: target,
           ...(backupPath ? { backupPath } : {}),
           ...(tailsLost ? { tailsLost: true as const } : {}),
+          ...(memosLost > 0 ? { memosLost } : {}),
         })
       } catch (err) {
         return done({ ok: false, error: err instanceof Error ? err.message : String(err) })
@@ -592,12 +1096,165 @@ function registerHwpIpc(): void {
   // the editor's File menu: the same requests as Ctrl+S and Ctrl+P, so one path saves
   ipcMain.on(HWP_CHANNELS.fileCommand, (e, command: unknown) => {
     if (command === 'save' || command === 'saveAs') void requestHwpSave(e.sender, command)
-    else if (command === 'pdf' || command === 'print') requestHwpPrint(e.sender, command)
+    else if (command === 'saveSubmission' && hwpViews.has(e.sender.id))
+      void requestHwpSubmissionSave(e.sender)
+    else if (command === 'pdf') requestHwpPrint(e.sender, 'pdf')
+    else if (command === 'preview') requestHwpPreview(e.sender, 'open')
+    else if (command === 'print') requestHwpPreview(e.sender, 'print')
+    else if (command === 'importPdf' && hwpViews.has(e.sender.id)) runtime.importPdf?.()
+    else if (command === 'open' && hwpViews.has(e.sender.id)) runtime.openFileDialog?.()
   })
 
   ipcMain.on(HWP_CHANNELS.abortSave, (e) => {
     pendingSaveByWc.delete(e.sender.id)
     settleSave(e.sender.id, false)
+  })
+
+  ipcMain.handle(
+    HWP_CHANNELS.beginSubmissionSave,
+    async (e): Promise<BeginSubmissionSaveResult> => {
+      const wcId = e.sender.id
+      if (!hwpViews.has(wcId)) {
+        return { ok: false, error: 'hwp: unauthorized sender' }
+      }
+      pendingSubmissionByWc.delete(wcId)
+      if (memoModalByWc.has(wcId)) {
+        e.sender.send(HWP_CHANNELS.memoBlocked)
+        settleSubmission(wcId, false)
+        return { ok: false, error: 'hwp: a memo editor is open', reason: 'memo' }
+      }
+      if (trackedByWc.has(wcId)) {
+        settleSubmission(wcId, false)
+        return { ok: false, error: 'hwp: the document has tracked changes', reason: 'tracked' }
+      }
+      try {
+        const win =
+          BrowserWindow.fromWebContents(e.sender) ?? BrowserWindow.getFocusedWindow() ?? undefined
+        const current = savePathByWc.get(wcId)
+        const currentFormat = current ? hwpFormatOfPath(current) : null
+        const copy = untitledCopyByWc.get(wcId)
+        const preferred = readHwpDefaultFormat(app)
+        const newDir = current ? null : await runtime.newDocumentDir?.(wcId)
+        const basePath = current
+          ? join(dirname(current), basename(current))
+          : (hwpRecoverySaveAsDefault(wcId) ??
+            join(
+              newDir ?? configuredDefaultSaveDir(app),
+              copy?.name ?? `${tm('untitledFile')}.${preferred}`,
+            ))
+        const fallback: HwpFormat =
+          currentFormat ?? copy?.format ?? hwpFormatOfPath(basePath) ?? preferred
+        const dir = dirname(basePath)
+        const rawBase = basename(basePath).replace(/\.hwpx?$/i, '') || tm('untitledFile')
+        const suffix = tm('submissionCopySuffix')
+        const suggestedBase = rawBase.endsWith(`_${suffix}`) ? rawBase : `${rawBase}_${suffix}`
+        const offered = join(dir, `${suggestedBase}.${fallback}`)
+
+        const picked = await showSaveDialogWithMemory(dialog, win, {
+          title: tm('saveSubmissionTitle'),
+          defaultPath: offered,
+          filters: saveAsFilters(fallback, false, tm),
+        })
+        if (picked.canceled || !picked.filePath) {
+          settleSubmission(wcId, false)
+          return { ok: true, canceled: true }
+        }
+        const answer = saveAsTarget(picked.filePath, fallback, false)
+        const format = hwpFormatOfPath(answer.path)
+        if (!format) throw new Error('hwp: no save format for this file name')
+        if (isPathOpenInAnyHwpTab(answer.path)) {
+          settleSubmission(wcId, false)
+          return {
+            ok: false,
+            reason: 'same_as_open',
+            error: 'hwp: submission target matches an open document',
+          }
+        }
+        pendingSubmissionByWc.set(wcId, { path: answer.path, format })
+        return { ok: true, path: answer.path, format }
+      } catch (err) {
+        settleSubmission(wcId, false)
+        return { ok: false, error: err instanceof Error ? err.message : String(err) }
+      }
+    },
+  )
+
+  ipcMain.handle(
+    HWP_CHANNELS.commitSubmissionSave,
+    async (
+      e,
+      data: unknown,
+      tabs: unknown,
+      options?: unknown,
+    ): Promise<CommitSubmissionSaveResult> => {
+      const wcId = e.sender.id
+      if (!hwpViews.has(wcId)) {
+        return { ok: false, error: 'hwp: unauthorized sender' }
+      }
+      const saveOptions = commitOptionsOf(options)
+      const pending = pendingSubmissionByWc.get(wcId)
+      pendingSubmissionByWc.delete(wcId)
+      const done = (result: CommitSubmissionSaveResult): CommitSubmissionSaveResult => {
+        settleSubmission(wcId, result.ok)
+        return result
+      }
+      if (!pending) return done({ ok: false, error: 'hwp: no submission save in progress' })
+      if (!(data instanceof Uint8Array) || data.length === 0 || data.length > MAX_HWP_SAVE_BYTES) {
+        return done({ ok: false, error: 'hwp: bad submission save request' })
+      }
+      if (!bytesMatchFormat(data, pending.format)) {
+        return done({ ok: false, error: `hwp: exported bytes are not a ${pending.format} file` })
+      }
+      // Defense-in-depth: another tab may have opened this path while the copy was exporting.
+      if (isPathOpenInAnyHwpTab(pending.path)) {
+        return done({
+          ok: false,
+          reason: 'same_as_open',
+          error: 'hwp: submission target matches an open document',
+        })
+      }
+      try {
+        const fixed = applySaveFixes(
+          data,
+          pending.format,
+          Array.isArray(tabs) ? (tabs as MeasuredTab[]) : undefined,
+          recoveryHost.saveBaseOf(wcId),
+          saveOptions.preview,
+        )
+        const bytes = fixed.bytes
+        const tailsLost = fixed.tailsSkipped !== undefined
+        if (tailsLost) {
+          console.warn(
+            `hwp: master pages or memos were not put back on submission save (${fixed.tailsSkipped})`,
+          )
+        }
+        let backupPath: string | undefined
+        if (existsSync(pending.path)) {
+          backupPath = backupPathFor(pending.path)
+          await copyFileReplacing(pending.path, backupPath)
+        }
+        await atomicWriteFile(
+          pending.path,
+          Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength),
+        )
+        // Intentionally leave savePathByWc, openPathByWc, dirtyByWc, writtenByWc,
+        // recovery, and fileSavedHook completely untouched.
+        return done({
+          ok: true,
+          path: pending.path,
+          ...(backupPath ? { backupPath } : {}),
+          ...(tailsLost ? { tailsLost: true as const } : {}),
+        })
+      } catch (err) {
+        return done({ ok: false, error: err instanceof Error ? err.message : String(err) })
+      }
+    },
+  )
+
+  ipcMain.on(HWP_CHANNELS.abortSubmissionSave, (e) => {
+    if (!hwpViews.has(e.sender.id)) return
+    pendingSubmissionByWc.delete(e.sender.id)
+    settleSubmission(e.sender.id, false)
   })
 
   ipcMain.on(HWP_CHANNELS.dirtyChanged, (e, dirty: unknown) => {
@@ -618,6 +1275,35 @@ function registerHwpIpc(): void {
   // Language channel shared with other modules; removeHandler tolerates duplicate registration
   ipcMain.removeHandler(HWP_CHANNELS.getLanguage)
   ipcMain.handle(HWP_CHANNELS.getLanguage, () => getUiLang())
+
+  ipcMain.handle(HWP_CHANNELS.getOutlineStyleMap, () => readHwpOutlineStyleMap(app))
+  ipcMain.handle(HWP_CHANNELS.setOutlineStyleMap, (e, rawMap: unknown) => {
+    if (!hwpViews.has(e.sender.id)) {
+      return readHwpOutlineStyleMap(app)
+    }
+    if (rawMap !== null && (typeof rawMap !== 'object' || Array.isArray(rawMap))) {
+      return readHwpOutlineStyleMap(app)
+    }
+    if (rawMap !== null) {
+      const rawObj = rawMap as Record<string, unknown>
+      const normalized = normalizeOutlineStyleMap(rawObj)
+      // Refuse non-empty inputs whose entries are all invalid rather than wiping the stored map.
+      if (Object.keys(rawObj).length > 0 && Object.keys(normalized).length === 0) {
+        return readHwpOutlineStyleMap(app)
+      }
+    }
+    const input = rawMap === null ? null : (rawMap as Record<string, number>)
+    const next = writeHwpOutlineStyleMap(app, input)
+    if (typeof webContents?.fromId === 'function') {
+      for (const id of hwpViews) {
+        const wc = webContents.fromId(id)
+        if (wc && !wc.isDestroyed()) {
+          wc.send(HWP_CHANNELS.outlineStyleMapChanged, next)
+        }
+      }
+    }
+    return next
+  })
 }
 
 /**
@@ -627,7 +1313,13 @@ function registerHwpIpc(): void {
  * action for them, which leaves the menu accelerator to do its work.
  */
 function installFileShortcuts(wc: WebContents): void {
+  // a clipboard/delete key the editor did not take is sent on to the page once
+  let resending = false
   wc.on('before-input-event', (event, input) => {
+    if (resending) {
+      resending = false
+      return
+    }
     if (input.type !== 'keyDown' || input.isAutoRepeat) return
     if (input.alt) {
       if (hancomFileKey(wc, input)) event.preventDefault()
@@ -635,6 +1327,38 @@ function installFileShortcuts(wc: WebContents): void {
     }
     const mod = process.platform === 'darwin' ? input.meta : input.control
     if (!mod) return
+    if (
+      (input.code === 'KeyE' || input.code === 'KeyC' || input.code === 'KeyX') &&
+      !input.shift &&
+      !input.alt
+    ) {
+      // these never reach the page from the application menu; the editor says whether
+      // it took them (a cell block, a selected table), and otherwise the key goes on
+      event.preventDefault()
+      const key = input.code === 'KeyE' ? 'ctrl-e' : input.code === 'KeyC' ? 'ctrl-c' : 'ctrl-x'
+      // macOS turns Cmd+C/X into copy/cut only through the menu's roles, which
+      // never see a resent key, so copy stopped working there (2026-11-02 report).
+      // The editor's Cmd+C/X also take a selected table, which the page's copy
+      // event does not carry (issue #311).
+      const mac = process.platform === 'darwin' && key !== 'ctrl-e'
+      const asked = mac ? (key === 'ctrl-c' ? 'cmd-c' : 'cmd-x') : key
+      void editorTakes(wc, asked).then((taken) => {
+        if (taken) return
+        if (mac) {
+          if (key === 'ctrl-c') wc.copy()
+          else wc.cut()
+          return
+        }
+        resending = true
+        const modifiers: Array<'control' | 'meta' | 'shift' | 'alt'> = []
+        if (input.control) modifiers.push('control')
+        if (input.meta) modifiers.push('meta')
+        if (input.shift) modifiers.push('shift')
+        wc.sendInputEvent({ type: 'keyDown', keyCode: input.key, modifiers })
+        wc.sendInputEvent({ type: 'keyUp', keyCode: input.key, modifiers })
+      })
+      return
+    }
     if (input.code === 'KeyO' && !input.shift) {
       if (!runtime.openFileDialog) return
       event.preventDefault()
@@ -652,7 +1376,7 @@ function installFileShortcuts(wc: WebContents): void {
     }
     if (input.code === 'KeyP' && !input.shift) {
       event.preventDefault()
-      requestHwpPrint(wc, 'print')
+      requestHwpPreview(wc, 'print')
       return
     }
     if (input.code !== 'KeyS') return
@@ -693,7 +1417,7 @@ export function hancomFileKey(
       void requestHwpSave(wc, 'saveAs')
       return true
     case 'KeyP':
-      requestHwpPrint(wc, 'print')
+      requestHwpPreview(wc, 'print')
       return true
     default:
       return false
@@ -705,9 +1429,18 @@ export function hancomFileKey(
  * (studio-plugin/hancom-keys.mjs, MAIN_PROCESS_KEYS), and lets it run the table command if so.
  * False when the frame cannot say: the key then does what it does in the app.
  */
-async function editorTakes(
+export async function editorTakes(
   wc: WebContents,
-  key: 'ctrl-shift-s' | 'ctrl-shift-h',
+  key:
+    | 'ctrl-shift-s'
+    | 'ctrl-shift-h'
+    | 'ctrl-tab'
+    | 'ctrl-shift-tab'
+    | 'ctrl-e'
+    | 'ctrl-c'
+    | 'ctrl-x'
+    | 'cmd-c'
+    | 'cmd-x',
 ): Promise<boolean> {
   if (wc.isDestroyed()) return false
   const frame = wc.mainFrame?.framesInSubtree.find((f) => /\/studio\//.test(f.url))
@@ -728,15 +1461,22 @@ function grantAndTrack(
   options: HwpViewOptions = {},
 ): void {
   const wcId = wc.id
+  hwpViews.add(wcId)
   // first: its close settles the recovery copy while the view's state is still here
   trackHwpRecovery(wc)
   if (openPath && existsSync(openPath)) {
     openPathByWc.set(wcId, openPath)
     allowedByWc.set(wcId, new Set([openPath]))
     if (options.untitledCopy) {
+      // a PDF opened to be imported is named as the document it becomes, in the
+      // format Settings picks for new documents
+      const converted = typeof options.untitledCopy === 'object' ? options.untitledCopy : null
+      const name = converted
+        ? `${converted.baseName}.${readHwpDefaultFormat(app)}`
+        : basename(openPath)
       untitledCopyByWc.set(wcId, {
-        name: basename(openPath),
-        format: hwpFormatOfPath(openPath) ?? 'hwp',
+        name,
+        format: hwpFormatOfPath(name) ?? 'hwp',
       })
     } else {
       savePathByWc.set(wcId, openPath)
@@ -757,7 +1497,13 @@ function grantAndTrack(
     savePathByWc.delete(wcId)
     untitledCopyByWc.delete(wcId)
     dirtyByWc.delete(wcId)
+    memoModalByWc.delete(wcId)
+    hwpViews.delete(wcId)
     pendingSaveByWc.delete(wcId)
+    pendingSubmissionByWc.delete(wcId)
+    pdfSaveAsByWc.delete(wcId)
+    headlessTargetByWc.delete(wcId)
+    headlessPdfByWc.delete(wcId)
     writtenByWc.delete(wcId)
     tailsByWc.delete(wcId)
     fieldKindsByWc.delete(wcId)
@@ -767,6 +1513,13 @@ function grantAndTrack(
     closeSaveWaiters.get(wcId)?.(false)
     closeSaveWaiters.delete(wcId)
     settleSave(wcId, false)
+    settleSubmission(wcId, false)
+  })
+  // a dead renderer cannot close its memo editor; do not keep save, close and quit blocked
+  wc.on('render-process-gone', () => memoModalByWc.delete(wcId))
+  // nor can a page that reloads: the new page starts without one
+  wc.on('did-start-navigation', (details) => {
+    if (details.isMainFrame && !details.isSameDocument) memoModalByWc.delete(wcId)
   })
 }
 
@@ -774,8 +1527,10 @@ export interface HwpViewOptions {
   /**
    * `openPath` is a copy to open as a new, untitled document (a skill
    * template's, spec 5.7): it is read like a file, saved like a new document.
+   * `{ baseName }` is a PDF copy the editor imports (PDF converter menu,
+   * decision 0116): the new document is named `baseName` with the default format.
    */
-  untitledCopy?: boolean | undefined
+  untitledCopy?: boolean | { baseName: string } | undefined
 }
 
 export function createHwpView(
@@ -794,6 +1549,60 @@ export function createHwpView(
   grantAndTrack(view.webContents, openPath, options)
   void view.webContents.loadURL(rendererUrl(runtime.rendererUrl, 'hwp'))
   return view
+}
+
+/**
+ * `--headless-export <file.hwp|.hwpx> --to pdf`: a hidden HWP view opens the file the way
+ * a tab does and runs the File menu's own PDF export, with the command line's path in
+ * place of the save dialog. The file is read as it is on disk: a recovery copy left for
+ * it is neither offered nor used (hwpRecoveryOnRead).
+ */
+export async function exportHwpPdfHeadless(
+  input: string,
+  outPath: string,
+  timeoutMs = 180_000,
+): Promise<void> {
+  registerHwpIpc()
+  const win = new BrowserWindow({
+    show: false,
+    width: 1280,
+    height: 900,
+    webPreferences: {
+      preload: runtime.preloadPath,
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      backgroundThrottling: false,
+    },
+  })
+  const wcId = win.webContents.id
+  grantAndTrack(win.webContents, input)
+  headlessTargetByWc.set(wcId, outPath)
+  headlessPdfByWc.set(wcId, outPath)
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    const report = await new Promise<{ ok: boolean; error?: string }>((resolve) => {
+      headlessWaiters.set(wcId, resolve)
+      win.webContents.on('render-process-gone', (_event, details) =>
+        resolve({ ok: false, error: `hwp renderer stopped (${details.reason})` }),
+      )
+      timer = setTimeout(
+        () =>
+          resolve({
+            ok: false,
+            // a document with an open password waits for one, and no one is there to give it
+            error: `hwp export timed out after ${timeoutMs}ms (a password-protected document cannot be exported this way)`,
+          }),
+        timeoutMs,
+      )
+      void win.webContents.loadURL(rendererUrl(runtime.rendererUrl, 'hwp'))
+    })
+    if (!report.ok) throw new Error(report.error ?? 'hwp export failed')
+  } finally {
+    if (timer) clearTimeout(timer)
+    headlessWaiters.delete(wcId)
+    if (!win.isDestroyed()) win.destroy()
+  }
 }
 
 /** Standalone window mode: `npm run dev -w @genoffice/hwp`, document path passed via argv */

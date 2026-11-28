@@ -9,7 +9,7 @@
  * API-key providers and metered CLI logins run only when the user selected
  * them, and a selected provider that cannot run is reported, never replaced.
  */
-import { AI_PROVIDERS, AI_SUBSCRIPTION_PROVIDERS } from './providers'
+import { AI_PROVIDERS, AI_SUBSCRIPTION_PROVIDERS, isSubscriptionCli } from './providers'
 import type {
   AiProviderId,
   AiProviderSelection,
@@ -20,9 +20,17 @@ import type {
   AiSubscriptionStatuses,
 } from './types'
 
-export { AI_SUBSCRIPTION_PROVIDERS } from './providers'
+export {
+  AI_BATCH_SUBSCRIPTION_PROVIDERS,
+  AI_BRAIN_SUBSCRIPTION_PROVIDERS,
+  AI_SUBSCRIPTION_PROVIDERS,
+} from './providers'
 
-/** Why no provider can run; `no-subscription` is the `auto` case, the rest name the selected provider */
+/**
+ * Why no provider can run; `no-subscription` is the `auto` case, the rest name
+ * the selected provider. `off-in-app`: the person turned that CLI off in this
+ * app (decision 0114).
+ */
 export type AiNotConnectedReason =
   | 'no-subscription'
   | 'checking'
@@ -31,6 +39,7 @@ export type AiNotConnectedReason =
   | 'metered-not-accepted'
   | 'error'
   | 'not-configured'
+  | 'off-in-app'
 
 export type AiProviderChoice =
   | {
@@ -57,16 +66,29 @@ export function isSubscriptionProvider(id: unknown): id is AiSubscriptionProvide
 }
 
 /**
+ * The person turned this CLI off in this app (decision 0114). The setting
+ * decides on its own, whatever a status says: a status read before the switch
+ * was turned can still say `ready`, and a CLI off is never run.
+ */
+export function subscriptionOffIn(
+  settings: Pick<AiSettings, 'subscriptionOff'>,
+  provider: AiSubscriptionProviderId,
+): boolean {
+  return isSubscriptionCli(provider) && settings.subscriptionOff?.[provider] === true
+}
+
+/**
  * How a subscription provider can be used right now: on its subscription, on
  * a metered login the user accepted, or not at all (null). Acceptance needs
  * both the stored setting and the status built from it, so a flag that
- * outlived a login change can never start a paid run.
+ * outlived a login change can never start a paid run. A CLI turned off in
+ * this app is not usable, by the setting or by its status.
  */
 export function subscriptionConnection(
-  settings: Pick<AiSettings, 'meteredAccepted'>,
+  settings: Pick<AiSettings, 'meteredAccepted' | 'subscriptionOff'>,
   status: AiSubscriptionStatus | undefined,
 ): 'subscription' | 'metered' | null {
-  if (!status) return null
+  if (!status || subscriptionOffIn(settings, status.provider)) return null
   if (status.state === 'ready') return 'subscription'
   if (
     status.state === 'metered' &&
@@ -102,6 +124,23 @@ export function providerSelectionOf(settings: Pick<AiSettings, 'provider'>): AiP
   return AI_PROVIDERS.find((m) => m.id === stored)?.id ?? 'auto'
 }
 
+/**
+ * A provider's state as the choice reads it. A status the check has not
+ * answered yet is `checking`, and so is a missing CLI status: the check is
+ * still out. A missing ChatGPT status is different: the same service makes
+ * all three at once, so a map without it comes from where the direct
+ * connection does not exist (an older app, a caller that lists the CLIs
+ * alone), and it reads as signed out instead of holding `auto` for ever.
+ */
+export function subscriptionStateOf(
+  statuses: AiSubscriptionStatuses,
+  id: AiSubscriptionProviderId,
+): AiSubscriptionStatus['state'] {
+  return (
+    statuses[id]?.state ?? (id === 'chatgpt' || id === 'antigravity' ? 'signed-out' : 'checking')
+  )
+}
+
 const SUBSCRIPTION_BLOCKERS: Record<
   Exclude<AiSubscriptionStatus['state'], 'ready'>,
   { reason: AiNotConnectedReason; errorKind: AiRunErrorKind }
@@ -111,6 +150,7 @@ const SUBSCRIPTION_BLOCKERS: Record<
   'signed-out': { reason: 'signed-out', errorKind: 'signed-out' },
   metered: { reason: 'metered-not-accepted', errorKind: 'metered-not-accepted' },
   error: { reason: 'error', errorKind: 'not-connected' },
+  off: { reason: 'off-in-app', errorKind: 'off-in-app' },
 }
 
 /**
@@ -121,19 +161,31 @@ const SUBSCRIPTION_BLOCKERS: Record<
  *   A provider is passed over only once its status check has answered: while
  *   an earlier one is still `checking` (or has no status yet) nothing is
  *   decided, so a later provider is not picked just because it answered first.
+ *   A CLI turned off in this app is passed over at once: it is never checked.
  * - a selected provider is used when it can run (a ready subscription, an
  *   accepted metered login, a configured key provider) and is reported as not
  *   connected otherwise. There is no fallback from an explicit selection.
  */
+export interface SelectAiProviderOptions {
+  /**
+   * Subscription providers eligible for this surface. Defaults to every
+   * interactive subscription provider (`AI_SUBSCRIPTION_PROVIDERS`); batch and
+   * headless callers pass `AI_BATCH_SUBSCRIPTION_PROVIDERS`.
+   */
+  readonly subscriptions?: readonly AiSubscriptionProviderId[] | undefined
+}
+
 export function selectAiProvider(
-  settings: Pick<AiSettings, 'provider' | 'providers' | 'meteredAccepted'>,
+  settings: Pick<AiSettings, 'provider' | 'providers' | 'meteredAccepted' | 'subscriptionOff'>,
   statuses: AiSubscriptionStatuses,
+  options?: SelectAiProviderOptions,
 ): AiProviderChoice {
+  const allowedSubscriptions = options?.subscriptions ?? AI_SUBSCRIPTION_PROVIDERS
   const selection = providerSelectionOf(settings)
   if (selection === 'auto') {
     let ready: AiSubscriptionProviderId | undefined
-    for (const id of AI_SUBSCRIPTION_PROVIDERS) {
-      const state = statuses[id]?.state ?? 'checking'
+    for (const id of allowedSubscriptions) {
+      const state = subscriptionOffIn(settings, id) ? 'off' : subscriptionStateOf(statuses, id)
       if (state === 'ready') ready = id
       if (state === 'ready' || state === 'checking') break
     }
@@ -157,13 +209,25 @@ export function selectAiProvider(
           errorKind: 'not-connected',
         }
   }
+  if (!allowedSubscriptions.includes(selection)) {
+    return {
+      connected: false,
+      selection,
+      reason: 'no-subscription',
+      errorKind: 'not-connected',
+    }
+  }
   const status = statuses[selection]
   const connection = subscriptionConnection(settings, status)
   if (connection) {
     return { connected: true, provider: selection, metered: connection === 'metered' }
   }
-  // connection is null, so a present status is in a non-ready state
-  const state = !status || status.state === 'ready' ? 'checking' : status.state
+  // connection is null, so a present status is in a non-ready state, or the CLI is off
+  const state = subscriptionOffIn(settings, selection)
+    ? 'off'
+    : !status || status.state === 'ready'
+      ? 'checking'
+      : status.state
   return {
     connected: false,
     selection,

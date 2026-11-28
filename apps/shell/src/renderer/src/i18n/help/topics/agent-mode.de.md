@@ -4,7 +4,7 @@ Der Agent nimmt einen Ordner Ihrer Wahl als Projekt und führt darin Claude Code
 
 ## Bevor Sie beginnen
 
-- Ein Claude-Abonnement oder ein ChatGPT-Abonnement, verbunden unter **Einstellungen ▸ KI**. Wie das geht, erklärt das Thema „Abonnement-Verbindung“.
+- Das Programm Claude Code oder Codex, verbunden unter **Einstellungen ▸ KI** (angemeldet mit einem Claude-Abonnement oder einem ChatGPT-Tarif). Direkt in der App verbundenes ChatGPT wird vom Agenten nicht verwendet. Wie das geht, erklärt das Thema „Abonnement-Verbindung“.
 - Ein Ordner mit Ihren Unterlagen. Ein ganzes Laufwerk, Ihr gesamter Benutzerordner und Ordner mit Anmelde- oder App-Daten lassen sich nicht wählen.
 
 ## Eine Sitzung starten

@@ -1,20 +1,36 @@
-import { useEffect, useRef, useState } from 'react'
-import type { ReactNode } from 'react'
+import { Fragment, useEffect, useRef, useState } from 'react'
+import type { ReactNode, RefObject } from 'react'
 import type { Editor } from '@tiptap/core'
 import { useEditorState } from '@tiptap/react'
 import {
   AiMark,
   Dropdown,
+  type DropdownOption,
+  isSymbolFontFamily,
+  QuickPrintButton,
   RibbonCollapseButton,
   RibbonExpandButton,
   aiSubscriptionText,
   useDismissablePopover,
   useRibbonCollapse,
+  type PrintPrinterInfo,
+  type QuickPrintPrefStore,
 } from '@genoffice/ui'
 import { useI18n } from '../i18n/locale'
+import { SOURCE_VIEW_SHORTCUT } from '../source-view-key'
+import { editorFontChoices, useSystemFonts } from '../editor-font'
+import { useRibbonFold } from './ribbon-overflow'
+import { useAiVisible } from '../ai-visibility'
 import { MARKDOWN_THEME_IDS, type MarkdownTheme } from '../../shared/markdown-theme'
-import type { StringKey } from '../i18n/locale'
-import { uiOp, type BlockType, type ListKind, type StylableMark } from '../editor/ops'
+import { uiOp } from '../editor/ops'
+import {
+  applyBlockStyle,
+  BLOCK_STYLES,
+  BLOCK_STYLE_LABEL,
+  currentBlockStyle,
+  toggleList,
+  toggleStyle,
+} from '../editor/formatting'
 import {
   IconBullets,
   IconHr,
@@ -31,12 +47,15 @@ import {
   IconEyeOff,
   IconSourceCode,
   IconBacklinks,
+  IconBlockLink,
+  IconTag,
   IconGraph,
   IconSpellcheck,
   IconTable,
   IconTaskList,
   IconUndo,
   IconPalette,
+  IconMore,
 } from './icons'
 
 interface Props {
@@ -60,12 +79,19 @@ interface Props {
   outlineOpen: boolean
   onToggleOutline: () => void
   backlinksOpen: boolean
+  tagsOpen: boolean
+  onToggleTags: () => void
   onToggleBacklinks: () => void
   onOpenGraph: () => void
+  /** put a `[[Note#^id]]` for the block at the caret on the clipboard */
+  onCopyBlockLink: () => void
   spellcheck: boolean
   onToggleSpellcheck: () => void
   mdTheme: MarkdownTheme
   onMarkdownTheme: (theme: MarkdownTheme) => void
+  /** the block editor's view font; null is the default face */
+  editorFont: string | null
+  onEditorFont: (font: string | null) => void
   aiOpen: boolean
   onToggleAi: () => void
   onAiPreset: (instruction: string) => void
@@ -80,38 +106,13 @@ interface Props {
   /** withheld spans: right-click a selection to hide it from the model */
   redactEnabled: boolean
   onToggleRedact: (on: boolean) => void
+  onOpenPrintDialog: (initialDestination?: string) => void
+  onQuickPrint: (printerLabel: string) => void | Promise<void>
+  listPrinters?: () => Promise<readonly PrintPrinterInfo[]>
+  quickPrintPrefStore?: QuickPrintPrefStore
+  getPrintPageCount?: () => number | null | Promise<number | null>
+  onQuickPrintNotice?: (message: string) => void
 }
-
-type BlockStyle = 'paragraph' | 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6' | 'quote' | 'codeBlock'
-
-const STYLE_LABEL: Record<BlockStyle, StringKey> = {
-  paragraph: 'styleParagraph',
-  h1: 'styleH1',
-  h2: 'styleH2',
-  h3: 'styleH3',
-  h4: 'styleH4',
-  h5: 'styleH5',
-  h6: 'styleH6',
-  quote: 'styleQuote',
-  codeBlock: 'styleCodeBlock',
-}
-
-function applyBlockStyle(editor: Editor, style: BlockStyle): void {
-  const type: BlockType =
-    style === 'quote'
-      ? 'blockquote'
-      : style === 'paragraph' || style === 'codeBlock'
-        ? style
-        : 'heading'
-  const level = type === 'heading' ? Number(style.slice(1)) : undefined
-  uiOp(editor, { op: 'setBlockType', target: 'selection', type, ...(level ? { level } : {}) })
-}
-
-const toggleStyle = (editor: Editor | null, style: StylableMark) =>
-  editor && uiOp(editor, { op: 'setStyle', target: 'selection', style, mode: 'toggle' })
-
-const toggleList = (editor: Editor | null, list: ListKind) =>
-  editor && uiOp(editor, { op: 'toggleList', target: 'selection', list })
 
 /** doc + sparkle / pen + sparkle / lines + sparkle, same glyphs as the docs ribbon */
 function AiFeatureIcon({ kind }: { kind: 'summarize' | 'polish' | 'tidy' | 'mindmap' }) {
@@ -190,10 +191,12 @@ function ThemePicker({
   useDismissablePopover(open, () => setOpen(false), {
     inside: () => [wrapRef.current],
   })
+  useCloseOnEscape(open, () => setOpen(false), wrapRef)
   return (
     <div className="md-theme-wrap" ref={wrapRef}>
       <IconBtn
         title={t('mdThemeTitle')}
+        hasPopup
         active={open}
         disabled={disabled}
         onClick={() => setOpen((v) => !v)}
@@ -226,16 +229,105 @@ function ThemePicker({
   )
 }
 
+/** open ribbon menus, innermost last: Esc closes only the one opened last */
+const escapeClosers: (() => void)[] = []
+
+function closeTopOnEscape(e: KeyboardEvent) {
+  // a list that handles its own Esc (the font dropdown) stops it before the window
+  if (e.key !== 'Escape' || !escapeClosers.length) return
+  e.preventDefault()
+  escapeClosers[escapeClosers.length - 1]!()
+}
+
+/** Esc closes an open ribbon menu; focus inside it goes back to the button that opened it. */
+function useCloseOnEscape(
+  open: boolean,
+  close: () => void,
+  wrapRef: RefObject<HTMLElement | null>,
+) {
+  const closeRef = useRef(close)
+  closeRef.current = close
+  useEffect(() => {
+    if (!open) return
+    const closer = () => {
+      const wrap = wrapRef.current
+      if (wrap?.contains(document.activeElement)) {
+        wrap.querySelector<HTMLElement>(':scope > button')?.focus()
+      }
+      closeRef.current()
+    }
+    escapeClosers.push(closer)
+    if (escapeClosers.length === 1) window.addEventListener('keydown', closeTopOnEscape)
+    return () => {
+      escapeClosers.splice(escapeClosers.indexOf(closer), 1)
+      if (!escapeClosers.length) window.removeEventListener('keydown', closeTopOnEscape)
+    }
+  }, [open, wrapRef])
+}
+
+const DEFAULT_FONT = ''
+
+/** Each family is listed in its own face, except symbol fonts, whose names would read as pictographs. */
+function fontOption(family: string): DropdownOption {
+  return {
+    value: family,
+    label: family,
+    render: (
+      <span style={isSymbolFontFamily(family) ? undefined : { fontFamily: `"${family}"` }}>
+        {family}
+      </span>
+    ),
+  }
+}
+
+function EditorFontPicker({
+  font,
+  disabled,
+  onPick,
+}: {
+  font: string | null
+  disabled?: boolean
+  onPick: (font: string | null) => void
+}) {
+  const { t, lang } = useI18n()
+  const { families } = useSystemFonts()
+  const choices = editorFontChoices(lang, families)
+  // a remembered font this PC no longer lists still reads as itself
+  if (font && !choices.includes(font)) choices.unshift(font)
+  const options = [
+    { value: DEFAULT_FONT, label: t('editorFontDefault') },
+    ...choices.map(fontOption),
+  ]
+  return (
+    <Dropdown
+      className="rb-font"
+      value={font ?? DEFAULT_FONT}
+      options={options}
+      ariaLabel={t('editorFontTitle')}
+      tip={t('editorFontTitle')}
+      disabled={disabled}
+      onPick={(value) => onPick(value === DEFAULT_FONT ? null : value)}
+    />
+  )
+}
+
 function IconBtn({
   title,
   active,
   disabled,
+  shortcut,
+  hasPopup,
   onClick,
   children,
 }: {
   title: string
   active?: boolean
   disabled?: boolean
+  /** shown after the label in the ScreenTip; the accessible name stays `title` */
+  shortcut?: string
+  /** opens a menu rather than acting, so the More flyout stays open around it;
+   *  `active` then reads as the menu being open */
+  hasPopup?: boolean
   onClick: () => void
   children: ReactNode
 }) {
@@ -243,8 +335,10 @@ function IconBtn({
     <button
       type="button"
       className={`rb-btn${active ? ' active' : ''}`}
-      data-tip={title}
+      data-tip={shortcut ? `${title} (${shortcut})` : title}
       aria-label={title}
+      aria-haspopup={hasPopup ? 'menu' : undefined}
+      aria-expanded={hasPopup ? Boolean(active) : undefined}
       disabled={disabled}
       onMouseDown={(e) => e.preventDefault()}
       onClick={onClick}
@@ -273,12 +367,17 @@ export function Ribbon({
   outlineOpen,
   onToggleOutline,
   backlinksOpen,
+  tagsOpen,
+  onToggleTags,
   onToggleBacklinks,
   onOpenGraph,
+  onCopyBlockLink,
   spellcheck,
   onToggleSpellcheck,
   mdTheme,
   onMarkdownTheme,
+  editorFont,
+  onEditorFont,
   aiOpen,
   onToggleAi,
   onAiPreset,
@@ -286,8 +385,16 @@ export function Ribbon({
   sourceHistory,
   redactEnabled,
   onToggleRedact,
+  onOpenPrintDialog,
+  onQuickPrint,
+  listPrinters,
+  quickPrintPrefStore,
+  getPrintPageCount,
+  onQuickPrintNotice,
 }: Props) {
   const { t, lang } = useI18n()
+  // Settings › Editors and AI: while AI is off the band has no AI entry at all
+  const aiOn = useAiVisible()
   const collapse = useRibbonCollapse('mdapp.ribbonCollapsed', {
     collapse: t('ribbonCollapse'),
     expand: t('ribbonExpand'),
@@ -296,24 +403,22 @@ export function Ribbon({
   const [linkUrl, setLinkUrl] = useState('')
   const linkInputRef = useRef<HTMLInputElement>(null)
   const linkAnchorRef = useRef<HTMLSpanElement>(null)
+  const bodyRef = useRef<HTMLDivElement>(null)
+  const viewRowRef = useRef<HTMLDivElement>(null)
+  const moreRef = useRef<HTMLSpanElement>(null)
+  const [moreOpen, setMoreOpen] = useState(false)
 
   const state = useEditorState({
     editor,
     selector: ({ editor: e }) => {
       if (!e) return null
-      const style: BlockStyle = e.isActive('codeBlock')
-        ? 'codeBlock'
-        : e.isActive('blockquote')
-          ? 'quote'
-          : e.isActive('heading')
-            ? (`h${e.getAttributes('heading').level}` as BlockStyle)
-            : 'paragraph'
       return {
-        style,
+        style: currentBlockStyle(e),
         empty: e.isEmpty,
         bold: e.isActive('bold'),
         italic: e.isActive('italic'),
         strike: e.isActive('strike'),
+        highlight: e.isActive('highlight'),
         code: e.isActive('code'),
         link: e.isActive('link'),
         bullet: e.isActive('bulletList'),
@@ -332,6 +437,11 @@ export function Ribbon({
   useDismissablePopover(linkOpen, () => setLinkOpen(false), {
     inside: () => [linkAnchorRef.current],
   })
+
+  useDismissablePopover(moreOpen, () => setMoreOpen(false), {
+    inside: () => [moreRef.current],
+  })
+  useCloseOnEscape(moreOpen, () => setMoreOpen(false), moreRef)
 
   // editor-shaped commands stand down while the pane hides the selection;
   // Save As never does, and Find only while the source view hides its target
@@ -357,7 +467,7 @@ export function Ribbon({
   // polish/tidy act on the selection when one exists (read at click time; the
   // mousedown preventDefault below keeps the selection alive); summarize stays whole-doc
   const hasSelection = () => !(editor?.state.selection.empty ?? true)
-  const aiPresets = [
+  const allAiPresets = [
     { kind: 'summarize', btn: 'aiSummarizeBtn', prompt: () => t('aiSummarizePrompt') },
     {
       kind: 'polish',
@@ -371,6 +481,167 @@ export function Ribbon({
     },
     { kind: 'mindmap', btn: 'aiMindMapBtn', prompt: () => t('aiMindMapPrompt') },
   ] as const
+  const aiPresets: readonly (typeof allAiPresets)[number][] = aiOn ? allAiPresets : []
+
+  // the right-hand view tools, in row order; when the band runs out of room
+  // the trailing ones move behind the More button instead of off-screen
+  // (AI withholding is pinned after them, see below)
+  const viewTools: { key: string; node: ReactNode }[] = []
+  if (!sourceMode) {
+    viewTools.push(
+      {
+        key: 'source',
+        node: (
+          <IconBtn
+            title={t('sourceView')}
+            shortcut={SOURCE_VIEW_SHORTCUT}
+            active={sourceViewOpen}
+            disabled={disabled}
+            onClick={onToggleSource}
+          >
+            <IconSourceCode size={ICON} />
+          </IconBtn>
+        ),
+      },
+      {
+        key: 'properties',
+        node: (
+          <IconBtn
+            title={t('fmProperties')}
+            active={frontmatterOpen}
+            disabled={disabled}
+            onClick={onToggleFrontmatter}
+          >
+            <IconProperties size={ICON} />
+          </IconBtn>
+        ),
+      },
+      {
+        key: 'outline',
+        node: (
+          <IconBtn
+            title={t('outline')}
+            active={outlineOpen}
+            disabled={disabled}
+            onClick={onToggleOutline}
+          >
+            <IconOutlineView size={ICON} />
+          </IconBtn>
+        ),
+      },
+    )
+  }
+  viewTools.push({
+    key: 'theme',
+    node: (
+      <ThemePicker
+        mdTheme={mdTheme}
+        disabled={disabled || sourceMode || sourceViewOpen}
+        onPick={onMarkdownTheme}
+      />
+    ),
+  })
+  if (!sourceMode) {
+    viewTools.push(
+      {
+        key: 'font',
+        node: (
+          <EditorFontPicker
+            font={editorFont}
+            disabled={disabled || sourceViewOpen}
+            onPick={onEditorFont}
+          />
+        ),
+      },
+      {
+        key: 'backlinks',
+        node: (
+          <IconBtn
+            title={t('backlinks')}
+            active={backlinksOpen}
+            disabled={disabled}
+            onClick={onToggleBacklinks}
+          >
+            <IconBacklinks size={ICON} />
+          </IconBtn>
+        ),
+      },
+      {
+        key: 'tags',
+        node: (
+          <IconBtn title={t('tags')} active={tagsOpen} disabled={disabled} onClick={onToggleTags}>
+            <IconTag size={ICON} />
+          </IconBtn>
+        ),
+      },
+      {
+        key: 'graph',
+        node: (
+          <IconBtn title={t('graph')} disabled={disabled} onClick={onOpenGraph}>
+            <IconGraph size={ICON} />
+          </IconBtn>
+        ),
+      },
+    )
+  }
+  viewTools.push({
+    key: 'spellcheck',
+    node: (
+      <IconBtn
+        title={t('spellcheck')}
+        active={spellcheck}
+        disabled={disabled}
+        onClick={onToggleSpellcheck}
+      >
+        <IconSpellcheck size={ICON} />
+      </IconBtn>
+    ),
+  })
+  // with every view tool folded, the AI entries drop their labels; past that the
+  // band closes up, the style box narrows and the AI presets join the view tools
+  const aiEntryKeys = aiOn ? ['assistant', ...aiPresets.map((p) => p.kind)] : []
+  const fold = useRibbonFold(
+    bodyRef,
+    viewRowRef,
+    {
+      fold: viewTools.map((v) => v.key),
+      label: aiEntryKeys,
+      style: sourceMode ? [] : ['style'],
+      aiFold: aiPresets.map((p) => p.kind),
+    },
+    lang,
+  )
+  const isCompact = (key: string) => aiEntryKeys.indexOf(key) >= aiEntryKeys.length - fold.label
+  const inlineTools = viewTools.slice(0, viewTools.length - fold.fold)
+  const foldedTools = viewTools.slice(viewTools.length - fold.fold)
+  const inlinePresets = aiPresets.slice(0, aiPresets.length - fold.aiFold)
+  const foldedPresets = aiPresets.slice(aiPresets.length - fold.aiFold)
+  const foldedCount = foldedTools.length + foldedPresets.length
+  const styleLabel = t(BLOCK_STYLE_LABEL[state?.style ?? 'paragraph'])
+
+  const presetButton = ({ kind, btn, prompt }: (typeof aiPresets)[number]) => (
+    <button
+      key={kind}
+      type="button"
+      className={`rb-big ai-entry${isCompact(kind) ? ' compact' : ''}`}
+      data-fold-key={kind}
+      data-tip={t(btn)}
+      disabled={off || state?.empty}
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={() => onAiPreset(prompt())}
+    >
+      <span className="rb-big-icon">
+        <span className="ai-feature-icon" aria-hidden="true">
+          <AiFeatureIcon kind={kind} />
+        </span>
+      </span>
+      <span>{t(btn)}</span>
+    </button>
+  )
+
+  useEffect(() => {
+    if (!foldedCount) setMoreOpen(false)
+  }, [foldedCount])
 
   return (
     <div className={`ribbon ${collapse.rootClass}`} ref={collapse.rootRef}>
@@ -435,6 +706,16 @@ export function Ribbon({
         >
           <IconSearch size={16} />
         </button>
+        <QuickPrintButton
+          lang={lang}
+          disabled={disabled}
+          listPrinters={listPrinters}
+          prefStore={quickPrintPrefStore}
+          getPageCount={getPrintPageCount}
+          onOpenDialog={onOpenPrintDialog}
+          onQuickPrint={onQuickPrint}
+          onNoPrinter={onQuickPrintNotice}
+        />
         <label className={`autosave-toggle${autoSave ? ' on' : ''}`} data-tip={t('autoSaveTip')}>
           <span className="autosave-knob" />
           <span className="autosave-text">{t('autoSave')}</span>
@@ -447,55 +728,44 @@ export function Ribbon({
         <RibbonExpandButton state={collapse} label={t('ribbonExpand')} />
       </div>
 
-      <div className="ribbon-body" data-ribbon-body="">
-        <div className="ribbon-group">
-          <div className="ribbon-group-items">
-            <button
-              type="button"
-              className={`rb-big ai-entry${aiOpen ? ' active' : ''}`}
-              data-tip={t('aiOpenAssistant')}
-              disabled={disabled}
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={onToggleAi}
-            >
-              <span className="rb-big-icon">
-                <AiMark size={26} />
-              </span>
-              <span>{aiSubscriptionText(lang, 'aiAssistant')}</span>
-            </button>
-            {aiPresets.map(({ kind, btn, prompt }) => (
-              <button
-                key={kind}
-                type="button"
-                className="rb-big ai-entry"
-                data-tip={t(btn)}
-                disabled={off || state?.empty}
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => onAiPreset(prompt())}
-              >
-                <span className="rb-big-icon">
-                  <span className="ai-feature-icon" aria-hidden="true">
-                    <AiFeatureIcon kind={kind} />
+      <div className={`ribbon-body${fold.tight ? ' tight' : ''}`} data-ribbon-body="" ref={bodyRef}>
+        {aiOn && (
+          <>
+            <div className="ribbon-group">
+              <div className="ribbon-group-items">
+                <button
+                  type="button"
+                  className={`rb-big ai-entry${aiOpen ? ' active' : ''}${isCompact('assistant') ? ' compact' : ''}`}
+                  data-tip={t('aiOpenAssistant')}
+                  data-fold-key="assistant"
+                  disabled={disabled}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={onToggleAi}
+                >
+                  <span className="rb-big-icon">
+                    <AiMark size={26} />
                   </span>
-                </span>
-                <span>{t(btn)}</span>
-              </button>
-            ))}
-          </div>
-        </div>
+                  <span>{aiSubscriptionText(lang, 'aiAssistant')}</span>
+                </button>
+                {inlinePresets.map(presetButton)}
+              </div>
+            </div>
 
-        <div className="rb-sep" />
+            <div className="rb-sep" />
+          </>
+        )}
 
         {!sourceMode && (
           <div className="ribbon-group">
-            <div className="ribbon-group-items">
+            <div className="ribbon-group-items" data-fold-key="style">
               <Dropdown
-                className="rb-style"
+                className={`rb-style${fold.style ? ' narrow' : ''}`}
                 value={state?.style ?? 'paragraph'}
+                tip={fold.style ? styleLabel : undefined}
                 disabled={off}
-                options={(Object.keys(STYLE_LABEL) as BlockStyle[]).map((s) => ({
+                options={BLOCK_STYLES.map((s) => ({
                   value: s,
-                  label: t(STYLE_LABEL[s]),
+                  label: t(BLOCK_STYLE_LABEL[s]),
                 }))}
                 onPick={(s) => editor && applyBlockStyle(editor, s)}
               />
@@ -533,6 +803,14 @@ export function Ribbon({
                 <s>ab</s>
               </IconBtn>
               <IconBtn
+                title={t('highlight')}
+                active={state?.highlight}
+                disabled={off}
+                onClick={() => toggleStyle(editor, 'highlight')}
+              >
+                <mark>ab</mark>
+              </IconBtn>
+              <IconBtn
                 title={t('inlineCode')}
                 active={state?.code}
                 disabled={off}
@@ -562,6 +840,9 @@ export function Ribbon({
                   </span>
                 )}
               </span>
+              <IconBtn title={t('blockLink')} disabled={off} onClick={onCopyBlockLink}>
+                <IconBlockLink size={ICON} />
+              </IconBtn>
             </div>
           </div>
         )}
@@ -637,66 +918,43 @@ export function Ribbon({
         <div className="rb-spacer" />
 
         <div className="ribbon-group">
-          <div className="ribbon-group-items">
-            {!sourceMode && (
-              <IconBtn
-                title={t('sourceView')}
-                active={sourceViewOpen}
-                disabled={disabled}
-                onClick={onToggleSource}
-              >
-                <IconSourceCode size={ICON} />
-              </IconBtn>
+          <div className="ribbon-group-items" ref={viewRowRef}>
+            {inlineTools.map(({ key, node }) => (
+              <Fragment key={key}>{node}</Fragment>
+            ))}
+            {foldedCount > 0 && (
+              <span className="rb-more-wrap" ref={moreRef}>
+                <IconBtn
+                  title={t('ribbonMore')}
+                  hasPopup
+                  active={moreOpen}
+                  onClick={() => setMoreOpen((v) => !v)}
+                >
+                  <IconMore size={ICON} />
+                </IconBtn>
+                {moreOpen && (
+                  <div
+                    className="rb-more-pop"
+                    role="group"
+                    aria-label={t('ribbonMore')}
+                    onClick={(e) => {
+                      // a command closes the flyout; a menu trigger keeps it as the menu's anchor
+                      const btn = (e.target as Element).closest('button')
+                      if (btn && !btn.hasAttribute('aria-haspopup')) setMoreOpen(false)
+                    }}
+                  >
+                    {foldedPresets.map(presetButton)}
+                    {foldedPresets.length > 0 && <div className="rb-sep" />}
+                    {foldedTools.map(({ key, node }) => (
+                      <Fragment key={key}>{node}</Fragment>
+                    ))}
+                  </div>
+                )}
+              </span>
             )}
-            {!sourceMode && (
-              <IconBtn
-                title={t('fmProperties')}
-                active={frontmatterOpen}
-                disabled={disabled}
-                onClick={onToggleFrontmatter}
-              >
-                <IconProperties size={ICON} />
-              </IconBtn>
-            )}
-            {!sourceMode && (
-              <IconBtn
-                title={t('outline')}
-                active={outlineOpen}
-                disabled={disabled}
-                onClick={onToggleOutline}
-              >
-                <IconOutlineView size={ICON} />
-              </IconBtn>
-            )}
-            <ThemePicker
-              mdTheme={mdTheme}
-              disabled={disabled || sourceMode || sourceViewOpen}
-              onPick={onMarkdownTheme}
-            />
-            {!sourceMode && (
-              <IconBtn
-                title={t('backlinks')}
-                active={backlinksOpen}
-                disabled={disabled}
-                onClick={onToggleBacklinks}
-              >
-                <IconBacklinks size={ICON} />
-              </IconBtn>
-            )}
-            {!sourceMode && (
-              <IconBtn title={t('graph')} disabled={disabled} onClick={onOpenGraph}>
-                <IconGraph size={ICON} />
-              </IconBtn>
-            )}
-            <IconBtn
-              title={t('spellcheck')}
-              active={spellcheck}
-              disabled={disabled}
-              onClick={onToggleSpellcheck}
-            >
-              <IconSpellcheck size={ICON} />
-            </IconBtn>
-            {!sourceMode && (
+            {/* never folds: whether withholding is on decides what the model is
+                sent, so its state stays in sight at every width */}
+            {!sourceMode && aiOn && (
               <IconBtn
                 title={t('redactEnable')}
                 active={redactEnabled}

@@ -12,13 +12,22 @@ L’editor di e-book apre i libri EPUB (`.epub`) in una scheda. Puoi leggere il 
 
 ## Leggere
 
-- Il riquadro **Sommario** a sinistra mostra l’indice del libro. Fai clic su una voce per andarci. Un libro che non ne ha uno riceve un elenco dei suoi capitoli.
+- Il riquadro **Sommario** a sinistra mostra l’indice del libro. Fai clic su una voce per andarci. Un libro che non ne ha uno riceve un elenco dei suoi capitoli. Trascina il bordo interno del riquadro per cambiarne la larghezza; fai doppio clic sul bordo per tornare alla larghezza originale. Il riquadro di ricerca usa la stessa larghezza.
 - Ogni capitolo scorre in alto e in basso. Continua a scorrere oltre la fine di un capitolo per passare al successivo, o oltre il suo inizio per tornare indietro. La riga di stato mostra in quale capitolo ti trovi.
 - La scheda **Visualizza** cambia la dimensione del testo e l’interlinea e attiva o disattiva la **Vista scura**. Queste impostazioni cambiano solo lo schermo, mai il libro, e valgono per tutti i libri.
 - Il punto in cui hai smesso di leggere viene ricordato per ogni file, nella cartella dei dati dell’app e non nel libro.
 - **Trova nel libro** (Ctrl+F) cerca in tutti i capitoli. Fai clic su un risultato per andarci.
 - Un collegamento interno al libro porta al punto indicato. I link web ed e-mail si aprono nel browser predefinito; gli altri indirizzi non vengono aperti.
 - Gli script del libro non vengono mai eseguiti e nulla viene caricato da internet. Audio e video non vengono riprodotti.
+
+## Anteprima
+
+- Fai clic su **Anteprima** nella scheda **Home** o **Visualizza** per vedere il libro a pagine, come lo mostra un e-reader. L’anteprima si apre nel punto in cui stai leggendo.
+- Nella barra in alto scegli lo schermo (**E-reader**, **Telefono**, **Tablet** o **Adatta alla finestra**), l’orientamento orizzontale, la dimensione del testo e lo sfondo (bianco, seppia o scuro). Uno schermo largo in orizzontale mostra due pagine affiancate. Queste impostazioni cambiano solo l’anteprima, mai il libro.
+- Sfoglia le pagine con i tasti freccia, Pag su e Pag giù, la barra spaziatrice, la rotellina del mouse o i pulsanti ai due lati. Dopo l’ultima pagina di un capitolo si passa al capitolo successivo. Il sommario e i link nel libro portano l’anteprima in quel punto.
+- Nell’anteprima il testo non si può modificare. Quando l’IA modifica il libro o annulli una modifica, l’anteprima si aggiorna.
+- Fai clic su **Chiudi anteprima** o premi Esc per tornare a modificare nel punto che l’anteprima mostrava.
+- L’impaginazione cambia un po’ tra le app delle librerie e i dispositivi: considera l’anteprima un’approssimazione fedele.
 
 ## Modificare il testo
 
@@ -38,7 +47,7 @@ L’editor di e-book apre i libri EPUB (`.epub`) in una scheda. Puoi leggere il 
 ## Pannello IA
 
 - Fai domande sul libro, fatti riassumere un capitolo, oppure fanne correggere o riscrivere il testo. L’IA legge l’indice e i capitoli del libro e vi trova il testo.
-- Le modifiche dell’IA compaiono subito, e un solo annullamento (Ctrl+Z) ripristina tutto ciò che ha cambiato in quel turno. L’IA può mettere il testo in grassetto o in corsivo, ma non può aggiungere immagini, tabelle o capitoli.
+- Le modifiche dell’IA compaiono subito, i blocchi modificati vengono segnati in giallo, e **Annulla queste modifiche**, nella scheda sotto la risposta, ripristina tutto ciò che ha cambiato in quel turno (purché il libro non sia stato modificato dopo). L’IA può mettere il testo in grassetto o in corsivo, ma non può aggiungere immagini, tabelle o capitoli.
 - Il testo del libro è materiale per l’IA, non istruzioni da seguire.
 - Chiedi «Traduci questo libro in francese» e l’IA apre la finestra di traduzione con quella lingua già impostata. Non viene inviato nulla finché non premi **Avvia**.
 - I libri EPUB si possono anche allegare nel pannello IA degli altri editor, scegliere con `@` e trovare con la ricerca dei file nella Home.
@@ -58,11 +67,12 @@ L’editor di e-book apre i libri EPUB (`.epub`) in una scheda. Puoi leggere il 
 - Quanto è già stato tradotto viene conservato. Se ti fermi, scegli **Esporta quanto tradotto finora** (il resto rimane nella lingua originale) oppure **Continua più tardi**. Quando apri un libro con una traduzione non finita, GenOffice propone di proseguirla. **Traduci di nuovo dall’inizio** elimina prima la traduzione conservata per quella lingua.
 - Le traduzioni conservate rientrano in Impostazioni ▸ Generale ▸ **Risultati IA salvati**, insieme a quelle dei documenti PDF, e **Elimina tutto** cancella anche queste.
 - La stessa traduzione si può avviare anche dalla [riga di comando](help://cli) con `ieumoffice epub translate`.
+- Scegli **Linguaggio semplice** in **Modalità** per riscrivere il libro con parole semplici nella lingua scelta. I risultati sono un **Libro in linguaggio semplice** e **Originale seguito dal linguaggio semplice**; il titolo riporta in quella lingua l’indicazione della versione semplice, il nome del file la riporta nella lingua dell’interfaccia, così da distinguersi da quello di una traduzione. La lingua all’inizio è quella dell’interfaccia e può essere anche quella del libro. La versione semplice è conservata a parte rispetto alle traduzioni, la ripresa viene proposta separatamente e i comandi da terminale non la creano.
 
 ## Non ancora supportato
 
 - Aggiungere, eliminare o riordinare capitoli; cambiare titolo, autore o copertina; inserire immagini o tabelle; trasformare un paragrafo in un titolo o in un elenco.
 - Modificare o tradurre libri a layout fisso, e aprire libri protetti dalla copia.
-- Sfogliare le pagine come in un libro stampato, e creare un nuovo libro vuoto.
+- Creare un nuovo libro vuoto.
 - Confrontare l’originale e la traduzione fianco a fianco nell’editor. Apri invece il libro bilingue, e correggi il libro tradotto come qualsiasi altro libro.
 - Nascondere all’IA parti di un libro.

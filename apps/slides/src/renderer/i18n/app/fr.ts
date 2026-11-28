@@ -1,6 +1,8 @@
 import type { zh } from './zh'
 
 export const fr = {
+  appLegacyPptImported:
+    'Le fichier .ppt a été ouvert comme copie .pptx convertie. L’original reste inchangé ; l’enregistrement crée un nouveau fichier .pptx. Les notes du présentateur et les animations ne sont pas reprises.',
   redactMenuLabel: 'Masquer la sélection à l’IA',
   redactDialogDesc:
     'La sélection reste dans le document et dans le fichier ; le modèle ne voit que le marqueur ci-dessous. Donnez-lui un nom pour qu’il sache ce qu’il désigne.',
@@ -180,6 +182,9 @@ export const fr = {
   appPrintLandscape: 'Paysage',
   appPrintFrame: 'Encadrer les diapositives',
   appPrintHidden: 'Imprimer les diapositives masquées',
+  appPrintRangeSelected: 'Diapositives sélectionnées',
+  appPrintLayoutBlocked:
+    'Les documents et les pages de notes s’impriment à une page par feuille. Pour disposer les pages, choisissez Diapositives pleine page.',
   appPrintPageCount: '{n} pages',
   appPrintNoPages: 'Aucune diapositive à imprimer',
   appPrintRendering: 'Génération de l’aperçu…',
@@ -190,6 +195,7 @@ export const fr = {
   appCtxSendToBack: 'Mettre à l’arrière-plan',
   appCtxBringForward: 'Avancer',
   appCtxSendBackward: 'Reculer',
+  appCtxRotate: 'Rotation',
   appCtxRotateLeft90: 'Faire pivoter de 90° à gauche',
   appCtxRotateRight90: 'Faire pivoter de 90° à droite',
   appCtxFlipH: 'Retourner horizontalement',
@@ -229,6 +235,8 @@ export const fr = {
   appMasterFillNone: 'Aucun remplissage',
   appMasterStroke: 'Couleur du contour…',
   appMasterStrokeNone: 'Aucun contour',
+  appMasterInsertTextBox: 'Zone de texte',
+  appMasterInsertShape: 'Formes',
   appStartOpening: 'Ouverture…',
   appReadingSlideTitle:
     'Cliquez pour passer à la diapositive suivante (Échap pour quitter le mode Lecture)',
@@ -267,4 +275,13 @@ export const fr = {
   appStatusSummaryZoomInserted: 'Diapositive de zoom de synthèse insérée avec {count} vignettes',
   appSectionSummary: 'Section de synthèse',
   appSectionN: 'Section {n}',
+  appStatusAnimPainterNone: "L'élément sélectionné n'a aucune animation",
+  appStatusAnimPainterOnce:
+    "Cliquez sur l'élément auquel appliquer les animations ; double-cliquez sur le bouton pour le mode continu",
+  appStatusAnimPainterContinuous:
+    "Mode continu « Reproduire l'animation » ; appuyez sur Échap pour quitter",
+  appStatusAnimPainted: 'Animations appliquées',
+  appStatusMergeUnsupported:
+    'Impossible de fusionner ces formes (les traits, images, tableaux, graphiques et certaines formes sont exclus)',
+  appStatusMergeEmpty: 'Il ne reste rien après la fusion (les formes ne se chevauchent pas)',
 } satisfies Record<keyof typeof zh, string>

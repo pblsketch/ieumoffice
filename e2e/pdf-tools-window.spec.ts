@@ -144,12 +144,12 @@ test.describe('PDF tools window', () => {
       // merge: an unreadable pick is named and left out, the order can change
       await tools.getByRole('button', { name: /Merge PDF/ }).click()
       await queueDialogs(app, { open: [[a, bad], [b]], save: [merged] })
-      await tools.getByRole('button', { name: 'Choose PDF', exact: true }).click()
+      await tools.getByRole('button', { name: 'Choose files', exact: true }).click()
       await expect(tools.getByText('bad.pdf: could not be read as a PDF.')).toBeVisible()
       await expect(tools.locator('.pt-item')).toHaveCount(1)
       const run = tools.getByRole('button', { name: 'Save as new file' })
       await expect(run).toBeDisabled()
-      await tools.getByRole('button', { name: 'Add more PDFs' }).click()
+      await tools.getByRole('button', { name: 'Add more files' }).click()
       await expect(tools.locator('.pt-item')).toHaveCount(2)
       await tools.locator('.pt-item').nth(1).getByRole('button', { name: 'Move up' }).click()
       await expect(tools.locator('.pt-item-name').first()).toHaveText('b.pdf')
@@ -174,12 +174,14 @@ test.describe('PDF tools window', () => {
         tools.getByText('You cannot save over a source file. Choose another name.'),
       ).toBeVisible()
 
-      // split: one file per page, into a folder the dialog picks
+      // split: one file per page (By pages tab, without subfolder), into a folder the dialog picks
       await tools.getByRole('button', { name: 'All tools' }).click()
       await tools.getByRole('button', { name: /Split PDF/ }).click()
       await queueDialogs(app, { open: [[a], [parts]] })
       await tools.getByRole('button', { name: 'Choose PDF', exact: true }).click()
       await expect(tools.getByText('3 pages', { exact: false })).toBeVisible()
+      await tools.getByRole('tab', { name: 'By pages' }).click()
+      await tools.getByRole('checkbox', { name: /Save into a new subfolder/ }).uncheck()
       await tools.getByRole('button', { name: 'Save as new file' }).click()
       await expect(tools.getByText('Made 3 files.')).toBeVisible()
       for (const n of [1, 2, 3]) {
@@ -289,7 +291,8 @@ test.describe('PDF tools window', () => {
         .drawText('Revised page', { x: 20, y: 200, size: 14, font: revisedFont })
       await writeFile(join(dir, 'revised.pdf'), await revised.save({ useObjectStreams: false }))
       await queueDialogs(app, { open: [[join(dir, 'revised.pdf')]], save: [reportText] })
-      await tools.getByRole('button', { name: 'Choose another PDF' }).click()
+      await tools.locator('.pt-item').first().getByRole('button', { name: 'Remove' }).click()
+      await tools.getByRole('button', { name: 'Choose PDF', exact: true }).click()
       await tools.getByRole('button', { name: 'Save as new file' }).click()
       await expect(tools.getByText('Made a new file: report.txt')).toBeVisible()
       await tools.getByRole('button', { name: 'Open in a tab' }).click()
@@ -298,7 +301,8 @@ test.describe('PDF tools window', () => {
 
       // a PDF without any text is named, and nothing is asked or written
       await queueDialogs(app, { open: [[scan]], save: [join(dir, 'scan.txt')] })
-      await tools.getByRole('button', { name: 'Choose another PDF' }).click()
+      await tools.locator('.pt-item').first().getByRole('button', { name: 'Remove' }).click()
+      await tools.getByRole('button', { name: 'Choose PDF', exact: true }).click()
       await tools.getByRole('button', { name: 'Save as new file' }).click()
       await expect(tools.getByText(/No text was found in this PDF/)).toBeVisible()
       expect(existsSync(join(dir, 'scan.txt'))).toBe(false)
@@ -447,7 +451,8 @@ test.describe('PDF tools window', () => {
       // a PDF without any of the chosen kinds is named, and no file is written
       await tools.getByRole('checkbox', { name: 'Comments' }).check()
       await queueDialogs(app, { open: [[plain]], save: [join(dir, 'plain-clean.pdf')] })
-      await tools.getByRole('button', { name: 'Choose another PDF' }).click()
+      await tools.locator('.pt-item').first().getByRole('button', { name: 'Remove' }).click()
+      await tools.getByRole('button', { name: 'Choose PDF', exact: true }).click()
       await tools.getByRole('button', { name: 'Save as new file' }).click()
       await expect(tools.getByText('There are no annotations of the chosen kinds.')).toBeVisible()
       expect(existsSync(join(dir, 'plain-clean.pdf'))).toBe(false)

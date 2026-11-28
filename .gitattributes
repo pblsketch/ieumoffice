@@ -16,5 +16,6 @@
 *.woff binary
 *.woff2 binary
 
-# Template font license texts ship byte-identical to the distributors' files.
+# Template and UI font license texts ship byte-identical to the distributors' files.
 packages/ui/template-fonts/*.txt -text
+packages/ui/ui-fonts/*.txt -text

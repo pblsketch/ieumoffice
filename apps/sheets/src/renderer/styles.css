@@ -88,7 +88,7 @@
   --sheets-shadow-badge: 0 2px 6px rgb(74 92 255 / 25%);
   --sheets-shadow-slicer: 0 6px 18px rgb(15 40 30 / 14%);
   --sheets-shadow-toast: 0 4px 16px rgb(0 0 0 / 18%);
-  --sheets-shadow-composer: 0 6px 30px rgb(0 0 0 / 8%);
+  --sheets-shadow-composer: 0 1px 3px rgb(0 0 0 / 8%);
 
   /* Same stack as docs/slides — an Inter fallback here made ribbon labels
      render in a different face than the other apps on machines with Inter */
@@ -105,6 +105,8 @@
 
 [data-theme='dark'] {
   --accent: #34a853;
+  /* the dark accent is light: white on it does not read */
+  --sheets-on-accent: #141414;
   --accent-dark: #58b380;
   --accent-soft: #1d3328;
   --surface-hover: #333;
@@ -137,6 +139,7 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']):not([data-theme='dark']) {
     --accent: #34a853;
+    --sheets-on-accent: #141414;
     --accent-dark: #58b380;
     --accent-soft: #1d3328;
     --surface-hover: #333;
@@ -178,7 +181,7 @@
 }
 
 :root:lang(ko) {
-  --ui-cjk: 'Apple SD Gothic Neo', 'Malgun Gothic';
+  --ui-cjk: 'UI Pretendard', 'Apple SD Gothic Neo', 'Malgun Gothic';
 }
 
 :root:lang(zh-TW) {
@@ -1426,6 +1429,77 @@ html.genoffice-popover-open .ribbon-tabs {
   color: inherit;
 }
 
+/* Tight band (ribbon-fit.ts): set only while the band would otherwise scroll,
+ * before any group drops its labels. Where everything fits none of this
+ * applies, so the band keeps the metrics it shares with Docs and Slides. The
+ * compact density (⌥⌘K) keeps its own tuned metrics. Only horizontal values
+ * change, so the 80px band height is untouched. */
+.excel-header:not(.ribbon-compact) .ribbon.ribbon-tight {
+  gap: 0;
+  padding-inline: 6px;
+}
+
+.excel-header:not(.ribbon-compact) .ribbon-tight > .ribbon-group:not(:has(.ai-entry)) {
+  padding-inline: 5px;
+}
+
+.excel-header:not(.ribbon-compact) .ribbon-tight .ribbon-tool.large,
+.excel-header:not(.ribbon-compact) .ribbon-tight .ribbon-tool.accent {
+  min-width: 0;
+  padding-inline: 5px;
+}
+
+.excel-header:not(.ribbon-compact) .ribbon-tight .select-like:not(.compact) {
+  min-width: 88px;
+}
+
+.excel-header:not(.ribbon-compact) .ribbon-tight .inline-tools {
+  gap: 2px;
+}
+
+.excel-header:not(.ribbon-compact) .ribbon-tight .inline-tools > button:not(.labeled) {
+  width: 24px;
+  min-width: 24px;
+}
+
+.excel-header:not(.ribbon-compact) .ribbon-tight .inline-tools button.labeled {
+  gap: 4px;
+  padding-inline: 5px;
+}
+
+.excel-header:not(.ribbon-compact) .ribbon-tight .menu-select > .select-like.compact {
+  gap: 3px;
+  padding-inline: 5px;
+}
+
+/* Adaptive fit, second step: a group that still does not fit shows its small
+ * labeled buttons and menu triggers as icons only. font-size 0 takes the
+ * label text out without touching the markup; the glyphs are px-sized SVGs,
+ * and text glyphs get their size back below. data-tip keeps every name on
+ * hover.
+ *
+ * Only controls that carry an icon are compressed: the icon is what is left
+ * to recognise them by. A trigger that shows a value instead of a command
+ * name (Scale to Fit Width / Height: "Automatic", "1 page") has no icon and
+ * keeps its text, and so does a styles row that holds such a dropdown (an
+ * invisible cover dropdown, as on Format as Table, does not count). */
+.ribbon-group.icons-only .inline-tools button.labeled:has(.tool-symbol),
+.ribbon-group.icons-only .menu-select > .select-like.compact:has(.tool-symbol) .menu-select-value,
+.ribbon-group.icons-only
+  .styles-row:has(.tool-symbol):not(:has(.menu-select:not(.menu-select-cover))) {
+  gap: 0;
+  font-size: 0;
+}
+
+.ribbon-group.icons-only
+  .styles-row:has(.tool-symbol):not(:has(.menu-select:not(.menu-select-cover))) {
+  gap: 2px;
+}
+
+.ribbon-group.icons-only .tool-symbol {
+  font-size: 15px;
+}
+
 .menu-select .menu-select-value {
   display: inline;
   min-width: 0;
@@ -1685,6 +1759,31 @@ button.check-item:hover {
   transition: grid-template-columns 180ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+/* The editor canvas handles overflow; this grip changes only the bar height. */
+#univer-container [data-u-comp='formula-bar'] {
+  position: relative;
+  flex-shrink: 0;
+  transition: none;
+}
+
+.formula-bar-resize-handle {
+  position: absolute;
+  inset-inline: 0;
+  bottom: 0;
+  height: 5px;
+  z-index: 10;
+  cursor: ns-resize;
+  touch-action: none;
+  user-select: none;
+  pointer-events: auto;
+}
+
+.formula-bar-resize-handle:hover,
+.formula-bar-resize-handle:focus-visible,
+.formula-bar-resize-handle.dragging {
+  background: var(--accent);
+}
+
 /* formula-bar row + spreadsheet */
 .sheet-main {
   display: grid;
@@ -1791,10 +1890,32 @@ button.check-item:hover {
 .status-msg {
   display: block;
   min-width: 0;
-  opacity: 0.85;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Formula view (sheetView/@showFormulas) is a per-sheet state that a save
+ * persists, so a sheet can open showing formulas instead of values. The flag
+ * keeps saying so for as long as the sheet is in that mode: the one-off toast
+ * that announced the switch is gone long before anyone notices. */
+.status-flag {
+  flex: none;
+  padding: 0 6px;
+  border-radius: var(--radius-small);
+  font-weight: 600;
+  color: var(--text-primary);
+  background: var(--sheets-chip-bg);
+  white-space: nowrap;
+}
+
+/* The ODS line is a sentence, not a short chip: let it shrink with an ellipsis
+ * so the transient message keeps room at a large interface scale. */
+.status-ods {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .status-right {
@@ -1902,6 +2023,96 @@ button.check-item:hover {
   background: var(--hover);
 }
 
+/* the quick-access row's customize trigger: a caret, narrower than a button */
+.ribbon-tabs .qa-btn.qa-customize {
+  width: 18px;
+}
+
+/* With more buttons than the default four, a window near the 720px minimum
+   cannot hold the row, the auto-save label and every tab: the last tab (and a
+   contextual one after it) slid past the edge. The label goes and the tabs
+   tighten, so ten buttons and a contextual tab fit at the minimum width. */
+@media (max-width: 840px) {
+  .ribbon-tabs.qa-crowded .autosave-text {
+    display: none;
+  }
+
+  .ribbon-tabs.qa-crowded > button:not(.qa-btn) {
+    padding-left: 6px;
+    padding-right: 6px;
+  }
+}
+
+.quick-access-menu {
+  width: 290px;
+  overflow-y: auto;
+}
+
+.quick-access-menu hr {
+  width: 100%;
+  margin: 4px 0;
+  border: none;
+  border-top: 1px solid var(--border);
+}
+
+.quick-access-hint {
+  margin: 0;
+  padding: 4px 8px 6px;
+  color: var(--text-dim);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.quick-access-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.quick-access-row > button:first-child {
+  flex: 1;
+  min-width: 0;
+}
+
+.quick-access-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.quick-access-menu kbd {
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 11px;
+}
+
+.quick-access-menu button:disabled {
+  color: var(--text-dim);
+  cursor: default;
+}
+
+.quick-access-menu button:disabled:hover {
+  background: transparent;
+}
+
+.quick-access-menu .quick-access-move {
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+}
+
+.quick-access-menu .quick-access-move svg {
+  width: 14px;
+  height: 14px;
+}
+
+.quick-access-menu .quick-access-reset {
+  padding-left: 29px;
+}
+
 .zoom-dialog .zoom-choices {
   display: flex;
   flex-direction: column;
@@ -1931,6 +2142,20 @@ button.check-item:hover {
 
 .app-shell.copilot-collapsed .sheet-body {
   grid-template-columns: 34px minmax(0, 1fr);
+}
+
+/* "show the AI sidebar" off and the panel closed: AiChatPanel renders nothing,
+ * so the body must not keep the panel's track either. Left in place, the
+ * workbook is laid out in the collapsed 34px track and the rest of the body
+ * stays blank (docs/slides drop their dock's width for the same state). */
+.app-shell .sheet-body.ai-dock-off {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* Presentation hides the panel with `display: none`; its track has to go too,
+ * or the grid the show is meant to fill starts 360px in. */
+.app-shell.sheet-presenting .sheet-body {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .sheet-main {
@@ -1976,129 +2201,6 @@ button.check-item:hover {
   left: 0;
   /* Above Univer's grid canvas (z 8), below floating chrome (z 20+). */
   z-index: 9;
-}
-
-/* Floating selection Ask AI entry and send-now popover (docs/slides parity). */
-.ai-ask-trigger {
-  position: fixed;
-  z-index: 59;
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 5px 10px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-30);
-  background: var(--surface);
-  color: var(--color-ai-action);
-  font-family: var(--gs-font-sans);
-  font-size: 14px;
-  font-weight: 500;
-  line-height: 1;
-  box-shadow: var(--sheets-shadow-menu);
-  cursor: pointer;
-}
-
-.ai-ask-trigger:hover {
-  background: var(--hover);
-}
-
-.ai-ask-pop {
-  position: fixed;
-  z-index: 1000;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 12px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-12);
-  background: var(--surface);
-  box-shadow: var(--sheets-shadow-menu);
-  font-family: var(--gs-font-sans);
-}
-
-.ai-ask-pop-title {
-  color: var(--color-text-primary);
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.ai-ask-pop-sub {
-  margin-top: -4px;
-  color: var(--color-text-secondary);
-  font-size: 12px;
-}
-
-.ai-ask-pop-input {
-  width: 100%;
-  box-sizing: border-box;
-  padding: 8px 10px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-8);
-  outline: none;
-  background: var(--color-bg-page);
-  color: var(--color-text-primary);
-  font: inherit;
-  font-size: 14px;
-}
-
-.ai-ask-pop-input:focus {
-  border-color: var(--accent);
-}
-
-.ai-ask-pop-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.ai-ask-chip {
-  padding: 4px 9px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-30);
-  background: transparent;
-  color: var(--color-text-secondary);
-  font-size: 12.5px;
-  cursor: pointer;
-}
-
-.ai-ask-chip:hover {
-  background: var(--hover);
-  color: var(--color-text-primary);
-}
-
-.ai-ask-pop-foot {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-}
-
-.ai-ask-cancel,
-.ai-ask-confirm {
-  padding: 6px 12px;
-  border-radius: var(--radius-6);
-  font-size: 13px;
-  cursor: pointer;
-}
-
-.ai-ask-cancel {
-  border: 1px solid var(--border);
-  background: transparent;
-  color: var(--color-text-secondary);
-}
-
-.ai-ask-confirm {
-  border: 1px solid transparent;
-  background: var(--color-ai-action);
-  color: var(--color-ai-action-text);
-}
-
-.ai-ask-confirm:hover:not(:disabled) {
-  background: var(--color-ai-action-hover);
-}
-
-.ai-ask-confirm:disabled {
-  opacity: 0.45;
-  cursor: default;
 }
 
 .copilot {
@@ -3082,6 +3184,11 @@ textarea:focus {
   width: 560px;
 }
 
+/* Combo mode: two extra columns (series type, secondary axis). */
+.select-data-dialog.combo {
+  width: 720px;
+}
+
 .select-data-rows {
   display: flex;
   max-height: 300px;
@@ -3095,6 +3202,10 @@ textarea:focus {
   align-items: center;
   grid-template-columns: 1.1fr 1.4fr 1.4fr auto;
   gap: 6px;
+}
+
+.select-data-row.combo {
+  grid-template-columns: 1fr 1.15fr 1.15fr 0.75fr auto auto;
 }
 
 .select-data-head {
@@ -3124,6 +3235,31 @@ textarea:focus {
 .select-data-row input::placeholder {
   color: var(--text-muted);
   opacity: 0.7;
+}
+
+.select-data-row select {
+  min-width: 0;
+  height: 26px;
+  padding: 0 4px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-small);
+  font-size: 12px;
+  color: var(--text);
+  background: var(--surface);
+}
+
+.select-data-row select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.select-data-row input[type='checkbox'] {
+  justify-self: center;
+  height: auto;
+  padding: 0;
+  border: none;
+  background: transparent;
+  accent-color: var(--accent);
 }
 
 .select-data-row > span:last-child {
@@ -3979,6 +4115,16 @@ textarea:focus {
   width: 560px;
 }
 
+/* nine categories are wider than the card: they wrap instead of widening
+   the single grid column (and with it the grid and the actions) past it */
+.icons-dialog .dialog-tabs {
+  flex-wrap: wrap;
+}
+
+.icons-dialog .dialog-tabs button {
+  white-space: nowrap;
+}
+
 .icons-toolbar {
   display: flex;
   gap: 10px;
@@ -4793,42 +4939,6 @@ textarea:focus {
   line-height: 1.5;
 }
 
-/* Inline "Applied N edits [Undo]" banner shown after auto-apply */
-.ai-auto-applied {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 8px;
-  padding: 4px 10px;
-  border-radius: 6px;
-  background: var(--surface-subtle);
-  border: 1px solid var(--border);
-  font-size: 12px;
-  color: var(--text-muted);
-}
-
-.ai-auto-applied-text {
-  color: var(--text-secondary);
-  font-size: 12px;
-}
-
-.ai-undo-btn {
-  padding: 2px 8px;
-  border-radius: 4px;
-  border: 1px solid var(--border);
-  background: var(--surface);
-  color: var(--accent);
-  font-size: 11.5px;
-  cursor: pointer;
-  transition: background 0.1s;
-}
-
-.ai-undo-btn:hover {
-  background: var(--accent);
-  color: var(--sheets-on-accent);
-  border-color: var(--accent);
-}
-
 /* Thinking indicator (white background, no container):
  * phase one = two bouncing blue dots (alternating small/large); phase two = shimmering "Thinking…" text + streaming caret block */
 .ai-typing {
@@ -5579,13 +5689,33 @@ textarea:focus {
  * system colors inside the popups resolve to their dark variants: the menu
  * item buttons only carry Univer's dark-mode text class, so their labels turn
  * white on the light menu surface and vanish (genoffice#2041). Track Univer's
- * own dark flag so its popups get the UA scheme matching what they render. */
-.univer-popup {
+ * own dark flag so its popups get the UA scheme matching what they render.
+ * Submenus portal to body, outside .univer-popup (genoffice#2960). */
+.univer-popup,
+[data-u-context-menu-submenu] {
   color-scheme: light;
 }
 
-.univer-dark .univer-popup {
+.univer-dark .univer-popup,
+.univer-dark [data-u-context-menu-submenu] {
   color-scheme: dark;
+}
+
+/* Keep the right-click menu inside the window (issue #390). Univer caps the
+ * menu panel with an inline max-height of the window height minus 8px a side
+ * and scrolls the rest, but its useScrollYOverContainer hook clears that
+ * inline value as soon as the menu closes: the closed popup is display:none,
+ * so the hook measures a 0x0 panel, decides it "fits", and writes
+ * max-height: ''. React never puts it back (the state behind it has not
+ * changed), and on the next open the hook measures again mid-animation, while
+ * the popup is still scaleY(0), so it sees nothing to cap either. From the
+ * second open on, the cell menu - long once our own items are added - is
+ * unbounded; the popup clamps its top to 0 and the bottom runs off the
+ * window. This restores Univer's intended cap regardless of what the hook
+ * last wrote, so the popup's own clamp shifts the menu up to fit and the
+ * panel scrolls. Submenus carry their own cap and are untouched. */
+.univer-popup > section > .univer-overflow-y-auto {
+  max-height: max(120px, calc(100vh - 16px)) !important;
 }
 
 .ai-msg-undelivered {
@@ -6070,6 +6200,63 @@ textarea:focus {
 .find-replace-panel .fr-results-count {
   font-size: 11px;
   color: var(--text-muted);
+}
+
+/* Spelling panel (F7 / Review ▸ Proofing) rides the find-replace panel chrome;
+   these only add its note line, selected row and the suggestion chips. */
+
+.find-replace-panel .spell-note {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.find-replace-panel .fr-results tbody tr.spell-selected {
+  background: var(--accent-soft);
+}
+
+.find-replace-panel .spell-detail {
+  display: grid;
+  gap: 8px;
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+}
+
+.find-replace-panel .spell-detail-text {
+  display: grid;
+  gap: 2px;
+  font-size: 12px;
+  word-break: break-word;
+}
+
+.find-replace-panel .spell-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.find-replace-panel .spell-suggestion {
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--accent-dark);
+  padding: 3px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.find-replace-panel .spell-suggestion:hover {
+  background: var(--hover);
+}
+
+.find-replace-panel .spell-no-suggestion {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.find-replace-panel .spell-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 
 /* The stock Univer find dialog is replaced by .find-replace-panel; it still
@@ -6651,7 +6838,9 @@ body > div:has([data-u-comp='find-replace-dialog']) {
 }
 
 .print-settings {
+  display: grid;
   align-content: start;
+  gap: 14px;
   overflow-y: auto;
   padding-right: 4px;
 }
@@ -6705,6 +6894,21 @@ body > div:has([data-u-comp='find-replace-dialog']) {
   display: grid;
   place-items: center;
   padding: 12px;
+}
+
+/* The shared layout diagram or live preview in place of the pages (both rows of the preview) */
+.print-preview-schematic {
+  grid-row: 1 / -1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+  padding: 10px;
+}
+
+.print-preview-bar[hidden],
+.print-preview-pane[hidden] {
+  display: none;
 }
 
 .print-preview-page {
@@ -7014,4 +7218,275 @@ body > div:has([data-u-comp='find-replace-dialog']) {
 
 .visual-dialog-remove {
   align-self: flex-start;
+}
+
+/* A note's picture has nowhere to go inside Univer's note popup, so it gets a
+   pane of its own. Both panes want the right edge, so each steps aside while
+   the other is open rather than covering it. */
+.note-pictures-pane {
+  position: fixed;
+  top: 96px;
+  right: 24px;
+  bottom: 48px;
+  z-index: 121;
+  display: flex;
+  flex-direction: column;
+  width: min(340px, calc(100vw - 32px));
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: var(--shadow-modal);
+  overflow: hidden;
+}
+
+body:has(.note-pictures-pane) .threaded-comments-pane {
+  right: 380px;
+}
+
+.note-pictures-pane > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  font-size: 14px;
+  font-weight: 600;
+  border-bottom: 1px solid var(--border);
+}
+
+.note-pictures-pane .np-close {
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 16px;
+  line-height: 1;
+  padding: 2px 6px;
+  border-radius: var(--radius-small);
+  cursor: pointer;
+}
+
+.note-pictures-pane .np-close:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.note-pictures-pane .np-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px;
+  display: grid;
+  gap: 10px;
+}
+
+.note-pictures-pane .np-empty {
+  margin: 0;
+  padding: 16px 6px;
+  color: var(--text-muted);
+  font-size: 13px;
+  text-align: center;
+}
+
+.note-pictures-pane .np-card {
+  display: grid;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.note-pictures-pane .np-card > header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0;
+  border: 0;
+}
+
+.note-pictures-pane .np-cell {
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+}
+
+.note-pictures-pane .np-cell:hover {
+  color: var(--accent);
+}
+
+.note-pictures-pane .np-author,
+.note-hover-card .np-author {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.note-pictures-pane .np-remove,
+.note-hover-card .np-remove {
+  margin-left: auto;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 15px;
+  line-height: 1;
+  padding: 0 5px;
+  border-radius: var(--radius-small);
+  cursor: pointer;
+}
+
+.note-pictures-pane .np-remove:hover,
+.note-hover-card .np-remove:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.note-pictures-pane .np-image,
+.note-hover-card .np-image {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 6px;
+}
+
+.note-pictures-pane .np-image-missing,
+.note-hover-card .np-image-missing {
+  margin: 0;
+  padding: 10px;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  color: var(--text-muted);
+  font-size: 12px;
+  text-align: center;
+}
+
+.note-pictures-pane .np-text,
+.note-hover-card .np-text {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 12px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* The card under Univer's note popup for a note that carries a picture: it
+   hangs below the popup's own box so author, picture and text read as one
+   note. Reuses the pane's np-* pieces above. */
+.note-hover-card {
+  position: fixed;
+  z-index: 130;
+  width: 260px;
+  max-height: 50vh;
+  overflow: hidden;
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: var(--shadow-modal);
+}
+
+.note-hover-card > header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.streamed-filter-panel {
+  box-sizing: border-box;
+  width: min(400px, 90vw);
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-menu);
+  font-size: 13px;
+}
+
+.streamed-filter-tabs,
+.streamed-filter-footer,
+.streamed-filter-pages {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.streamed-filter-panel button,
+.streamed-filter-search {
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: transparent;
+  color: inherit;
+  padding: 4px 8px;
+}
+
+.streamed-filter-panel button:disabled {
+  opacity: 0.45;
+}
+
+.streamed-filter-tabs button {
+  flex: 1;
+  margin-block: 8px;
+}
+
+.streamed-filter-tabs button[aria-pressed='true'] {
+  background: color-mix(in srgb, currentColor 8%, transparent);
+}
+
+.streamed-filter-search,
+.streamed-filter-checklist {
+  box-sizing: border-box;
+  width: 100%;
+}
+
+.streamed-filter-checklist {
+  margin: 8px 0;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 8px;
+}
+
+.streamed-filter-checklist label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 25px;
+  padding-inline: 4px;
+}
+
+.streamed-filter-checklist label span {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.streamed-filter-checklist input {
+  accent-color: var(--accent);
+}
+
+.streamed-filter-checklist small {
+  opacity: 0.7;
+}
+
+.streamed-filter-items {
+  height: 175px;
+  overflow: auto;
+}
+
+.streamed-filter-footer > div {
+  display: flex;
+  gap: 6px;
+}
+
+.streamed-filter-panel .streamed-filter-confirm {
+  background: var(--color-btn-primary);
+  color: var(--color-btn-primary-text);
+  border-color: transparent;
 }

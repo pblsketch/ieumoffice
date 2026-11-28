@@ -12,13 +12,22 @@ L’éditeur de livres numériques ouvre les livres EPUB (`.epub`) dans un ongle
 
 ## Lire
 
-- Le volet **Sommaire**, à gauche, affiche la table des matières du livre. Cliquez sur une entrée pour vous y rendre. Un livre qui n’en a pas reçoit la liste de ses chapitres.
+- Le volet **Sommaire**, à gauche, affiche la table des matières du livre. Cliquez sur une entrée pour vous y rendre. Un livre qui n’en a pas reçoit la liste de ses chapitres. Faites glisser le bord intérieur du volet pour changer sa largeur ; double-cliquez sur le bord pour revenir à la largeur d’origine. Le volet de recherche a la même largeur.
 - Chaque chapitre défile de haut en bas. Continuez à défiler après la fin d’un chapitre pour passer au suivant, ou avant son début pour revenir au précédent. La ligne d’état indique dans quel chapitre vous êtes.
 - L’onglet **Affichage** règle la taille du texte et l’interligne, et active ou désactive la **Lecture sombre**. Ces réglages ne touchent que l’écran, jamais le livre, et valent pour tous les livres.
 - L’endroit où vous avez arrêté votre lecture est mémorisé pour chaque fichier, dans le dossier de données de l’application et non dans le livre.
 - **Rechercher dans le livre** (Ctrl+F) cherche dans tous les chapitres. Cliquez sur un résultat pour y aller.
 - Un lien interne au livre mène à l’endroit visé. Les liens web et e-mail s’ouvrent dans votre navigateur par défaut ; les autres adresses ne sont pas ouvertes.
 - Les scripts du livre ne s’exécutent jamais et rien n’est chargé depuis Internet. Le son et la vidéo ne sont pas lus.
+
+## Aperçu
+
+- Cliquez sur **Aperçu** dans l’onglet **Accueil** ou **Affichage** pour voir le livre en pages, comme sur une liseuse. L’aperçu s’ouvre là où vous lisez.
+- Dans la barre du haut, choisissez l’écran (**Liseuse**, **Téléphone**, **Tablette** ou **Ajuster à la fenêtre**), le mode paysage, la taille du texte et le fond (blanc, sépia ou sombre). Un écran large tourné en paysage montre deux pages côte à côte. Ces réglages ne changent que l’aperçu, jamais le livre.
+- Tournez les pages avec les flèches, Page Up et Page Down, la barre d’espace, la molette de la souris ou les boutons de chaque côté. Après la dernière page d’un chapitre, vous passez au chapitre suivant. Le sommaire et les liens du livre mènent l’aperçu à l’endroit voulu.
+- Le texte ne se modifie pas dans l’aperçu. Quand l’IA modifie le livre ou que vous annulez une modification, l’aperçu suit.
+- Cliquez sur **Fermer l’aperçu** ou appuyez sur Échap pour revenir à l’édition, à l’endroit que montrait l’aperçu.
+- La mise en page varie un peu selon les applications des librairies et les appareils : prenez l’aperçu comme une image fidèle mais approchée.
 
 ## Modifier le texte
 
@@ -38,7 +47,7 @@ L’éditeur de livres numériques ouvre les livres EPUB (`.epub`) dans un ongle
 ## Panneau IA
 
 - Posez des questions sur le livre, faites résumer un chapitre, ou faites corriger ou réécrire son texte. L’IA lit le sommaire et les chapitres du livre et y retrouve du texte.
-- Les modifications de l’IA apparaissent aussitôt, et une seule annulation (Ctrl+Z) défait tout ce qu’elle a changé pendant ce tour. L’IA peut mettre du texte en gras ou en italique, mais ne peut pas ajouter d’images, de tableaux ni de chapitres.
+- Les modifications de l’IA apparaissent aussitôt, les blocs modifiés sont marqués en jaune, et **Annuler ces modifications**, sur la carte sous sa réponse, défait tout ce qu’elle a changé pendant ce tour (à condition que le livre n’ait pas été modifié depuis). L’IA peut mettre du texte en gras ou en italique, mais ne peut pas ajouter d’images, de tableaux ni de chapitres.
 - Le texte du livre est une matière de travail pour l’IA, pas une consigne qu’elle doit suivre.
 - Demandez « Traduis ce livre en français » et l’IA ouvre la fenêtre de traduction avec cette langue déjà choisie. Rien n’est envoyé tant que vous n’avez pas cliqué sur **Commencer**.
 - Les livres EPUB peuvent aussi être joints dans le panneau IA des autres éditeurs, choisis avec `@`, et trouvés par la recherche de fichiers de l’accueil.
@@ -58,11 +67,12 @@ L’éditeur de livres numériques ouvre les livres EPUB (`.epub`) dans un ongle
 - Ce qui a déjà été traduit est conservé. Si vous arrêtez, choisissez **Exporter ce qui est traduit jusqu’ici** (le reste demeure dans la langue d’origine) ou **Continuer plus tard**. Quand vous ouvrez un livre dont la traduction est inachevée, GenOffice propose de la poursuivre. **Retraduire depuis le début** supprime d’abord la traduction conservée pour cette langue.
 - Les traductions conservées sont comptées dans Paramètres ▸ Général ▸ **Résultats IA enregistrés**, avec celles des documents PDF, et **Tout supprimer** les efface aussi.
 - La même traduction peut aussi se lancer depuis la [ligne de commande](help://cli) avec `ieumoffice epub translate`.
+- Choisissez **Facile à lire** sous **Mode** pour réécrire le livre en mots simples dans la langue choisie. Les résultats sont un **Livre facile à lire** et **Original suivi de la version facile à lire** ; leur titre porte la mention de la version facile à lire dans cette langue, et leur nom de fichier la porte dans la langue de l’interface, pour se distinguer de celui d’une traduction. La langue est d’abord celle de l’interface et peut être celle du livre. La version facile est conservée à part des traductions, sa reprise est proposée séparément, et les commandes du terminal ne la produisent pas.
 
 ## Pas encore pris en charge
 
 - Ajouter, supprimer ou réordonner des chapitres ; modifier le titre, l’auteur ou la couverture ; insérer des images ou des tableaux ; transformer un paragraphe en titre ou en liste.
 - Modifier ou traduire les livres à mise en page fixe, et ouvrir les livres protégés contre la copie.
-- Tourner les pages comme dans un livre imprimé, et créer un nouveau livre vide.
+- Créer un nouveau livre vide.
 - Comparer l’original et la traduction côte à côte dans l’éditeur. Ouvrez plutôt le livre bilingue, et corrigez le livre traduit comme n’importe quel autre livre.
 - Masquer à l’IA certaines parties d’un livre.

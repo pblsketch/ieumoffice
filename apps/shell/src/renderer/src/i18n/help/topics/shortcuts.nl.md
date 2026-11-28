@@ -12,10 +12,12 @@ Elke editor heeft een eigen toetsenindeling en slechts een paar werken overal. D
 | Lint in- of uitklappen — elke editor                     | ⌥⌘R   | Ctrl+F1         |
 | Lint compact — alleen Docs                               | ⌥⌘K   | Ctrl+Alt+K      |
 | Het blad Sneltoetsen openen — alleen Word                | ⌘/    | Ctrl+/          |
+| Instellingen openen — elk tabblad behalve Word           | ⌘,    | Ctrl+,          |
 
 - **F1 opent deze handleiding**, niet het sneltoetsenblad. De toets hoort bij het toepassingsmenu en werkt dus vanuit Word, Sheets, Slides, PDF of het tabblad Home.
 - **De linttoets is `Ctrl+F1`, of `⌥⌘R` op macOS.** Een kale `F1` doet niets — F1 is de handleiding, en de linttoets deelt die toets bewust niet. `Ctrl+F1` werkt ook op macOS, maar `⌥⌘R` is de toets die Office voor Mac gebruikt.
 - **Het blad Sneltoetsen bestaat alleen in Word** (`⌘/`). Het toont precies de Word-tabel hieronder. Geen enkele andere editor heeft er een.
+- **`⌘,` opent de instellingen** (`Ctrl+,` op Windows en Linux), zoals in de meeste Mac-apps. In een Word-tabblad blijft de toetscombinatie subscript; open de instellingen daar via het app-menu op een Mac, of via Menu (☰) ▸ Instellingen… op Windows en Linux.
 
 ![Het blad Sneltoetsen van Word zelf: de actie links, de sneltoets rechts, gegroepeerd per Bestand, Bewerken, Tekstopmaak, Alinea-opmaak, Invoegen, Controleren en hulpmiddelen, Weergave](img/word-shortcuts.png)
 
@@ -24,7 +26,7 @@ Elke editor heeft een eigen toetsenindeling en slechts een paar werken overal. D
 
 ## Presentatiemodus
 
-- **Starten**: F5 in Word, PDF, Mindmap, HTML en Markdown. In een werkblad Ctrl+F5 (vanaf A1) of Shift+F5 (vanaf de actieve cel).
+- **Starten**: F5 in Word, PDF, Mindmap, HTML en Markdown. In een werkblad Ctrl+F5 (vanaf A1) of Shift+F5 (vanaf de actieve cel). In een HWP-document Ctrl+F5 (F5 selecteert daar tabelcellen).
 - **Andere ingangen**: in Word openen Ctrl+F5 en Shift+F5 de leesweergave zonder volledig scherm; in PDF starten ze vanaf de huidige pagina; in HTML presenteren ze in het tabblad.
 - **Stoppen**: Esc of F5. F11 is volledig scherm van het venster en verandert de documentweergave niet.
 
@@ -278,18 +280,19 @@ De sneltoets voor filteren van Excel, Ctrl+Shift+L, doet niets op Windows of Lin
 
 ### Venster
 
-| Actie                                                            | macOS        | Windows / Linux |
-| ---------------------------------------------------------------- | ------------ | --------------- |
-| De werkmap opslaan                                               | ⌘S           | Ctrl+S          |
-| Opslaan als                                                      | ⇧⌘S          | Ctrl+Shift+S    |
-| Een werkmap openen                                               | ⌘O           | Ctrl+O          |
-| Afdrukken                                                        | ⌘P           | Ctrl+P          |
-| De werkmap sluiten (macOS) / De app afsluiten (Windows en Linux) | ⌘W           | Ctrl+Q          |
-| De gebruikershandleiding openen                                  | F1           | F1              |
-| Inzoomen                                                         | ⌘=           | Ctrl+=          |
-| Zoomen met het muiswiel                                          | ⌘ + scrollen | Ctrl + scrollen |
-| Formules in de cellen tonen of verbergen                         | ⌘`           | Ctrl+`          |
-| De formulebalk uitvouwen of inklappen                            | ⌘⇧U          | Ctrl+Shift+U    |
+| Actie                                                                           | macOS        | Windows / Linux |
+| ------------------------------------------------------------------------------- | ------------ | --------------- |
+| De werkmap opslaan                                                              | ⌘S           | Ctrl+S          |
+| Opslaan als                                                                     | ⇧⌘S          | Ctrl+Shift+S    |
+| Een werkmap openen                                                              | ⌘O           | Ctrl+O          |
+| Afdrukken                                                                       | ⌘P           | Ctrl+P          |
+| De werkmap sluiten (macOS) / De app afsluiten (Windows en Linux)                | ⌘W           | Ctrl+Q          |
+| De gebruikershandleiding openen                                                 | F1           | F1              |
+| Inzoomen                                                                        | ⌘=           | Ctrl+=          |
+| Zoomen met het muiswiel                                                         | ⌘ + scrollen | Ctrl + scrollen |
+| Formules in de cellen tonen of verbergen                                        | ⌘`           | Ctrl+`          |
+| De formulebalk uitvouwen of inklappen                                           | ⌘⇧U          | Ctrl+Shift+U    |
+| Een knop op de werkbalk Snelle toegang uitvoeren op positie (1e tot en met 10e) |              | Alt+1 … Alt+0   |
 
 ## Slides
 
@@ -312,20 +315,24 @@ Een tabblad sluiten is de enige plek waar de twee platformen volledig uit elkaar
 
 ### Bewerken
 
-| Actie                                                    | macOS  | Windows / Linux |
-| -------------------------------------------------------- | ------ | --------------- |
-| Nieuwe dia                                               | ⇧⌘N    | Ctrl+M          |
-| Zoeken (niet tijdens het bewerken van tekst in een vorm) | ⌘F     | Ctrl+F          |
-| De selectie met AI annoteren (met vormen geselecteerd)   | ⌘K     | Ctrl+K          |
-| Inzoomen                                                 | ⌘=     | Ctrl+=          |
-| Uitzoomen                                                | ⌘-     | Ctrl+-          |
-| Werkelijke grootte (100%)                                | ⌘0     | Ctrl+0          |
-| Alles selecteren                                         | ⌘A     | Ctrl+A          |
-| Vormselectie vooruit / achteruit doorlopen               | ⇥ / ⇧⇥ | Tab / Shift+Tab |
+| Actie                                                                     | macOS  | Windows / Linux |
+| ------------------------------------------------------------------------- | ------ | --------------- |
+| Nieuwe dia                                                                | ⇧⌘N    | Ctrl+M          |
+| Zoeken (niet tijdens het bewerken van tekst in een vorm)                  | ⌘F     | Ctrl+F          |
+| De selectie met AI annoteren (met vormen geselecteerd)                    | ⌘K     | Ctrl+K          |
+| Inzoomen                                                                  | ⌘=     | Ctrl+=          |
+| Uitzoomen                                                                 | ⌘-     | Ctrl+-          |
+| Werkelijke grootte (100%)                                                 | ⌘0     | Ctrl+0          |
+| Alles selecteren                                                          | ⌘A     | Ctrl+A          |
+| Vormselectie vooruit / achteruit doorlopen                                | ⇥ / ⇧⇥ | Tab / Shift+Tab |
+| Laatste actie herhalen (opmaak, opvulling, lijn, uitlijning, dupliceren…) | F4     | F4              |
+| Selectievenster weergeven/verbergen                                       | ⌥F10   | Alt+F10         |
 
 Nieuwe dia is de andere platformsplitsing. Elk platform heeft zijn eigen toets en de andere doet niets: ⇧⌘N op macOS, Ctrl+M op Windows en Linux. ⌘M kan dat op macOS niet doen omdat dat de systeemtoets voor Minimaliseren is.
 
 Alles selecteren volgt de focus: met het miniatuurpaneel, overzichtspaneel of de dia-sorteerder gefocusd selecteert het alle dia's, en elders elk element op de huidige dia. Tab doorloopt de vormen op de dia, en alleen wanneer het diavlak zelf focus heeft.
+
+F4 werkt ook in een tekstvak en past de laatste opmaak toe op de geselecteerde tekst.
 
 ### Tekstopmaak
 
@@ -450,7 +457,7 @@ Ongedaan maken en Opnieuw uitvoeren lopen door de documentgeschiedenis; staan de
 | Inzoomen                 | ⌘=             | Ctrl+=            |
 | Uitzoomen                | ⌘-             | Ctrl+-            |
 | Passend maken op breedte | ⌘0             | Ctrl+0            |
-| Zoomen (doorlopend)      | ⌘ + scrollwiel | Ctrl + scrollwiel |
+| Zoomen (stappen van 5%)  | ⌘ + scrollwiel | Ctrl + scrollwiel |
 
 Inzoomen reageert ook op ⌘+ en Ctrl++.
 
@@ -627,6 +634,8 @@ Deze toetsen werken zolang het tabblad HWP/HWPX vooraan staat en het document fo
 | Volgende zoeken        | ⌃L          | Ctrl+L                       |
 | Achterwaarts zoeken    | ⌃Q, L       | Ctrl+Q, L                    |
 | Ga naar                | ⌥G          | Alt+G                        |
+| Begin van document     | ⌃⇞          | Ctrl+PageUp                  |
+| Einde van document     | ⌃⇟          | Ctrl+PageDown                |
 | Documenten vergelijken | ⌥⇧V         | Alt+Shift+V                  |
 
 ### Teken
@@ -690,21 +699,29 @@ Deze toetsen werken zolang het tabblad HWP/HWPX vooraan staat en het document fo
 | Datum-/tijdtekst                   | ⌃K, D       | Ctrl+K, D          |
 | Object, veld of tabel/cel bewerken | ⌃N, K       | Ctrl+N, K          |
 | Symbolen                           | ⌃F10 / ⌥F10 | Ctrl+F10 / Alt+F10 |
+| Omzetten naar hanja                | F9          | Hanja-toets / F9   |
 
 ### Tabel
 
-| Actie                 | macOS        | Windows / Linux        |
-| --------------------- | ------------ | ---------------------- |
-| Rij/kolom toevoegen   | ⌥⏎ / ⌥Insert | Alt+Enter / Alt+Insert |
-| Rij/kolom verwijderen | ⌥⌫           | Alt+Delete             |
-| Cel splitsen          | F5 → S       | F5 → S                 |
-| Cellen samenvoegen    | F5 → M       | F5 → M                 |
-| Bloksom               | F5 → ⇧⌘S     | F5 → Ctrl+Shift+S      |
-| Blokgemiddelde        | F5 → ⌃⇧A     | F5 → Ctrl+Shift+A      |
-| Blokproduct           | F5 → ⌃⇧P     | F5 → Ctrl+Shift+P      |
-| Tabel splitsen        | ⌃N, A        | Ctrl+N, A              |
-| Tabellen samenvoegen  | ⌃N, Z        | Ctrl+N, Z              |
-| Berekeningsformule    | ⌃N, F        | Ctrl+N, F              |
+| Actie                                    | macOS        | Windows / Linux        |
+| ---------------------------------------- | ------------ | ---------------------- |
+| Rij/kolom toevoegen                      | ⌥⏎ / ⌥Insert | Alt+Enter / Alt+Insert |
+| Rij/kolom verwijderen                    | ⌥⌫           | Alt+Delete             |
+| Cel splitsen                             | F5 → S       | F5 → S                 |
+| Cellen samenvoegen                       | F5 → M       | F5 → M                 |
+| Tabel-/celeigenschappen                  | F5 → P       | F5 → P                 |
+| Randen / arcering, per cel               | F5 → L / C   | F5 → L / C             |
+| Randen / arcering, cellen als één        | F5 → B / F   | F5 → B / F             |
+| Gelijke rijhoogte / kolombreedte         | F5 → H / W   | F5 → H / W             |
+| Tabel automatisch vullen                 | F5 → A       | F5 → A                 |
+| Terug naar de cel bewerken               | F5 → ⏎       | F5 → Enter             |
+| Snel verkeerd-om inspringen (in een cel) | ⌃⇧⇥          | Ctrl+Shift+Tab         |
+| Bloksom                                  | F5 → ⇧⌘S     | F5 → Ctrl+Shift+S      |
+| Blokgemiddelde                           | F5 → ⌃⇧A     | F5 → Ctrl+Shift+A      |
+| Blokproduct                              | F5 → ⌃⇧P     | F5 → Ctrl+Shift+P      |
+| Tabel splitsen                           | ⌃N, A        | Ctrl+N, A              |
+| Tabellen samenvoegen                     | ⌃N, Z        | Ctrl+N, Z              |
+| Berekeningsformule                       | ⌃N, F        | Ctrl+N, F              |
 
 ### Tabelberekeningen
 
@@ -745,3 +762,5 @@ Ze werken alleen als de cursor in een lege tabelcel staat. Er zijn aparte toetse
 | Naar het tabblad Start (buiten een tabel) | ⇧⌘H   | Ctrl+Shift+H    |
 
 Een toets als `Ctrl+N,T` betekent: druk op Ctrl+N, laat los en druk dan op T. `F5 → S` betekent: selecteer met F5 een celblok en druk dan op S. `Ctrl+1 … Ctrl+0` staan voor de eerste tot en met tiende stijl van het document; `Ctrl+Alt+1 … Ctrl+Alt+0` passen dezelfde stijlen toe. Met een celblok geselecteerd is `Ctrl+Shift+S` (op macOS `⇧⌘S`) de bloksom; daarbuiten slaat die toets op onder een nieuwe naam.
+
+Met de muis werkt het zoals in Hangul: dubbelklikken selecteert een woord, driemaal klikken de hele alinea, en dubbelklikken, ingedrukt houden en slepen breidt de selectie per woord uit. Dat werkt ook tijdens het bewerken van een koptekst, voettekst of voetnoot. Een celblok kopiëren (`Ctrl+C`) kopieert de tekst van de cellen en de tabel zelf, dus plakken in de lopende tekst maakt dezelfde tabel opnieuw. Plakken met alleen de cursor in een cel van een andere tabel opent het venster Paste Cells: overschrijven vanaf die cel (cellen buiten de tabel vervallen) of de cellen boven, onder, links of rechts invoegen. Als u aan een hoekgreep van een afbeelding sleept, blijven de verhoudingen behouden; een vorm of tekstvak behoudt ze als u daarbij `Shift` ingedrukt houdt. Druk tijdens het verplaatsen van een object op `Shift` om het alleen horizontaal of verticaal te bewegen, en op `Esc` tijdens het verplaatsen of van grootte veranderen om het object terug te zetten. Met een object geselecteerd verplaatsen de pijltoetsen het 0,2 mm en wijzigen `Shift`+pijltoetsen de grootte met 1 mm. `Tab` en `Shift+Tab` selecteren het volgende en vorige object op de pagina, `Shift+PageUp` en `Shift+PageDown` zetten het object helemaal vooraan of achteraan, en `Shift+Home` en `Shift+End` plaatsen het object voor of achter de tekst. `G` en `U` groeperen en heffen de groepering op, `L` en `C` openen de tabbladen Lijn en Opvulling van de objecteigenschappen, en `Ctrl+E` verwijdert het object. Een object dat onder een ander ligt, selecteert u door `Alt` ingedrukt te houden en te klikken; elke volgende klik selecteert het object daaronder. Sleept u een hoek van een afbeelding met `Shift` ingedrukt, dan wordt de afbeelding op dezelfde schaal bijgesneden; sleept u een object met `Ctrl` ingedrukt, dan blijft het staan en verschijnt er een kopie waar u loslaat.

@@ -4,7 +4,7 @@ De agent neemt één map die je kiest als project en voert in die map Claude Cod
 
 ## Voordat je begint
 
-- Een Claude-abonnement of een ChatGPT-abonnement dat is verbonden onder **Instellingen ▸ AI**. Het onderwerp "Abonnementsverbinding" legt uit hoe.
+- Het programma Claude Code of Codex, verbonden onder **Instellingen ▸ AI** (aangemeld met een Claude-abonnement of een ChatGPT-abonnement). Rechtstreeks in de app verbonden ChatGPT wordt niet door de agent gebruikt. Het onderwerp "Abonnementsverbinding" legt uit hoe.
 - Een map met je materiaal erin. Een hele schijf, je hele gebruikersmap en mappen met aanmeld- of app-gegevens kun je niet kiezen.
 
 ## Een sessie starten

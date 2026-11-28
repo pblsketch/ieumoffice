@@ -1,0 +1,17 @@
+export const zh = {
+  workpaneTitle: '任务窗格',
+  workpaneOpen: '任务窗格',
+  workpaneClose: '关闭任务窗格',
+  workpaneExpand: '展开任务窗格',
+  workpaneResize: '调整任务窗格宽度',
+  workpaneTabOutline: '大纲',
+  workpaneTabFind: '查找',
+  workpaneTabBibliography: '参考文献',
+  workpaneMenuOutline: '任务窗格 › 大纲',
+  workpaneMenuFind: '任务窗格 › 查找',
+  workpaneMenuBibliography: '任务窗格 › 参考文献',
+  workpaneOutlineEmpty: '文档大纲将显示在这里。',
+  workpaneFindEmpty: '在此查找并跳转到文档内容。',
+  workpaneBibliographyEmpty: '在此管理参考文献并插入引用。',
+  workpaneRailHint: '窗口较窄，点击标签图标查看。',
+}

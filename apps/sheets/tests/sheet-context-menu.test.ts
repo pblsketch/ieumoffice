@@ -42,6 +42,32 @@ describe('sheet context menu action', () => {
     })
   })
 
+  it('does not mistake the grid range-selector section for the footer', () => {
+    const section = document.createElement('section')
+    section.setAttribute('data-range-selector', 'true')
+    section.appendChild(document.createElement('div')) // an editor overlay
+    const canvas = document.createElement('canvas')
+    section.appendChild(canvas)
+    const container = document.createElement('div')
+    container.id = 'univer-container'
+    container.appendChild(section)
+
+    for (const target of [section, canvas]) {
+      expect(sheetContextMenuAction(target)).toEqual({
+        statsMenu: false,
+        suppressNativeMenu: true,
+      })
+    }
+
+    const editor = document.createElement('div')
+    editor.setAttribute('contenteditable', 'true')
+    section.appendChild(editor)
+    expect(sheetContextMenuAction(editor)).toEqual({
+      statsMenu: false,
+      suppressNativeMenu: false,
+    })
+  })
+
   it('keeps the native edit menu on editable surfaces (formula bar, in-cell editor)', () => {
     const input = el('input', 'div|id=univer-container', 'div|data-u-comp=formula-bar')
     expect(sheetContextMenuAction(input)).toEqual({
@@ -61,7 +87,7 @@ describe('sheet context menu action', () => {
   })
 
   it('opens our stats menu for the footer strip below the sheet tabs', () => {
-    // real footer shape: section[data-range-selector] > [tab strip, stats area]
+    // real footer shape: footer > section[data-range-selector] > [tabs, stats]
     const section = document.createElement('section')
     section.setAttribute('data-range-selector', '')
     section.appendChild(document.createElement('div')) // the sheet tab strip
@@ -69,7 +95,9 @@ describe('sheet context menu action', () => {
     section.appendChild(stats)
     const container = document.createElement('div')
     container.setAttribute('id', 'univer-container')
-    container.appendChild(section)
+    const footer = document.createElement('footer')
+    footer.appendChild(section)
+    container.appendChild(footer)
     expect(sheetContextMenuAction(stats)).toEqual({
       statsMenu: true,
       suppressNativeMenu: true,
@@ -81,6 +109,7 @@ describe('sheet context menu action', () => {
     const tabs = el(
       'button',
       'div|id=univer-container',
+      'footer',
       'section|data-range-selector=',
       'div|class=tab-strip',
     )

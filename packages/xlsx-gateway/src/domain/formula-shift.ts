@@ -86,7 +86,7 @@ function clampRefPart(part: RefPart, spec: ShiftSpec, side: 'start' | 'end'): Re
 // Quoted sheet names use Excel '' escaping (Bob''s for Bob's), mirroring the
 // save-path FORMULA_REFERENCE_PATTERN in gateway/xlsx-structure.ts.
 const REF_RE =
-  /(?<![A-Za-z0-9_.$!])(?:(?:'((?:[^']|'')+)'|([A-Za-z0-9_.]+))!)?(\$?)([A-Z]{1,3})(\$?)([0-9]{1,7})(?::(\$?)([A-Z]{1,3})(\$?)([0-9]{1,7}))?(?![A-Za-z0-9(])/gi
+  /(?<![\p{L}\p{N}_.$!])(?:(?:'((?:[^']|'')+)'|([\p{L}\p{N}_.]+))!)?(\$?)([A-Z]{1,3})(\$?)([0-9]{1,7})(?::(\$?)([A-Z]{1,3})(\$?)([0-9]{1,7}))?(?![\p{L}\p{N}(])/giu
 
 // Split a formula into the parts REF_RE may rewrite and the parts it must not
 // touch: string literals, and a structured reference's bracketed contents.
@@ -97,7 +97,7 @@ const REF_RE =
 // `index % 2` guard covers both kinds. One level of nesting covers [[...],[...]].
 // The lookbehind keeps external-workbook prefixes (`[1]Sheet1!A1`, `'[Book.xlsx]Sheet 1'!A1`)
 // out of the skip: they follow a quote or `=`/operator, never a table name.
-const REWRITE_SKIP_RE = /((?:"(?:[^"]|"")*")|(?:(?<=[A-Za-z0-9_.])\[(?:[^\][]|\[[^\][]*\])*\]))/
+const REWRITE_SKIP_RE = /((?:"(?:[^"]|"")*")|(?:(?<=[\p{L}\p{N}_.])\[(?:[^\][]|\[[^\][]*\])*\]))/u
 
 function decodeQuotedSheetName(quoted: string): string {
   return quoted.replaceAll("''", "'")
@@ -126,7 +126,7 @@ function offsetRefPart(part: RefPart, rowDelta: number, columnDelta: number): Re
 // The `:` in the lookbehind stops the second column of one span (or the end
 // cell of B2:D4) from starting a new match. Quoted names use '' escaping like REF_RE.
 const COLUMN_SPAN_RE =
-  /(?<![A-Za-z0-9_.$!:])(?:(?:'((?:[^']|'')+)'|([A-Za-z0-9_.]+))!)?(\$?)([A-Z]{1,3}):(\$?)([A-Z]{1,3})(?![A-Za-z0-9($!:])/gi
+  /(?<![\p{L}\p{N}_.$!:])(?:(?:'((?:[^']|'')+)'|([\p{L}\p{N}_.]+))!)?(\$?)([A-Z]{1,3}):(\$?)([A-Z]{1,3})(?![\p{L}\p{N}($!:])/giu
 
 function sheetPrefixApplies(
   quoted: string | undefined,
@@ -143,7 +143,7 @@ function sheetPrefixApplies(
 // Whole-row spans (2:4) — the row-axis mirror of COLUMN_SPAN_RE, same
 // lookbehind and '' sheet-name escaping.
 const ROW_SPAN_RE =
-  /(?<![A-Za-z0-9_.$!:])(?:(?:'((?:[^']|'')+)'|([A-Za-z0-9_.]+))!)?(\$?)([0-9]{1,7}):(\$?)([0-9]{1,7})(?![A-Za-z0-9($!:])/g
+  /(?<![\p{L}\p{N}_.$!:])(?:(?:'((?:[^']|'')+)'|([\p{L}\p{N}_.]+))!)?(\$?)([0-9]{1,7}):(\$?)([0-9]{1,7})(?![\p{L}\p{N}($!:])/gu
 
 /**
  * Rewrites A1-style references for COPY/FILL semantics (Excel's fill handle):

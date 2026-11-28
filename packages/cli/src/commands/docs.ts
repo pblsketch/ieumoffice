@@ -1,4 +1,5 @@
 import { basename, dirname } from 'node:path'
+import { PRODUCT_NAME } from '@genoffice/i18n'
 import { flagBool, flagString } from '../args'
 import {
   PREVIEW_CHARS,
@@ -6,6 +7,7 @@ import {
   type DocOpsOutcome,
   blockRangeHtml,
   closeDocument,
+  compareDocxFiles,
   describeDocument,
   headerFooterState,
   listComments,
@@ -20,7 +22,7 @@ import {
 import { previewChars } from '../preview'
 import { checkDocument, DOCS_CHECKS } from '../formats/docx-check'
 import { listSections } from '../formats/docx-sections'
-import { extension, resolveInput, resolveOutput, writeOutput } from '../fs'
+import { extension, readInput, resolveInput, resolveOutput, writeOutput } from '../fs'
 import { readOpsInput } from '../ops-input'
 import type { CommandContext, CommandDef } from '../registry'
 import { checkResult } from '../check'
@@ -32,7 +34,8 @@ export const docsCommand: CommandDef = {
   name: 'docs',
   summary:
     'Read or edit a .docx or .odt with the same ops the in-app AI uses (an .odt is written back as .odt).',
-  usage: 'docs <read|apply|check> <file.docx|file.odt> [options]',
+  usage:
+    'docs <read|apply|check> <file.docx|file.odt> [options] | docs compare <original.docx> <revised.docx> --out <path>',
   options: [
     { name: 'range', value: 'a-b', description: 'read: block index range (default: all)' },
     { name: 'html', description: 'read: also return the range as restricted HTML' },
@@ -79,14 +82,34 @@ export const docsCommand: CommandDef = {
       name: 'ops',
       value: 'file',
       description:
-        'apply: JSON array of ops (apply_ops entries, plus insert_content / replace_blocks with an html field, insert_image / insert_picture / insert_text_box, insert_chart / edit_chart, set_header_footer, set_page_setup / insert_section_break, set_watermark, define_style, add_comment / reply_comment / resolve_comment / delete_comment, accept_changes / reject_changes, insert_footnote / insert_endnote / delete_note); "-" reads stdin. See `ieumoffice guide docs`.',
+        'apply: JSON array of ops (apply_ops entries, plus insert_content / replace_blocks with an html field, insert_image / insert_picture / insert_text_box, insert_chart / edit_chart, set_header_footer, set_page_setup / insert_section_break, set_watermark, define_style, add_comment / reply_comment / resolve_comment / delete_comment, accept_changes / reject_changes, insert_footnote / insert_endnote / delete_note, wrap_content_control / unwrap_content_control); "-" reads stdin. See `ieumoffice guide docs`.',
     },
     {
       name: 'track',
       description:
         'apply: record content edits as tracked changes (author: --author, default "AI Assistant"); not for .odt',
     },
-    { name: 'author', value: 'name', description: 'apply --track: author of the tracked changes' },
+    {
+      name: 'author',
+      value: 'name',
+      description:
+        'apply --track / compare: author of the tracked changes (compare default: GenOffice)',
+    },
+    {
+      name: 'date',
+      value: 'iso',
+      description: 'compare: timestamp recorded on every revision (default: now)',
+    },
+    {
+      name: 'granularity',
+      value: 'word|char',
+      description: 'compare: at what granularity a changed paragraph is diffed (default: word)',
+    },
+    {
+      name: 'ignore',
+      value: 'list',
+      description: 'compare: comma-separated list of what to ignore (formatting, case, whitespace)',
+    },
     {
       name: 'dry-run',
       description: 'apply: run the batch in memory and report each step without writing',
@@ -96,16 +119,23 @@ export const docsCommand: CommandDef = {
       name: 'out',
       value: 'path',
       description:
-        'apply: write here instead of in place (same extension as the input; use convert to change the format)',
+        'apply: write here instead of in place (same extension as the input; use convert to change the format); compare: the redline to write (required)',
     },
     {
       name: 'force',
       description:
-        'apply: overwrite an existing --out file, or write while GenOffice has the file open',
+        'apply / compare: overwrite an existing --out file, or write while GenOffice has the file open',
     },
   ],
   async run(args, ctx) {
-    const [verb, file] = args.positionals
+    for (const option of docsCommand.options ?? []) {
+      if (option.value && args.flags[option.name] === true) {
+        throw new CliError(EXIT.usage, `missing --${option.name} <${option.value}>`, undefined, {
+          reason: 'missing_argument',
+        })
+      }
+    }
+    const [verb, file, second] = args.positionals
     switch (verb) {
       case 'read':
         return read(file, args, ctx)
@@ -113,10 +143,12 @@ export const docsCommand: CommandDef = {
         return apply(file, args, ctx)
       case 'check':
         return check(file, ctx)
+      case 'compare':
+        return compare(file, second, args, ctx)
       default:
         throw new CliError(
           EXIT.usage,
-          'expected "docs read <file>", "docs apply <file>" or "docs check <file>"',
+          'expected "docs read <file>", "docs apply <file>", "docs check <file>" or "docs compare <original> <revised>"',
           undefined,
           {
             reason: verb === undefined ? 'missing_argument' : 'invalid_argument',
@@ -201,8 +233,8 @@ function trackFlag(args: Args): string | undefined {
 }
 
 /**
- * A received .odt is written back as itself: --out must keep the extension
- * (a format change is `convert`), and tracked changes stay off as in the app.
+ * Apply keeps the input format: --out must keep its extension (a format change is
+ * `convert`). Tracked changes stay off for ODT, as in the app.
  */
 function assertOdtApply(path: string, out: string | undefined, track: boolean): void {
   const odt = extension(path) === 'odt'
@@ -218,7 +250,7 @@ function assertOdtApply(path: string, out: string | undefined, track: boolean): 
       },
     )
   }
-  if (out && (odt || extension(out) === 'odt') && extension(out) !== extension(path)) {
+  if (out && extension(out) !== extension(path)) {
     throw new CliError(
       EXIT.usage,
       `--out must keep the input's .${extension(path) || '?'} extension; changing the format is a conversion`,
@@ -316,5 +348,113 @@ async function apply(
     )
   } finally {
     closeDocument(doc)
+  }
+}
+
+const COMPARE_GRANULARITIES = ['word', 'char'] as const
+const COMPARE_IGNORES = ['formatting', 'case', 'whitespace'] as const
+/** an ISO 8601 timestamp, the shape Word writes in w:date */
+const ISO_DATE =
+  /^\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?)?$/
+
+function parseGranularity(spec: string | undefined): (typeof COMPARE_GRANULARITIES)[number] {
+  if (spec === undefined) return 'word'
+  const value = spec.trim().toLowerCase()
+  if (!COMPARE_GRANULARITIES.includes(value as (typeof COMPARE_GRANULARITIES)[number])) {
+    throw new CliError(
+      EXIT.usage,
+      `--granularity must be one of ${COMPARE_GRANULARITIES.join(', ')}`,
+      { valid: [...COMPARE_GRANULARITIES] },
+      { reason: 'invalid_argument', suggestion: 'use --granularity word' },
+    )
+  }
+  return value as (typeof COMPARE_GRANULARITIES)[number]
+}
+
+function parseIgnore(spec: string | undefined): (typeof COMPARE_IGNORES)[number][] {
+  if (spec === undefined) return []
+  const out: (typeof COMPARE_IGNORES)[number][] = []
+  for (const part of spec.split(',')) {
+    const value = part.trim().toLowerCase()
+    if (!value) continue
+    if (!COMPARE_IGNORES.includes(value as (typeof COMPARE_IGNORES)[number])) {
+      throw new CliError(
+        EXIT.usage,
+        `--ignore takes a comma-separated list of ${COMPARE_IGNORES.join(', ')}`,
+        { valid: [...COMPARE_IGNORES] },
+        { reason: 'invalid_argument', suggestion: 'use --ignore case,whitespace' },
+      )
+    }
+    out.push(value as (typeof COMPARE_IGNORES)[number])
+  }
+  return out
+}
+
+function parseDate(spec: string | undefined): string {
+  if (spec === undefined) return new Date().toISOString()
+  const value = spec.trim()
+  // Date.parse normalizes dates such as February 30; compare the civil date independently of its offset.
+  if (
+    !ISO_DATE.test(value) ||
+    Number.isNaN(Date.parse(value)) ||
+    new Date(`${value.slice(0, 10)}T00:00:00Z`).toISOString().slice(0, 10) !== value.slice(0, 10)
+  ) {
+    throw new CliError(
+      EXIT.usage,
+      '--date must be an ISO timestamp, e.g. 2026-10-16T00:00:00Z',
+      undefined,
+      { reason: 'invalid_argument', suggestion: 'use --date 2026-10-16T00:00:00Z' },
+    )
+  }
+  return value
+}
+
+/**
+ * The redline of two documents: the revised one with the differences marked as
+ * tracked insertions and deletions, the way Word's Review > Compare writes it.
+ */
+async function compare(
+  originalFile: string | undefined,
+  revisedFile: string | undefined,
+  args: Args,
+  ctx: CommandContext,
+): Promise<CommandResult> {
+  const originalPath = resolveInput(originalFile, ctx)
+  const revisedPath = resolveInput(revisedFile, ctx)
+  const granularity = parseGranularity(flagString(args, 'granularity'))
+  const ignore = parseIgnore(flagString(args, 'ignore'))
+  const date = parseDate(flagString(args, 'date'))
+  const author = flagString(args, 'author')?.trim() || PRODUCT_NAME
+  const output = resolveOutput(flagString(args, 'out'), ctx, {
+    force: flagBool(args, 'force'),
+    fresh: true,
+  })
+  const { bytes, summary } = await compareDocxFiles(
+    readInput(originalPath),
+    readInput(revisedPath),
+    { author, date, granularity, ignore },
+  )
+  writeOutput(output, bytes)
+  return {
+    summary:
+      `${basename(originalPath)} vs ${basename(revisedPath)}: ` +
+      `${summary.insertedParagraphs} inserted, ${summary.deletedParagraphs} deleted, ` +
+      `${summary.changedParagraphs} changed paragraph(s) in ${basename(output)}`,
+    outputPath: output,
+    detail: {
+      original: originalPath,
+      revised: revisedPath,
+      output,
+      insertions: summary.insertions,
+      deletions: summary.deletions,
+      inserted_paragraphs: summary.insertedParagraphs,
+      deleted_paragraphs: summary.deletedParagraphs,
+      changed_paragraphs: summary.changedParagraphs,
+      unchanged_paragraphs: summary.unchangedParagraphs,
+      author,
+      date,
+      granularity,
+      ignored: ignore,
+    },
   }
 }

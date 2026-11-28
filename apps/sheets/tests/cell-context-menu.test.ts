@@ -23,6 +23,7 @@ describe('cellContextMenuLayout', () => {
     expect(new Set(ids).size).toBe(ids.length)
     const others = nodes.filter((node) => node.group === ContextMenuGroup.OTHERS)
     expect(others.map((node) => node.id)).toEqual([
+      'genoffice.ctx.ask-ai',
       'genoffice.ctx.new-comment',
       'genoffice.ctx.reply-comment',
       'genoffice.ctx.delete-comment',
@@ -43,6 +44,15 @@ describe('cellContextMenuLayout', () => {
     const node = byId(PASTE_SPECIAL_OPEN_COMMAND_ID)
     expect(node?.group).toBe(ContextMenuGroup.FORMAT)
     expect(node?.commandId).toBe(PASTE_SPECIAL_OPEN_COMMAND_ID)
+    expect(node?.children).toBeUndefined()
+  })
+
+  it('offers Ask AI for any cell selection through the shell dispatcher', () => {
+    const node = byId('genoffice.ctx.ask-ai')
+    expect(node?.titleKey).toBe('aiAskBtn')
+    expect(node?.commandId).toBe(SHELL_COMMAND_ID)
+    expect(node?.params).toEqual({ command: 'ai-ask-selection' })
+    expect(node?.disabled$).toBeUndefined()
     expect(node?.children).toBeUndefined()
   })
 
@@ -77,6 +87,7 @@ describe('cellContextMenuLayout', () => {
       .filter((node) => node.commandId === SHELL_COMMAND_ID)
       .map((node) => node.params?.command)
     expect(commands).toEqual([
+      'ai-ask-selection',
       'visual:paste',
       'comment-new',
       'comment-reply',

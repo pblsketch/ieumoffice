@@ -322,7 +322,10 @@ export function opNamesSchema(catalog: OpCatalog): JsonSchema {
 /** `{ type: "array", items: { anyOf: [one object per callable op] } }` for a loaded catalog. */
 export function opsSchemaFromCatalog(catalog: OpCatalog): JsonSchema {
   const build =
-    catalog.domain === 'sheets'
+    catalog.domain === 'sheets' ||
+    catalog.domain === 'hwp' ||
+    catalog.domain === 'diagram' ||
+    catalog.domain === 'map'
       ? sheetsVariant
       : catalog.domain === 'docs'
         ? docsVariant
@@ -382,19 +385,33 @@ export function xlsxDataSchema(): JsonSchema {
 }
 
 export type TypedKey =
-  'docs-ops' | 'sheets-ops' | 'slides-ops' | 'slides-op-names' | 'cells' | 'xlsx-data' | 'object'
+  | 'docs-ops'
+  | 'sheets-ops'
+  | 'slides-ops'
+  | 'hwp-ops'
+  | 'diagram-ops'
+  | 'map-ops'
+  | 'whiteboard-ops'
+  | 'slides-op-names'
+  | 'cells'
+  | 'xlsx-data'
+  | 'object'
 
 export type TypedSchemas = Record<TypedKey, JsonSchema>
 
 /** Every typed parameter schema the tool table refers to; the catalogs load once per process. */
 export async function loadTypedSchemas(): Promise<TypedSchemas> {
-  const [docs, sheets, slides] = await Promise.all(
-    (['docs', 'sheets', 'slides'] as const).map(loadCatalog),
+  const [docs, sheets, slides, hwp, diagram, map, whiteboard] = await Promise.all(
+    (['docs', 'sheets', 'slides', 'hwp', 'diagram', 'map', 'whiteboard'] as const).map(loadCatalog),
   )
   return {
     'docs-ops': opsSchemaFromCatalog(docs),
     'sheets-ops': opsSchemaFromCatalog(sheets),
     'slides-ops': opsSchemaFromCatalog(slides),
+    'hwp-ops': opsSchemaFromCatalog(hwp),
+    'diagram-ops': opsSchemaFromCatalog(diagram),
+    'map-ops': opsSchemaFromCatalog(map),
+    'whiteboard-ops': opsSchemaFromCatalog(whiteboard),
     'slides-op-names': opNamesSchema(slides),
     cells: cellsSchema(),
     'xlsx-data': xlsxDataSchema(),

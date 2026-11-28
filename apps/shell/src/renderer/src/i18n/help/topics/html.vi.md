@@ -58,3 +58,11 @@ Thẻ viewport cố ý vắng mặt: nội dung này kết xuất trong một kh
 `lang` bám theo ngôn ngữ giao diện của ứng dụng, nên khung xương bạn chèn vào chính là khung mà công cụ của bạn đã được thiết lập cho. Sau đó cứ tùy ý mà sửa.
 
 Mục này chỉ hiện ở chế độ chỉnh sửa, và chỉ khi tài liệu còn trống — đã có nội dung thì không còn gì để chèn khung xương _vào_ nữa.
+
+## Sửa công thức
+
+Nhập trực quan hoặc sửa LaTeX. HTML giữ mã nguồn để chỉnh sửa sau.
+
+Chọn Chèn công thức trên thanh công cụ, dùng ô trực quan, mẫu hoặc LaTeX rồi áp dụng. Nhấp công thức đã lưu trong bản xem trước để sửa. Để chèn cùng dòng, chọn đoạn văn và tắt dòng riêng; công thức sẽ được thêm vào cuối đoạn.
+
+Biểu thức mà trình dàn chữ không xử lý được sẽ không bị mất: công thức vẫn giữ mã LaTeX và hiển thị văn bản thô trên trang, nên có thể mở lại để sửa.

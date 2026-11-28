@@ -4,7 +4,13 @@ import type {
   AiSubscriptionState,
   AiSubscriptionStatus,
 } from '@genoffice/ai-provider'
-import { aiConnectGuideView, aiConnectInfoText, aiConnectStepsView } from '../src/connect-guide'
+import {
+  aiConnectAlternatePath,
+  aiConnectGuideView,
+  aiConnectInfoText,
+  aiConnectPathText,
+  aiConnectStepsView,
+} from '../src/connect-guide'
 
 const status = (
   provider: AiSubscriptionProviderId,
@@ -29,14 +35,44 @@ describe('aiConnectGuideView', () => {
         bodyKey: 'guidePathClaudeBody',
         badgeKey: 'guideBadgeInstalled',
       },
+      // one ChatGPT answer: it connects directly, and a Codex that needs work is no badge of it
+      { path: 'chatgpt', titleKey: 'guidePathCodexTitle', bodyKey: 'guidePathChatGptBody' },
       {
-        path: 'codex',
-        titleKey: 'guidePathCodexTitle',
-        bodyKey: 'guidePathCodexBody',
-        badgeKey: 'guideBadgeCheck',
+        path: 'antigravity',
+        titleKey: 'guidePathAntigravityTitle',
+        bodyKey: 'guidePathAntigravityBody',
       },
       { path: 'free', titleKey: 'guidePathFreeTitle', bodyKey: 'guidePathFreeBody' },
     ])
+  })
+
+  it('shows on the ChatGPT answer a connection made either way', () => {
+    const answer = (statuses: Parameters<typeof aiConnectGuideView>[0]) =>
+      aiConnectGuideView(statuses, 'ask').options.find((option) => option.path === 'chatgpt')
+    expect(answer({ codex: status('codex', 'ready') })?.badgeKey).toBe('guideBadgeReady')
+    expect(answer({ chatgpt: status('chatgpt', 'ready') })?.badgeKey).toBe('guideBadgeReady')
+    expect(
+      answer({ chatgpt: status('chatgpt', 'signed-out', { signingIn: 'browser' as const }) })
+        ?.badgeKey,
+    ).toBe('cardSigningIn')
+    expect(answer({ chatgpt: status('chatgpt', 'signed-out') })?.badgeKey).toBeUndefined()
+  })
+
+  it('opens the Codex way when Codex already works, and offers each as the other way', () => {
+    expect(aiConnectGuideView({ codex: status('codex', 'ready') }, null).open).toBe('codex')
+    expect(aiConnectAlternatePath('chatgpt')).toBe('codex')
+    expect(aiConnectAlternatePath('codex')).toBe('chatgpt')
+    expect(aiConnectAlternatePath('claude-code')).toBeNull()
+    expect(aiConnectPathText('codex').bodyKey).toBe('guidePathCodexBody')
+  })
+
+  it('has no install step for ChatGPT reached directly', () => {
+    const steps = aiConnectStepsView(status('chatgpt', 'signed-out'))
+    expect(steps.steps.map((step) => step.id)).toEqual(['login', 'ready'])
+    expect(steps.current).toBe('login')
+    expect(aiConnectStepsView(status('chatgpt', 'ready')).steps.every((step) => step.done)).toBe(
+      true,
+    )
   })
 
   it('opens by itself a sign-in under way, then a connection that works, then a free one', () => {
@@ -48,7 +84,7 @@ describe('aiConnectGuideView', () => {
     expect(aiConnectGuideView({ codex: status('codex', 'ready') }, null, true).open).toBe('codex')
     const free = aiConnectGuideView({ codex: status('codex', 'not-installed') }, null, true)
     expect(free.open).toBe('free')
-    expect(free.options[2]!.badgeKey).toBe('guideBadgeReady')
+    expect(free.options[3]!.badgeKey).toBe('guideBadgeReady')
   })
 
   it('the user’s own choice wins, and "ask" brings the question back over anything', () => {
@@ -74,6 +110,12 @@ describe('aiConnectStepsView', () => {
     ])
     expect(at(status('codex', 'metered'))).toEqual(['login', ['install']])
     expect(at(status('codex', 'ready'))).toEqual(['ready', ['install', 'login', 'ready']])
+  })
+
+  it('a program turned off in this app is on no step, and its answer says so', () => {
+    expect(at(status('claude-code', 'off'))).toEqual([null, []])
+    const view = aiConnectGuideView({ 'claude-code': status('claude-code', 'off') }, null)
+    expect(view.options[0]!.badgeKey).toBe('guideBadgeOff')
   })
 
   it('a program to update is back on the install step; another failure found the program', () => {
@@ -103,11 +145,61 @@ describe('aiConnectInfoText', () => {
     ).toBe(
       [
         'claude-code: state=signed-out version=2.1.250 signing-in=browser',
+        'chatgpt: state=signed-out',
         'codex: state=checking',
+        'antigravity: state=signed-out',
         'platform: Win32',
         'app: Mozilla/5.0 (Windows NT 10.0) Electron/38',
       ].join('\n'),
     )
+  })
+
+  it('says at which step the ChatGPT sign-in failed, in fixed names', () => {
+    const text = aiConnectInfoText({
+      chatgpt: status('chatgpt', 'signed-out', {
+        loginUnfinished: true,
+        loginFailure: {
+          reason: 'denied',
+          step: 'token-refused',
+          httpStatus: 400,
+          oauthError: 'invalid_grant',
+        },
+      }),
+    })
+    expect(text.split('\n')[1]).toBe(
+      'chatgpt: state=signed-out login-failed=denied step=token-refused http=400 oauth-error=invalid_grant',
+    )
+    expect(
+      aiConnectInfoText({
+        chatgpt: status('chatgpt', 'signed-out', {
+          loginUnfinished: true,
+          loginFailure: { reason: 'no-plan', step: 'scope-missing' },
+        }),
+      }).split('\n')[1],
+    ).toBe('chatgpt: state=signed-out login-failed=no-plan step=scope-missing')
+  })
+
+  it('reads the sign-in failure again, leaving out values of another shape', () => {
+    const text = aiConnectInfoText({
+      chatgpt: status('chatgpt', 'signed-out', {
+        loginUnfinished: true,
+        loginFailure: {
+          reason: 'denied',
+          step: 'callback-error token=abc' as never,
+          httpStatus: 1e9,
+          oauthError: 'code abc-123 was used',
+        },
+      }),
+    })
+    expect(text.split('\n')[1]).toBe('chatgpt: state=signed-out login-failed=denied')
+    expect(
+      aiConnectInfoText({
+        chatgpt: status('chatgpt', 'signed-out', {
+          loginUnfinished: true,
+          loginFailure: { reason: 'something' as never },
+        }),
+      }).split('\n')[1],
+    ).toBe('chatgpt: state=signed-out')
   })
 
   it('leaves out the account, the error text and a version that is not one', () => {
@@ -119,6 +211,13 @@ describe('aiConnectInfoText', () => {
       }),
       codex: status('codex', 'error', { error: 'failed: spawn C:\\Users\\me\\codex.exe ENOENT' }),
     })
-    expect(text).toBe(['claude-code: state=ready', 'codex: state=error error=failed'].join('\n'))
+    expect(text).toBe(
+      [
+        'claude-code: state=ready',
+        'chatgpt: state=signed-out',
+        'codex: state=error error=failed',
+        'antigravity: state=signed-out',
+      ].join('\n'),
+    )
   })
 })

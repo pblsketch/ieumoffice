@@ -5,6 +5,7 @@ import type {
   AiSubscriptionProviderId,
   AiSubscriptionStatus,
   AiSubscriptionStatuses,
+  SubscriptionLoginMode,
 } from '@genoffice/ai-provider/browser'
 import {
   AI_SIGNING_IN_STALLED_MS,
@@ -33,8 +34,11 @@ const TERMINAL_WINDOWS = !(
 export interface AiSubscriptionCardActions {
   /** run the vendor's official install command in a visible terminal window */
   readonly onInstall: (provider: AiSubscriptionProviderId) => void
-  /** start the CLI's own login; while a browser sign-in runs, open the CLI's window instead */
-  readonly onLogin: (provider: AiSubscriptionProviderId) => void
+  /**
+   * start the CLI's own login; `window` asks for the CLI's own window, where a
+   * code the browser shows is pasted (Windows only)
+   */
+  readonly onLogin: (provider: AiSubscriptionProviderId, mode?: SubscriptionLoginMode) => void
   /** check the connection again */
   readonly onRecheck: (provider: AiSubscriptionProviderId) => void
   /** the user chose "use anyway" on a metered login */
@@ -55,12 +59,17 @@ const ACTION_LABELS: Record<AiSubscriptionCardAction, AiSubscriptionStringKey> =
   'install-help': 'actionInstallHelp',
   login: 'actionLogin',
   'login-window': 'actionLoginWindow',
+  'login-code': 'actionLoginWithCode',
+  'login-browser': 'actionLoginBrowser',
   'cancel-login': 'actionCancelLogin',
   update: 'actionUpdate',
   'accept-metered': 'actionAcceptMetered',
   recheck: 'actionRecheck',
   'switch-account': 'actionSwitchAccount',
   logout: 'actionLogout',
+  'manage-usage': 'actionManageUsage',
+  'turn-off': 'actionTurnOff',
+  'turn-on': 'actionTurnOn',
 }
 
 /**
@@ -73,6 +82,8 @@ const ACTION_LABELS: Record<AiSubscriptionCardAction, AiSubscriptionStringKey> =
  * when asked for, by `showAccount` and by the two handlers, and never on a
  * compact card: an AI panel does not name the account. Both actions change the
  * vendor program for the whole PC, so the caller confirms before it runs one.
+ * The switch that stops using a CLI in this app (and turns it back on) is
+ * Settings-only too, and needs no confirmation: it reaches this app alone.
  */
 export function AiSubscriptionCard({
   status,
@@ -89,6 +100,9 @@ export function AiSubscriptionCard({
   showAccount = false,
   onSwitchAccount,
   onLogout,
+  onManageUsage,
+  onTurnOff,
+  onTurnOn,
 }: AiSubscriptionCardActions & {
   readonly status: AiSubscriptionStatus
   readonly lang: Lang
@@ -102,6 +116,12 @@ export function AiSubscriptionCard({
   readonly onSwitchAccount?: ((provider: AiSubscriptionProviderId) => void) | undefined
   /** Settings only: the user asked to sign out (the CLI's own logout) */
   readonly onLogout?: ((provider: AiSubscriptionProviderId) => void) | undefined
+  /** Settings only: open where ChatGPT shows and limits this app's use of the plan */
+  readonly onManageUsage?: (() => void) | undefined
+  /** Settings only: stop using the CLI in this app; it stays signed in for the rest of the PC */
+  readonly onTurnOff?: ((provider: AiSubscriptionProviderId) => void) | undefined
+  /** Settings only: use a CLI turned off in this app again */
+  readonly onTurnOn?: ((provider: AiSubscriptionProviderId) => void) | undefined
 }): React.JSX.Element {
   const stalled = useSigningInStalled(status.signingIn === 'browser')
   const view = aiSubscriptionCardView(status, {
@@ -110,6 +130,8 @@ export function AiSubscriptionCard({
     terminalWindows: TERMINAL_WINDOWS,
     update: onUpdate !== undefined,
     cancelLogin: onCancelLogin !== undefined,
+    manageUsage: onManageUsage !== undefined,
+    offSwitch: !compact && onTurnOff !== undefined && onTurnOn !== undefined,
     signingInStalled: stalled,
   })
   const provider = view.provider
@@ -122,14 +144,20 @@ export function AiSubscriptionCard({
     install: onInstall,
     'install-help': onOpenInstallHelp,
     login: onLogin,
-    // pressing login again while the browser sign-in runs opens the CLI's window
-    'login-window': onLogin,
+    // both ask for the CLI's window outright, rather than for whatever a press starts:
+    // pressing login again while the browser sign-in runs opens the same window
+    'login-window': (id) => onLogin(id, 'window'),
+    'login-code': (id) => onLogin(id, 'window'),
+    'login-browser': onLogin,
     'cancel-login': (id) => onCancelLogin?.(id),
     update: (id) => onUpdate?.(id),
     'accept-metered': onAcceptMetered,
     recheck: onRecheck,
     'switch-account': (id) => onSwitchAccount?.(id),
     logout: (id) => onLogout?.(id),
+    'manage-usage': () => onManageUsage?.(),
+    'turn-off': (id) => onTurnOff?.(id),
+    'turn-on': (id) => onTurnOn?.(id),
   }
   return (
     <div
@@ -197,7 +225,10 @@ export function AiSubscriptionCard({
                 key={action}
                 type="button"
                 className={`ai-sub-btn${
-                  index === 0 && view.tone !== 'warning' && !isAiSubscriptionAccountAction(action)
+                  index === 0 &&
+                  view.tone !== 'warning' &&
+                  !isAiSubscriptionAccountAction(action) &&
+                  action !== 'turn-off'
                     ? ' primary'
                     : ''
                 }`}
@@ -208,7 +239,12 @@ export function AiSubscriptionCard({
                 {aiSubscriptionText(
                   lang,
                   // lifted out of the links, the way to the window says what it opens
-                  action === 'login-window' ? 'actionLoginWindowOpen' : ACTION_LABELS[action],
+                  action === 'login-window' || action === 'login-code'
+                    ? 'actionLoginWindowOpen'
+                    : // the app's own ChatGPT sign-in is labelled the way OpenAI asks
+                      action === 'login' && provider === 'chatgpt'
+                      ? 'actionContinueWithChatGpt'
+                      : ACTION_LABELS[action],
                 )}
               </button>
             ),

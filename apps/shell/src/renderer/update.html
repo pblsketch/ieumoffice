@@ -4,11 +4,18 @@
     <meta charset="UTF-8" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' ws://localhost:*"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data: genoffice-app:; connect-src 'self' ws://localhost:*"
     />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>PosidOffice Update</title>
     <style>
+      @font-face {
+        font-family: 'UI Pretendard';
+        font-weight: 45 920;
+        font-style: normal;
+        font-display: swap;
+        src: url('genoffice-app://ui-fonts/PretendardVariable.woff2') format('woff2');
+      }
       :root {
         --accent: #2367ec;
         --accent-hover: #1b58cf;
@@ -31,7 +38,16 @@
           'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Yu Gothic UI', 'Yu Gothic', 'Meiryo';
       }
       :root:lang(ko) {
-        --ui-cjk: 'Apple SD Gothic Neo', 'Malgun Gothic';
+        --ui-cjk: 'UI Pretendard', 'Apple SD Gothic Neo', 'Malgun Gothic';
+      }
+      :root:lang(ko) body {
+        font-family:
+          'UI Pretendard',
+          -apple-system,
+          'Segoe UI',
+          'Apple SD Gothic Neo',
+          'Malgun Gothic',
+          sans-serif;
       }
       :root:lang(zh-TW) {
         --ui-cjk: 'PingFang TC', 'Microsoft JhengHei';

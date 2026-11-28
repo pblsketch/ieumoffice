@@ -8,6 +8,7 @@ Accueil est la page de démarrage de GenOffice : une barre de navigation à gauc
 - **Favoris** : les fichiers que vous avez mis en favori. Survolez une ligne et cliquez sur l’étoile pour l’ajouter ou le retirer. **Déplacer vers un groupe** dans le menu ⋯ range les fichiers étoilés dans des groupes nommés ; la vue Étoilés filtre par groupe.
 - **Guide de l’utilisateur** : ouvre ce manuel.
 - **Ask AI** : le panneau de base de connaissances — posez des questions et recevez des réponses citées depuis vos fichiers étoilés (voir ci-dessous).
+- **Projets** : les dossiers (projets) avec lesquels l’IA peut travailler. Créez un projet ou utilisez un dossier existant, puis ouvrez-en un pour gérer ses consignes, sa mémoire, ses fichiers et ses conversations. Voir [Projets](help://projects).
 - **Dossiers** : les répertoires que vous ajoutez à la barre latérale avec **Ajouter un dossier…**, ou que vous y faites glisser depuis le gestionnaire de fichiers. Chacun devient une racine que vous pouvez ouvrir, dans laquelle créer des sous-dossiers, renommer et retirer ; une racine qui devient indisponible est signalée comme telle et peut être retirée de la liste. **Nouveau dossier** en crée un autre.
 - **La ligne tout en bas** : indique si une IA est connectée — **Connecter l’IA**, ou le nom de l’abonnement connecté — et ouvre les Paramètres.
 
@@ -43,6 +44,8 @@ Les cartes au-dessus des listes créent un document en une étape. Cliquer sur u
 
 Le nouveau fichier atterrit dans le dossier actuellement sélectionné dans la barre latérale ; sans sélection, il va dans le dossier par défaut.
 
+Pour masquer des cartes ou changer leur ordre, utilisez **Nouveaux documents sur l’accueil** dans Paramètres → Général. Un type désactivé disparaît seulement des cartes et des menus Nouveau ; ses fichiers s’ouvrent toujours normalement. Sur l’accueil, ⌘N/Ctrl+N crée le premier type encore affiché. Désactiver un éditeur dans Paramètres → Éditeurs et IA est autre chose : ses cartes et ses entrées de menu disparaissent aussi, et ouvrir ses fichiers demande d’abord une confirmation.
+
 Ce que fait chaque carte :
 
 - **AI Docs** (.docx) : un document texte vierge dans l’éditeur Docs. Le fichier n’est écrit sur le disque qu’à la **première sauvegarde** ; les nouveaux documents s’ouvrent avec le panneau IA déplié (désactivez-le dans Paramètres → « Ouvrir le panneau IA dans les nouveaux documents »).
@@ -60,5 +63,6 @@ Ce que fait chaque carte :
 - Étoilez d'abord des fichiers (tout type que l'app lit) ; l'en-tête du panneau compte le corpus, et une base vide vous invite à aller étoiler.
 - Les réponses citent leurs fichiers d'origine ; cliquez une citation pour ouvrir le fichier dans son éditeur.
 - Nécessite une IA connectée ; voir [Connexion par abonnement](help://subscription). La conversation ne vit qu'en mémoire — fermer l'app y met fin.
+- Choisissez un projet sous la zone de saisie : les fichiers du dossier sont alors eux aussi cherchés et lus, et la conversation est conservée dans ce dossier pour que vous puissiez la poursuivre dans un autre éditeur. Sans projet, la conversation ne vit qu’en mémoire, comme indiqué plus haut.
 - La recherche tourne sur l'index de fichiers local, comme la recherche de l'accueil ; les fichiers disparus sortent silencieusement du corpus.
 - Les groupes n'organisent que la liste Étoilés — la base de connaissances couvre toujours tous les fichiers étoilés.

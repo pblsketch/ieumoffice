@@ -106,9 +106,10 @@ export const pt = {
   appChartNoRepoint: 'Este gráfico não permite redefinir os intervalos de dados.',
   appKeepOneSeries: 'Mantenha pelo menos uma série.',
   appNoCategoriesToSwitch: 'Não há categorias para alternar.',
-  appComboNoSelectData:
-    'Alterar a fonte de dados de um gráfico de combinação ainda não é suportado.',
+  appSelectDataUnsupported: 'Não há suporte para alterar a origem de dados deste tipo de gráfico.',
   appSeriesName: 'Nome da série',
+  appSeriesType: 'Tipo de série',
+  appSecondaryAxis: 'Eixo secundário',
   appValuesRange: 'Intervalo de valores',
   appCategoriesRange: 'Intervalo de categorias',
   appKeepUnchanged: 'Manter inalterado',
@@ -192,6 +193,13 @@ export const pt = {
   appInvalidGroupField: 'Campo de agrupamento inválido.',
   appInvalidPageField: 'Campo de filtro de relatório inválido.',
   appPivotPageItemMissing: 'O item de filtro "{item}" não pertence ao campo "{label}".',
+  appInvalidPivotBaseField:
+    'O campo base de "Mostrar valores como" deve estar em linhas ou colunas.',
+  appPivotBaseFieldMissing:
+    'O modo "Mostrar valores como" de um campo de valores precisa de um campo base.',
+  appPivotBaseFieldNotAxis:
+    'O campo base "{label}" deve estar nas linhas ou colunas da tabela dinâmica.',
+  appPivotBaseItemMissing: 'O item base "{item}" não pertence ao campo "{label}".',
   appInvalidLabelFilterField: 'O campo do filtro de rótulo é inválido.',
   appInvalidValueFieldIndex: 'O índice do campo de valores {index} é inválido.',
   appInvalidValueField: 'Campo de valores inválido.',
@@ -342,8 +350,8 @@ export const pt = {
     'Esta planilha contém uma Tabela Dinâmica — mover intervalos ainda não é suportado.',
   appMergeOverTable:
     'A seleção sobrepõe uma tabela do Excel — mesclar células dentro de uma tabela ainda não é suportado.',
-  appTableFilterNoEdit:
-    'O filtro desta planilha pertence a uma tabela do Excel — a edição ainda não pode ser salva.',
+  appFilterToggleFailed:
+    'O filtro não foi aplicado — selecione primeiro o intervalo com seus dados.',
   appAutofillStreaming:
     'O preenchimento automático em uma área ainda em streaming não é permitido por enquanto.',
   appDvNeedsIndexed:
@@ -397,6 +405,9 @@ export const pt = {
   appTableNameUsed: 'O nome de tabela "{name}" já foi usado nesta sessão.',
   appTableNameInFile: 'O nome de tabela "{name}" já é usado por uma tabela no arquivo.',
   appTableOverlapsSession: 'O intervalo sobrepõe a tabela "{name}" criada nesta sessão.',
+  appTableOverlapsFile: 'O intervalo sobrepõe a tabela "{name}" do arquivo.',
+  appTableAlreadyInTable:
+    'A seleção já está na tabela "{name}" — altere o estilo em Design da Tabela.',
   appTablesNeedFile: 'Abra primeiro um arquivo XLSX — as tabelas são gravadas no arquivo.',
   appTableSelectRange: 'Selecione primeiro o intervalo de dados — cabeçalhos na primeira linha.',
   appTableCreated: 'Tabela criada — salve com ⌘S.',
@@ -482,6 +493,7 @@ export const pt = {
   appGridlinesHidden: 'Linhas de grade ocultas.',
   appGridlinesShown: 'Linhas de grade exibidas.',
   appShowingFormulas: 'Exibindo fórmulas — alterne novamente para ver os valores.',
+  appShowingFormulasActive: 'Exibindo fórmulas',
   appShowingValues: 'Exibindo valores calculados.',
   appTraceNoFormula: 'Rastrear Precedentes: a célula ativa não tem fórmula.',
   appTraceNoRefs: 'Rastrear Precedentes: esta fórmula não tem referências de células.',
@@ -581,6 +593,9 @@ export const pt = {
     'A exportação de CSV requer a pasta de trabalho totalmente carregada — aguarde o carregamento terminar.',
   appCsvExportTooLarge: 'A planilha é grande demais para exportar como CSV.',
   appCsvExportCanceled: 'Exportação de CSV cancelada.',
+  appOdsExported: '{path} exportado.',
+  appOdsExportCanceled: 'Exportação para ODS cancelada.',
+  appOdsExportFailed: 'Falha ao exportar em ODS.',
   appCsvExported: '{path} exportado.',
   appCsvExportedActiveOnly:
     'Arquivos CSV contêm apenas uma planilha — a planilha ativa “{name}” foi exportada para {path}.',
@@ -598,8 +613,6 @@ export const pt = {
   appSaveFailed: 'Não foi possível salvar a pasta de trabalho.',
   appCfRuleUnsaveable:
     'Esta regra de formatação condicional não pode ser salva em xlsx — use outro tipo de regra.',
-  appSaveErrX14Dv:
-    'Esta planilha tem validação de dados estendida (x14); editar suas regras de validação ainda não é suportado.',
   appSaveErrMultiSelectList:
     'A validação de lista de seleção múltipla não pode ser salva em xlsx — exclua a regra antes de salvar.',
   appSaveErrX14Cf:
@@ -620,6 +633,10 @@ export const pt = {
     'A folha de estilos desta pasta de trabalho não tem a estrutura básica; as alterações de estilo não podem ser salvas.',
   appSaveErrPackageGuard:
     'Salvar mudaria a estrutura do pacote da pasta de trabalho — cancelado para proteger o arquivo.',
+  appSaveErrSheetNotFound:
+    'Uma planilha referida por este salvamento não foi encontrada na pasta de trabalho — o salvamento foi interrompido e o arquivo ficou como estava.',
+  appSaveErrSheetNameReused:
+    'Uma nova planilha usa o nome antigo de uma planilha renomeada, por isso não é possível salvar. Dê outro nome à nova planilha por enquanto, salve e depois renomeie-a. O arquivo ficou como estava.',
   appSaveErrChartUnsupported:
     'Este tipo de gráfico não suporta essa edição; salvamento cancelado — desfaça a alteração do gráfico.',
   appSaveErrMoveOverlap:
@@ -729,6 +746,13 @@ export const pt = {
   appSaveAs: 'Salvar Como',
   appUndo: 'Desfazer',
   appRedo: 'Refazer',
+  appQuickAccessCustomize: 'Personalizar a Barra de Ferramentas de Acesso Rápido',
+  appQuickAccessHint:
+    'Pressione Alt e um número para executar o botão nessa posição, contando a partir da esquerda.',
+  appQuickAccessMoveEarlier: 'Mover para o início',
+  appQuickAccessMoveLater: 'Mover para o fim',
+  appQuickAccessReset: 'Restaurar padrão',
+  appQuickAccessFull: 'A barra comporta até 10 botões.',
   appUnsavedEditOne: '● {count} edição não salva',
   appUnsavedEditMany: '● {count} edições não salvas',
   appSavedState: 'Salvo',
@@ -759,12 +783,11 @@ export const pt = {
   appLinkPlaceholder: 'https://example.com ou Sheet1!A1',
   appRemoveLink: 'Remover Link',
   appNotAvailableYet: 'Ainda não disponível',
-  appComingSoon: 'Em breve',
   appGroupChartLayouts: 'Layouts de gráfico',
   appAddChartElement: 'Adicionar Elemento de Gráfico',
   appAddChartElementTitle: 'Títulos, rótulos de dados, legenda',
   appQuickLayout: 'Layout Rápido',
-  appQuickLayoutTitle: 'Layouts predefinidos de legenda + rótulos',
+  appQuickLayoutTitle: 'Layouts padrão de legenda + rótulos',
   appChangeColors: 'Alterar Cores',
   appRecolorSlices: 'Recolorir cada fatia',
   appRecolorSeries: 'Recolorir cada série',
@@ -1192,6 +1215,8 @@ export const pt = {
   appRefreshAll: 'Atualizar Tudo',
   appWorkbookNoPivot: 'Nenhuma tabela dinâmica nesta pasta de trabalho.',
   appRefreshAllTitle: 'Atualizar todas as tabelas dinâmicas',
+  appQueriesConnections: 'Consultas e conexões',
+  appQueriesConnectionsTitle: 'Listar as consultas e conexões de dados da pasta de trabalho',
   appErrorCheckingDetail: 'Verificar valores de erro na planilha',
   appErrorsFound: '{count} erros — em {cell}: {value}',
   appCheckingErrors: 'Procurando erros na planilha inteira…',
@@ -1227,6 +1252,7 @@ export const pt = {
   appGroupForecast: 'Previsão',
   appWhatIfAnalysis: 'Teste de Hipóteses',
   appGoalSeek: 'Atingir meta',
+  appDataTable: 'Tabela de dados',
   appWhatIfTitle: 'Resolver uma entrada para um valor-alvo',
   appGoalSeekNeedsFormula: 'A célula deve conter uma fórmula.',
   appGoalSeekByCellNotNumber: 'A célula a alterar deve conter um número ou estar vazia.',
@@ -1489,6 +1515,15 @@ export const pt = {
   appTableRowsNotLoaded:
     'As linhas da tabela ainda estão carregando — tente novamente em instantes.',
   appTableTotalLabel: 'Total',
+  appNotePicturesPaneTitle: 'Imagens das anotações',
+  appNotePicturesClose: 'Fechar',
+  appNotePicturesNone: 'Nenhuma anotação desta pasta de trabalho exibe uma imagem.',
+  appNotePictureUnavailable: 'Não é possível exibir esta imagem.',
+  appNotePicturesToggle: 'Imagens das anotações',
+  appNoteInsertPicture: 'Inserir imagem',
+  appNotePictureInserted: 'Imagem adicionada à nota em {cell}. Salve para gravá-la no arquivo.',
+  appNotePictureRemoved: 'Imagem removida da nota em {cell}.',
+  appNotePictureRemove: 'Remover imagem',
   appCommentsPaneTitle: 'Comentários',
   appThreadReply: 'Responder',
   appThreadReplyPlaceholder: 'Responder…',
@@ -1534,9 +1569,9 @@ export const pt = {
   appVisualSizeProperties: 'Tamanho e propriedades…',
   appVisualHyperlink: 'Hiperligação…',
   appVisualDelete: 'Eliminar',
-  appVisualArranged: 'Objeto atualizado — guarde com ⌘S.',
+  appVisualArranged: 'Objeto atualizado — salve com ⌘S.',
   appVisualCopied: 'Objeto copiado.',
-  appVisualPasted: 'Objeto colado — guarde com ⌘S.',
+  appVisualPasted: 'Objeto colado — salve com ⌘S.',
   appVisualNoCopy: 'Este objeto não pode ser copiado.',
   appVisualSelectTwo: 'Shift+clique para selecionar pelo menos dois objetos a alinhar.',
   appVisualSelectThree: 'Shift+clique para selecionar pelo menos três objetos a distribuir.',
@@ -1557,4 +1592,33 @@ export const pt = {
   appVisualFlipV: 'Inverter verticalmente',
   appVisualFlipH: 'Inverter horizontalmente',
   appCtxPasteVisual: 'Colar imagem ou forma',
+
+  // ── Spelling check (F7 / Review ▸ Proofing) ──
+  appSpellTitle: 'Ortografia',
+  appSpellBtnDetail: 'Verificar o texto da planilha (F7)',
+  appSpellToggle: 'Verificar ortografia',
+  appSpellToggleTip:
+    'Ativa a verificação ortográfica (F7 e o botão Revisão); desativada, as caixas de comentário deixam de mostrar sublinhados',
+  appSpellOn: 'Verificação ortográfica ativada.',
+  appSpellOff: 'A verificação ortográfica está desativada. Ative-a em Revisão ▸ Revisão de Texto.',
+  appSpellRecheck: 'Verificar novamente',
+  appSpellNone: 'Nenhum erro de ortografia suspeito encontrado.',
+  appSpellFindings: '{count} erros suspeitos. Clique em uma linha para localizar.',
+  appSpellTruncated: 'Células de texto demais; somente as primeiras foram verificadas.',
+  appSpellColWord: 'Suspeita',
+  appSpellIgnore: 'Ignorar',
+  appSpellIgnoreAll: 'Ignorar tudo',
+  appSpellLearn: 'Adicionar ao dicionário',
+  appSpellNoSuggestions: 'Sem sugestões',
+  appSpellIgnoredAll: '"{word}" não será mais sinalizado nesta sessão.',
+  appSpellLearned: '"{word}" foi adicionado ao dicionário.',
+  appSpellChanged: '{address} corrigido.',
+  appSpellChangeFailed: 'Não foi possível corrigir {address}.',
+  appSpellUnavailable: 'A verificação ortográfica não está disponível nesta janela.',
+  appSpellReplaceAll: 'Substituir tudo por "{suggestion}"',
+  appSpellChangedAll: 'Corrigidas {count} células de "{word}".',
+
+  // ── ODS import ──
+  appOdsImportNotice: 'O ODS foi aberto como uma cópia xlsx. Salvar gravará um arquivo xlsx.',
+  appOdsFormulasDropped: 'Em {count} fórmulas, apenas os valores foram mantidos.',
 } satisfies Record<keyof typeof zh, string>

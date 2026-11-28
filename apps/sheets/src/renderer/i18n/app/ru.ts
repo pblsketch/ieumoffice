@@ -101,9 +101,10 @@ export const ru = {
   appChartNoRepoint: 'Эта диаграмма не поддерживает переназначение диапазонов данных.',
   appKeepOneSeries: 'Оставьте хотя бы один ряд.',
   appNoCategoriesToSwitch: 'Нет категорий для переключения.',
-  appComboNoSelectData:
-    'Изменение источника данных комбинированной диаграммы пока не поддерживается.',
+  appSelectDataUnsupported: 'Изменение источника данных для этого типа диаграмм не поддерживается.',
   appSeriesName: 'Имя ряда',
+  appSeriesType: 'Тип ряда',
+  appSecondaryAxis: 'Вспомогательная ось',
   appValuesRange: 'Диапазон значений',
   appCategoriesRange: 'Диапазон категорий',
   appKeepUnchanged: 'Оставить без изменений',
@@ -187,6 +188,13 @@ export const ru = {
   appInvalidGroupField: 'Недопустимое поле группировки.',
   appInvalidPageField: 'Недопустимое поле фильтра отчёта.',
   appPivotPageItemMissing: 'Элемент фильтра «{item}» не входит в поле «{label}».',
+  appInvalidPivotBaseField:
+    'Базовое поле режима «Показать значения как» должно находиться в строках или столбцах.',
+  appPivotBaseFieldMissing:
+    'Для режима «Показать значения как» поля значений требуется базовое поле.',
+  appPivotBaseFieldNotAxis:
+    'Базовое поле «{label}» должно находиться в строках или столбцах сводной таблицы.',
+  appPivotBaseItemMissing: 'Базовый элемент «{item}» не входит в поле «{label}».',
   appInvalidLabelFilterField: 'Поле фильтра подписей недопустимо.',
   appInvalidValueFieldIndex: 'Индекс поля значений {index} недопустим.',
   appInvalidValueField: 'Недопустимое поле значений.',
@@ -328,8 +336,7 @@ export const ru = {
     'Этот лист содержит сводную таблицу — перемещение диапазонов пока не поддерживается.',
   appMergeOverTable:
     'Выделение пересекается с таблицей Excel — объединение ячеек внутри таблицы пока не поддерживается.',
-  appTableFilterNoEdit:
-    'Фильтр этого листа принадлежит таблице Excel — его изменение пока нельзя сохранить.',
+  appFilterToggleFailed: 'Фильтр не применён — сначала выделите диапазон с данными.',
   appAutofillStreaming:
     'Автозаполнение в область, которая ещё загружается потоково, пока не разрешено.',
   appDvNeedsIndexed:
@@ -382,6 +389,9 @@ export const ru = {
   appTableNameUsed: 'Имя таблицы «{name}» уже использовалось в этом сеансе.',
   appTableNameInFile: 'Имя таблицы "{name}" уже используется таблицей в файле.',
   appTableOverlapsSession: 'Диапазон пересекается с таблицей «{name}», созданной в этом сеансе.',
+  appTableOverlapsFile: 'Диапазон пересекается с таблицей «{name}» в файле.',
+  appTableAlreadyInTable:
+    'Выделение уже находится в таблице «{name}» — измените стиль в разделе «Конструктор таблиц».',
   appTablesNeedFile: 'Сначала откройте файл XLSX — таблицы записываются в файл.',
   appTableSelectRange: 'Сначала выделите диапазон данных — заголовки в его первой строке.',
   appTableCreated: 'Таблица создана — сохраните с помощью ⌘S.',
@@ -467,6 +477,7 @@ export const ru = {
   appGridlinesHidden: 'Сетка скрыта.',
   appGridlinesShown: 'Сетка показана.',
   appShowingFormulas: 'Показ формул — переключите снова, чтобы увидеть значения.',
+  appShowingFormulasActive: 'Показываются формулы',
   appShowingValues: 'Показ вычисленных значений.',
   appTraceNoFormula: 'Влияющие ячейки: в активной ячейке нет формулы.',
   appTraceNoRefs: 'Влияющие ячейки: в этой формуле нет ссылок на ячейки.',
@@ -559,6 +570,9 @@ export const ru = {
     'Экспорт в CSV требует полностью загруженной книги — дождитесь завершения загрузки.',
   appCsvExportTooLarge: 'Лист слишком большой для экспорта в CSV.',
   appCsvExportCanceled: 'Экспорт в CSV отменён.',
+  appOdsExported: 'Экспортировано: {path}.',
+  appOdsExportCanceled: 'Экспорт в ODS отменён.',
+  appOdsExportFailed: 'Не удалось экспортировать в ODS.',
   appCsvExported: 'Экспортировано: {path}.',
   appCsvExportedActiveOnly:
     'Файлы CSV содержат только один лист — активный лист «{name}» экспортирован в {path}.',
@@ -576,8 +590,6 @@ export const ru = {
   appSaveFailed: 'Не удаётся сохранить книгу.',
   appCfRuleUnsaveable:
     'Это правило условного форматирования нельзя сохранить в xlsx — выберите другой тип правила.',
-  appSaveErrX14Dv:
-    'На этом листе есть расширенная (x14) проверка данных; редактирование её правил проверки пока не поддерживается.',
   appSaveErrMultiSelectList:
     'Проверку данных со списком множественного выбора нельзя сохранить в xlsx — удалите это правило перед сохранением.',
   appSaveErrX14Cf:
@@ -598,6 +610,10 @@ export const ru = {
     'В таблице стилей этой книги нет базовой структуры, изменения стилей сохранить нельзя.',
   appSaveErrPackageGuard:
     'Сохранение изменило бы структуру пакета книги — прервано для защиты файла.',
+  appSaveErrSheetNotFound:
+    'Лист, на который ссылается это сохранение, не найден в книге — сохранение остановлено, файл остался без изменений.',
+  appSaveErrSheetNameReused:
+    'Новый лист использует прежнее имя переименованного листа, поэтому сохранить нельзя. Временно дайте новому листу другое имя, сохраните, затем переименуйте его. Файл остался без изменений.',
   appSaveErrChartUnsupported:
     'Этот тип диаграммы не поддерживает такое изменение, сохранение прервано — отмените изменение диаграммы.',
   appSaveErrMoveOverlap:
@@ -710,6 +726,12 @@ export const ru = {
   appSaveAs: 'Сохранить как',
   appUndo: 'Отменить',
   appRedo: 'Вернуть',
+  appQuickAccessCustomize: 'Настроить панель быстрого доступа',
+  appQuickAccessHint: 'Нажмите Alt и цифру, чтобы выполнить кнопку на этой позиции, считая слева.',
+  appQuickAccessMoveEarlier: 'Переместить ближе к началу',
+  appQuickAccessMoveLater: 'Переместить ближе к концу',
+  appQuickAccessReset: 'Вернуть по умолчанию',
+  appQuickAccessFull: 'На панели помещается не более 10 кнопок.',
   appUnsavedEditOne: '● Несохранённых изменений: {count}',
   appUnsavedEditMany: '● Несохранённых изменений: {count}',
   appSavedState: 'Сохранено',
@@ -739,7 +761,6 @@ export const ru = {
   appLinkPlaceholder: 'напр. https://example.com или Sheet1!A1',
   appRemoveLink: 'Удалить ссылку',
   appNotAvailableYet: 'Пока недоступно',
-  appComingSoon: 'Скоро будет',
   appGroupChartLayouts: 'Макеты диаграмм',
   appAddChartElement: 'Добавить элемент диаграммы',
   appAddChartElementTitle: 'Названия, подписи данных, легенда',
@@ -1173,6 +1194,8 @@ export const ru = {
   appRefreshAll: 'Обновить все',
   appWorkbookNoPivot: 'В книге нет сводных таблиц.',
   appRefreshAllTitle: 'Обновить все сводные таблицы',
+  appQueriesConnections: 'Запросы и подключения',
+  appQueriesConnectionsTitle: 'Показать запросы и подключения к данным книги',
   appErrorCheckingDetail: 'Найти значения ошибок на листе',
   appErrorsFound: 'Ошибок: {count} — в {cell}: {value}',
   appCheckingErrors: 'Идёт поиск ошибок по всему листу…',
@@ -1207,6 +1230,7 @@ export const ru = {
   appGroupForecast: 'Прогноз',
   appWhatIfAnalysis: 'Анализ «что если»',
   appGoalSeek: 'Подбор параметра',
+  appDataTable: 'Таблица данных',
   appWhatIfTitle: 'Найти вход для целевого значения',
   appGoalSeekNeedsFormula: 'Целевая ячейка должна содержать формулу.',
   appGoalSeekByCellNotNumber: 'Изменяемая ячейка должна содержать число или быть пустой.',
@@ -1466,6 +1490,16 @@ export const ru = {
   appTableFileUnnamed: 'У этой таблицы нет имени в файле, и ее нельзя изменить здесь.',
   appTableRowsNotLoaded: 'Строки таблицы еще загружаются — повторите попытку через мгновение.',
   appTableTotalLabel: 'Итог',
+  appNotePicturesPaneTitle: 'Изображения заметок',
+  appNotePicturesClose: 'Закрыть',
+  appNotePicturesNone: 'Ни одна заметка в этой книге не содержит изображения.',
+  appNotePictureUnavailable: 'Это изображение не может быть показано.',
+  appNotePicturesToggle: 'Изображения заметок',
+  appNoteInsertPicture: 'Вставить изображение',
+  appNotePictureInserted:
+    'Изображение добавлено в примечание в {cell}. Сохраните, чтобы записать его в файл.',
+  appNotePictureRemoved: 'Изображение удалено из примечания в {cell}.',
+  appNotePictureRemove: 'Убрать изображение',
   appCommentsPaneTitle: 'Примечания',
   appThreadReply: 'Ответить',
   appThreadReplyPlaceholder: 'Ответить…',
@@ -1532,4 +1566,33 @@ export const ru = {
   appVisualFlipV: 'Отразить сверху вниз',
   appVisualFlipH: 'Отразить слева направо',
   appCtxPasteVisual: 'Вставить рисунок или фигуру',
+
+  // ── Spelling check (F7 / Review ▸ Proofing) ──
+  appSpellTitle: 'Орфография',
+  appSpellBtnDetail: 'Проверить текст листа (F7)',
+  appSpellToggle: 'Проверка орфографии',
+  appSpellToggleTip:
+    'Включает проверку орфографии (F7 и кнопка на вкладке «Рецензирование»); при выключении поле комментариев больше не показывает подчёркивания',
+  appSpellOn: 'Проверка орфографии включена.',
+  appSpellOff: 'Проверка орфографии выключена. Включите её в Рецензирование ▸ Правописание.',
+  appSpellRecheck: 'Проверить снова',
+  appSpellNone: 'Подозрительных орфографических ошибок не найдено.',
+  appSpellFindings: 'Подозрительных ошибок: {count}. Щёлкните строку, чтобы перейти.',
+  appSpellTruncated: 'Слишком много текстовых ячеек; проверены только первые.',
+  appSpellColWord: 'Сомнительное',
+  appSpellIgnore: 'Пропустить',
+  appSpellIgnoreAll: 'Пропустить все',
+  appSpellLearn: 'Добавить в словарь',
+  appSpellNoSuggestions: 'Нет вариантов',
+  appSpellIgnoredAll: 'Слово «{word}» больше не помечается в этом сеансе.',
+  appSpellLearned: 'Слово «{word}» добавлено в словарь.',
+  appSpellChanged: '{address} исправлено.',
+  appSpellChangeFailed: 'Не удалось исправить {address}.',
+  appSpellUnavailable: 'Проверка орфографии недоступна в этом окне.',
+  appSpellReplaceAll: 'Заменить все на «{suggestion}»',
+  appSpellChangedAll: 'Исправлено {count} ячеек со словом «{word}».',
+
+  // ── ODS import ──
+  appOdsImportNotice: 'Файл ODS открыт как копия xlsx. При сохранении будет записан файл xlsx.',
+  appOdsFormulasDropped: 'В {count} формулах остались только значения.',
 } satisfies Record<keyof typeof zh, string>

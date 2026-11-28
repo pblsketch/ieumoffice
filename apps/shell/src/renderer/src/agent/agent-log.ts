@@ -12,6 +12,8 @@ export type AgentLogEntry =
   | { kind: 'ended' }
   /** skills were changed while the session runs: they apply to the next one (spec 9.4) */
   | { kind: 'skills-changed' }
+  /** documents opened after the session started are outside its program-level protection */
+  | { kind: 'documents-unprotected'; count: number }
   /** a skill card or an install proposal a session asked for, by its key */
   | { kind: 'skill-card'; key: string }
   | { kind: 'skill-install'; key: string }
@@ -84,6 +86,11 @@ export function agentLogWith(state: AgentLogState, event: AgentEventView): Agent
       }
     case 'error':
       return { ...state, entries: [...state.entries, { kind: 'error', errorKind: event.kind }] }
+    case 'documents-unprotected':
+      return {
+        ...state,
+        entries: [...state.entries, { kind: 'documents-unprotected', count: event.count }],
+      }
     case 'ended':
       return {
         ...state,
@@ -117,7 +124,8 @@ export function agentLogAfterAnswer(state: AgentLogState, id: string): AgentLogS
 
 /**
  * The other waiting requests that allowing `id` for the session also covers:
- * every web search, or page reads of the same site
+ * every web search, page reads of the same site, or calls of the same tool of
+ * the person's MCP server
  */
 export function coveredBySessionAllow(state: AgentLogState, id: string): string[] {
   const asked = state.pending.find((request) => request.id === id)?.action
@@ -126,6 +134,11 @@ export function coveredBySessionAllow(state: AgentLogState, id: string): string[
     .filter(({ id: other, action }) => {
       if (other === id) return false
       if (asked.kind === 'web-search') return action.kind === 'web-search'
+      if (asked.kind === 'mcp-tool') {
+        return (
+          action.kind === 'mcp-tool' && action.tool === asked.tool && action.server === asked.server
+        )
+      }
       return (
         asked.kind === 'web-fetch' &&
         !!asked.host &&

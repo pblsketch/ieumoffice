@@ -1,12 +1,16 @@
 import React from 'react'
 import type { Lang } from '@genoffice/i18n'
+import { unusableMcpServers } from '@genoffice/agent-core/skill-mcp-refs'
 import {
   chipTitleRepeats,
+  skillNameBeside,
   type SkillChipRef,
   type SkillChipView,
   type SkillPickerItem,
 } from './skill-picker-model'
 import { skillPickerText } from './strings-skill-picker'
+import { skillExampleText } from './strings-skill-example'
+import { aiPanelText } from './strings-ai-panel'
 import './skill-picker.css'
 
 /** First characters of a description shown on a list row */
@@ -34,17 +38,23 @@ export function SkillPicker({
   listId,
   items,
   active,
+  emptyMessage,
   onPick,
   onHover,
+  onUseExample,
 }: {
   lang: Lang
   listId: string
   items: readonly SkillPickerItem[]
   /** highlighted row; `items.length` is the manage row */
   active: number
+  /** optional empty-state message shown when opened manually with 0 enabled skills */
+  emptyMessage?: string | undefined
   /** a row index; `items.length` is the manage row */
   onPick: (index: number) => void
   onHover: (index: number) => void
+  /** fills composer with the skill chip and `item.example` without auto-sending */
+  onUseExample?: ((item: SkillPickerItem, index: number) => void) | undefined
 }): React.JSX.Element {
   const manageIndex = items.length
   return (
@@ -57,6 +67,11 @@ export function SkillPicker({
       onMouseDown={(e) => e.preventDefault()}
     >
       <div className="ai-skill-picker-rows">
+        {items.length === 0 && (
+          <div className="ai-skill-picker-empty" role="note">
+            {emptyMessage ?? aiPanelText(lang, 'noEnabledSkills')}
+          </div>
+        )}
         {items.map((item, index) => (
           <div
             key={item.id}
@@ -71,6 +86,11 @@ export function SkillPicker({
               <span className="ai-skill-picker-title" dir="auto">
                 {item.title}
               </span>
+              {skillNameBeside(item) && (
+                <span className="ai-skill-picker-name" dir="ltr">
+                  {skillNameBeside(item)}
+                </span>
+              )}
               {item.sourceLabel && (
                 <span className="ai-skill-picker-source">{item.sourceLabel}</span>
               )}
@@ -81,6 +101,34 @@ export function SkillPicker({
             {item.description && (
               <div className="ai-skill-picker-desc" dir="auto">
                 {preview(item.description)}
+              </div>
+            )}
+            {item.craft && item.craft.length > 0 && (
+              <div className="ai-skill-picker-craft">
+                {item.craft.slice(0, 3).map((slug) => (
+                  <span key={slug} className="ai-skill-picker-badge">
+                    {slug}
+                  </span>
+                ))}
+              </div>
+            )}
+            {item.example && (
+              <div className="ai-skill-picker-example" dir="auto">
+                <span className="ai-skill-picker-example-text">
+                  {skillExampleText(lang, 'exampleLabel')}: {preview(item.example)}
+                </span>
+                {onUseExample && (
+                  <button
+                    type="button"
+                    className="ai-skill-picker-example-btn"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onUseExample(item, index)
+                    }}
+                  >
+                    {skillExampleText(lang, 'startWithExample')}
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -159,24 +207,35 @@ export function SkillChip({
   )
 }
 
+const NO_MCP_SERVERS: ReadonlySet<string> = new Set()
+
 /**
  * The composer's chip row (where attachments sit): the chips, a line when a
- * chip's skill has scripts (they do not run here; sending is not blocked),
- * and the latest refusal (too large, skill gone).
+ * chip's skill has scripts (they do not run here; sending is not blocked), a
+ * line naming the MCP servers the chips' skills expect that are not
+ * registered and on (spec 8), and the latest refusal (too large, skill gone).
  */
 export function SkillChipRow({
   lang,
   chips,
   notice,
+  usableMcpServers = NO_MCP_SERVERS,
   onRemove,
 }: {
   lang: Lang
   chips: readonly SkillChipView[]
   notice?: string | null | undefined
+  /** MCP servers registered and on; none by default */
+  usableMcpServers?: ReadonlySet<string> | undefined
   onRemove: (id: string) => void
 }): React.JSX.Element | null {
   if (chips.length === 0 && !notice) return null
-  const scripts = chips.some((c) => c.hasScripts && !c.missing)
+  const live = chips.filter((c) => !c.missing)
+  const scripts = live.some((c) => c.hasScripts)
+  const servers = unusableMcpServers(
+    [...new Set(live.flatMap((c) => c.mcpServers ?? []))],
+    (name) => usableMcpServers.has(name),
+  )
   return (
     <div className="ai-skill-chips">
       {chips.length > 0 && (
@@ -194,6 +253,11 @@ export function SkillChipRow({
       )}
       {scripts && (
         <div className="ai-skill-chip-note">{skillPickerText(lang, 'scriptsNotice')}</div>
+      )}
+      {servers.length > 0 && (
+        <div className="ai-skill-chip-note" dir="auto">
+          {skillPickerText(lang, 'mcpServerNeeded', { servers: servers.join(', ') })}
+        </div>
       )}
       {notice && (
         <div className="ai-skill-chip-note is-error" role="alert">

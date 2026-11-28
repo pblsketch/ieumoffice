@@ -3,7 +3,10 @@ import { basename, extname, isAbsolute, join } from 'node:path'
 import { PRODUCT_NAME } from '@genoffice/i18n'
 import { z } from 'zod'
 import { createFileViaCli, readDocxTextViaCli } from '../headless-cli'
+import { sanitizeFileBase } from '../file-base'
 import type { McpToolDefinition } from '../mcp-server'
+
+export { sanitizeFileBase }
 import { capabilityReport, generateExtension } from './formats'
 import type { FamilyDriver, SessionHost, TargetResolver } from './session-tools'
 import { contentTarget } from './session-tools'
@@ -46,7 +49,13 @@ export interface DocToolDeps {
 
 /** editor commands the docs renderer bridge understands (see docs shared/ipc.ts) */
 export type McpEditorCommandName =
-  'insert_content' | 'replace_blocks' | 'apply_ops' | 'read_document' | 'save_document'
+  | 'insert_content'
+  | 'replace_blocks'
+  | 'apply_ops'
+  | 'insert_picture'
+  | 'read_document'
+  | 'read_blocks'
+  | 'save_document'
 
 /**
  * Visible-editor control: opens a docs tab and pushes editor commands into it,
@@ -64,19 +73,6 @@ export interface DocsControl {
 const DOCX_EXT = `.${generateExtension('docx')}`
 // read_docx goes through the CLI's `docs read`, which reads .odt the same way
 const READABLE_WORD_EXTS = new Set([DOCX_EXT, '.odt'])
-
-/** sanitize a title into a file base name (mirrors docs' sanitizeAiDocFileBase) */
-export function sanitizeFileBase(title: string): string {
-  const cleaned = String(title ?? '')
-    // eslint-disable-next-line no-control-regex -- control characters are rejected on purpose
-    .replace(/[/\\:*?"<>|\u0000-\u001f]/g, '_')
-    .trim()
-    .slice(0, 80)
-    .trim()
-    .replace(/^\.+|\.+$/g, '')
-    .trim()
-  return cleaned && cleaned !== '.' && cleaned !== '..' ? cleaned : 'Untitled'
-}
 
 /** first free path for fileName inside dir: name.docx, name-2.docx, … */
 export function uniquePathIn(dir: string, fileName: string): string {
@@ -307,7 +303,8 @@ function createDocxContentTools(deps: DocToolDeps, host: SessionHost): McpToolDe
       name: 'replace_blocks',
       description:
         'Replace a range of blocks in the visible document with new HTML content. ' +
-        'Use read_document to learn block indexes.',
+        'Use read_document to learn block indexes, then read_blocks to read the full original ' +
+        'text before rewriting it.',
       inputSchema: {
         startBlockIndex: z.number().int().describe('first block index to replace (inclusive)'),
         endBlockIndex: z.number().int().describe('last block index to replace (inclusive)'),
@@ -342,15 +339,106 @@ function createDocxContentTools(deps: DocToolDeps, host: SessionHost): McpToolDe
       },
     },
     {
+      name: 'insert_picture',
+      description:
+        'Insert a picture into the visible document from a direct image link (png/jpg/gif), ' +
+        'at a given size, inline after a block or floating at a position with text wrap. ' +
+        'Use read_document for block indexes.',
+      inputSchema: {
+        url: z.string().describe('direct image link (png/jpg/gif)'),
+        afterBlockIndex: z
+          .number()
+          .int()
+          .optional()
+          .describe('insert after this block (-1 = start of document); default: end of document'),
+        width: z
+          .union([z.number(), z.string()])
+          .optional()
+          .describe(
+            'display width, "2.54cm", "1in", "72pt", "96px" or a bare number of points; ' +
+              'default natural size capped at 480px',
+          ),
+        height: z
+          .union([z.number(), z.string()])
+          .optional()
+          .describe('display height; omit to keep the aspect ratio'),
+        float: z
+          .object({
+            anchor: z
+              .enum(['paragraph', 'page', 'margin'])
+              .optional()
+              .describe(
+                'what x/y measure from: the anchor paragraph (default), the page corner, ' +
+                  'or the margin box corner',
+              ),
+            x: z
+              .union([z.number(), z.string()])
+              .optional()
+              .describe(
+                'horizontal offset, "2.54cm", "1in", "72pt", "96px" or a bare number of points',
+              ),
+            y: z
+              .union([z.number(), z.string()])
+              .optional()
+              .describe(
+                'vertical offset, "2.54cm", "1in", "72pt", "96px" or a bare number of points',
+              ),
+            wrap: z
+              .enum(['square', 'tight', 'topAndBottom', 'behind', 'inFront'])
+              .optional()
+              .describe('how text wraps around the floating picture (default square)'),
+          })
+          .optional()
+          .describe(
+            'omit for an inline picture in its own paragraph; give it to float the picture ' +
+              'at a position',
+          ),
+        altText: z.string().optional().describe('alternative text (accessibility)'),
+        document: documentField,
+      },
+      handler: async (args) => {
+        const wc = await target(args.document, { focus: true })
+        return docs.runCommand(wc, 'insert_picture', args)
+      },
+    },
+    {
       name: 'read_document',
       description:
         'Read the visible document as a block list: one "index|type|text" line per block, where the ' +
         'index is what apply_ops and insert_content address. Long blocks are clipped for reading; ' +
-        'the list is an overview, not a lossless copy (use read_docx for full text).',
+        'use read_blocks for the full text of a block range.',
       inputSchema: { document: documentField },
       handler: async (args) => {
         const wc = await target(args.document)
         return docs.runCommand(wc, 'read_document', {})
+      },
+    },
+    {
+      name: 'read_blocks',
+      description:
+        'Read the full text of a block range in the visible document as restricted HTML, without ' +
+        'the preview clipping of read_document. Use read_document first for block indexes, and read ' +
+        'a block with this before rewriting it. Long ranges are paged: a truncated result says ' +
+        'which offset to continue from; concatenate the slices in order to get the full HTML.',
+      inputSchema: {
+        startBlockIndex: z.number().int().describe('start block index (0-based, inclusive)'),
+        endBlockIndex: z.number().int().describe('end block index (inclusive)'),
+        offset: z
+          .number()
+          .int()
+          .optional()
+          .describe(
+            'character offset to continue a truncated read; default 0 (use the offset from the previous truncation notice)',
+          ),
+        document: documentField,
+      },
+      handler: async (args) => {
+        const wc = await target(args.document)
+        return docs.runCommand(wc, 'read_blocks', {
+          startBlockIndex: args.startBlockIndex,
+          endBlockIndex: args.endBlockIndex,
+          ...(args.offset === undefined ? {} : { offset: args.offset }),
+        })
       },
     },
   ]

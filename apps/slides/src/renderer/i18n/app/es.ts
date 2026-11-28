@@ -1,6 +1,8 @@
 import type { zh } from './zh'
 
 export const es = {
+  appLegacyPptImported:
+    'El archivo .ppt se abrió como una copia .pptx convertida. El original no cambia; al guardar se escribe un nuevo archivo .pptx. Las notas del orador y las animaciones no se conservan.',
   redactMenuLabel: 'Ocultar la selección a la IA',
   redactDialogDesc:
     'Lo seleccionado sigue en el documento y en el archivo; el modelo solo ve el marcador. Ponle un nombre para que sepa qué representa.',
@@ -179,6 +181,9 @@ export const es = {
   appPrintLandscape: 'Horizontal',
   appPrintFrame: 'Enmarcar diapositivas',
   appPrintHidden: 'Imprimir diapositivas ocultas',
+  appPrintRangeSelected: 'Diapositivas seleccionadas',
+  appPrintLayoutBlocked:
+    'Los documentos y las páginas de notas se imprimen con una página por hoja. Para organizar las páginas, elija Diapositivas de página completa.',
   appPrintPageCount: '{n} páginas',
   appPrintNoPages: 'No hay diapositivas para imprimir',
   appPrintRendering: 'Generando la vista previa…',
@@ -188,6 +193,7 @@ export const es = {
   appCtxSendToBack: 'Enviar al fondo',
   appCtxBringForward: 'Traer adelante',
   appCtxSendBackward: 'Enviar atrás',
+  appCtxRotate: 'Girar',
   appCtxRotateLeft90: 'Girar 90° a la izquierda',
   appCtxRotateRight90: 'Girar 90° a la derecha',
   appCtxFlipH: 'Voltear horizontalmente',
@@ -227,6 +233,8 @@ export const es = {
   appMasterFillNone: 'Sin relleno',
   appMasterStroke: 'Color del contorno…',
   appMasterStrokeNone: 'Sin contorno',
+  appMasterInsertTextBox: 'Cuadro de texto',
+  appMasterInsertShape: 'Formas',
   appStartOpening: 'Abriendo…',
   appReadingSlideTitle:
     'Haga clic para ir a la diapositiva siguiente (Esc para salir de la vista de lectura)',
@@ -265,4 +273,12 @@ export const es = {
   appStatusSummaryZoomInserted: 'Diapositiva de zoom de resumen insertada con {count} mosaicos',
   appSectionSummary: 'Sección de resumen',
   appSectionN: 'Sección {n}',
+  appStatusAnimPainterNone: 'El elemento seleccionado no tiene animaciones',
+  appStatusAnimPainterOnce:
+    'Haga clic en el elemento al que desea aplicar las animaciones; haga doble clic en el botón para el modo continuo',
+  appStatusAnimPainterContinuous: 'Modo continuo de Copiar animación; presione Esc para salir',
+  appStatusAnimPainted: 'Animaciones aplicadas',
+  appStatusMergeUnsupported:
+    'Estas formas no se pueden combinar (se excluyen líneas, imágenes, tablas, gráficos y algunas formas)',
+  appStatusMergeEmpty: 'No queda nada después de combinar (las formas no se superponen)',
 } satisfies Record<keyof typeof zh, string>

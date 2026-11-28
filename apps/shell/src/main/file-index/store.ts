@@ -1,5 +1,6 @@
 import { DatabaseSync } from 'node:sqlite'
-import { basename, dirname, extname } from 'node:path'
+import { basename, dirname } from 'node:path'
+import { documentExtension } from '../app-routing'
 import { MAX_BODY_CHARS } from './extract'
 import { statOrNull } from './scan'
 import { buildSnippet, containsAny, excerpt, type SnippetPart } from './snippet'
@@ -24,7 +25,12 @@ const TOKENIZER_VERSION = 2
  */
 const EXTRACT_VERSION = 2
 
-export type IndexStatus = 'ok' | 'name-only' | 'error'
+/**
+ * `cloud`: indexed by name only because the file is not on this PC and lies in
+ * a project folder (spec 5.8); a later scan looks again and extracts the body
+ * once the file is local.
+ */
+export type IndexStatus = 'ok' | 'name-only' | 'error' | 'cloud'
 
 export interface IndexedFile {
   path: string
@@ -54,6 +60,11 @@ export interface SearchOptions {
   limit?: number
   /** attach this many characters of body around the first hit to each result */
   excerptChars?: number
+  /**
+   * keep only the files whose path passes; applied before ranking and paging, so
+   * files elsewhere cannot fill the page first and `total` counts the kept ones
+   */
+  within?: (path: string) => boolean
 }
 
 export interface SearchResult {
@@ -106,6 +117,12 @@ CREATE VIRTUAL TABLE IF NOT EXISTS file_fts USING fts5(
   tokenize='unicode61 remove_diacritics 2'
 );
 `
+
+/** Pre-tokenized FTS5 body streams supplied by ieum-parse-sidecar to avoid main-thread CJK tokenization. */
+export interface PretokenizedBody {
+  readonly bi: string
+  readonly uni: string
+}
 
 /**
  * SQLite FTS5 index over file names, folders and extracted text. FTS5 only sees
@@ -168,13 +185,26 @@ export class FileIndexStore {
     meta: { path: string; mtimeMs: number; sizeBytes: number },
     text: string | null,
     status: IndexStatus,
+    pretokenized?: PretokenizedBody | null,
   ): void {
     const name = basename(meta.path)
-    const ext = extname(meta.path).slice(1).toLowerCase()
+    // a draw.io picture is listed as `drawio.svg` / `drawio.png`, like the recents
+    const ext = documentExtension(meta.path)
     const body = text ? text.slice(0, MAX_BODY_CHARS) : null
     const nameTok = tokenize(name)
     const pathTok = tokenize(dirname(meta.path))
-    const bodyTok = body ? tokenize(body) : { bi: [], uni: [] }
+    let bodyBi = ''
+    let bodyUni = ''
+    if (body) {
+      if (pretokenized) {
+        bodyBi = pretokenized.bi
+        bodyUni = pretokenized.uni
+      } else {
+        const bodyTok = tokenize(body)
+        bodyBi = toIndexText(bodyTok.bi)
+        bodyUni = toIndexText(bodyTok.uni)
+      }
+    }
     this.db.exec('BEGIN')
     try {
       const existing = this.db.prepare('SELECT id FROM files WHERE path = ?').get(meta.path) as
@@ -196,10 +226,10 @@ export class FileIndexStore {
           inserted.lastInsertRowid,
           toIndexText(nameTok.bi),
           toIndexText(pathTok.bi),
-          toIndexText(bodyTok.bi),
+          bodyBi,
           toIndexText(nameTok.uni),
           toIndexText(pathTok.uni),
-          toIndexText(bodyTok.uni),
+          bodyUni,
         )
       this.db.exec('COMMIT')
     } catch (e) {
@@ -270,7 +300,9 @@ export class FileIndexStore {
     if (candidates.size === 0) return { hits: [], total: 0 }
     const wanted = parsed.include.length
     // the type filter applies before choosing all-term over any-term, so a pill never hides the fallback
-    const allRows = this.fetchRows([...candidates.keys()], opts.exts)
+    const fetched = this.fetchRows([...candidates.keys()], opts.exts)
+    const within = opts.within
+    const allRows = within ? fetched.filter((r) => within(r.path)) : fetched
     const fullRows = allRows.filter((r) => {
       const c = candidates.get(r.id)!
       return c.exact + c.relaxed === wanted

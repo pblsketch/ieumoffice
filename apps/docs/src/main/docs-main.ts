@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { handOffBytes } from './byte-handoff'
+import { altChunkDocument } from './altchunk-document'
 import {
   appendFileSync,
   existsSync,
@@ -22,7 +23,7 @@ import {
   writeFile,
 } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { basename, dirname, isAbsolute, join } from 'node:path'
+import { basename, dirname, isAbsolute, join, extname } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import {
   BrowserWindow,
@@ -56,11 +57,11 @@ import {
   showOpenDialogWithMemory,
   showSaveDialogWithMemory,
   aboutMenuItem,
+  macAppMenuTemplate,
   helpCheckUpdatesItems,
   toggleDevToolsItem,
   windowMenuTemplate,
   type HeadlessExportFormat,
-  type HeadlessExportTarget,
   installRendererProtocol,
   registerRendererScheme,
   rendererUrl,
@@ -68,12 +69,20 @@ import {
   MAX_REMOTE_IMAGE_BYTES,
   readBodyCapped,
   writeJsonAtomic,
+  isBesideDocument,
+  sharedPathGrants,
   assertFileSaved,
   createRecoveryStore,
   registerRecoveryEditor,
   type RecoveryEditorContract,
   type RecoveryIdentity,
+  readHwpDefaultFormat,
 } from '@genoffice/electron-utils'
+import { aiCreateRefusal, withOffDocumentKinds } from '@genoffice/electron-utils/ai-create-guard'
+import { aiRunRefusal } from '@genoffice/electron-utils/ai-run-guard'
+import { registerAiJob } from '@genoffice/electron-utils/ai-activity'
+import { aiFeaturesOn } from '@genoffice/electron-utils/app-choice'
+import { AI_OFF_ERROR, aiMediaCall } from './ai-off'
 import {
   configureExtraFontDirs,
   configureMetricsCache,
@@ -81,8 +90,11 @@ import {
   familyVerticalMetrics,
 } from '@genoffice/font-metrics'
 import { createI18n, getUiLang, normalizeLang, PRODUCT_NAME, setUiLang } from '@genoffice/i18n'
-import { ProjectStore } from '@genoffice/project-store'
-import { aiSubscriptionLoginWindowText } from '@genoffice/ui/ai-subscription-login-window'
+import { ProjectStore, type LegacyDocumentChat } from '@genoffice/project-store'
+import {
+  aiChatGptSignInPages,
+  aiSubscriptionLoginWindowText,
+} from '@genoffice/ui/ai-subscription-login-window'
 import type {
   IpcMainInvokeEvent,
   MenuItemConstructorOptions,
@@ -95,16 +107,26 @@ import {
   ATTACHABLE_EXTS,
   ATTACHABLE_IMAGE_EXTS,
   ATTACHABLE_MAX_BYTES,
+  attachableMaxBytes,
   ATTACHABLE_IMAGE_MAX_BYTES,
+  diagramPictureExtOf,
+  diagramPictureExtOfName,
+  rhwpWasmPath,
 } from '@genoffice/file-parse'
-import { convertHtmlToDocx } from '../../../../packages/html2docx/src'
-import { ElectronBrowserDriver } from '../../../../packages/html2docx/src/drivers/electron'
+import type { ElectronBrowserDriver } from '../../../../packages/html2docx/src/drivers/electron'
 import {
   AI_MEDIA_PROVIDERS,
   AI_SEARCH_PROVIDERS,
+  activeCustomEndpoint,
+  closeAllAntigravityPanelSessions,
+  inspectLocalModelForIpc,
   isAiOverloadedError,
   chatForProvider,
+  listLocalModelsForIpc,
+  localEndpointTimeoutMs,
   normalizeAiSettings,
+  testLocalModelForIpc,
+  cancelLocalTestForIpc,
   testMediaProvider,
   type AiMediaProviderConfig,
   type AiMediaProviderId,
@@ -113,30 +135,44 @@ import {
   sanitizeAiSettings,
   sanitizeCliPath,
   setAiUserAgent,
+  setCodexImageGenerationAvailable,
   setRescueFetch,
   streamForProvider,
+  subscriptionOffIn,
+  withStoredUnknownFields,
   type AiChatRequest,
   type AiSettings,
   type AiStreamChunk,
   type AiStreamRequest,
+  type AiSubscriptionCliId,
   type AiSubscriptionProviderId,
+  type AiSubscriptionUsage,
   sealAiSecrets,
+  withMigratedSubscriptionNoticeVersion,
 } from '@genoffice/ai-provider'
 import { listCodexModels, shutdownCodexAppServers } from '@genoffice/ai-provider/codex-app-server'
 import {
-  listCustomModelsForIpc,
-  showOllamaModelForIpc,
-} from '@genoffice/ai-provider/custom-models'
+  ACP_TOOL_RESULT_CHANNEL,
+  createAcpToolBroker,
+} from '@genoffice/electron-utils/acp-tool-channels'
+import { listCustomModelsForIpc, showOllamaModelForIpc } from '@genoffice/ai-provider/custom-models'
+import { createKeyModelRefresher, withStoredMainFields } from '@genoffice/ai-provider/key-models'
 import {
+  createSubscriptionIpcDeps,
+  detectSubscriptionLogin,
   ensureSubscriptionIpc,
   initSubscriptionChildTracking,
+  listSubscriptionModels,
   sharedSubscriptionStatuses,
   shutdownSubscriptionChildren,
+  type SubscriptionIpcSetup,
 } from '@genoffice/ai-provider/subscription'
 import {
   abortMediaCalls,
   aiToolCapabilities,
+  createCodexImageGenerator,
   generateImageTool,
+  registerCodexImageGenerator,
   testSearchProvider,
   webSearchTool,
   imageSearchTool,
@@ -157,14 +193,20 @@ import type {
   CreateDocumentRequest,
   CreateDocumentResult,
   DecryptOpenResult,
+  DocsHeadlessExportTarget,
   DocsTabInfo,
   MarkdownImage,
   MenuCommand,
+  MergeOutputRequest,
   OpenDocxResult,
   OpenFileResult,
+  PrintSelectionPdfResult,
   SpellLanguages,
 } from '../shared/ipc'
 import { MARKDOWN_MEDIA_DIR_TOKEN } from '../shared/ipc'
+import { SUBSCRIPTION_USAGE_CHANNEL } from '../shared/subscription-api'
+import { MERGE_DATA_SOURCE_EXTENSIONS, readMergeDataSource } from './merge-data-source'
+import { mergeOutputFileName, mergeOutputPath } from './merge-output'
 import { ClickClaims } from '../shared/context-menu-claims'
 import { findDocxPath } from '../shared/open-file'
 import {
@@ -173,11 +215,18 @@ import {
   resolveAiRun,
   subscriptionStreamCallbacks,
   withMeteredAccepted,
+  withSubscriptionOff,
   type AiRunTexts,
 } from './ai-run'
 import { createChunkCoalescer } from './stream-coalesce'
+import { startFirstChunkKeepalive } from './ai-keepalive'
 import { atomicWriteFile } from './atomic-write'
+import { Worker } from 'node:worker_threads'
+import hwpExportWorkerPath from './hwp-export-worker?modulePath'
+import type { HwpConversion, HwpFormat, HwpLook, Loss } from '@genoffice/docx2hwp'
+import { convertInWorker, exportHwp, hwpLossMessageBox } from './hwp-export'
 import { createDocsRecovery } from './docs-recovery'
+import { bareFileName } from './file-name'
 import {
   adoptLazyMediaHashes,
   forgetLazyMediaOwner,
@@ -213,11 +262,39 @@ import {
   prepareRecoveryBytes,
   prepareSaveBytes,
   recoveryExtFor,
-  withDocExtension,
   type DocFormat,
 } from './doc-format'
+import {
+  hwpExportFilters,
+  hwpExportTarget,
+  saveAsDefaultPath,
+  saveAsFilters,
+  saveAsTarget,
+} from './save-as-formats'
 import { copyImageDisplaySize, validCopyImageDataUrl } from './copy-image-guard'
-import { printJobOptions, printScaleOption, validPrintGeometry } from './print-args'
+import {
+  printJobOptions,
+  printPaperOption,
+  printScaleOption,
+  validPrintGeometry,
+  validPrintPaper,
+} from './print-args'
+import { printPdfViaCups } from '@genoffice/electron-utils/print-cups'
+import { printOutcome } from '@genoffice/electron-utils/print-job'
+import {
+  ensurePrintLayoutIpc,
+  imageSaveDialogSpec,
+  LABEL_SPEC_FILE_NAME,
+  registerPrintLayoutIpc,
+} from '@genoffice/electron-utils/print-arranged'
+import { readJobPageSizes } from '@genoffice/print-layout'
+import {
+  mergePrintJobParts,
+  printPdfDefaultName,
+  readDocsPrintJob,
+  selectionDocxForPrint,
+  validSectPrXml,
+} from './print-job-pdf'
 import { addPdfInternalLinks } from './pdf-links'
 import {
   assignStarredGroup,
@@ -230,9 +307,20 @@ import {
   writeStarredItems,
 } from './starred-files'
 import { registerFreeAiIpc } from './free-ai-ipc'
+import {
+  aiGatedDetect,
+  aiGatedKeyModelRefresher,
+  aiGatedModelLister,
+  aiGatedSubscriptionDeps,
+  endSubscriptionLoginsWhenAiOff,
+  onAiFeaturesBack,
+} from './ai-background'
 import { normalizeReadUrlRequest, unexpectedReadUrlFailure } from './read-url-ipc'
 import { initDocsAutoUpdater } from './updater'
 import { registerZoteroIpc, teardownZoteroIpc } from './zotero-ipc'
+
+/** how long a chat turn still counts as running between two model calls (tunable) */
+const CHAT_TURN_LINGER_MS = 3_000
 
 /**
  * Docs main-process logic as an embeddable module: no top-level side effects.
@@ -261,13 +349,22 @@ const tMain = createI18n({
     btnOverwrite: '覆盖',
     dlgInsertImage: '插入图片',
     filterImages: '图片',
+    dlgMergeDataSource: '选择收件人列表',
+    filterMergeDataSource: 'Excel 或 CSV',
     dlgAddAttachment: '添加附件',
     filterSupported: '支持的文件',
     filterAll: '所有文件',
     dlgExportPdf: '导出为 PDF',
     dlgExportHtml: '导出为 HTML',
+    dlgExportHwp: '导出为 HWP 文档',
     dlgExportMarkdown: '导出为 Markdown',
     dlgPickExportDir: '选择导出目录',
+    filterPdf: 'PDF 文档',
+    filterHtml: '网页 (HTML)',
+    filterMarkdown: 'Markdown 文档',
+    filterPageImages: '页面图片 (PNG)',
+    filterHwp: 'HWP 文档 (HWP)',
+    filterHwpx: 'HWP 文档 (HWPX)',
     errUnsupportedExt: '暂不支持 .{ext} 类型',
     errNotFile: '不是文件',
     errTooLarge: '超过 {mb}MB 上限',
@@ -291,6 +388,7 @@ const tMain = createI18n({
     menuSaveAs: '另存为…',
     menuPageSetup: '页面设置…',
     menuExportPdf: '导出为 PDF…',
+    menuExportHwp: '导出为 HWP 文档…',
     menuExportHtml: '导出为 HTML…',
     menuExportMarkdown: '导出为 Markdown…',
     menuExportImages: '导出为图片…',
@@ -389,13 +487,22 @@ const tMain = createI18n({
     btnOverwrite: 'Overwrite',
     dlgInsertImage: 'Insert Image',
     filterImages: 'Images',
+    dlgMergeDataSource: 'Select Recipient List',
+    filterMergeDataSource: 'Excel or CSV',
     dlgAddAttachment: 'Add Attachments',
     filterSupported: 'Supported Files',
     filterAll: 'All Files',
     dlgExportPdf: 'Export as PDF',
     dlgExportHtml: 'Export as HTML',
+    dlgExportHwp: 'Export as HWP Document',
     dlgExportMarkdown: 'Export as Markdown',
     dlgPickExportDir: 'Choose Export Folder',
+    filterPdf: 'PDF Document',
+    filterHtml: 'Web Page (HTML)',
+    filterMarkdown: 'Markdown Document',
+    filterPageImages: 'Page Images (PNG)',
+    filterHwp: 'HWP Documents (HWP)',
+    filterHwpx: 'HWP Documents (HWPX)',
     errUnsupportedExt: '.{ext} files are not supported',
     errNotFile: 'not a file',
     errTooLarge: 'exceeds the {mb}MB limit',
@@ -419,6 +526,7 @@ const tMain = createI18n({
     menuSaveAs: 'Save As…',
     menuPageSetup: 'Page Setup…',
     menuExportPdf: 'Export as PDF…',
+    menuExportHwp: 'Export as HWP Document…',
     menuExportHtml: 'Export as HTML…',
     menuExportMarkdown: 'Export as Markdown…',
     menuExportImages: 'Export as Images…',
@@ -517,13 +625,22 @@ const tMain = createI18n({
     btnOverwrite: 'Ghi đè',
     dlgInsertImage: 'Chèn hình ảnh',
     filterImages: 'Hình ảnh',
+    dlgMergeDataSource: 'Chọn danh sách người nhận',
+    filterMergeDataSource: 'Excel hoặc CSV',
     dlgAddAttachment: 'Thêm tệp đính kèm',
     filterSupported: 'Các tệp được hỗ trợ',
     filterAll: 'Tất cả các tệp',
     dlgExportPdf: 'Xuất dưới dạng PDF',
     dlgExportHtml: 'Xuất dưới dạng HTML',
+    dlgExportHwp: 'Xuất dưới dạng tài liệu HWP',
     dlgExportMarkdown: 'Xuất dưới dạng Markdown',
     dlgPickExportDir: 'Chọn thư mục xuất',
+    filterPdf: 'Tài liệu PDF',
+    filterHtml: 'Trang web (HTML)',
+    filterMarkdown: 'Tài liệu Markdown',
+    filterPageImages: 'Ảnh từng trang (PNG)',
+    filterHwp: 'Tài liệu HWP (HWP)',
+    filterHwpx: 'Tài liệu HWP (HWPX)',
     errUnsupportedExt: 'Tệp .{ext} không được hỗ trợ',
     errNotFile: 'không phải là tệp',
     errTooLarge: 'vượt quá giới hạn {mb}MB',
@@ -548,6 +665,7 @@ const tMain = createI18n({
     menuSaveAs: 'Lưu dưới dạng…',
     menuPageSetup: 'Thiết lập trang…',
     menuExportPdf: 'Xuất dưới dạng PDF…',
+    menuExportHwp: 'Xuất dưới dạng tài liệu HWP…',
     menuExportHtml: 'Xuất dưới dạng HTML…',
     menuExportMarkdown: 'Xuất dưới dạng Markdown…',
     menuExportImages: 'Xuất dưới dạng hình ảnh…',
@@ -629,6 +747,145 @@ const tMain = createI18n({
     menuHelp: 'Trợ giúp',
     menuShortcuts: 'Phím tắt bàn phím',
   },
+  tr: {
+    dlgOpenDoc: 'Belge Aç',
+    filterWord: 'Word Belgeleri',
+    filterOdt: 'OpenDocument Metni',
+    dlgSaveAs: 'Farklı Kaydet',
+    closeUnsavedMsg: 'Bu belgede kaydedilmemiş değişiklikler var.',
+    closeUnsavedDetail: 'Kapatmadan önce kaydedilsin mi?',
+    closeNoReplyMsg: 'Belge yanıt vermiyor ve kaydedilmemiş değişiklikler olabilir.',
+    closeNoReplyDetail: 'Yine de kapatılsın mı? Kaydedilmemiş değişiklikler kaybolur.',
+    btnCloseAnyway: 'Yine de Kapat',
+    btnDontSave: 'Kaydetme',
+    btnCancel: 'İptal',
+    extModifiedMsg: 'Dosya başka bir program tarafından değiştirilmiş.',
+    extModifiedDetail: 'Yine de kaydedip diskteki değişikliklerin üzerine yazılsın mı?',
+    btnOverwrite: 'Üzerine Yaz',
+    dlgInsertImage: 'Resim Ekle',
+    filterImages: 'Resimler',
+    dlgMergeDataSource: 'Alıcı Listesini Seç',
+    filterMergeDataSource: 'Excel veya CSV',
+    dlgAddAttachment: 'Ek Dosya Ekle',
+    filterSupported: 'Desteklenen Dosyalar',
+    filterAll: 'Tüm Dosyalar',
+    dlgExportPdf: 'PDF Olarak Dışa Aktar',
+    dlgExportHtml: 'HTML Olarak Dışa Aktar',
+    dlgExportHwp: 'HWP Belgesi Olarak Dışa Aktar',
+    dlgExportMarkdown: 'Markdown Olarak Dışa Aktar',
+    dlgPickExportDir: 'Dışa Aktarma Klasörünü Seç',
+    filterPdf: 'PDF Belgesi',
+    filterHtml: 'Web Sayfası (HTML)',
+    filterMarkdown: 'Markdown Belgesi',
+    filterPageImages: 'Sayfa Görüntüleri (PNG)',
+    filterHwp: 'HWP Belgeleri (HWP)',
+    filterHwpx: 'HWP Belgeleri (HWPX)',
+    errUnsupportedExt: '.{ext} dosyaları desteklenmiyor',
+    errNotFile: 'dosya değil',
+    errTooLarge: '{mb}MB sınırını aşıyor',
+    errImageTooLarge: 'resim 5MB sınırını aşıyor',
+    errUnreadable: 'okunamıyor',
+    errFileTooLarge: 'Dosya boyut sınırını aşıyor',
+    errParseFailed: 'Dosya ayrıştırılamadı',
+    errImageNoText:
+      'Resim eklerinde metin yok; resim, kullanıcı iletisiyle birlikte gönderildiğinden doğrudan resme bakabilirsiniz',
+    errNotImage: 'desteklenen bir resim türü değil',
+    errNoApiKey: '{provider} için API anahtarı yapılandırılmamış',
+    errAiBusy: 'AI hizmeti şu anda meşgul — lütfen biraz sonra yeniden deneyin',
+    errNoModel: 'Model adı yapılandırılmamış',
+    menuFile: 'Dosya',
+    menuNewDoc: 'Yeni Belge',
+    menuNewWindow: 'Yeni Pencere',
+    menuOpen: 'Aç…',
+    menuOpenRecent: 'Son Belgeleri Aç',
+    menuNoRecent: 'Son Belge Yok',
+    menuClose: 'Kapat',
+    menuSave: 'Kaydet',
+    menuSaveAs: 'Farklı Kaydet…',
+    menuPageSetup: 'Sayfa Yapısı…',
+    menuExportPdf: 'PDF Olarak Dışa Aktar…',
+    menuExportHwp: 'HWP Belgesi Olarak Dışa Aktar…',
+    menuExportHtml: 'HTML Olarak Dışa Aktar…',
+    menuExportMarkdown: 'Markdown Olarak Dışa Aktar…',
+    menuExportImages: 'Resim Olarak Dışa Aktar…',
+    menuPrint: 'Yazdır…',
+    menuEdit: 'Düzen',
+    menuUndo: 'Geri Al',
+    menuRedo: 'Yinele',
+    menuCut: 'Kes',
+    menuCopy: 'Kopyala',
+    menuPaste: 'Yapıştır',
+    menuPasteMatch: 'Yapıştır ve Biçimi Eşleştir',
+    menuFindReplace: 'Bul ve Değiştir…',
+    menuGoTo: 'Git…',
+    menuSelectAll: 'Tümünü Seç',
+    menuView: 'Görünüm',
+    menuZoom: 'Yakınlaştırma',
+    menuZoomIn: 'Yakınlaştır',
+    menuZoomOut: 'Uzaklaştır',
+    menuZoom100: 'Gerçek Boyut (%100)',
+    menuPageWidth: 'Sayfa Genişliği',
+    menuWholePage: 'Tam Sayfa',
+    menuMultiPage: 'Birden Çok Sayfa',
+    menuAiSidebar: 'AI Kenar Çubuğu',
+    menuDarkMode: 'Koyu Mod',
+    menuFullscreen: 'Tam Ekrana Geç',
+    menuInsert: 'Ekle',
+    menuInsertTable: 'Tablo…',
+    menuInsertImage: 'Resim…',
+    menuInsertPageBreak: 'Sayfa Sonu',
+    menuInsertLink: 'Köprü…',
+    menuInsertEquation: 'Denklem…',
+    menuComment: 'Yorum',
+    menuFormat: 'Biçim',
+    menuBold: 'Kalın',
+    menuItalic: 'İtalik',
+    menuUnderline: 'Altı Çizili',
+    menuAlign: 'Hizala',
+    menuAlignLeft: 'Sola Yasla',
+    menuAlignCenter: 'Ortala',
+    menuAlignRight: 'Sağa Yasla',
+    menuAlignJustify: 'İki Yana Yasla',
+    menuFont: 'Yazı Tipi…',
+    menuParagraph: 'Paragraf…',
+    menuTools: 'Araçlar',
+    menuTable: 'Tablo',
+    menuTableInsert: 'Ekle',
+    menuTableInsertTable: 'Tablo…',
+    menuTableColsLeft: 'Sola Sütun Ekle',
+    menuTableColsRight: 'Sağa Sütun Ekle',
+    menuTableRowsAbove: 'Yukarı Satır Ekle',
+    menuTableRowsBelow: 'Aşağı Satır Ekle',
+    menuTableCells: 'Hücreler…',
+    menuTableDelete: 'Sil',
+    menuTableDeleteTable: 'Tablo',
+    menuTableDeleteColumns: 'Sütunlar',
+    menuTableDeleteRows: 'Satırlar',
+    menuTableSelect: 'Seç',
+    menuTableSelectCell: 'Hücre',
+    menuTableSelectColumn: 'Sütun',
+    menuTableSelectRow: 'Satır',
+    menuTableSelectTable: 'Tablo',
+    menuTableMergeCells: 'Hücreleri Birleştir',
+    menuTableSplitCells: 'Hücreleri Böl…',
+    menuTableSplitTable: 'Tabloyu Böl',
+    menuTableAutoFit: 'Otomatik Sığdır ve Dağıt',
+    menuTableAutoFitContents: 'İçeriğe Göre Otomatik Sığdır',
+    menuTableAutoFitWindow: 'Pencereye Göre Otomatik Sığdır',
+    menuTableFixedWidth: 'Sabit Sütun Genişliği',
+    menuTableDistributeRows: 'Satırları Eşit Dağıt',
+    menuTableDistributeColumns: 'Sütunları Eşit Dağıt',
+    menuTableRepeatHeader: 'Başlık Satırlarını Yinele',
+    menuTableGridlines: 'Kılavuz Çizgilerini Görüntüle',
+    menuTableProperties: 'Tablo Özellikleri…',
+    menuWordCount: 'Sözcük Sayısı…',
+    menuAutoCorrect: 'Otomatik Düzeltme Seçenekleri…',
+    menuPreferences: 'Tercihler…',
+    menuAiProofread: 'AI Yazım Denetimi',
+    menuWindow: 'Pencere',
+    menuHelp: 'Yardım',
+    menuShortcuts: 'Klavye Kısayolları',
+  },
   ja: {
     dlgOpenDoc: '文書を開く',
     filterWord: 'Word 文書',
@@ -646,13 +903,22 @@ const tMain = createI18n({
     btnOverwrite: '上書き',
     dlgInsertImage: '画像の挿入',
     filterImages: '画像',
+    dlgMergeDataSource: '受信者リストを選択',
+    filterMergeDataSource: 'Excel または CSV',
     dlgAddAttachment: '添付ファイルの追加',
     filterSupported: 'サポートされているファイル',
     filterAll: 'すべてのファイル',
     dlgExportPdf: 'PDF としてエクスポート',
     dlgExportHtml: 'HTML としてエクスポート',
+    dlgExportHwp: 'HWP 文書としてエクスポート',
     dlgExportMarkdown: 'Markdown としてエクスポート',
     dlgPickExportDir: 'エクスポート先フォルダーの選択',
+    filterPdf: 'PDF ドキュメント',
+    filterHtml: 'Web ページ (HTML)',
+    filterMarkdown: 'Markdown ドキュメント',
+    filterPageImages: 'ページ画像 (PNG)',
+    filterHwp: 'HWP ドキュメント (HWP)',
+    filterHwpx: 'HWP ドキュメント (HWPX)',
     errUnsupportedExt: '.{ext} 形式には対応していません',
     errNotFile: 'ファイルではありません',
     errTooLarge: '{mb}MB の上限を超えています',
@@ -677,6 +943,7 @@ const tMain = createI18n({
     menuSaveAs: '名前を付けて保存…',
     menuPageSetup: 'ページ設定…',
     menuExportPdf: 'PDF としてエクスポート…',
+    menuExportHwp: 'HWP 文書としてエクスポート…',
     menuExportHtml: 'HTML としてエクスポート…',
     menuExportMarkdown: 'Markdown としてエクスポート…',
     menuExportImages: '画像としてエクスポート…',
@@ -775,13 +1042,22 @@ const tMain = createI18n({
     btnOverwrite: '덮어쓰기',
     dlgInsertImage: '그림 삽입',
     filterImages: '그림',
+    dlgMergeDataSource: '받는 사람 목록 선택',
+    filterMergeDataSource: 'Excel 또는 CSV',
     dlgAddAttachment: '첨부 파일 추가',
     filterSupported: '지원되는 파일',
     filterAll: '모든 파일',
     dlgExportPdf: 'PDF로 내보내기',
     dlgExportHtml: 'HTML로 내보내기',
+    dlgExportHwp: '한글 문서로 내보내기',
     dlgExportMarkdown: 'Markdown로 내보내기',
     dlgPickExportDir: '내보낼 폴더 선택',
+    filterPdf: 'PDF 문서',
+    filterHtml: '웹 페이지(HTML)',
+    filterMarkdown: 'Markdown 문서',
+    filterPageImages: '쪽 이미지(PNG)',
+    filterHwp: '한글 문서 (HWP)',
+    filterHwpx: '한글 문서 (HWPX)',
     errUnsupportedExt: '.{ext} 형식은 지원되지 않습니다',
     errNotFile: '파일이 아닙니다',
     errTooLarge: '{mb}MB 제한을 초과했습니다',
@@ -806,6 +1082,7 @@ const tMain = createI18n({
     menuSaveAs: '다른 이름으로 저장…',
     menuPageSetup: '페이지 설정…',
     menuExportPdf: 'PDF로 내보내기…',
+    menuExportHwp: '한글 문서로 내보내기…',
     menuExportHtml: 'HTML로 내보내기…',
     menuExportMarkdown: 'Markdown로 내보내기…',
     menuExportImages: '이미지로 내보내기…',
@@ -828,7 +1105,7 @@ const tMain = createI18n({
     menuPageWidth: '페이지 너비',
     menuWholePage: '전체 페이지',
     menuMultiPage: '여러 페이지',
-    menuAiSidebar: 'AI 사이드바',
+    menuAiSidebar: 'AI 창',
     menuDarkMode: '다크 모드',
     menuFullscreen: '전체 화면 시작',
     menuInsert: '삽입',
@@ -905,13 +1182,22 @@ const tMain = createI18n({
     btnOverwrite: 'Écraser',
     dlgInsertImage: 'Insérer une image',
     filterImages: 'Images',
+    dlgMergeDataSource: 'Sélectionner une liste de destinataires',
+    filterMergeDataSource: 'Excel ou CSV',
     dlgAddAttachment: 'Ajouter des pièces jointes',
     filterSupported: 'Fichiers pris en charge',
     filterAll: 'Tous les fichiers',
     dlgExportPdf: 'Exporter au format PDF',
     dlgExportHtml: 'Exporter au format HTML',
+    dlgExportHwp: 'Exporter en document HWP',
     dlgExportMarkdown: 'Exporter au format Markdown',
     dlgPickExportDir: "Choisir le dossier d'exportation",
+    filterPdf: 'Document PDF',
+    filterHtml: 'Page web (HTML)',
+    filterMarkdown: 'Document Markdown',
+    filterPageImages: 'Images des pages (PNG)',
+    filterHwp: 'Documents HWP (HWP)',
+    filterHwpx: 'Documents HWP (HWPX)',
     errUnsupportedExt: 'les fichiers .{ext} ne sont pas pris en charge',
     errNotFile: "n'est pas un fichier",
     errTooLarge: 'dépasse la limite de {mb} Mo',
@@ -936,6 +1222,7 @@ const tMain = createI18n({
     menuSaveAs: 'Enregistrer sous…',
     menuPageSetup: 'Mise en page…',
     menuExportPdf: 'Exporter au format PDF…',
+    menuExportHwp: 'Exporter en document HWP…',
     menuExportHtml: 'Exporter au format HTML…',
     menuExportMarkdown: 'Exporter au format Markdown…',
     menuExportImages: 'Exporter en images…',
@@ -1035,13 +1322,22 @@ const tMain = createI18n({
     btnOverwrite: 'Überschreiben',
     dlgInsertImage: 'Bild einfügen',
     filterImages: 'Bilder',
+    dlgMergeDataSource: 'Empfängerliste auswählen',
+    filterMergeDataSource: 'Excel oder CSV',
     dlgAddAttachment: 'Anlagen hinzufügen',
     filterSupported: 'Unterstützte Dateien',
     filterAll: 'Alle Dateien',
     dlgExportPdf: 'Als PDF exportieren',
     dlgExportHtml: 'Als HTML exportieren',
+    dlgExportHwp: 'Als HWP-Dokument exportieren',
     dlgExportMarkdown: 'Als Markdown exportieren',
     dlgPickExportDir: 'Exportordner auswählen',
+    filterPdf: 'PDF-Dokument',
+    filterHtml: 'Webseite (HTML)',
+    filterMarkdown: 'Markdown-Dokument',
+    filterPageImages: 'Seitenbilder (PNG)',
+    filterHwp: 'HWP-Dokumente (HWP)',
+    filterHwpx: 'HWP-Dokumente (HWPX)',
     errUnsupportedExt: '.{ext}-Dateien werden nicht unterstützt',
     errNotFile: 'keine Datei',
     errTooLarge: 'überschreitet das Limit von {mb} MB',
@@ -1066,6 +1362,7 @@ const tMain = createI18n({
     menuSaveAs: 'Speichern unter…',
     menuPageSetup: 'Seite einrichten…',
     menuExportPdf: 'Als PDF exportieren…',
+    menuExportHwp: 'Als HWP-Dokument exportieren…',
     menuExportHtml: 'Als HTML exportieren…',
     menuExportMarkdown: 'Als Markdown exportieren…',
     menuExportImages: 'Als Bilder exportieren…',
@@ -1164,13 +1461,22 @@ const tMain = createI18n({
     btnOverwrite: 'Sobrescribir',
     dlgInsertImage: 'Insertar imagen',
     filterImages: 'Imágenes',
+    dlgMergeDataSource: 'Seleccionar lista de destinatarios',
+    filterMergeDataSource: 'Excel o CSV',
     dlgAddAttachment: 'Agregar datos adjuntos',
     filterSupported: 'Archivos compatibles',
     filterAll: 'Todos los archivos',
     dlgExportPdf: 'Exportar como PDF',
     dlgExportHtml: 'Exportar como HTML',
+    dlgExportHwp: 'Exportar como documento HWP',
     dlgExportMarkdown: 'Exportar como Markdown',
     dlgPickExportDir: 'Elegir carpeta de exportación',
+    filterPdf: 'Documento PDF',
+    filterHtml: 'Página web (HTML)',
+    filterMarkdown: 'Documento Markdown',
+    filterPageImages: 'Imágenes de páginas (PNG)',
+    filterHwp: 'Documentos HWP (HWP)',
+    filterHwpx: 'Documentos HWP (HWPX)',
     errUnsupportedExt: 'los archivos .{ext} no son compatibles',
     errNotFile: 'no es un archivo',
     errTooLarge: 'supera el límite de {mb} MB',
@@ -1196,6 +1502,7 @@ const tMain = createI18n({
     menuSaveAs: 'Guardar como…',
     menuPageSetup: 'Configurar página…',
     menuExportPdf: 'Exportar como PDF…',
+    menuExportHwp: 'Exportar como documento HWP…',
     menuExportHtml: 'Exportar como HTML…',
     menuExportMarkdown: 'Exportar como Markdown…',
     menuExportImages: 'Exportar como imágenes…',
@@ -1294,13 +1601,22 @@ const tMain = createI18n({
     btnOverwrite: 'เขียนทับ',
     dlgInsertImage: 'แทรกรูปภาพ',
     filterImages: 'รูปภาพ',
+    dlgMergeDataSource: 'เลือกรายชื่อผู้รับ',
+    filterMergeDataSource: 'Excel หรือ CSV',
     dlgAddAttachment: 'เพิ่มสิ่งที่แนบ',
     filterSupported: 'ไฟล์ที่รองรับ',
     filterAll: 'ไฟล์ทั้งหมด',
     dlgExportPdf: 'ส่งออกเป็น PDF',
     dlgExportHtml: 'ส่งออกเป็น HTML',
+    dlgExportHwp: 'ส่งออกเป็นเอกสาร HWP',
     dlgExportMarkdown: 'ส่งออกเป็น Markdown',
     dlgPickExportDir: 'เลือกโฟลเดอร์ส่งออก',
+    filterPdf: 'เอกสาร PDF',
+    filterHtml: 'หน้าเว็บ (HTML)',
+    filterMarkdown: 'เอกสาร Markdown',
+    filterPageImages: 'รูปภาพแต่ละหน้า (PNG)',
+    filterHwp: 'เอกสาร HWP (HWP)',
+    filterHwpx: 'เอกสาร HWP (HWPX)',
     errUnsupportedExt: 'ไม่รองรับไฟล์ .{ext}',
     errNotFile: 'ไม่ใช่ไฟล์',
     errTooLarge: 'เกินขีดจำกัด {mb}MB',
@@ -1325,6 +1641,7 @@ const tMain = createI18n({
     menuSaveAs: 'บันทึกเป็น…',
     menuPageSetup: 'ตั้งค่าหน้ากระดาษ…',
     menuExportPdf: 'ส่งออกเป็น PDF…',
+    menuExportHwp: 'ส่งออกเป็นเอกสาร HWP…',
     menuExportHtml: 'ส่งออกเป็น HTML…',
     menuExportMarkdown: 'ส่งออกเป็น Markdown…',
     menuExportImages: 'ส่งออกเป็นรูปภาพ…',
@@ -1423,13 +1740,22 @@ const tMain = createI18n({
     btnOverwrite: 'Timpa',
     dlgInsertImage: 'Sisipkan Gambar',
     filterImages: 'Gambar',
+    dlgMergeDataSource: 'Pilih daftar penerima',
+    filterMergeDataSource: 'Excel atau CSV',
     dlgAddAttachment: 'Tambahkan Lampiran',
     filterSupported: 'File yang Didukung',
     filterAll: 'Semua File',
     dlgExportPdf: 'Ekspor sebagai PDF',
     dlgExportHtml: 'Ekspor sebagai HTML',
+    dlgExportHwp: 'Ekspor sebagai dokumen HWP',
     dlgExportMarkdown: 'Ekspor sebagai Markdown',
     dlgPickExportDir: 'Pilih Folder Ekspor',
+    filterPdf: 'Dokumen PDF',
+    filterHtml: 'Halaman Web (HTML)',
+    filterMarkdown: 'Dokumen Markdown',
+    filterPageImages: 'Gambar Halaman (PNG)',
+    filterHwp: 'Dokumen HWP (HWP)',
+    filterHwpx: 'Dokumen HWP (HWPX)',
     errUnsupportedExt: 'file .{ext} tidak didukung',
     errNotFile: 'bukan file',
     errTooLarge: 'melebihi batas {mb}MB',
@@ -1454,6 +1780,7 @@ const tMain = createI18n({
     menuSaveAs: 'Simpan Sebagai…',
     menuPageSetup: 'Penyetelan Halaman…',
     menuExportPdf: 'Ekspor sebagai PDF…',
+    menuExportHwp: 'Ekspor sebagai dokumen HWP…',
     menuExportHtml: 'Ekspor sebagai HTML…',
     menuExportMarkdown: 'Ekspor sebagai Markdown…',
     menuExportImages: 'Ekspor sebagai gambar…',
@@ -1552,13 +1879,22 @@ const tMain = createI18n({
     btnOverwrite: 'Перезаписать',
     dlgInsertImage: 'Вставить рисунок',
     filterImages: 'Изображения',
+    dlgMergeDataSource: 'Выбрать список получателей',
+    filterMergeDataSource: 'Excel или CSV',
     dlgAddAttachment: 'Добавить вложения',
     filterSupported: 'Поддерживаемые файлы',
     filterAll: 'Все файлы',
     dlgExportPdf: 'Экспорт в PDF',
     dlgExportHtml: 'Экспорт в HTML',
+    dlgExportHwp: 'Экспорт в документ HWP',
     dlgExportMarkdown: 'Экспорт в Markdown',
     dlgPickExportDir: 'Выбор папки для экспорта',
+    filterPdf: 'Документ PDF',
+    filterHtml: 'Веб-страница (HTML)',
+    filterMarkdown: 'Документ Markdown',
+    filterPageImages: 'Изображения страниц (PNG)',
+    filterHwp: 'Документы HWP (HWP)',
+    filterHwpx: 'Документы HWP (HWPX)',
     errUnsupportedExt: 'файлы .{ext} не поддерживаются',
     errNotFile: 'не является файлом',
     errTooLarge: 'превышает лимит {mb} МБ',
@@ -1583,6 +1919,7 @@ const tMain = createI18n({
     menuSaveAs: 'Сохранить как…',
     menuPageSetup: 'Параметры страницы…',
     menuExportPdf: 'Экспорт в PDF…',
+    menuExportHwp: 'Экспорт в документ HWP…',
     menuExportHtml: 'Экспорт в HTML…',
     menuExportMarkdown: 'Экспорт в Markdown…',
     menuExportImages: 'Экспорт в изображения…',
@@ -1681,13 +2018,22 @@ const tMain = createI18n({
     btnOverwrite: 'استبدال',
     dlgInsertImage: 'إدراج صورة',
     filterImages: 'الصور',
+    dlgMergeDataSource: 'اختيار قائمة المستلمين',
+    filterMergeDataSource: 'Excel أو CSV',
     dlgAddAttachment: 'إضافة مرفقات',
     filterSupported: 'الملفات المدعومة',
     filterAll: 'كل الملفات',
     dlgExportPdf: 'تصدير بتنسيق PDF',
     dlgExportHtml: 'تصدير بتنسيق HTML',
+    dlgExportHwp: 'تصدير كمستند HWP',
     dlgExportMarkdown: 'تصدير بتنسيق Markdown',
     dlgPickExportDir: 'اختيار مجلد التصدير',
+    filterPdf: 'مستند PDF',
+    filterHtml: 'صفحة ويب (HTML)',
+    filterMarkdown: 'مستند Markdown',
+    filterPageImages: 'صور الصفحات (PNG)',
+    filterHwp: 'مستندات HWP (HWP)',
+    filterHwpx: 'مستندات HWP (HWPX)',
     errUnsupportedExt: 'ملفات .{ext} غير مدعومة',
     errNotFile: 'ليس ملفًا',
     errTooLarge: 'يتجاوز الحد {mb}MB',
@@ -1712,6 +2058,7 @@ const tMain = createI18n({
     menuSaveAs: 'حفظ باسم…',
     menuPageSetup: 'إعداد الصفحة…',
     menuExportPdf: 'تصدير بتنسيق PDF…',
+    menuExportHwp: 'تصدير كمستند HWP…',
     menuExportHtml: 'تصدير بتنسيق HTML…',
     menuExportMarkdown: 'تصدير بتنسيق Markdown…',
     menuExportImages: 'تصدير كصور…',
@@ -1810,13 +2157,22 @@ const tMain = createI18n({
     btnOverwrite: 'Sobrescrever',
     dlgInsertImage: 'Inserir Imagem',
     filterImages: 'Imagens',
+    dlgMergeDataSource: 'Selecionar lista de destinatários',
+    filterMergeDataSource: 'Excel ou CSV',
     dlgAddAttachment: 'Adicionar Anexos',
     filterSupported: 'Arquivos Compatíveis',
     filterAll: 'Todos os Arquivos',
     dlgExportPdf: 'Exportar como PDF',
     dlgExportHtml: 'Exportar como HTML',
+    dlgExportHwp: 'Exportar como documento HWP',
     dlgExportMarkdown: 'Exportar como Markdown',
     dlgPickExportDir: 'Escolher Pasta de Exportação',
+    filterPdf: 'Documento PDF',
+    filterHtml: 'Página da Web (HTML)',
+    filterMarkdown: 'Documento Markdown',
+    filterPageImages: 'Imagens das páginas (PNG)',
+    filterHwp: 'Documentos HWP (HWP)',
+    filterHwpx: 'Documentos HWP (HWPX)',
     errUnsupportedExt: 'arquivos .{ext} não são suportados',
     errNotFile: 'não é um arquivo',
     errTooLarge: 'excede o limite de {mb}MB',
@@ -1841,6 +2197,7 @@ const tMain = createI18n({
     menuSaveAs: 'Salvar Como…',
     menuPageSetup: 'Configurar Página…',
     menuExportPdf: 'Exportar como PDF…',
+    menuExportHwp: 'Exportar como documento HWP…',
     menuExportHtml: 'Exportar como HTML…',
     menuExportMarkdown: 'Exportar como Markdown…',
     menuExportImages: 'Exportar como imagens…',
@@ -1939,13 +2296,22 @@ const tMain = createI18n({
     btnOverwrite: 'Sovrascrivi',
     dlgInsertImage: 'Inserisci immagine',
     filterImages: 'Immagini',
+    dlgMergeDataSource: 'Seleziona elenco destinatari',
+    filterMergeDataSource: 'Excel o CSV',
     dlgAddAttachment: 'Aggiungi allegati',
     filterSupported: 'File supportati',
     filterAll: 'Tutti i file',
     dlgExportPdf: 'Esporta come PDF',
     dlgExportHtml: 'Esporta come HTML',
+    dlgExportHwp: 'Esporta come documento HWP',
     dlgExportMarkdown: 'Esporta come Markdown',
     dlgPickExportDir: 'Scegli la cartella di esportazione',
+    filterPdf: 'Documento PDF',
+    filterHtml: 'Pagina web (HTML)',
+    filterMarkdown: 'Documento Markdown',
+    filterPageImages: 'Immagini delle pagine (PNG)',
+    filterHwp: 'Documenti HWP (HWP)',
+    filterHwpx: 'Documenti HWP (HWPX)',
     errUnsupportedExt: 'i file .{ext} non sono supportati',
     errNotFile: 'non è un file',
     errTooLarge: 'supera il limite di {mb} MB',
@@ -1970,6 +2336,7 @@ const tMain = createI18n({
     menuSaveAs: 'Salva con nome…',
     menuPageSetup: 'Imposta pagina…',
     menuExportPdf: 'Esporta come PDF…',
+    menuExportHwp: 'Esporta come documento HWP…',
     menuExportHtml: 'Esporta come HTML…',
     menuExportMarkdown: 'Esporta come Markdown…',
     menuExportImages: 'Esporta come immagini…',
@@ -2068,13 +2435,22 @@ const tMain = createI18n({
     btnOverwrite: 'Nadpisz',
     dlgInsertImage: 'Wstaw obraz',
     filterImages: 'Obrazy',
+    dlgMergeDataSource: 'Wybierz listę odbiorców',
+    filterMergeDataSource: 'Excel lub CSV',
     dlgAddAttachment: 'Dodaj załączniki',
     filterSupported: 'Obsługiwane pliki',
     filterAll: 'Wszystkie pliki',
     dlgExportPdf: 'Eksportuj jako PDF',
     dlgExportHtml: 'Eksportuj jako HTML',
+    dlgExportHwp: 'Eksportuj jako dokument HWP',
     dlgExportMarkdown: 'Eksportuj jako Markdown',
     dlgPickExportDir: 'Wybierz folder eksportu',
+    filterPdf: 'Dokument PDF',
+    filterHtml: 'Strona internetowa (HTML)',
+    filterMarkdown: 'Dokument Markdown',
+    filterPageImages: 'Obrazy stron (PNG)',
+    filterHwp: 'Dokumenty HWP (HWP)',
+    filterHwpx: 'Dokumenty HWP (HWPX)',
     errUnsupportedExt: 'pliki .{ext} nie są obsługiwane',
     errNotFile: 'to nie jest plik',
     errTooLarge: 'przekracza limit {mb} MB',
@@ -2099,6 +2475,7 @@ const tMain = createI18n({
     menuSaveAs: 'Zapisz jako…',
     menuPageSetup: 'Ustawienia strony…',
     menuExportPdf: 'Eksportuj jako PDF…',
+    menuExportHwp: 'Eksportuj jako dokument HWP…',
     menuExportHtml: 'Eksportuj jako HTML…',
     menuExportMarkdown: 'Eksportuj jako Markdown…',
     menuExportImages: 'Eksportuj jako obrazy…',
@@ -2197,13 +2574,22 @@ const tMain = createI18n({
     btnOverwrite: 'Přepsat',
     dlgInsertImage: 'Vložit obrázek',
     filterImages: 'Obrázky',
+    dlgMergeDataSource: 'Vybrat seznam příjemců',
+    filterMergeDataSource: 'Excel nebo CSV',
     dlgAddAttachment: 'Přidat přílohy',
     filterSupported: 'Podporované soubory',
     filterAll: 'Všechny soubory',
     dlgExportPdf: 'Exportovat jako PDF',
     dlgExportHtml: 'Exportovat jako HTML',
+    dlgExportHwp: 'Exportovat jako dokument HWP',
     dlgExportMarkdown: 'Exportovat jako Markdown',
     dlgPickExportDir: 'Zvolte složku pro export',
+    filterPdf: 'Dokument PDF',
+    filterHtml: 'Webová stránka (HTML)',
+    filterMarkdown: 'Dokument Markdown',
+    filterPageImages: 'Obrázky stránek (PNG)',
+    filterHwp: 'Dokumenty HWP (HWP)',
+    filterHwpx: 'Dokumenty HWP (HWPX)',
     errUnsupportedExt: 'soubory .{ext} nejsou podporovány',
     errNotFile: 'není soubor',
     errTooLarge: 'překračuje limit {mb} MB',
@@ -2228,6 +2614,7 @@ const tMain = createI18n({
     menuSaveAs: 'Uložit jako…',
     menuPageSetup: 'Vzhled stránky…',
     menuExportPdf: 'Exportovat jako PDF…',
+    menuExportHwp: 'Exportovat jako dokument HWP…',
     menuExportHtml: 'Exportovat jako HTML…',
     menuExportMarkdown: 'Exportovat jako Markdown…',
     menuExportImages: 'Exportovat jako obrázky…',
@@ -2326,13 +2713,22 @@ const tMain = createI18n({
     btnOverwrite: 'Overschrijven',
     dlgInsertImage: 'Afbeelding invoegen',
     filterImages: 'Afbeeldingen',
+    dlgMergeDataSource: 'Ontvangerslijst selecteren',
+    filterMergeDataSource: 'Excel of CSV',
     dlgAddAttachment: 'Bijlagen toevoegen',
     filterSupported: 'Ondersteunde bestanden',
     filterAll: 'Alle bestanden',
     dlgExportPdf: 'Exporteren als PDF',
     dlgExportHtml: 'Exporteren als HTML',
+    dlgExportHwp: 'Exporteren als HWP-document',
     dlgExportMarkdown: 'Exporteren als Markdown',
     dlgPickExportDir: 'Exportmap kiezen',
+    filterPdf: 'PDF-document',
+    filterHtml: 'Webpagina (HTML)',
+    filterMarkdown: 'Markdown-document',
+    filterPageImages: 'Pagina-afbeeldingen (PNG)',
+    filterHwp: 'HWP-documenten (HWP)',
+    filterHwpx: 'HWP-documenten (HWPX)',
     errUnsupportedExt: '.{ext}-bestanden worden niet ondersteund',
     errNotFile: 'geen bestand',
     errTooLarge: 'overschrijdt de limiet van {mb} MB',
@@ -2357,6 +2753,7 @@ const tMain = createI18n({
     menuSaveAs: 'Opslaan als…',
     menuPageSetup: 'Pagina-instelling…',
     menuExportPdf: 'Exporteren als PDF…',
+    menuExportHwp: 'Exporteren als HWP-document…',
     menuExportHtml: 'Exporteren als HTML…',
     menuExportMarkdown: 'Exporteren als Markdown…',
     menuExportImages: 'Exporteren als afbeeldingen…',
@@ -2455,13 +2852,22 @@ const tMain = createI18n({
     btnOverwrite: 'Tulis Ganti',
     dlgInsertImage: 'Sisipkan Imej',
     filterImages: 'Imej',
+    dlgMergeDataSource: 'Pilih senarai penerima',
+    filterMergeDataSource: 'Excel atau CSV',
     dlgAddAttachment: 'Tambah Lampiran',
     filterSupported: 'Fail yang Disokong',
     filterAll: 'Semua Fail',
     dlgExportPdf: 'Eksport sebagai PDF',
     dlgExportHtml: 'Eksport sebagai HTML',
+    dlgExportHwp: 'Eksport sebagai dokumen HWP',
     dlgExportMarkdown: 'Eksport sebagai Markdown',
     dlgPickExportDir: 'Pilih Folder Eksport',
+    filterPdf: 'Dokumen PDF',
+    filterHtml: 'Halaman Web (HTML)',
+    filterMarkdown: 'Dokumen Markdown',
+    filterPageImages: 'Imej Halaman (PNG)',
+    filterHwp: 'Dokumen HWP (HWP)',
+    filterHwpx: 'Dokumen HWP (HWPX)',
     errUnsupportedExt: 'fail .{ext} tidak disokong',
     errNotFile: 'bukan fail',
     errTooLarge: 'melebihi had {mb}MB',
@@ -2486,6 +2892,7 @@ const tMain = createI18n({
     menuSaveAs: 'Simpan Sebagai…',
     menuPageSetup: 'Persediaan Halaman…',
     menuExportPdf: 'Eksport sebagai PDF…',
+    menuExportHwp: 'Eksport sebagai dokumen HWP…',
     menuExportHtml: 'Eksport sebagai HTML…',
     menuExportMarkdown: 'Eksport sebagai Markdown…',
     menuExportImages: 'Eksport sebagai imej…',
@@ -2584,13 +2991,22 @@ const tMain = createI18n({
     btnOverwrite: 'דרוס',
     dlgInsertImage: 'הוספת תמונה',
     filterImages: 'תמונות',
+    dlgMergeDataSource: 'בחירת רשימת נמענים',
+    filterMergeDataSource: 'Excel או CSV',
     dlgAddAttachment: 'הוספת קבצים מצורפים',
     filterSupported: 'קבצים נתמכים',
     filterAll: 'כל הקבצים',
     dlgExportPdf: 'ייצוא כ-PDF',
     dlgExportHtml: 'ייצוא כ-HTML',
+    dlgExportHwp: 'ייצוא כמסמך HWP',
     dlgExportMarkdown: 'ייצוא כ-Markdown',
     dlgPickExportDir: 'בחירת תיקיית ייצוא',
+    filterPdf: 'מסמך PDF',
+    filterHtml: 'דף אינטרנט (HTML)',
+    filterMarkdown: 'מסמך Markdown',
+    filterPageImages: 'תמונות עמודים (PNG)',
+    filterHwp: 'מסמכי HWP (HWP)',
+    filterHwpx: 'מסמכי HWP (HWPX)',
     errUnsupportedExt: 'קובצי .{ext} אינם נתמכים',
     errNotFile: 'אינו קובץ',
     errTooLarge: 'חורג מהמגבלה של {mb}MB',
@@ -2615,6 +3031,7 @@ const tMain = createI18n({
     menuSaveAs: 'שמירה בשם…',
     menuPageSetup: 'הגדרת עמוד…',
     menuExportPdf: 'ייצוא כ-PDF…',
+    menuExportHwp: 'ייצוא כמסמך HWP…',
     menuExportHtml: 'ייצוא כ-HTML…',
     menuExportMarkdown: 'ייצוא כ-Markdown…',
     menuExportImages: 'ייצוא כתמונות…',
@@ -2713,13 +3130,22 @@ const tMain = createI18n({
     btnOverwrite: 'अधिलेखित करें',
     dlgInsertImage: 'छवि सम्मिलित करें',
     filterImages: 'छवियाँ',
+    dlgMergeDataSource: 'प्राप्तकर्ता सूची चुनें',
+    filterMergeDataSource: 'Excel या CSV',
     dlgAddAttachment: 'अनुलग्नक जोड़ें',
     filterSupported: 'समर्थित फ़ाइलें',
     filterAll: 'सभी फ़ाइलें',
     dlgExportPdf: 'PDF के रूप में निर्यात करें',
     dlgExportHtml: 'HTML के रूप में निर्यात करें',
+    dlgExportHwp: 'HWP दस्तावेज़ के रूप में निर्यात करें',
     dlgExportMarkdown: 'Markdown के रूप में निर्यात करें',
     dlgPickExportDir: 'निर्यात फ़ोल्डर चुनें',
+    filterPdf: 'PDF दस्तावेज़',
+    filterHtml: 'वेब पेज (HTML)',
+    filterMarkdown: 'Markdown दस्तावेज़',
+    filterPageImages: 'पेज छवियाँ (PNG)',
+    filterHwp: 'HWP दस्तावेज़ (HWP)',
+    filterHwpx: 'HWP दस्तावेज़ (HWPX)',
     errUnsupportedExt: '.{ext} फ़ाइलें समर्थित नहीं हैं',
     errNotFile: 'फ़ाइल नहीं है',
     errTooLarge: '{mb}MB की सीमा से अधिक है',
@@ -2744,6 +3170,7 @@ const tMain = createI18n({
     menuSaveAs: 'इस रूप में सहेजें…',
     menuPageSetup: 'पृष्ठ सेटअप…',
     menuExportPdf: 'PDF के रूप में निर्यात करें…',
+    menuExportHwp: 'HWP दस्तावेज़ के रूप में निर्यात करें…',
     menuExportHtml: 'HTML के रूप में निर्यात करें…',
     menuExportMarkdown: 'Markdown के रूप में निर्यात करें…',
     menuExportImages: 'छवियों के रूप में निर्यात…',
@@ -2842,13 +3269,22 @@ const tMain = createI18n({
     btnOverwrite: '覆寫',
     dlgInsertImage: '插入圖片',
     filterImages: '圖片',
+    dlgMergeDataSource: '選擇收件人清單',
+    filterMergeDataSource: 'Excel 或 CSV',
     dlgAddAttachment: '新增附件',
     filterSupported: '支援的檔案',
     filterAll: '所有檔案',
     dlgExportPdf: '匯出為 PDF',
     dlgExportHtml: '匯出為 HTML',
+    dlgExportHwp: '匯出為 HWP 文件',
     dlgExportMarkdown: '匯出為 Markdown',
     dlgPickExportDir: '選擇匯出目錄',
+    filterPdf: 'PDF 文件',
+    filterHtml: '網頁 (HTML)',
+    filterMarkdown: 'Markdown 文件',
+    filterPageImages: '頁面圖片 (PNG)',
+    filterHwp: 'HWP 文件 (HWP)',
+    filterHwpx: 'HWP 文件 (HWPX)',
     errUnsupportedExt: '暫不支援 .{ext} 類型',
     errNotFile: '不是檔案',
     errTooLarge: '超過 {mb}MB 上限',
@@ -2872,6 +3308,7 @@ const tMain = createI18n({
     menuSaveAs: '另存新檔…',
     menuPageSetup: '版面設定…',
     menuExportPdf: '匯出為 PDF…',
+    menuExportHwp: '匯出為 HWP 文件…',
     menuExportHtml: '匯出為 HTML…',
     menuExportMarkdown: '匯出為 Markdown…',
     menuExportImages: '匯出為圖片…',
@@ -2954,6 +3391,27 @@ const tMain = createI18n({
     menuShortcuts: '鍵盤快速鍵',
   },
 })
+/**
+ * The Hangul conversion and its confirmation, lent to another editor's export
+ * through the shell (the Markdown editor's Save As): the same worker per job
+ * and the same message box as this editor's own export.
+ */
+export const hwpCopy = {
+  convert: (docx: Uint8Array, format: HwpFormat, look: HwpLook): Promise<HwpConversion> =>
+    convertInWorker(
+      { docx, format, wasmPath: rhwpWasmPath(), look },
+      () => new Worker(hwpExportWorkerPath),
+    ),
+  /** asked only when something is lost; false = cancel */
+  confirm: async (parent: BrowserWindow | undefined, losses: readonly Loss[]): Promise<boolean> => {
+    const options = hwpLossMessageBox(losses, false, getUiLang())
+    const { response } = parent
+      ? await dialog.showMessageBox(parent, options)
+      : await dialog.showMessageBox(options)
+    return response === 0
+  },
+}
+
 const tm = (key: Parameters<typeof tMain>[1], params?: Parameters<typeof tMain>[2]) =>
   tMain(getUiLang(), key, params)
 
@@ -3004,14 +3462,26 @@ export function queueDocsAiContent(wcId: number, content: AiDocContent): void {
 }
 
 /**
- * Untitled copies waiting for their tab (a skill template's, spec 5.7), keyed
- * by webContents id: the copy's temp file and the name it shows. The tab gets
- * the bytes once and is never granted a write to that file.
+ * An untitled copy waiting for its tab: the copy's temp file and the name it
+ * shows, plus, for a legacy Word file opened as a converted copy, the path its
+ * first save suggests and the format it came from.
  */
-const pendingDocCopies = new Map<number, { path: string; name: string }>()
+export interface QueuedDocsCopy {
+  path: string
+  name: string
+  saveAsDefaultPath?: string | undefined
+  importedFrom?: string | undefined
+}
+
+/**
+ * Untitled copies waiting for their tab (a skill template's, spec 5.7, or a
+ * converted .doc/.dot), keyed by webContents id. The tab gets the bytes once
+ * and is never granted a write to that file.
+ */
+const pendingDocCopies = new Map<number, QueuedDocsCopy>()
 
 /** queue an untitled copy for a fresh docs tab (called by the shell right after creating the view) */
-export function queueDocsCopy(wcId: number, copy: { path: string; name: string }): void {
+export function queueDocsCopy(wcId: number, copy: QueuedDocsCopy): void {
   pendingDocCopies.set(wcId, copy)
 }
 
@@ -3061,7 +3531,7 @@ async function openDialog(event: IpcMainInvokeEvent, options: OpenDialogOptions)
 async function saveDialog(event: IpcMainInvokeEvent, options: SaveDialogOptions) {
   // before any pick is remembered, bare-name suggestions anchor in the
   // configurable default save folder instead of Electron's Downloads pin
-  return showSaveDialogWithMemory(dialog, dialogParent(event), options, defaultSaveDir())
+  return showSaveDialogWithMemory(dialog, dialogParent(event), options, defaultSaveDir)
 }
 
 /** default folder where new files land on their first (silent) save; shared with the other editors via shell. User-configurable (app-settings.json), falls back to <Documents>/GenOffice. */
@@ -3069,12 +3539,18 @@ export function defaultSaveDir(): string {
   return configuredDefaultSaveDir(app)
 }
 
-/** first free path for fileName inside dir: name.ext, name-2.ext, name-3.ext… */
+/** first free path for fileName inside dir: name.ext, name-2.ext, name-3.ext…
+ *  fileName arrives from renderers and MCP callers as a *suggestion*, so it is
+ *  reduced to its bare name first (file-name.ts): a `..` segment or an
+ *  absolute path must not steer the write out of dir — docs:save-new's
+ *  suggested name had no dialog or grant behind it, and every new-file write
+ *  funnels through here. */
 export function uniquePathIn(dir: string, fileName: string): string {
-  const dot = fileName.lastIndexOf('.')
-  const base = dot > 0 ? fileName.slice(0, dot) : fileName
-  const ext = dot > 0 ? fileName.slice(dot) : ''
-  let candidate = join(dir, fileName)
+  const bare = bareFileName(fileName)
+  const dot = bare.lastIndexOf('.')
+  const base = dot > 0 ? bare.slice(0, dot) : bare
+  const ext = dot > 0 ? bare.slice(dot) : ''
+  let candidate = join(dir, bare)
   for (let i = 2; existsSync(candidate); i++) candidate = join(dir, `${base}-${i}${ext}`)
   return candidate
 }
@@ -3307,6 +3783,19 @@ const tornDownWcIds = new Set<number>()
 
 // per renderer, kept current on open/save/save-as/rename; only the local-media allowlist reads it
 const openDocByWc = new Map<number, string>()
+
+// the encrypted document a password prompt is open for, per renderer: the
+// decrypt retry's path must be the one main itself flagged as needing a
+// password, not any path the renderer names
+const pendingDecryptByWc = new Map<number, string>()
+
+/** Attachment reads verify against what this view's user put in front of the
+ *  app: dialog picks, OS drops, clipboard file pastes and shell attachment
+ *  pickers land in the shared grant ledger, and files sitting beside the open
+ *  document are its own neighbors. Everything else is refused. */
+function canReadAttachment(wcId: number, filePath: string): boolean {
+  return sharedPathGrants().has(wcId, filePath) || isBesideDocument(openDocByWc.get(wcId), filePath)
+}
 
 function rememberOpenDoc(wcId: number, filePath: string): void {
   openDocByWc.set(wcId, filePath)
@@ -3695,7 +4184,10 @@ async function loadDocx(
   const encrypted = format === 'docx' && isEncryptedDocx(original)
   if (encrypted) {
     const pwd = password ?? docPasswordFor(wcId, filePath)
-    if (!pwd) return { needsPassword: true, path: filePath, name: basename(filePath) }
+    if (!pwd) {
+      pendingDecryptByWc.set(wcId, filePath)
+      return { needsPassword: true, path: filePath, name: basename(filePath) }
+    }
     plainBytes = await decryptDocx(original, pwd) // throws DocxDecryptError
     rememberDocPassword(wcId, filePath, pwd)
   } else {
@@ -3773,12 +4265,13 @@ const attachmentTextCache = new Map<string, { stamp: string; text: string }>()
 
 function statAttachment(filePath: string): { meta?: AttachmentMeta; error?: string } {
   const name = basename(filePath)
-  const ext = name.split('.').pop()?.toLowerCase() ?? ''
+  // a draw.io picture that holds its diagram is read as diagram text
+  const ext = diagramPictureExtOf(filePath) ?? name.split('.').pop()?.toLowerCase() ?? ''
   if (!ATTACHABLE_EXTS.has(ext)) return { error: `${name}: ${tm('errUnsupportedExt', { ext })}` }
   try {
     const stat = statSync(filePath)
     if (!stat.isFile()) return { error: `${name}: ${tm('errNotFile')}` }
-    if (stat.size > ATTACHABLE_MAX_BYTES) {
+    if (!ATTACHABLE_IMAGE_EXTS.has(ext) && stat.size > attachableMaxBytes(ext)) {
       return {
         error: `${name}: ${tm('errTooLarge', { mb: Math.round(ATTACHABLE_MAX_BYTES / 1024 / 1024) })}`,
       }
@@ -3853,7 +4346,8 @@ async function extractAttachmentText(filePath: string): Promise<string> {
   const stamp = `${stat.mtimeMs}:${stat.size}`
   const cached = attachmentTextCache.get(filePath)
   if (cached && cached.stamp === stamp) return cached.text
-  if (stat.size > ATTACHABLE_MAX_BYTES) throw new Error(tm('errFileTooLarge'))
+  const capExt = diagramPictureExtOfName(filePath) ?? extname(filePath)
+  if (stat.size > attachableMaxBytes(capExt)) throw new Error(tm('errFileTooLarge'))
   const parsed = await parseFileToText(filePath)
   if (!parsed.ok || parsed.kind !== 'text' || parsed.text == null) {
     throw new Error(parsed.error ?? tm('errParseFailed'))
@@ -3877,6 +4371,25 @@ const TWIPS_PER_INCH = 1440
 
 const SETTINGS_PATH = () => userDataPath('ai-settings.json')
 
+/**
+ * The only write of the settings file: keys and tokens go to disk sealed
+ * (decision 0063), and fields a newer build wrote stay as they are.
+ */
+function writeAiSettingsFile(settings: unknown): void {
+  const stored = readJson<unknown>(SETTINGS_PATH(), {})
+  writeJsonAtomic(SETTINGS_PATH(), sealAiSecrets(withStoredUnknownFields(settings, stored)))
+}
+
+/** how long after start the key providers are first asked for their models */
+const KEY_MODEL_FIRST_LIST_DELAY_MS = 5000
+
+/**
+ * how often a running app looks whether a key provider's list is due again.
+ * The refresher asks only for a list a day old; an hourly look on the wall
+ * clock is what catches that after the PC slept through the night.
+ */
+const KEY_MODEL_RELIST_CHECK_MS = 60 * 60 * 1000
+
 const activeAiStreams = new Map<string, AbortController>()
 
 /** AI requests in flight across every editor (the shell's memory record reads it) */
@@ -3898,7 +4411,20 @@ function broadcastAiSettingsChanged(): void {
  */
 /** the settings file as every reader gets it: removed and unknown selections read as their defaults */
 function storedAiSettings(): AiSettings {
-  return normalizeAiSettings(readJson<unknown>(SETTINGS_PATH(), {}))
+  const raw = readJson<unknown>(SETTINGS_PATH(), {})
+  return normalizeAiSettings(migratedNoticeVersion(raw))
+}
+
+/**
+ * An ai-settings.json written before the notice carried a version acknowledged
+ * version 1. Record that, so the user sees the PDF sentence added in version 2
+ * once; a file that already has a version is left exactly as it is.
+ */
+function migratedNoticeVersion(raw: unknown): unknown {
+  const next = withMigratedSubscriptionNoticeVersion(raw)
+  if (!next) return raw
+  writeAiSettingsFile(next)
+  return next
 }
 
 /** where the image and media tools may run: the screen path, with the live subscription statuses */
@@ -3911,26 +4437,139 @@ const AI_RUN_TEXTS: AiRunTexts = {
   noModel: () => tm('errNoModel'),
 }
 
+/**
+ * Asks the key providers for their current models (decision 0087): once per run,
+ * then again for a provider whose key or base URL changed, or whose list is a
+ * day old (decision 0138). The list lands in the settings file, so every
+ * picker shows it. Nothing is asked while AI features are off (editor choice
+ * spec 8.3); turned back on, the lists due are asked for.
+ */
+const keyModelRefresher = aiGatedKeyModelRefresher(
+  createKeyModelRefresher({
+    read: storedAiSettings,
+    write: (update) => {
+      const latest = storedAiSettings()
+      const next = update(latest)
+      if (next === latest) return
+      writeAiSettingsFile(next)
+      broadcastAiSettingsChanged()
+    },
+  }),
+  aiFeaturesOn,
+)
+
+/**
+ * Persist settings a renderer sent: schema-checked, with the live model lists
+ * kept from the file (only the main process writes them), then a listing for
+ * a key that changed. False when the payload is not settings at all.
+ */
+function writeRendererAiSettings(settings: unknown): boolean {
+  // SECURITY.md: payloads are schema-checked in the main process. The settings
+  // file feeds cliPath into spawn() and baseUrl receives the provider's API key,
+  // so the renderer's copy is sanitized before it touches disk.
+  const sanitized = sanitizeAiSettings(settings)
+  if (!sanitized) return false
+  writeAiSettingsFile(withStoredMainFields(sanitized, storedAiSettings()))
+  broadcastAiSettingsChanged()
+  keyModelRefresher.refreshChanged()
+  return true
+}
+
+let codexImageRegistered = false
+
+/**
+ * The usage Codex reports while it draws a picture, to every window's AI pane.
+ * A picture call is no stream, so it has no chunk to carry it; the value is the
+ * account's, so every window takes it, like the subscription statuses. Same
+ * shape as the chat stream's subscription-usage chunk.
+ */
+function broadcastSubscriptionUsage(usage: AiSubscriptionUsage[]): void {
+  for (const wc of webContents.getAllWebContents())
+    if (!wc.isDestroyed()) wc.send(SUBSCRIPTION_USAGE_CHANNEL, usage)
+}
+
+/**
+ * Codex image generation through the subscription: one picture in a disposable
+ * thread of the app's `codex app-server` client, with the same locks as a chat
+ * thread and the image tool its only built-in tool. Every call reads the settings
+ * file again, so Codex turned off in this app (decision 0114) is not started; while
+ * AI is off (decision 0143) no picture call reaches the generator. Registered once
+ * per process, before the capability report can be asked; nothing starts until a
+ * request on the Codex route calls it.
+ */
+function registerCodexImageBackend(): void {
+  if (codexImageRegistered) return
+  codexImageRegistered = true
+  registerCodexImageGenerator(
+    createCodexImageGenerator({
+      settingsPath: SETTINGS_PATH,
+      onUsage: broadcastSubscriptionUsage,
+    }),
+  )
+  setCodexImageGenerationAvailable(true)
+}
+
+/** a tab's picture or media call: refused while AI is off, else one running AI job its Stop ends */
+function screenMediaCall<T>(
+  senderId: number,
+  run: () => Promise<T>,
+): Promise<T | { error: string }> {
+  return aiMediaCall(() => abortMediaCalls(senderId), run)
+}
+
 export function registerAiIpc(): void {
+  registerCodexImageBackend()
   app.once('before-quit', shutdownCodexAppServers)
   // the subscription channels (statuses, recheck, login, install, metered) exist once per
   // process: whichever editor main asks first registers them and starts the first check
-  ensureSubscriptionIpc(ipcMain, {
+  const subscriptionSetup: SubscriptionIpcSetup = {
     getSettings: storedAiSettings,
     setMeteredAccepted: (provider: AiSubscriptionProviderId, accepted: boolean) => {
-      writeJsonAtomic(
-        SETTINGS_PATH(),
+      writeAiSettingsFile(
         withMeteredAccepted(readJson<unknown>(SETTINGS_PATH(), {}), provider, accepted),
       )
       broadcastAiSettingsChanged()
     },
+    setSubscriptionOff: (provider: AiSubscriptionCliId, off: boolean) => {
+      writeAiSettingsFile(
+        withSubscriptionOff(readJson<unknown>(SETTINGS_PATH(), {}), provider, off),
+      )
+      broadcastAiSettingsChanged()
+    },
     dataDir: app.getPath('userData'),
+    // every check and model listing, the ones the service starts itself after a login ends
+    // included, asks no program while AI features are off (editor choice spec 8.3, 9)
+    detect: aiGatedDetect(detectSubscriptionLogin, aiFeaturesOn),
+    listModels: aiGatedModelLister(listSubscriptionModels, aiFeaturesOn),
     broadcast: (channel, statuses) => {
       for (const wc of webContents.getAllWebContents())
         if (!wc.isDestroyed()) wc.send(channel, statuses)
     },
     loginWindowText: (provider) => aiSubscriptionLoginWindowText(getUiLang(), provider),
+    // the ChatGPT sign-in is the app's own (decision 0081): OpenAI's page in the system browser
+    chatGptSignIn: {
+      openBrowser: async (url) => {
+        const target = safeExternalUrl(url)
+        if (!target) return false
+        return shell.openExternal(target).then(
+          () => true,
+          () => false,
+        )
+      },
+      pages: () => aiChatGptSignInPages(getUiLang()),
+    },
+  }
+  // while AI features are off no check runs and no program starts (editor choice spec 8.3);
+  // turned back on, the programs are checked once (spec 8.5)
+  const subscriptionDeps = ensureSubscriptionIpc(ipcMain, subscriptionSetup, (setup) =>
+    aiGatedSubscriptionDeps(createSubscriptionIpcDeps(setup), aiFeaturesOn),
+  )
+  onAiFeaturesBack(() => {
+    void subscriptionDeps.service.check().catch(() => undefined)
+    keyModelRefresher.refreshChanged()
   })
+  // turned off, a login still running (started in Settings before) ends with its program
+  endSubscriptionLoginsWhenAiOff(subscriptionDeps)
 
   ipcMain.handle('ai:get-settings', async (): Promise<AiSettings> => storedAiSettings())
 
@@ -3941,31 +4580,32 @@ export function registerAiIpc(): void {
   )
 
   ipcMain.handle('ai:set-settings', (_event, settings: AiSettings) => {
-    // SECURITY.md: payloads are schema-checked in the main process. The settings
-    // file feeds cliPath into spawn() and baseUrl receives the provider's API key,
-    // so the renderer's copy is sanitized before it touches disk.
-    const sanitized = sanitizeAiSettings(settings)
-    if (!sanitized) {
+    if (!writeRendererAiSettings(settings)) {
       console.warn('[ai] rejected invalid ai:set-settings payload')
-      return
     }
-    writeJsonAtomic(SETTINGS_PATH(), sealAiSecrets(sanitized))
-    broadcastAiSettingsChanged()
   })
 
   registerFreeAiIpc({
     readSettings: storedAiSettings,
-    writeSettings: (settings) => {
-      const sanitized = sanitizeAiSettings(settings)
-      if (!sanitized) return false
-      writeJsonAtomic(SETTINGS_PATH(), sealAiSecrets(sanitized))
-      broadcastAiSettingsChanged()
-      return true
-    },
+    writeSettings: writeRendererAiSettings,
     windowFor: hostWindowFor,
   })
 
+  // the first listing waits for the windows: a key provider's list is not needed to show them
+  void app.whenReady().then(() => {
+    setTimeout(() => keyModelRefresher.refreshChanged(), KEY_MODEL_FIRST_LIST_DELAY_MS)
+    // an app left open for days: a list a day old is asked again (decision 0138).
+    // Unref'd, so the look never keeps a process that is done alive.
+    setInterval(() => keyModelRefresher.refreshChanged(), KEY_MODEL_RELIST_CHECK_MS).unref()
+  })
+
   ipcMain.handle('ai:codex-models', async (_event, cliPath: unknown) => {
+    // AI turned off in Settings: no subscription program starts from a screen
+    if (!aiFeaturesOn()) throw new Error(AI_OFF_ERROR)
+    // turned off in this app (decision 0114): Codex is not started for its list either
+    if (subscriptionOffIn(storedAiSettings(), 'codex')) {
+      throw new Error('Codex is turned off in this app')
+    }
     // the probe spawns the path directly, so it gets the same metacharacter and
     // existence check as the stored setting (anything else: auto-detect)
     return listCodexModels(sanitizeCliPath(cliPath))
@@ -3974,6 +4614,33 @@ export function registerAiIpc(): void {
   ipcMain.handle('ai:custom-models', (_event, input: unknown) => listCustomModelsForIpc(input))
 
   ipcMain.handle('ai:ollama-show', (_event, input: unknown) => showOllamaModelForIpc(input))
+  // local AI card: discovery, one model's server-reported profile, and the
+  // four-step connection test. Payload validation lives in @genoffice/ai-provider
+  // (local-ipc.ts), so a malformed payload answers shape and sends nothing.
+  ipcMain.handle('ai:local-models', (_event, input: unknown) => listLocalModelsForIpc(input))
+  ipcMain.handle('ai:local-inspect', (_event, input: unknown) => inspectLocalModelForIpc(input))
+  ipcMain.handle('ai:local-test', async (event, input: unknown) => {
+    // the requests end here, not only in the renderer: on a cancel by test id
+    // (from the same window) and when the window that asked is closed
+    const controller = new AbortController()
+    const unwatchSender = abortOnDestroyed(event.sender, controller)
+    try {
+      return await testLocalModelForIpc(input, {
+        owner: event.sender.id,
+        signal: controller.signal,
+      })
+    } finally {
+      unwatchSender()
+    }
+  })
+  ipcMain.handle('ai:local-test-cancel', (event, input: unknown) =>
+    cancelLocalTestForIpc(input, event.sender.id),
+  )
+
+  const acpToolBroker = createAcpToolBroker()
+  ipcMain.handle(ACP_TOOL_RESULT_CHANNEL, (event, raw: unknown) => {
+    acpToolBroker.resolve(event.sender.id, raw)
+  })
 
   ipcMain.handle('ai:stream', async (event, request: AiStreamRequest) => {
     // per-request settings get the same schema check as the persisted ones: a
@@ -3991,11 +4658,35 @@ export function registerAiIpc(): void {
       return
     }
     const { settings, provider, config } = target
-    const tools = request.tools ?? []
+    const refusal = aiRunRefusal({ senderId: event.sender.id, provider, model: config.model })
+    if (refusal) {
+      send({ requestId, type: 'error', error: refusal })
+      return
+    }
+    // the create tool names the document types whose editor is off now (spec 7.4)
+    const tools = withOffDocumentKinds(request.tools ?? [])
     const maxTokens = request.maxTokens ?? maxOutputTokensOf(settings)
+    // A local server loads the model on its first request, so this endpoint's
+    // own first-response limit (default 300s) replaces the protocol default,
+    // and a timer keeps the renderer informed while nothing has arrived yet.
+    // Other providers get neither: their watchdog and silence budget stay as
+    // they were.
+    const localEndpoint = provider === 'custom' ? activeCustomEndpoint(settings) : undefined
+    const localTimeoutMs =
+      localEndpoint?.kind === 'local' ? localEndpointTimeoutMs(localEndpoint) : undefined
     const controller = new AbortController()
     activeAiStreams.set(requestId, controller)
     const unwatchSender = abortOnDestroyed(event.sender, controller)
+    // one running AI job while this reply streams (every editor's chat goes
+    // through here): turning AI off stops it the way the screen's Stop does,
+    // and the subscription program ends with the signal
+    const endJob = registerAiJob({
+      kind: 'chat',
+      stop: () => controller.abort(),
+      // one tab's turn is one job, its parallel calls and the pause between them included
+      group: `tab:${event.sender.id}`,
+      lingerMs: CHAT_TURN_LINGER_MS,
+    })
     // deltas go out in short batches, everything else in order behind them
     const out = createChunkCoalescer<AiStreamChunk>(send)
     // wire-activity keepalive: lets the renderer's silence watchdog tell a slow turn from a dead one
@@ -4006,22 +4697,79 @@ export function registerAiIpc(): void {
       lastPing = now
       out.push({ requestId, type: 'ping' })
     }
+    const keepalive = localTimeoutMs === undefined ? undefined : startFirstChunkKeepalive(ping)
+    let answerSeen = false
+    const answerStarted = () => {
+      if (answerSeen) return
+      answerSeen = true
+      keepalive?.firstChunk()
+    }
     try {
       let stopReason: string | undefined
-      await streamForProvider(provider, config, system, messages, tools, maxTokens, {
-        ...(request.sessionId ? { sessionId: request.sessionId } : {}),
-        signal: controller.signal,
-        onDelta: (text) => out.push({ requestId, type: 'delta', text }),
-        onReasoningDelta: (text) => out.push({ requestId, type: 'reasoning', text }),
-        onToolCall: (toolCall) => out.push({ requestId, type: 'tool-call', toolCall }),
-        onActivity: ping,
-        onStopReason: (reason) => {
-          stopReason = reason
+      let acpNative = false
+      await streamForProvider(
+        provider,
+        config,
+        system,
+        messages,
+        tools,
+        maxTokens,
+        {
+          ...(request.sessionId ? { sessionId: request.sessionId } : {}),
+          signal: controller.signal,
+          onDelta: (text) => {
+            answerStarted()
+            out.push({ requestId, type: 'delta', text })
+          },
+          onReasoningDelta: (text) => {
+            answerStarted()
+            out.push({ requestId, type: 'reasoning', text })
+          },
+          onToolCall: (toolCall) => {
+            answerStarted()
+            out.push({ requestId, type: 'tool-call', toolCall })
+          },
+          onAcpToolCall: async (toolCall) => {
+            answerStarted()
+            const callId = globalThis.crypto.randomUUID()
+            const pending = acpToolBroker.waitForResult({
+              senderId: event.sender.id,
+              requestId,
+              callId,
+              signal: controller.signal,
+            })
+            out.flush()
+            send({ requestId, type: 'acp-tool-call', callId, toolCall })
+            const result = await pending
+            return {
+              id: toolCall.id,
+              name: toolCall.name,
+              output: result.output,
+              ...(result.isError ? { isError: true } : {}),
+            }
+          },
+          onAcpNativeDone: () => {
+            acpNative = true
+          },
+          onActivity: () => {
+            // Headers are not an answer: a local server may send them while it is
+            // still loading the model. Keep pinging until the first real chunk.
+            if (!answerSeen) ping()
+          },
+          onStopReason: (reason) => {
+            stopReason = reason
+          },
+          onUsage: (usage) => out.push({ requestId, type: 'usage', usage }),
+          ...subscriptionStreamCallbacks(requestId, out.push),
         },
-        onUsage: (usage) => out.push({ requestId, type: 'usage', usage }),
-        ...subscriptionStreamCallbacks(requestId, out.push),
+        localTimeoutMs === undefined ? undefined : { timeoutMs: localTimeoutMs },
+      )
+      out.push({
+        requestId,
+        type: 'done',
+        ...(stopReason !== undefined ? { stopReason } : {}),
+        ...(acpNative ? { acpNative: true } : {}),
       })
-      out.push({ requestId, type: 'done', stopReason })
     } catch (err) {
       if (controller.signal.aborted) {
         out.push({ requestId, type: 'done' })
@@ -4029,9 +4777,13 @@ export function registerAiIpc(): void {
         out.push(aiStreamErrorChunk(requestId, err))
       }
     } finally {
+      // success, error and cancel all leave through here: the timer never survives the turn
+      acpToolBroker.cancelRequest(requestId)
+      keepalive?.stop()
       out.flush()
       unwatchSender()
       activeAiStreams.delete(requestId)
+      endJob()
     }
   })
 
@@ -4088,24 +4840,26 @@ export function registerAiIpc(): void {
   // docs-prefixed: slides registers its own ai:analyze-media in the same shell process.
   // Ends with its tab, or when the tab's AI run is stopped.
   ipcMain.handle('docs:analyze-media', (event, op: { mediaUrls: string[]; requirements: string }) =>
-    withMediaCallSignal(event.sender, async (signal) => {
-      const mediaUrls = (op.mediaUrls ?? []).map(String).filter(Boolean)
-      // a picture opened lazily from a large docx is only addressable by its main-process
-      // store; hand its bytes over as a data URL so the loader can read them like any other
-      const resolved: string[] = []
-      for (const url of mediaUrls) {
-        const lazy = await readLazyMedia(url).catch(() => null)
-        resolved.push(lazy ? `data:${lazy.mime};base64,${lazy.body.toString('base64')}` : url)
-      }
-      return analyzeMediaTool(
-        SETTINGS_PATH(),
-        {
-          mediaUrls: resolved,
-          requirements: String(op.requirements ?? ''),
-        },
-        { mediaRoots: docsMediaRoots(event.sender.id), context: screenToolContext(), signal },
-      )
-    }),
+    screenMediaCall(event.sender.id, () =>
+      withMediaCallSignal(event.sender, async (signal) => {
+        const mediaUrls = (op.mediaUrls ?? []).map(String).filter(Boolean)
+        // a picture opened lazily from a large docx is only addressable by its main-process
+        // store; hand its bytes over as a data URL so the loader can read them like any other
+        const resolved: string[] = []
+        for (const url of mediaUrls) {
+          const lazy = await readLazyMedia(url).catch(() => null)
+          resolved.push(lazy ? `data:${lazy.mime};base64,${lazy.body.toString('base64')}` : url)
+        }
+        return analyzeMediaTool(
+          SETTINGS_PATH(),
+          {
+            mediaUrls: resolved,
+            requirements: String(op.requirements ?? ''),
+          },
+          { mediaRoots: docsMediaRoots(event.sender.id), context: screenToolContext(), signal },
+        )
+      }),
+    ),
   )
 
   // download image from URL → base64+mime (download in the main process avoids CORS; the renderer builds the image node and measures size itself)
@@ -4137,20 +4891,28 @@ export function registerAiIpc(): void {
   // registered once a slides view exists, so docs needs its own channel
   ipcMain.handle(
     'docs:ai-generate-image',
-    (event, op: { prompt?: unknown; aspectRatio?: unknown }) =>
-      withMediaCallSignal(event.sender, (signal) =>
-        generateImageTool(
-          SETTINGS_PATH(),
-          {
-            prompt: String(op?.prompt ?? ''),
-            aspectRatio: op?.aspectRatio ? String(op.aspectRatio) : undefined,
-          },
-          { mediaRoots: docsMediaRoots(event.sender.id), context: screenToolContext(), signal },
+    (event, op: { prompt?: unknown; aspectRatio?: unknown; model?: unknown }) => {
+      // the model the user named, as given: the shared tool decides whether the route offers it
+      const model = typeof op?.model === 'string' ? op.model.trim() : ''
+      return screenMediaCall(event.sender.id, () =>
+        withMediaCallSignal(event.sender, (signal) =>
+          generateImageTool(
+            SETTINGS_PATH(),
+            {
+              prompt: String(op?.prompt ?? ''),
+              aspectRatio: op?.aspectRatio ? String(op.aspectRatio) : undefined,
+              ...(model ? { model } : {}),
+            },
+            { mediaRoots: docsMediaRoots(event.sender.id), context: screenToolContext(), signal },
+          ),
         ),
-      ),
+      )
+    },
   )
 
   ipcMain.handle('ai:search-test', (_event, input: unknown) => {
+    // no key is tried while AI features are off (editor choice spec 8.3)
+    if (!aiFeaturesOn()) return { ok: false, error: 'AI features are turned off' }
     const { provider, apiKey } = (input ?? {}) as { provider?: AiSearchProviderId; apiKey?: string }
     if (!provider || !AI_SEARCH_PROVIDERS.some((meta) => meta.id === provider)) {
       return { ok: false, error: 'No search provider to test' }
@@ -4160,6 +4922,8 @@ export function registerAiIpc(): void {
 
   // settings-UI connection test for a key media provider
   ipcMain.handle('ai:media-test', (_event, input: unknown) => {
+    // no key is tried while AI features are off (editor choice spec 8.3)
+    if (!aiFeaturesOn()) return { ok: false, error: 'AI features are turned off' }
     const { provider, config } = (input ?? {}) as {
       provider?: AiMediaProviderId
       config?: AiMediaProviderConfig
@@ -4171,11 +4935,18 @@ export function registerAiIpc(): void {
     return testMediaProvider(provider, config)
   })
 
-  ipcMain.handle('ai:chat', async (_event, request: AiChatRequest) => {
+  ipcMain.handle('ai:chat', async (event, request: AiChatRequest) => {
     // same schema check and provider choice as ai:stream: one-shot requests would
     // otherwise act on the renderer's settings copy verbatim
     const target = resolveAiRun(request.settings, sharedSubscriptionStatuses(), AI_RUN_TEXTS)
     if (!target.ok) return { ok: false, ...target.refusal }
+    // the shell's checks in front of every screen's AI run (AI off, Drive copies)
+    const refusal = aiRunRefusal({
+      senderId: event.sender.id,
+      provider: target.provider,
+      model: target.config.model,
+    })
+    if (refusal) return { ok: false, error: refusal }
     const { system, user } = request
     try {
       const result = await chatForProvider(target.provider, target.config, system, user)
@@ -4253,6 +5024,23 @@ export function projectFilePaths(): string[] {
   } catch {
     return []
   }
+}
+
+/**
+ * The per-document chat a saved document already has in the app-data
+ * project-store, or null. Read only: unlike `project:resolveChat` it registers
+ * no mapping and creates no chat. The project folder chat list offers it as
+ * "earlier chats of this document" (decision 0088).
+ */
+export function legacyDocumentChatFor(filePath: string): LegacyDocumentChat | null {
+  const store = getProjectStore()
+  const ids = new Set(['default', ...store.listProjects().map((project) => project.id)])
+  for (const projectId of ids) {
+    const chatId = store.chatIdForPath(filePath, projectId)
+    const meta = store.listChats(projectId).find((chat) => chat.chatId === chatId)
+    if (meta) return { ...meta, projectId }
+  }
+  return null
 }
 
 export function projectFileRenamed(oldPath: string, newPath: string): void {
@@ -4485,7 +5273,18 @@ export function registerDocsIpc(): void {
     return loadDocx(result.filePaths[0], event.sender.id)
   })
 
-  ipcMain.handle('docs:open-path', (event, filePath: string) => loadDocx(filePath, event.sender.id))
+  ipcMain.handle('docs:open-path', (event, filePath: string) => {
+    // renderer-facing open channel: File > Open Recent echoes paths main itself
+    // handed out (recent.json), and the shared ledger carries anything this
+    // view's user picked or dropped. e2e drives fixture paths.
+    if (
+      process.env.GENOFFICE_E2E !== '1' &&
+      !readRecentFiles().includes(filePath) &&
+      !sharedPathGrants().has(event.sender.id, filePath)
+    )
+      return null
+    return loadDocx(filePath, event.sender.id)
+  })
 
   // w:altChunk HTML: the same html2docx chain as the HTML app's export, in a
   // hidden window; the renderer parses the result and shows its blocks
@@ -4497,14 +5296,25 @@ export function registerDocsIpc(): void {
     let driver: ElectronBrowserDriver | null = null
     try {
       const htmlPath = join(workDir, 'chunk.html')
-      // the BOM outranks a stale <meta charset> left in the decoded markup
-      await writeFile(htmlPath, `\ufeff${html}`, 'utf8')
-      driver = await ElectronBrowserDriver.create(ALT_CHUNK_VIEWPORT)
-      // The markup is an unsanitised AI artifact: a script that never yields
-      // would otherwise keep executeJavaScript pending forever, and the
-      // finally below would never run (the hidden window and workDir leak for
-      // good). Race a watchdog and destroy the window on timeout, matching
-      // the slides export guard.
+      // The chunk is whatever the .docx's author put there. Its page runs no
+      // scripts and fetches nothing (CSP), and its window may load this one
+      // file and nothing else: not the chunk's neighbours on disk, not the network.
+      await writeFile(htmlPath, altChunkDocument(html), 'utf8')
+      const [{ convertHtmlToDocx }, { ElectronBrowserDriver }, { isFileUrlOf }] = await Promise.all(
+        [
+          import('../../../../packages/html2docx/src'),
+          import('../../../../packages/html2docx/src/drivers/electron'),
+          import('../../../../packages/html2docx/src/drivers/file-url'),
+        ],
+      )
+      driver = await ElectronBrowserDriver.create(ALT_CHUNK_VIEWPORT, {
+        allowRequest: (url) => isFileUrlOf(url, htmlPath),
+      })
+      // The converter's own page work still has to finish: a page that never
+      // yields would keep executeJavaScript pending forever, and the finally
+      // below would never run (the hidden window and workDir leak for good).
+      // Race a watchdog and destroy the window on timeout, matching the
+      // slides export guard.
       const conversion = convertHtmlToDocx({ url: pathToFileURL(htmlPath).href }, driver, {
         naturalTableWidth: true,
       }).then(({ docx }) => docx)
@@ -4574,6 +5384,11 @@ export function registerDocsIpc(): void {
     async (event, filePath: string, password: string): Promise<DecryptOpenResult> => {
       if (typeof filePath !== 'string' || typeof password !== 'string' || password.length === 0) {
         return { ok: false, reason: 'error', error: 'invalid arguments' }
+      }
+      // the retry's path must be the one main itself flagged as needing a
+      // password for this view — not any path the renderer names
+      if (pendingDecryptByWc.get(event.sender.id) !== filePath) {
+        return { ok: false, reason: 'error', error: 'docs: path not pending decrypt' }
       }
       try {
         const result = await loadDocx(filePath, event.sender.id, password)
@@ -4652,6 +5467,8 @@ export function registerDocsIpc(): void {
         dataUrl: handOffBytes(bytes),
         hash: '',
         untitledCopy: true,
+        ...(copy.saveAsDefaultPath ? { saveAsDefaultPath: copy.saveAsDefaultPath } : {}),
+        ...(copy.importedFrom ? { importedFrom: copy.importedFrom } : {}),
       }
     } catch {
       return null
@@ -4660,7 +5477,7 @@ export function registerDocsIpc(): void {
 
   // ---- headless export mode (--headless-export) ----
 
-  ipcMain.handle('docs:consume-headless-export', (event): HeadlessExportTarget | null => {
+  ipcMain.handle('docs:consume-headless-export', (event): DocsHeadlessExportTarget | null => {
     const target = headlessExportTargets.get(event.sender.id) ?? null
     headlessExportTargets.delete(event.sender.id)
     return target
@@ -4934,30 +5751,62 @@ export function registerDocsIpc(): void {
   // Save As runs in two steps: the dialog picks the path (its extension picks
   // the format: Word or ODT, whatever the document is now), then the renderer
   // builds that format — converting and confirming a format change — and
-  // writes to exactly the picked path.
+  // writes to exactly the picked path. With `offerExports` (Save As proper)
+  // the dialog also lists PDF, HTML, Markdown and page images: those picks are
+  // copies the renderer's export code writes to the authorized path, and the
+  // document keeps its path and unsaved state.
   ipcMain.handle(
     'docs:save-as-pick',
-    async (event, defaultName: string, sourcePath?: string | null, format?: unknown) => {
+    async (
+      event,
+      defaultName: string,
+      sourcePath?: string | null,
+      format?: unknown,
+      offerExports?: unknown,
+    ) => {
       // an orphaned (closed-tab) renderer must not open dialogs or land new files
       if (tornDownWcIds.has(event.sender.id)) return null
       if (typeof defaultName !== 'string') return null
       const current: DocFormat = format === 'odt' ? 'odt' : 'docx'
-      const word = { name: tm('filterWord'), extensions: ['docx'] }
-      const odt = { name: tm('filterOdt'), extensions: ['odt'] }
+      const exportsOffered = offerExports === true
+      const source = typeof sourcePath === 'string' ? sourcePath : null
+      // a never-saved document whose panel has a project is offered in that folder (spec 6)
+      const projectDir =
+        source || openDocByWc.has(event.sender.id)
+          ? null
+          : await shellHooks?.newDocumentDir?.(event.sender.id)
       const result = await saveDialog(event, {
         title: tm('dlgSaveAs'),
-        defaultPath: saveAsSuggestion(
-          typeof sourcePath === 'string' ? sourcePath : null,
-          defaultName,
+        defaultPath: saveAsDefaultPath(
+          projectDir && basename(defaultName) === defaultName
+            ? join(projectDir, defaultName)
+            : saveAsSuggestion(source, defaultName),
+          exportsOffered,
         ),
         // the document's own format comes first: it is the dialog's default
-        filters: current === 'odt' ? [odt, word] : [word, odt],
+        filters: saveAsFilters(current, exportsOffered, (key) => tm(key)),
       })
       if (result.canceled || !result.filePath) return null
-      if (tornDownWcIds.has(event.sender.id)) return null
-      const filePath = withDocExtension(result.filePath, current)
-      saveAsPicks.set(event.sender.id, filePath)
-      return { path: filePath }
+      const wcId = event.sender.id
+      if (tornDownWcIds.has(wcId)) return null
+      const picked = saveAsTarget(result.filePath, current, exportsOffered)
+      if (picked.kind === 'docx' || picked.kind === 'odt') {
+        saveAsPicks.set(wcId, picked.path)
+        return picked
+      }
+      if (picked.kind === 'png') {
+        // page images: the PDF export writes a temp file that is rasterized
+        // into the picked name, numbered per page beside it
+        const dir = dirname(picked.path)
+        const pdfPath = join(tmpdir(), `genoffice-docs-images-${randomUUID()}.pdf`)
+        allowPdfWrite(wcId, pdfPath)
+        imageExportTemps.set(wcId, (imageExportTemps.get(wcId) ?? new Set()).add(pdfPath))
+        imageExportDirs.set(wcId, (imageExportDirs.get(wcId) ?? new Set()).add(dir))
+        return { ...picked, dir, pdfPath }
+      }
+      // PDF, Hangul, HTML, Markdown: the export handlers accept exactly this path
+      allowPdfWrite(wcId, picked.path)
+      return picked
     },
   )
 
@@ -5086,10 +5935,69 @@ export function registerDocsIpc(): void {
     }
   })
 
+  // Project folders (spec 6): the first save of a new document a create flow
+  // made (the AI's new Word document, a skill template's copy once its run
+  // ended well), into the panel's project with no dialog. The shell picks the
+  // folder from the panel's project and a free name (never over a file); the
+  // renderer offers only a name, whose folder part is dropped. Without a
+  // project (or a shell) nothing is written: `skipped`. Mirrors docs:save-new's
+  // bookkeeping once written.
+  ipcMain.handle(
+    'docs:save-into-project',
+    async (event, defaultName: unknown, format: unknown, data: unknown) => {
+      const wcId = event.sender.id
+      const write = shellHooks?.writeNewDocument
+      // an orphaned renderer, or a document that has its file already
+      if (!write || tornDownWcIds.has(wcId) || openDocByWc.has(wcId)) {
+        return { ok: false, skipped: true }
+      }
+      if (typeof defaultName !== 'string' || !(data instanceof ArrayBuffer)) {
+        return { ok: false, error: 'bad save request' }
+      }
+      const extension = format === 'odt' ? '.odt' : '.docx'
+      const named = basename(defaultName.replace(/\\/g, '/')).replace(/\.(docx|odt)$/i, '')
+      const fileName = `${sanitizeAiDocFileBase(named)}${extension}`
+      try {
+        const { bytes, plain, hashes, encrypted, passwordState } = await prepareDocSave(
+          wcId,
+          fileName,
+          data,
+          null,
+        )
+        if (tornDownWcIds.has(wcId)) return { ok: false }
+        const filePath = await write(wcId, fileName, bytes)
+        if (!filePath) return { ok: false, skipped: true }
+        // the tab closed while the write was in flight: the file is freshly
+        // created, so rolling it back is safe (mirrors docs:save-new)
+        if (tornDownWcIds.has(wcId)) {
+          await unlink(filePath).catch(() => {})
+          return { ok: false }
+        }
+        allowDocWrite(wcId, filePath)
+        rememberOpenDoc(wcId, filePath)
+        await rememberDiskState(wcId, filePath, sha256Hex(bytes))
+        pointLazyMediaAt(hashes, filePath, wcId, encrypted ? plain : undefined)
+        const passwordIntentPending = commitSavePassword(wcId, passwordState, filePath)
+        // the first save of a never-saved document: its untitled copy is stale
+        docsRecovery.noteSaved(wcId, [filePath])
+        pushRecent(filePath)
+        const savedPath = notifyFileSaved(event.sender, filePath)
+        return {
+          ok: true,
+          path: savedPath,
+          passwordIntentPending,
+          ...reissuedDoc(encrypted, hashes, plain),
+        }
+      } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : String(err) }
+      }
+    },
+  )
+
   ipcMain.handle(
     'docs:create-document',
-    (_event, request: CreateDocumentRequest): Promise<CreateDocumentResult> =>
-      createAiDocument(request),
+    (event, request: CreateDocumentRequest): Promise<CreateDocumentResult> =>
+      createAiDocument(request, event.sender.id),
   )
 
   // MCP-driven output: write the live document to an explicit absolute path with
@@ -5160,9 +6068,7 @@ export function registerDocsIpc(): void {
     },
   )
 
-  ipcMain.handle('docs:recent', () =>
-    readJson<string[]>(RECENT_PATH(), []).filter((p) => existsSync(p)),
-  )
+  ipcMain.handle('docs:recent', () => readJson<string[]>(RECENT_PATH(), []))
 
   ipcMain.handle('docs:pick-image', async (event) => {
     const result = await openDialog(event, {
@@ -5182,6 +6088,68 @@ export function registerDocsIpc(): void {
     }
   })
 
+  // Mailings tab: pick a local recipient list and read it as a data source.
+  // The file is read here, in the main process, where the file system is.
+  ipcMain.handle('docs:merge-data-source', async (event) => {
+    const result = await openDialog(event, {
+      title: tm('dlgMergeDataSource'),
+      filters: [
+        {
+          name: tm('filterMergeDataSource'),
+          extensions: [...MERGE_DATA_SOURCE_EXTENSIONS],
+        },
+      ],
+      properties: ['openFile'],
+    })
+    if (result.canceled || result.filePaths.length === 0) return null
+    try {
+      return { ok: true, source: await readMergeDataSource(result.filePaths[0]) }
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) }
+    }
+  })
+
+  // Mailings tab: write the merged documents. One file for the whole merge
+  // goes where the user says; one file per record goes into a folder they
+  // pick, every name kept unique so two records of the same name do not
+  // overwrite each other. The bytes carry the document's lazily served
+  // pictures, so they are materialized first — the merged file is a document
+  // of its own, not a view of the open one.
+  ipcMain.handle('docs:merge-output', async (event, request: MergeOutputRequest) => {
+    const files = Array.isArray(request?.files) ? request.files : []
+    if (files.length === 0) return { ok: false, error: 'nothing to write' }
+    const write = async (path: string, data: ArrayBuffer): Promise<void> => {
+      const { bytes } = await materializeLazyDocx(Buffer.from(data))
+      await writeFile(path, bytes)
+    }
+    try {
+      if (request.mode === 'single' || request.mode === 'labels') {
+        const file = files[0]!
+        const name = mergeOutputFileName(file.name)
+        const result = await saveDialog(event, {
+          title: tm('dlgSaveAs'),
+          defaultPath: name,
+          filters: [{ name: tm('filterWord'), extensions: ['docx'] }],
+        })
+        if (result.canceled || !result.filePath) return { ok: false, canceled: true }
+        await write(result.filePath, file.data)
+        return { ok: true, path: result.filePath, count: 1 }
+      }
+      const result = await openDialog(event, {
+        title: tm('dlgPickExportDir'),
+        properties: ['openDirectory', 'createDirectory'],
+      })
+      if (result.canceled || result.filePaths.length === 0) return { ok: false, canceled: true }
+      const folder = result.filePaths[0]!
+      for (const file of files) {
+        await write(mergeOutputPath(folder, file.name), file.data)
+      }
+      return { ok: true, folder, count: files.length }
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) }
+    }
+  })
+
   ipcMain.handle('files:pick', async (event): Promise<AttachmentAddResult | null> => {
     const result = await openDialog(event, {
       title: tm('dlgAddAttachment'),
@@ -5192,21 +6160,29 @@ export function registerDocsIpc(): void {
       properties: ['openFile', 'multiSelections'],
     })
     if (result.canceled || result.filePaths.length === 0) return null
+    sharedPathGrants().grant(event.sender.id, result.filePaths)
     return collectAttachments(result.filePaths)
   })
 
-  ipcMain.handle('files:add', (_event, paths: string[]) => collectAttachments(paths))
+  ipcMain.handle('files:add', (_event, paths: string[]) => {
+    // panel drops and clipboard file pastes are recorded by the preload bridge
+    // before this runs; minting a grant for renderer-named paths here would
+    // let a compromised renderer read whatever it names
+    return collectAttachments(paths)
+  })
 
   ipcMain.handle(
     'files:read',
     async (
-      _event,
+      event,
       filePath: string,
       offset: number,
       maxChars: number,
     ): Promise<AttachmentReadResult> => {
+      if (!canReadAttachment(event.sender.id, filePath))
+        return { ok: false, error: 'docs: path not granted to this view' }
       const name = basename(filePath)
-      const ext = name.split('.').pop()?.toLowerCase() ?? ''
+      const ext = diagramPictureExtOf(filePath) ?? name.split('.').pop()?.toLowerCase() ?? ''
       if (!ATTACHABLE_EXTS.has(ext)) return { ok: false, error: tm('errUnsupportedExt', { ext }) }
       if (ATTACHABLE_IMAGE_EXTS.has(ext)) {
         return { ok: false, error: tm('errImageNoText') }
@@ -5229,7 +6205,9 @@ export function registerDocsIpc(): void {
   )
 
   // image attachments read raw bytes → base64; AiPanel puts them into the user message's images for multimodal
-  ipcMain.handle('files:read-image', (_event, filePath: string): AttachmentImageResult => {
+  ipcMain.handle('files:read-image', (event, filePath: string): AttachmentImageResult => {
+    if (!canReadAttachment(event.sender.id, filePath))
+      return { ok: false, error: 'docs: path not granted to this view' }
     const name = basename(filePath)
     const ext = name.split('.').pop()?.toLowerCase() ?? ''
     const mime = ATTACHMENT_IMAGE_MIME[ext]
@@ -5248,8 +6226,9 @@ export function registerDocsIpc(): void {
   // clipboard-pasted images (screenshots and other bitmaps with no local path): saved to a temp file then use the regular attachment path
   ipcMain.handle(
     'files:add-pasted-image',
-    (_event, data: unknown, ext: unknown): AttachmentAddResult => {
+    (event, data: unknown, ext: unknown): AttachmentAddResult => {
       const filePath = savePastedImage(data, ext)
+      if (filePath) sharedPathGrants().grant(event.sender.id, [filePath])
       return filePath
         ? collectAttachments([filePath])
         : { accepted: [], rejected: [tm('errNotImage')] }
@@ -5325,20 +6304,107 @@ export function registerDocsIpc(): void {
     return printers.map((p) => ({ name: p.name, displayName: p.displayName || p.name }))
   })
 
-  ipcMain.handle('docs:print', async (event, scale?: number, job?: unknown) => {
+  // Advanced print (decision 0141): the renderer sends the job PDF it printed
+  // the way the PDF export does (chosen pages only, or a laid-out selection);
+  // the shared module arranges it and prints, previews or saves the result.
+  ensurePrintLayoutIpc({
+    ipcMain,
+    labelSpecPath: () => join(app.getPath('userData'), LABEL_SPEC_FILE_NAME),
+  })
+  registerPrintLayoutIpc('docs', {
+    ipcMain,
+    buildJobPdf: async (_event, editor) => mergePrintJobParts(readDocsPrintJob(editor).parts),
+    createPrintWindow: () =>
+      new BrowserWindow({
+        show: false,
+        webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false },
+      }),
+    pickSavePath: async (event, editor) => {
+      const name =
+        typeof editor === 'object' && editor !== null
+          ? (editor as { name?: unknown }).name
+          : undefined
+      const result = await saveDialog(event as IpcMainInvokeEvent, {
+        title: tm('dlgExportPdf'),
+        defaultPath: printPdfDefaultName(name),
+        filters: [{ name: 'PDF', extensions: ['pdf'] }],
+      })
+      return result.canceled || !result.filePath ? null : result.filePath
+    },
+    pickImageSavePath: async (event, editor, image) => {
+      const name =
+        typeof editor === 'object' && editor !== null
+          ? (editor as { name?: unknown }).name
+          : undefined
+      const spec = imageSaveDialogSpec(printPdfDefaultName(name).replace(/\.pdf$/i, ''), image)
+      const result = await saveDialog(event as IpcMainInvokeEvent, {
+        defaultPath: spec.defaultFileName,
+        filters: spec.filters,
+      })
+      return result.canceled || !result.filePath ? null : result.filePath
+    },
+  })
+
+  // Print selection: the selected content as a .docx of its own, laid out in a
+  // hidden window exactly like a PDF export of that document
+  ipcMain.handle(
+    'docs:print-selection-pdf',
+    async (event, docx: unknown, sectPr: unknown): Promise<PrintSelectionPdfResult> => {
+      if (tornDownWcIds.has(event.sender.id) || !(docx instanceof ArrayBuffer)) {
+        return { ok: false, error: 'no selection to print' }
+      }
+      const section = sectPr === null ? null : validSectPrXml(sectPr) ? sectPr : undefined
+      if (section === undefined) return { ok: false, error: 'invalid section properties' }
+      try {
+        const pdf = await renderSelectionPdf(Buffer.from(docx), section)
+        const pages = await readJobPageSizes(new Uint8Array(pdf))
+        if (pages.length === 0) return { ok: false, error: 'the selection laid out no pages' }
+        return { ok: true, base64: pdf.toString('base64'), pages }
+      } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : String(err) }
+      }
+    },
+  )
+
+  ipcMain.handle('docs:print', async (event, scale?: number, job?: unknown, paper?: unknown) => {
     // print the calling tab's own content; zero margins — the docx page padding provides them.
     // Resolves when the system dialog is dismissed (or the silent job is queued); the print
     // dialog stays open on cancel (ok=false without error) and surfaces real failures.
+    const printOpts = {
+      margins: { marginType: 'none' as const },
+      ...printScale(scale),
+      ...printJobOptions(job),
+      // the document's own paper: Chromium prints on Letter unless the job
+      // states one, and an A4 sheet on Letter is taller than the paper — it
+      // splits in two, so the printed page loses its bottom (genoffice#2563)
+      ...printPaperOption(paper),
+    }
+    // A named printer prints silently, and Chromium's silent print on macOS
+    // can drop the job outright — no queue entry, no callback error
+    // (genoffice#2347). Route those jobs through CUPS instead: printToPDF
+    // bakes the pages at the document's own paper size, and lp spools a
+    // real job whose queue state and failures are diagnosable.
+    if (process.platform === 'darwin' && printOpts.silent) {
+      const geometry = validPrintPaper(paper)
+      const printed = await event.sender.printToPDF({
+        printBackground: true,
+        margins: { top: 0, bottom: 0, left: 0, right: 0 },
+        ...(geometry
+          ? {
+              pageSize: {
+                width: geometry.widthTwips / TWIPS_PER_INCH,
+                height: geometry.heightTwips / TWIPS_PER_INCH,
+              },
+            }
+          : {}),
+        ...printScaleOption(scale),
+      })
+      return printPdfViaCups(printed, printOpts)
+    }
     return new Promise<{ ok: boolean; error?: string }>((resolve) => {
-      event.sender.print(
-        { margins: { marginType: 'none' }, ...printScale(scale), ...printJobOptions(job) },
-        (success, failureReason) => {
-          resolve({
-            ok: success,
-            ...(failureReason && !/cancel/i.test(failureReason) ? { error: failureReason } : {}),
-          })
-        },
-      )
+      event.sender.print(printOpts, (success, failureReason) => {
+        resolve(printOutcome(success, failureReason, printOpts.silent))
+      })
     })
   })
 
@@ -5448,7 +6514,7 @@ export function registerDocsIpc(): void {
       if (
         typeof fileName !== 'string' ||
         fileName !== basename(fileName) ||
-        !/^[^/\\]+\.png$/.test(fileName)
+        !/^[^/\\]+\.png$/i.test(fileName)
       ) {
         return { ok: false, error: 'invalid image file name' }
       }
@@ -5490,6 +6556,69 @@ export function registerDocsIpc(): void {
       } catch (err) {
         return { ok: false, error: String(err), path: filePath }
       }
+    },
+  )
+
+  // The Hangul copy (hwp-export.ts): converted in a worker made for this one
+  // export, confirmed in a message box when something is lost, then written
+  // and opened like the other exports.
+  ipcMain.handle(
+    'docs:export-hwp',
+    async (
+      event,
+      defaultName: unknown,
+      docx: unknown,
+      outPath?: unknown,
+      passwordSet?: unknown,
+    ) => {
+      const wcId = event.sender.id
+      if (tornDownWcIds.has(wcId)) return { ok: false }
+      if (
+        typeof defaultName !== 'string' ||
+        !(docx instanceof ArrayBuffer) ||
+        (outPath !== undefined && outPath !== null && typeof outPath !== 'string')
+      ) {
+        return { ok: false, code: 'failed', error: 'bad export request' }
+      }
+      return exportHwp(
+        {
+          authorized: (path) => canPdfWrite(wcId, path),
+          pickPath: async () => {
+            const first = readHwpDefaultFormat(app)
+            const result = await saveDialog(event, {
+              title: tm('dlgExportHwp'),
+              defaultPath: `${defaultName.replace(/\.(?:docx|odt)$/i, '')}.${first}`,
+              filters: hwpExportFilters(first, (key) => tm(key)),
+            })
+            if (result.canceled || !result.filePath) return null
+            const target = hwpExportTarget(result.filePath, first)
+            allowPdfWrite(wcId, target.path)
+            return target
+          },
+          materialize: async (bytes) => (await materializeLazyDocx(Buffer.from(bytes))).bytes,
+          convert: (bytes, format) =>
+            convertInWorker(
+              { docx: bytes, format, wasmPath: rhwpWasmPath() },
+              () => new Worker(hwpExportWorkerPath),
+            ),
+          confirm: async (losses, passwordDropped) => {
+            const options = hwpLossMessageBox(losses, passwordDropped, getUiLang())
+            const parent = dialogParent(event)
+            const { response } = parent
+              ? await dialog.showMessageBox(parent, options)
+              : await dialog.showMessageBox(options)
+            return response === 0
+          },
+          stillOpen: () => !tornDownWcIds.has(wcId),
+          write: (path, bytes) => atomicWriteFile(path, Buffer.from(bytes)),
+          open: openGeneratedFile,
+        },
+        {
+          docx: new Uint8Array(docx),
+          outPath: typeof outPath === 'string' ? outPath : undefined,
+          passwordSet: passwordSet === true,
+        },
+      )
     },
   )
 
@@ -5604,7 +6733,14 @@ export function registerDocsIpc(): void {
     },
   )
 
-  ipcMain.handle('win:new', (_event, openPath: string | null) => {
+  ipcMain.handle('win:new', (event, openPath: string | null) => {
+    // the only legitimate argument is this view's own open document
+    if (
+      openPath !== null &&
+      openPath !== undefined &&
+      openDocByWc.get(event.sender.id) !== openPath
+    )
+      return
     // A pathless new tab/window starts as a blank document, not the start screen
     const path = openPath ?? undefined
     if (shellHooks) shellHooks.openTab(path, path ? undefined : { newBlank: true })
@@ -5648,6 +6784,27 @@ interface DocsShellHooks {
   closeActiveTab(): void
   /** Shell router used to open exported PDFs in a new GenOffice tab. */
   openGeneratedPath?(path: string): boolean
+  /**
+   * Project folders (spec 6): the AI's new Word document opens in a blank tab
+   * that follows the project of `ownerWebContentsId`'s panel (its first save is
+   * offered in that project's folder). Without it, `openAiDocTab`.
+   */
+  openAiDocTabFor?(content: AiDocContent, ownerWebContentsId: number): void
+  /**
+   * Project folders (spec 6): the folder an untitled document's save dialog
+   * opens in for this view, or null for the default save folder.
+   */
+  newDocumentDir?(webContentsId: number): Promise<string | null>
+  /**
+   * Project folders (spec 6): write a new document the AI made for this view
+   * into the project its panel chose (a free name, never over a file);
+   * resolves to the path written, or null when the panel has no project.
+   */
+  writeNewDocument?(
+    webContentsId: number,
+    fileName: string,
+    bytes: Uint8Array,
+  ): Promise<string | null>
 }
 let shellHooks: DocsShellHooks | null = null
 export function setDocsShellHooks(hooks: DocsShellHooks | null): void {
@@ -5711,18 +6868,32 @@ export function sanitizeAiDocFileBase(title: string): string {
  * inserts the queued content on boot and saves itself (the full-fidelity
  * HTML → docx conversion lives in the docs renderer); pdf and md are written
  * directly here. Also called by other apps' mains via shell-wired hooks.
+ *
+ * `ownerWebContentsId` is the view whose AI asked. When its panel has a
+ * project (spec 6), pdf / md / html are made first and then written into that
+ * project's folder by the shell (a free name, never over a file), and the
+ * docx tab follows that project; otherwise everything is as described above.
+ *
+ * A type whose editor is turned off (Settings → Editors and AI) is refused
+ * before anything is made, with a reason the AI passes on (editor choice 7.4).
  */
 export async function createAiDocument(
   request: CreateDocumentRequest,
+  ownerWebContentsId?: number,
 ): Promise<CreateDocumentResult> {
   const type = request?.type
   const title = sanitizeAiDocFileBase(request?.title)
   const content = String(request?.content ?? '')
   if (!content.trim()) return { ok: false, error: 'content must not be empty' }
+  // a type whose editor is turned off is refused before anything is made (spec 7.4)
+  const refusal = aiCreateRefusal(type)
+  if (refusal) return { ok: false, error: refusal }
   try {
     if (type === 'docx') {
       const payload: AiDocContent = { title, html: content }
-      if (shellHooks?.openAiDocTab) shellHooks.openAiDocTab(payload)
+      if (ownerWebContentsId !== undefined && shellHooks?.openAiDocTabFor) {
+        shellHooks.openAiDocTabFor(payload, ownerWebContentsId)
+      } else if (shellHooks?.openAiDocTab) shellHooks.openAiDocTab(payload)
       else {
         const win = createDocsWindow(undefined)
         markDocsNewBlank(win.webContents.id)
@@ -5736,14 +6907,17 @@ export async function createAiDocument(
         () =>
           new BrowserWindow({ show: false, webPreferences: { sandbox: true, javascript: false } }),
       )
-      const filePath = uniquePathIn(defaultSaveDir(), `${title}.pdf`)
-      await writeFile(filePath, bytes)
+      const placed = await placeAiDocument(ownerWebContentsId, `${title}.pdf`, bytes)
+      const filePath = placed ?? uniquePathIn(defaultSaveDir(), `${title}.pdf`)
+      if (!placed) await writeFile(filePath, bytes)
       openGeneratedFile(filePath)
       return { ok: true, path: filePath }
     }
     if (type === 'md' || type === 'html') {
-      const filePath = uniquePathIn(defaultSaveDir(), `${title}.${type}`)
-      await writeFile(filePath, content, 'utf8')
+      const fileName = `${title}.${type}`
+      const placed = await placeAiDocument(ownerWebContentsId, fileName, Buffer.from(content))
+      const filePath = placed ?? uniquePathIn(defaultSaveDir(), fileName)
+      if (!placed) await writeFile(filePath, content, 'utf8')
       openGeneratedFile(filePath)
       return { ok: true, path: filePath }
     }
@@ -5751,6 +6925,17 @@ export async function createAiDocument(
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) }
   }
+}
+
+/** A made document into the asking view's project folder (spec 6); null without a project */
+async function placeAiDocument(
+  ownerWebContentsId: number | undefined,
+  fileName: string,
+  bytes: Uint8Array,
+): Promise<string | null> {
+  const write = shellHooks?.writeNewDocument
+  if (ownerWebContentsId === undefined || !write) return null
+  return write(ownerWebContentsId, fileName, bytes)
 }
 
 // ---- application menu ----
@@ -5790,6 +6975,13 @@ function activeViewMenuState(): ViewMenuState {
 /** Insert-menu entries of features an ODT document switches off (equations, comments) */
 const ODT_OFF_MENU_IDS = ['docs-menu-insert-equation', 'docs-menu-insert-comment'] as const
 
+/** menu entries that open or run the AI: hidden while AI is off (Settings › Editors and AI) */
+const AI_MENU_IDS = [
+  'docs-menu-ai-sidebar',
+  'docs-menu-ai-proofread-sep',
+  'docs-menu-ai-proofread',
+] as const
+
 /** shell-injected items appended to the File menu (e.g. Back to Home); persists
  * across the internal rebuilds pushRecent() triggers */
 let extraFileMenuItems: MenuItemConstructorOptions[] = []
@@ -5821,9 +7013,8 @@ export function setDocsMenuGate(gate: () => boolean): void {
 export function buildDocsMenu(): void {
   if (docsMenuGate && !docsMenuGate()) return
   const isMac = process.platform === 'darwin'
-  const recent = readJson<string[]>(RECENT_PATH(), [])
-    .filter((p) => existsSync(p))
-    .slice(0, 10)
+  // Opening a menu must not trigger an automount; validate when the user opens a file.
+  const recent = readJson<string[]>(RECENT_PATH(), []).slice(0, 10)
 
   const recentSubmenu: MenuItemConstructorOptions[] =
     recent.length > 0
@@ -5836,24 +7027,13 @@ export function buildDocsMenu(): void {
       : [{ label: tm('menuNoRecent'), enabled: false }]
 
   const template: MenuItemConstructorOptions[] = [
+    // ⌘, stays subscript here (the Word tab's own chord), so Settings… shows no shortcut
     ...(isMac
       ? [
-          {
-            label: app.name,
-            submenu: [
-              { role: 'about' as const },
-              { type: 'separator' as const },
-              { label: tm('menuPreferences'), click: () => sendCommand('preferences') },
-              { type: 'separator' as const },
-              { role: 'services' as const },
-              { type: 'separator' as const },
-              { role: 'hide' as const },
-              { role: 'hideOthers' as const },
-              { role: 'unhide' as const },
-              { type: 'separator' as const },
-              { role: 'quit' as const },
-            ],
-          },
+          macAppMenuTemplate(appMenuLabels(getUiLang()), {
+            settingsShortcut: 'none',
+            extraItems: [{ label: tm('menuPreferences'), click: () => sendCommand('preferences') }],
+          }),
         ]
       : []),
     {
@@ -5891,6 +7071,7 @@ export function buildDocsMenu(): void {
         { type: 'separator' },
         { label: tm('menuPageSetup'), click: () => sendCommand('page-setup') },
         { label: tm('menuExportPdf'), click: () => sendCommand('export-pdf') },
+        { label: tm('menuExportHwp'), click: () => sendCommand('export-hwp') },
         { label: tm('menuExportHtml'), click: () => sendCommand('export-html') },
         { label: tm('menuExportMarkdown'), click: () => sendCommand('export-markdown') },
         { label: tm('menuExportImages'), click: () => sendCommand('export-images') },
@@ -5967,6 +7148,7 @@ export function buildDocsMenu(): void {
           id: 'docs-menu-ai-sidebar',
           type: 'checkbox',
           checked: activeViewMenuState().aiSidebar,
+          visible: aiFeaturesOn(),
           label: tm('menuAiSidebar'),
           click: () => sendCommand('toggle-ai'),
         },
@@ -6133,9 +7315,14 @@ export function buildDocsMenu(): void {
         ...(isMac
           ? []
           : [{ label: tm('menuPreferences'), click: () => sendCommand('preferences') }]),
-        { type: 'separator' },
+        { id: 'docs-menu-ai-proofread-sep', type: 'separator', visible: aiFeaturesOn() },
         // Runs the same AI proofread as Review > Editor (renderer shows the one-time ack)
-        { label: tm('menuAiProofread'), click: () => sendCommand('ai-proofread') },
+        {
+          id: 'docs-menu-ai-proofread',
+          label: tm('menuAiProofread'),
+          visible: aiFeaturesOn(),
+          click: () => sendCommand('ai-proofread'),
+        },
       ],
     },
     windowMenuTemplate(process.platform, appMenuLabels(getUiLang())),
@@ -6161,7 +7348,7 @@ export function buildDocsMenu(): void {
 // ---- headless export ----
 
 /** hidden export windows: webContents id -> what the renderer must write */
-const headlessExportTargets = new Map<number, HeadlessExportTarget>()
+const headlessExportTargets = new Map<number, DocsHeadlessExportTarget>()
 /** settled by 'docs:headless-export-done' (or by the renderer dying) */
 const headlessExportWaiters = new Map<number, (result: HeadlessExportReport) => void>()
 
@@ -6222,6 +7409,77 @@ export async function exportDocsHeadless(
     headlessExportTargets.delete(wcId)
     pendingWindowOpens.delete(wcId)
     if (!win.isDestroyed()) win.destroy()
+  }
+}
+
+/** a printed selection's layout gets this long before it counts as failed */
+const PRINT_SELECTION_TIMEOUT_MS = 300_000
+
+/**
+ * Print selection (decision 0141): lay out `docx` (the selected content only,
+ * as the editor's save path wrote it) in a hidden docs window and return the
+ * PDF, made by the same load -> paginate -> PDF export the File menu runs.
+ *
+ * The window is wired like exportDocsHeadless's, but the document arrives as
+ * an untitled copy: no recent entry, no write grant, no archive, no file
+ * watch. The window counts as torn down from the start, so it never writes a
+ * recovery copy or saves, and its PDF is never revealed or opened. Everything
+ * lives in one temp folder that is removed on every path.
+ */
+async function renderSelectionPdf(docx: Buffer, sectPr: string | null): Promise<Buffer> {
+  const { bytes: full } = await materializeLazyDocx(docx)
+  const prepared = await selectionDocxForPrint(full, sectPr)
+  const dir = await mkdtemp(join(tmpdir(), 'genoffice-docs-print-selection-'))
+  let win: BrowserWindow | null = null
+  let wcId = -1
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    const input = join(dir, 'selection.docx')
+    const outPath = join(dir, 'selection.pdf')
+    await writeFile(input, prepared)
+    win = new BrowserWindow({
+      show: false,
+      width: 1360,
+      height: 900,
+      webPreferences: {
+        preload: runtime.preloadPath,
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: true,
+        backgroundThrottling: false,
+      },
+    })
+    const contents = win.webContents
+    wcId = contents.id
+    tornDownWcIds.add(wcId)
+    pendingDocCopies.set(wcId, { path: input, name: 'selection.docx' })
+    headlessExportTargets.set(wcId, { outPath, format: 'pdf', untitled: true })
+    allowPdfWrite(wcId, outPath)
+    // an export temp: written silently, never revealed or opened
+    imageExportTemps.set(wcId, new Set([outPath]))
+    const report = await new Promise<HeadlessExportReport>((resolve) => {
+      headlessExportWaiters.set(wcId, resolve)
+      contents.on('render-process-gone', (_event, details) =>
+        resolve({ ok: false, error: `docs renderer stopped (${details.reason})` }),
+      )
+      timer = setTimeout(
+        () => resolve({ ok: false, error: 'the selection did not finish laying out' }),
+        PRINT_SELECTION_TIMEOUT_MS,
+      )
+      void contents.loadURL(rendererUrl(runtime.rendererUrl, 'docs'))
+    })
+    if (!report.ok) throw new Error(report.error ?? 'the selection did not lay out')
+    return await readFile(outPath)
+  } finally {
+    if (timer) clearTimeout(timer)
+    if (wcId >= 0) {
+      headlessExportWaiters.delete(wcId)
+      headlessExportTargets.delete(wcId)
+      pendingDocCopies.delete(wcId)
+      dropDocWriter(wcId)
+    }
+    if (win && !win.isDestroyed()) win.destroy()
+    await rm(dir, { recursive: true, force: true }).catch(() => undefined)
   }
 }
 
@@ -6334,6 +7592,12 @@ ipcMain.on('docs:view-menu-state', (event, state: unknown) => {
   for (const id of ODT_OFF_MENU_IDS) {
     const item = menu?.getMenuItemById(id)
     if (item) item.enabled = !next.odt
+  }
+  // every tab reports again when the AI switch changes, so the live menu follows it
+  const aiOn = aiFeaturesOn()
+  for (const id of AI_MENU_IDS) {
+    const item = menu?.getMenuItemById(id)
+    if (item) item.visible = aiOn
   }
 })
 
@@ -6591,6 +7855,9 @@ export function startDocsStandalone(): void {
   // No subscription CLI this app started outlives it. app.exit() and
   // process.exit() skip will-quit, and 'exit' is the one event every such way
   // out still emits (the shell hooks the same two for its own process).
-  app.on('will-quit', () => shutdownSubscriptionChildren())
+  app.on('will-quit', () => {
+    void closeAllAntigravityPanelSessions()
+    shutdownSubscriptionChildren()
+  })
   process.on('exit', () => shutdownSubscriptionChildren())
 }

@@ -118,6 +118,7 @@ vi.mock('../../html/src/main/html-main', () => ({
 
 vi.mock('../../hwp/src/main/hwp-main', () => ({
   hwpIsDirty: vi.fn(() => false),
+  hwpMemoModalOpen: vi.fn(() => false),
   requestHwpClose: vi.fn(() => Promise.resolve(true)),
 }))
 
@@ -129,6 +130,11 @@ vi.mock('../../mindmap/src/main/mindmap-main', () => ({
 vi.mock('../../epub/src/main/epub-main', () => ({
   epubIsDirty: vi.fn(() => false),
   requestEpubClose: vi.fn(() => Promise.resolve(true)),
+}))
+
+vi.mock('../../diagram/src/main/diagram-main', () => ({
+  diagramIsDirty: vi.fn(() => false),
+  requestDiagramClose: vi.fn(() => Promise.resolve(true)),
 }))
 
 vi.mock('../src/main/tab-manager', () => ({
@@ -375,6 +381,51 @@ describe('a detached book', () => {
   })
 })
 
+describe('a detached diagram', () => {
+  it('is reported to MCP agents as kind diagram, with its own dirty state', async () => {
+    const { diagramIsDirty } = await import('../../diagram/src/main/diagram-main')
+    vi.mocked(diagramIsDirty).mockImplementation((id) => id === 61)
+    detached.createDetachedEditorWindow({
+      view: fakeView(61) as never,
+      kind: 'diagram',
+      title: 'flow.drawio',
+      filePath: 'C:/maps/flow.drawio',
+      applyMenuFor: () => {},
+    })
+    const docs = await detached.detachedOpenDocuments()
+    expect(docs.map((d) => [d.id, d.kind, d.filePath, d.dirty])).toEqual([
+      ['detached:61', 'diagram', 'C:/maps/flow.drawio', true],
+    ])
+    vi.mocked(diagramIsDirty).mockReturnValue(false)
+  })
+
+  it('asks before closing when dirty and keeps the window on cancel', async () => {
+    const { diagramIsDirty, requestDiagramClose } =
+      await import('../../diagram/src/main/diagram-main')
+    vi.mocked(diagramIsDirty).mockReturnValue(true)
+    vi.mocked(requestDiagramClose).mockResolvedValueOnce(false)
+    const view = fakeView(62)
+    detached.createDetachedEditorWindow({
+      view: view as never,
+      kind: 'diagram',
+      title: 'flow.drawio',
+      filePath: 'C:/maps/flow.drawio',
+      applyMenuFor: () => {},
+    })
+    const win = instances[0]!
+    win.emit('close', { preventDefault: vi.fn() })
+    await flush()
+    expect(requestDiagramClose).toHaveBeenCalledWith(view.webContents, win)
+    expect(win.destroyed).toBe(false)
+
+    vi.mocked(requestDiagramClose).mockResolvedValueOnce(true)
+    win.emit('close', { preventDefault: vi.fn() })
+    await flush()
+    expect(win.destroyed).toBe(true)
+    vi.mocked(diagramIsDirty).mockReturnValue(false)
+  })
+})
+
 describe('close guard', () => {
   it('closes a clean window of any kind without a prompt and releases the renderer', async () => {
     const view = fakeView(5)
@@ -448,6 +499,21 @@ describe('close guard', () => {
     expect(detached.closeDetachedWithoutPrompt('detached:8')).toBe(true)
     expect(releaseClosedRenderer).toHaveBeenCalledWith(view.webContents)
     expect(detached.detachedDocumentFor(8)).toBeUndefined()
+  })
+
+  it('refuses a promptless close while a hwp memo editor is open', async () => {
+    const { hwpMemoModalOpen } = await import('../../hwp/src/main/hwp-main')
+    const view = fakeView(9)
+    detached.createDetachedEditorWindow({
+      view: view as never,
+      kind: 'hwp',
+      title: 'memo.hwp',
+      applyMenuFor: () => {},
+    })
+    vi.mocked(hwpMemoModalOpen).mockImplementation((wcId) => wcId === 9)
+    expect(detached.closeDetachedWithoutPrompt('detached:9')).toBe(false)
+    expect(detached.detachedDocumentFor(9)).toMatchObject({ id: 'detached:9', kind: 'hwp' })
+    expect(view.webContents.close).not.toHaveBeenCalled()
   })
 })
 

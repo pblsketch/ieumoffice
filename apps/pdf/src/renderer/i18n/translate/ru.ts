@@ -26,6 +26,7 @@ export const ru = {
   trConfirmCalls: 'Обращений к ИИ: {calls} (блоков: {blocks}, отправляются пакетами)',
   trConfirmDone: 'Уже переведено {done} из {total} блоков; они не отправляются повторно',
   trConfirmSends: 'Текст выбранных страниц отправляется этому ИИ.',
+  trRightsNotice: 'Переводите только документы, права на которые у вас есть.',
   trProviderChange:
     'Сохранённый перевод сделан с помощью {stored}. Если продолжить с {next}, в одном переводе смешаются два ИИ.',
   trProviderUnknown: 'неизвестного ИИ',
@@ -86,4 +87,29 @@ export const ru = {
   trRestartEditedCount: 'Абзацев, изменённых человеком: {count}.',
   trRestartDiscardEdited: 'Удалить и абзацы, изменённые человеком ({count})',
   trRestartKeepEdited: 'Оставить изменённые абзацы',
+  trMode: 'Вид',
+  trModeTranslate: 'Перевод',
+  trModeEasy: 'Простое объяснение',
+  trPdfEasy:
+    'Простое объяснение длиннее оригинала и не помещается на его место. Markdown и EPUB работают.',
+  trEasyFormatMd: 'Markdown с простым объяснением',
+  trEasyFormatEpub: 'EPUB с простым объяснением',
+  trEasyBilingual:
+    'Оригинал, затем объяснение: после каждого абзаца оригинала идёт его простое объяснение (выключено: только объяснение)',
+  trEasyFileWord: 'простое объяснение',
+  trEasyPickTitle: 'Сохранить {format} с простым объяснением',
+  trConfirmEasyLanguage: 'Язык объяснения: {language}',
+  trEasyConfirmDone: '{done} из {total} блоков уже объяснены и не будут отправлены снова',
+  trEasyConfirmNothing:
+    'Все блоки на выбранных страницах уже объяснены. Ничего не отправляется; файлы записываются из сохранённого объяснения.',
+  trEasyProviderChange:
+    'Сохранённое объяснение сделано с помощью {stored}. Если продолжить с {next}, в одном объяснении смешаются два ИИ.',
+  trEasyStart: 'Начать объяснение',
+  trEasyRestart: 'Объяснить заново с начала…',
+  trEasyRestartConfirm:
+    'Удалить сохранённое простое объяснение ({language}, {count} блоков) и объяснить все блоки заново? Удалённые объяснения нельзя восстановить.',
+  trEasyRestartYes: 'Объяснить заново',
+  trEasyRunning: 'Создаётся простое объяснение ({language})… {done}/{total} блоков',
+  trEasyDone: 'Простое объяснение ({language}) готово ({count} блоков).',
+  trResumeEasy: 'Незавершённое простое объяснение ({language}) {percent}% — продолжить?',
 } satisfies Record<keyof typeof zh, string>

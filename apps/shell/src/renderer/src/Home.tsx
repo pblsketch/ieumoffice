@@ -1,7 +1,20 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import type { CSSProperties, DragEvent as ReactDragEvent, ReactElement } from 'react'
+import {
+  Suspense,
+  lazy,
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react'
+import type {
+  CSSProperties,
+  DragEvent as ReactDragEvent,
+  PointerEvent as ReactPointerEvent,
+  ReactElement,
+} from 'react'
 import logoLockup from './assets/genoffice-logo.svg'
-import { KbAskPanel } from './KbAskPanel'
 import iconDocx from './assets/file-docx.svg'
 import iconXlsx from './assets/file-xlsx.svg'
 import iconPptx from './assets/file-pptx.svg'
@@ -11,6 +24,9 @@ import iconHtml from './assets/file-html.svg'
 import iconMindmap from './assets/file-mindmap.svg'
 import iconHwp from './assets/file-hwp.svg'
 import iconEpub from './assets/file-epub.svg'
+import iconDiagram from './assets/file-diagram.svg'
+import iconWhiteboard from './assets/file-whiteboard.svg'
+import { placeFolderMenu } from './folder-menu-position'
 import type {
   FolderEntry,
   FolderListing,
@@ -26,12 +42,15 @@ import type {
 import type { IntegrationsApi } from '../../shared/integrations-api'
 import { markText } from '../../shared/text-marks'
 import {
-  AiMark,
+  aiProviderDisplayName,
   aiSubscriptionCardView,
-  aiSubscriptionProviderName,
   aiSubscriptionText,
+  useAppChoice,
   useDismissablePopover,
+  useEscapeToClose,
+  type AppChoiceSource,
 } from '@genoffice/ui'
+import { isSubscriptionProvider } from '@genoffice/ai-provider/browser'
 import type { AiSettings } from '@genoffice/ai-provider/browser'
 import { productName } from '@genoffice/i18n'
 import { RELEASE_IS_BETA } from '../../shared/release-stage'
@@ -43,23 +62,40 @@ import {
   openGenerateWithGroup,
   openGenerateWithPaths,
 } from './generate/home-entry'
-import { SettingsModal } from './SettingsModal'
+import { HOME_KIND_LABEL, useHomeKinds } from './SettingsHomeKinds'
+import { visibleHomeKinds, type HomeKind } from '../../shared/home-kinds'
+import { hiddenNewDocumentKinds, isEditorItemId } from '../../shared/editor-choice'
 import type { SettingsTarget } from './SettingsModal'
-import { skillUpdateDue } from './IntegrationsPane'
+import { skillUpdateDue } from './integrations-helpers'
 import { onFilesChanged } from './file-events'
+import { firstConnectionNoticeShown, useAiFeaturesOn } from './ai-features'
 import { FirstConnectionDialog } from './FirstConnectionNotice'
 import { LaunchRecoveryList } from './RecoveryList'
+import { OneTimeEditorPick } from './editor-choice/OneTimeEditorPick'
 import type { SubscriptionConnection } from './subscription-client'
-import { subscriptionSummary } from './subscription-status'
+import { homeAiEntry } from './subscription-status'
 import './pdf-tools/globals'
 import './quick-look/globals'
-import './quick-look/quick-look.css'
-import { QuickLookView } from './quick-look/QuickLookView'
 import { quickLookText } from './i18n/strings-quick-look'
 import type { QuickLookPayload } from '../../shared/quick-look-api'
 import { agentText } from './i18n/strings-agent'
-import { DriveNavIcon, DrivePanel, useDriveState } from './DrivePanel'
+import { DriveNavIcon, useDriveState } from './drive-state'
 import { driveUiText } from './i18n/strings-drive'
+import { subscribeProjectScreen, type ProjectScreenRequest } from './project-screen-events'
+import { projectsText } from './i18n/strings-projects'
+import { skillsText } from './i18n/strings-skills'
+
+const SettingsModal = lazy(() =>
+  import('./SettingsModal').then((m) => ({ default: m.SettingsModal })),
+)
+const KbAskPanel = lazy(() => import('./KbAskPanel').then((m) => ({ default: m.KbAskPanel })))
+const DrivePanel = lazy(() => import('./DrivePanel').then((m) => ({ default: m.DrivePanel })))
+const ProjectsPanel = lazy(() =>
+  import('./ProjectsPanel').then((m) => ({ default: m.ProjectsPanel })),
+)
+const QuickLookView = lazy(() =>
+  import('./quick-look/QuickLookView').then((m) => ({ default: m.QuickLookView })),
+)
 
 declare global {
   interface Window {
@@ -89,6 +125,8 @@ const FILE_ICONS: Record<string, string> = {
   odt: iconDocx,
   xlsx: iconXlsx,
   xlsm: iconXlsx,
+  // ODS opens as a converted .xlsx copy in the spreadsheet tab, so it wears that tile
+  ods: iconXlsx,
   pptx: iconPptx,
   pdf: iconPdf,
   md: iconMd,
@@ -96,16 +134,27 @@ const FILE_ICONS: Record<string, string> = {
   html: iconHtml,
   htm: iconHtml,
   xmind: iconMindmap,
+  mm: iconMindmap,
   hwp: iconHwp,
   hwpx: iconHwp,
   epub: iconEpub,
+  // a draw.io picture and a Visio drawing open in the diagram tab, so they wear its tile
+  drawio: iconDiagram,
+  dio: iconDiagram,
+  'drawio.svg': iconDiagram,
+  'drawio.png': iconDiagram,
+  vsdx: iconDiagram,
+  whiteboard: iconWhiteboard,
+  excalidraw: iconWhiteboard,
+  'excalidraw.png': iconWhiteboard,
+  'excalidraw.svg': iconWhiteboard,
 }
 
 /* Formats the open-local card advertises. Too long for the card at any window
    width, so it ellipsizes and a hover ScreenTip carries the full list. Keep in
    sync with the main-process open-dialog filter (OPEN_DIALOG_EXTENSIONS). */
 const OPEN_LOCAL_EXTENSIONS =
-  '.docx / .odt / .xlsx / .xlsm / .xls / .csv / .tsv / .pptx / .pdf / .md / .html / .xmind / .hwp / .hwpx / .epub'
+  '.docx / .doc / .odt / .xlsx / .xlsm / .xls / .csv / .tsv / .ods / .pptx / .ppt / .pdf / .md / .html / .xmind / .mm / .hwp / .hwpx / .epub / .drawio / .dio / .drawio.svg / .drawio.png / .vsdx / .whiteboard / .excalidraw'
 
 /** drag payload of home file/folder rows (JSON array of absolute paths) */
 const DRAG_PATHS_MIME = 'application/x-genoffice-paths'
@@ -113,6 +162,19 @@ const DRAG_PATHS_MIME = 'application/x-genoffice-paths'
 const DRAG_EXPAND_DELAY_MS = 600
 /** expanded folders survive a home reload; the selection is per session */
 const TREE_STATE_KEY = 'home.folderTree'
+/** user-dragged sidebar width; unset keeps the stylesheet's default (genoffice#2169) */
+const SIDEBAR_WIDTH_KEY = 'home.sidebarWidth'
+const SIDEBAR_MIN_WIDTH = 180
+const SIDEBAR_MAX_WIDTH = 480
+
+function readSidebarWidth(): number | null {
+  try {
+    const n = Number(localStorage.getItem(SIDEBAR_WIDTH_KEY))
+    return n >= SIDEBAR_MIN_WIDTH && n <= SIDEBAR_MAX_WIDTH ? n : null
+  } catch {
+    return null
+  }
+}
 
 /**
  * Width of the viewport that `position: fixed` elements anchor to. The layout
@@ -124,7 +186,7 @@ function fixedViewportWidth(): number {
   return document.documentElement.clientWidth
 }
 
-function FileBadge({ ext, size }: { ext: string; size: number }) {
+export function FileBadge({ ext, size }: { ext: string; size: number }) {
   const icon = FILE_ICONS[ext]
   if (icon) {
     return <img src={icon} width={size} height={size} alt="" aria-hidden="true" />
@@ -149,7 +211,7 @@ function FileBadge({ ext, size }: { ext: string; size: number }) {
   )
 }
 
-function FolderIcon({
+export function FolderIcon({
   size = 16,
   open = false,
   kind,
@@ -239,7 +301,7 @@ function FolderIcon({
   )
 }
 
-function Chevron({ open }: { open: boolean }) {
+export function Chevron({ open }: { open: boolean }) {
   return (
     <svg
       width="12"
@@ -269,16 +331,37 @@ function MoreDots() {
   )
 }
 
+const timeFormatters = new Map<string, Intl.DateTimeFormat>()
+const dateFormatters = new Map<string, Intl.DateTimeFormat>()
+
+function cachedTimeFormat(locale: string): Intl.DateTimeFormat {
+  let fmt = timeFormatters.get(locale)
+  if (!fmt) {
+    fmt = new Intl.DateTimeFormat(locale, { hour: '2-digit', minute: '2-digit' })
+    timeFormatters.set(locale, fmt)
+  }
+  return fmt
+}
+
+function cachedDateFormat(locale: string): Intl.DateTimeFormat {
+  let fmt = dateFormatters.get(locale)
+  if (!fmt) {
+    fmt = new Intl.DateTimeFormat(locale, { month: 'short', day: 'numeric' })
+    dateFormatters.set(locale, fmt)
+  }
+  return fmt
+}
+
 function formatModified(mtimeMs: number, i18n: I18n): string {
   const date = new Date(mtimeMs)
   const now = new Date()
   const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()
   const days = Math.round((startOfDay(now) - startOfDay(date)) / 86400000)
   if (days <= 0) {
-    return `${i18n.t('today')} · ${date.toLocaleTimeString(i18n.dateLocale, { hour: '2-digit', minute: '2-digit' })}`
+    return `${i18n.t('today')} · ${cachedTimeFormat(i18n.dateLocale).format(date)}`
   }
   if (days === 1) return i18n.t('yesterday')
-  return date.toLocaleDateString(i18n.dateLocale, { month: 'short', day: 'numeric' })
+  return cachedDateFormat(i18n.dateLocale).format(date)
 }
 
 function formatSize(bytes: number): string {
@@ -362,16 +445,21 @@ const FILTERS: { key: string; label: StringKey }[] = [
   { key: 'xmind', label: 'filterMindmap' },
   { key: 'hwp', label: 'filterHwp' },
   { key: 'epub', label: 'filterEpub' },
+  { key: 'drawio', label: 'filterDiagram' },
+  { key: 'whiteboard', label: 'filterWhiteboard' },
 ]
 
 /** sidebar filter keys that stand for a family of extensions (mirrors recent-files.ts) */
 const FILTER_FAMILY: Record<string, readonly string[]> = {
-  docx: ['docx', 'doc', 'odt'],
-  xlsx: ['xlsx', 'xlsm', 'xls', 'csv', 'tsv'],
+  docx: ['docx', 'doc', 'dot', 'odt'],
+  xlsx: ['xlsx', 'xlsm', 'xls', 'csv', 'tsv', 'ods'],
   pptx: ['pptx', 'ppt'],
   md: ['md', 'markdown', 'txt', 'json'],
   html: ['html', 'htm'],
   hwp: ['hwp', 'hwpx'],
+  xmind: ['xmind', 'mm'],
+  drawio: ['drawio', 'dio', 'drawio.svg', 'drawio.png', 'vsdx'],
+  whiteboard: ['whiteboard', 'excalidraw', 'excalidraw.png', 'excalidraw.svg'],
 }
 
 function matchesFilter(entry: RecentEntry, filter: string): boolean {
@@ -542,13 +630,7 @@ function FolderPicker({
     for (const dir of expanded) load(dir)
   }, [expanded, load])
 
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onCancel()
-    }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [onCancel])
+  useEscapeToClose(true, onCancel)
 
   const disabledDir = (dir: string) =>
     currentDirs.has(dir) ||
@@ -762,13 +844,7 @@ interface ConflictPromptProps {
 
 function ConflictPrompt({ names, onChoose }: ConflictPromptProps) {
   const { t } = useI18n()
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onChoose('skip')
-    }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [onChoose])
+  useEscapeToClose(true, () => onChoose('skip'))
   return (
     <div className="modal-overlay" onClick={() => onChoose('skip')}>
       <div
@@ -831,13 +907,7 @@ function GroupPicker({ groups, count, onCancel, onPick, onCreate, onRemove }: Gr
   const { t } = useI18n()
   const [name, setName] = useState('')
 
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onCancel()
-    }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [onCancel])
+  useEscapeToClose(true, onCancel)
 
   const create = () => {
     const trimmed = name.trim()
@@ -905,23 +975,35 @@ function GroupPicker({ groups, count, onCancel, onPick, onCreate, onRemove }: Gr
 }
 
 // ── Settings entry (bottom-left) ─────────────────────────
-// Shows where the AI subscription connection stands. Clicking it opens the
-// settings modal (SettingsModal.tsx) on its AI section, where the connect
-// cards live; the other preferences (language, theme, save location, update
-// channel) are one click away in the same dialog.
+// Reads "Settings", with the state of the AI that requests run on (homeAiEntry)
+// on the line below. The AI's name stays in the tooltip only: in large type it
+// made the entry look like a Claude or ChatGPT account and left out every
+// other kind of AI. Clicking it
+// opens the settings modal (SettingsModal.tsx) on its AI section, where the
+// connect cards live; the other preferences (language, theme, save location,
+// update channel) are one click away in the same dialog.
 
 function AccountEntry({
   connection,
+  aiSettings,
   onOpenChange,
   onFileSearchSettingsChange,
   openRequest,
+  overWelcome = false,
+  aiOn = true,
 }: {
   connection: SubscriptionConnection
+  /** the AI settings as last read; null until the first read answers */
+  aiSettings: AiSettings | null
   /** the settings modal opened or closed */
   onOpenChange?: (open: boolean) => void
   onFileSearchSettingsChange?: () => void
   /** a fresh object per request: the home list asks to open the modal on a given block */
   openRequest?: SettingsTarget | null
+  /** the first-run welcome window is up: the modal opens above it */
+  overWelcome?: boolean
+  /** AI features are on: the entry shows the connection; off, it is the way into Settings alone */
+  aiOn?: boolean
 }) {
   const { t, lang } = useI18n()
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -931,14 +1013,36 @@ function AccountEntry({
     onOpenChange?.(settingsOpen)
   }, [settingsOpen, onOpenChange])
 
-  // the skill state is a few file reads; re-probe after the modal closes so an
-  // update done inside it clears the dot
+  // Check only the bundled vs installed skill versions (skipping the CLI PATH
+  // probe) and defer the initial mount check slightly so Home lists paint first.
+  const initialSkillCheckRef = useRef(true)
   useEffect(() => {
-    if (settingsOpen) return
+    if (settingsOpen) {
+      initialSkillCheckRef.current = false
+      return
+    }
     let alive = true
-    void window.aiOfficeIntegrations?.status().then((st) => {
-      if (alive) setSkillUpdate(skillUpdateDue(st))
-    })
+    const probe = () => {
+      const api = window.aiOfficeIntegrations
+      if (!api) return
+      const req = api.skillUpdateDue
+        ? api.skillUpdateDue()
+        : api.status().then((st) => skillUpdateDue(st))
+      void req
+        .then((due) => {
+          if (alive) setSkillUpdate(due)
+        })
+        .catch(() => undefined)
+    }
+    if (initialSkillCheckRef.current) {
+      initialSkillCheckRef.current = false
+      const timer = window.setTimeout(probe, 800)
+      return () => {
+        alive = false
+        window.clearTimeout(timer)
+      }
+    }
+    probe()
     return () => {
       alive = false
     }
@@ -949,7 +1053,7 @@ function AccountEntry({
     setTarget(to)
     setSettingsOpen(true)
   }, [])
-  const handleClick = () => openSettings({ section: 'aiModel' })
+  const handleClick = () => openSettings(aiOn ? { section: 'aiModel' } : null)
   useEffect(() => {
     if (openRequest) openSettings(openRequest)
   }, [openRequest, openSettings])
@@ -961,59 +1065,87 @@ function AccountEntry({
     refresh()
   }
 
-  const summary = subscriptionSummary(connection.statuses)
-  const names = summary.connected.map(aiSubscriptionProviderName).join(' · ')
-  // one connection shows its own state line (plan, or charged by usage); two just read "Connected"
-  const only = summary.connected.length === 1 ? summary.connected[0] : undefined
-  const onlyView = only ? aiSubscriptionCardView(connection.statuses[only]) : null
+  const summary = homeAiEntry(aiSettings, connection.statuses)
+  const names = summary.providers.map(aiProviderDisplayName).join(' · ')
+  // one connection shows its own state line (plan, charged by usage, or a selected key
+  // provider in use); two just read "Connected"
+  const only = summary.providers.length === 1 ? summary.providers[0] : undefined
+  const onlyView =
+    only && isSubscriptionProvider(only) ? aiSubscriptionCardView(connection.statuses[only]) : null
   const stateText =
     summary.state === 'connected'
       ? onlyView
         ? aiSubscriptionText(lang, onlyView.statusKey, { plan: onlyView.planName ?? '' })
-        : aiSubscriptionText(lang, 'cardReady')
-      : null
-  const label =
-    summary.state === 'connected'
-      ? names
-      : summary.state === 'checking'
-        ? aiSubscriptionText(lang, 'cardChecking')
-        : aiSubscriptionText(lang, 'pickerNotConnected')
+        : only
+          ? t('freeStatusInUse')
+          : aiSubscriptionText(lang, 'cardReady')
+      : summary.state === 'needs-connection'
+        ? t('homeAiNeedsConnection')
+        : summary.state === 'off'
+          ? aiSubscriptionText(lang, 'cardOff')
+          : null
+  const named =
+    aiOn &&
+    (summary.state === 'connected' ||
+      summary.state === 'needs-connection' ||
+      summary.state === 'off')
+  const aiLineId = useId()
+  // the line under "Settings": the AI's state without its name
+  const aiLine = !aiOn
+    ? null
+    : t('homeEntryAiState', {
+        state:
+          stateText ??
+          (summary.state === 'checking'
+            ? aiSubscriptionText(lang, 'cardChecking')
+            : t('freeStatusNotConnected')),
+      })
 
   return (
     <div className="account-entry">
       {settingsOpen && (
-        <SettingsModal
-          onClose={closeSettings}
-          onFileSearchChange={onFileSearchSettingsChange}
-          skillUpdateDue={skillUpdate}
-          onSkillUpdateDue={setSkillUpdate}
-          target={target}
-        />
+        <Suspense fallback={null}>
+          <SettingsModal
+            onClose={closeSettings}
+            onFileSearchChange={onFileSearchSettingsChange}
+            skillUpdateDue={skillUpdate}
+            onSkillUpdateDue={setSkillUpdate}
+            target={target}
+            overWelcome={overWelcome}
+          />
+        </Suspense>
       )}
       <button
         className="account-btn"
         onClick={handleClick}
         aria-haspopup="dialog"
         aria-expanded={settingsOpen}
-        data-subscription={summary.state}
+        data-subscription={aiOn ? summary.state : undefined}
         data-tip={
-          summary.state === 'connected'
+          named
             ? `${names} · ${stateText}`
-            : summary.state === 'checking'
+            : !aiOn || summary.state === 'checking'
               ? t('settings')
               : aiSubscriptionText(lang, 'connectTitle')
         }
         aria-label={t('settings')}
+        aria-describedby={aiLine ? aiLineId : undefined}
       >
-        <span className={`account-avatar${summary.state === 'connected' ? ' logged-in' : ''}`}>
-          <AiMark size={16} />
+        <span
+          className={`account-avatar${aiOn && summary.state === 'connected' ? ' logged-in' : ''}`}
+        >
+          <SettingsGlyph />
           {skillUpdate && (
             <span className="account-badge" role="img" aria-label={t('intgUpdateDue')} />
           )}
         </span>
         <span className="account-text">
-          <span className="account-name">{label}</span>
-          {stateText && <span className="account-sub">{stateText}</span>}
+          <span className="account-name">{t('settings')}</span>
+          {aiLine && (
+            <span className="account-sub" id={aiLineId}>
+              {aiLine}
+            </span>
+          )}
         </span>
         <svg
           className="account-chevron"
@@ -1047,7 +1179,7 @@ function AccountEntry({
  * hide the overlay mid-drag. Enter fires before the matching leave when
  * moving between elements, so the depth never dips to zero inside the window.
  */
-function DropToOpenOverlay(): ReactElement | null {
+export function DropToOpenOverlay(): ReactElement | null {
   const [visible, setVisible] = useState(false)
   useEffect(() => {
     let depth = 0
@@ -1082,7 +1214,7 @@ function DropToOpenOverlay(): ReactElement | null {
       window.removeEventListener('blur', onHide)
     }
   }, [])
-  const { t } = useI18n()
+  const { t, lang } = useI18n()
   if (!visible) return null
   return (
     <div className="home-drop-overlay" aria-hidden="true">
@@ -1104,8 +1236,24 @@ function DropToOpenOverlay(): ReactElement | null {
         </svg>
         <h2>{t('dropToOpenTitle')}</h2>
         <p>{OPEN_LOCAL_EXTENSIONS}</p>
+        <p className="home-drop-skills">{skillsText(lang, 'dropOverlaySkills')}</p>
       </div>
     </div>
+  )
+}
+
+/** the settings entry's mark while AI features are off (a gear in place of the AI mark) */
+function SettingsGlyph() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <circle cx="8" cy="8" r="2.2" stroke="currentColor" strokeWidth="1.3" />
+      <path
+        d="M8 1.8v1.6M8 12.6v1.6M14.2 8h-1.6M3.4 8H1.8M12.4 3.6l-1.1 1.1M4.7 11.3l-1.1 1.1M12.4 12.4l-1.1-1.1M4.7 4.7 3.6 3.6"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinecap="round"
+      />
+    </svg>
   )
 }
 
@@ -1116,6 +1264,10 @@ export function Home({
   aiSettings,
   noticeDue,
   onNoticeAcknowledge,
+  welcomeOpen = false,
+  onSettingsOpenChange,
+  initialProjectRequest = null,
+  active = true,
 }: {
   /** the live subscription connection (AppFrame owns the one instance) */
   connection: SubscriptionConnection
@@ -1124,9 +1276,30 @@ export function Home({
   /** a subscription can be used and the first-connection notice was not acknowledged yet */
   noticeDue: boolean
   onNoticeAcknowledge: () => void
+  /**
+   * The first-run welcome window is up, over this screen. A request to open
+   * Settings (a dropped skill file asks for one) opens at once and above that
+   * window, which is still there to finish when Settings closes.
+   */
+  welcomeOpen?: boolean
+  /** Settings opened or closed (the welcome window stands down while it is open) */
+  onSettingsOpenChange?: (open: boolean) => void
+  /** a project-screen open request buffered by AppFrame before Home mounted */
+  initialProjectRequest?: ProjectScreenRequest | null
+  /** false while an editor tab covers Home; disables Home's global Space shortcut */
+  active?: boolean
 }) {
   const i18n = useI18n()
   const { t, lang } = i18n
+  const [homeKinds] = useHomeKinds()
+  // the shell preload's bridge, read once so the subscription stays put
+  const [choiceSource] = useState(
+    () => (window as unknown as { aiOfficeEditorChoice?: AppChoiceSource }).aiOfficeEditorChoice,
+  )
+  const appChoice = useAppChoice(choiceSource)
+  // a turned-off editor's kind leaves the cards too (Settings → Editors and AI)
+  const offKinds = hiddenNewDocumentKinds(homeKinds, { off: appChoice.off.filter(isEditorItemId) })
+  const shownKinds = visibleHomeKinds(homeKinds).filter((kind) => !offKinds.includes(kind))
   // ── Paged list state (rows loaded for the current view + filter) ──
   const [entries, setEntries] = useState<RecentEntry[]>([])
   /** total count under the current view + filter (not just the loaded rows) */
@@ -1134,13 +1307,55 @@ export function Home({
   /** sidebar Recent / Starred counts under the active type filter */
   const [navCounts, setNavCounts] = useState({ recent: 0, starred: 0 })
   const [loadingMore, setLoadingMore] = useState(false)
+  const [sidebarWidth, setSidebarWidth] = useState(readSidebarWidth)
+  const sidebarRef = useRef<HTMLElement>(null)
   const [view, setView] = useState<'recent' | 'starred'>('recent')
   // the knowledge-base ask panel takes over the content area the same way
   const [askMode, setAskMode] = useState(false)
+  // AI features off (editor choice spec 8.1): no ask panel, agent entry or other AI part
+  const aiOn = useAiFeaturesOn()
+  useEffect(() => {
+    if (!aiOn) setAskMode(false)
+  }, [aiOn])
+  // a project chat the project screen handed to the ask panel; cleared when the panel goes
+  const [askOpenChat, setAskOpenChat] = useState<{
+    projectId: string
+    chatId: string
+    seq: number
+  } | null>(null)
+  useEffect(() => {
+    if (!askMode) setAskOpenChat(null)
+  }, [askMode])
   // Google Drive (decision 0033) takes over the content area the same way
   const [driveMode, setDriveMode] = useState(false)
   const driveState = useDriveState()
   const driveOffered = driveState !== null && driveState.state !== 'unavailable'
+  // the project screen (decision 0088) takes over the content area the same way
+  const [projectsMode, setProjectsMode] = useState(false)
+  const [projectRequest, setProjectRequest] = useState<ProjectScreenRequest | null>(null)
+  // the project screen asked for the first-connection notice ("[tidy up]" waits behind it)
+  const [projectsNoticeAsked, setProjectsNoticeAsked] = useState(false)
+  const projectsOffered = typeof window.projectFolderApi?.listProjects === 'function'
+  // an AI panel's "[view]" (instructions or memory changed) opens the screen at that section
+  useEffect(() => {
+    if (!initialProjectRequest) return
+    setProjectsMode(true)
+    setAskMode(false)
+    setDriveMode(false)
+    setSelectedFolder(null)
+    setProjectRequest(initialProjectRequest)
+  }, [initialProjectRequest])
+  useEffect(
+    () =>
+      subscribeProjectScreen(window.projectFolderApi, (request) => {
+        setProjectsMode(true)
+        setAskMode(false)
+        setDriveMode(false)
+        setSelectedFolder(null)
+        setProjectRequest(request)
+      }),
+    [],
+  )
   const [filter, setFilter] = useState('all')
   // ── Starred groups (named buckets the Starred view can filter on) ──
   // groups that currently have at least one starred file (drives the pills)
@@ -1159,13 +1374,20 @@ export function Home({
   // latched once Settings was opened: a connection made there may only be seen
   // here after the dialog closed, and its notice is still owed then
   const [settingsVisited, setSettingsVisited] = useState(false)
-  const handleSettingsOpenChange = useCallback((open: boolean) => {
-    if (open) setSettingsVisited(true)
-  }, [])
+  const handleSettingsOpenChange = useCallback(
+    (open: boolean) => {
+      if (open) setSettingsVisited(true)
+      onSettingsOpenChange?.(open)
+    },
+    [onSettingsOpenChange],
+  )
   useEffect(
     () =>
       window.aiOffice.onOpenSettings?.((target) =>
-        setSettingsRequest({ section: target.section as SettingsTarget['section'] }),
+        setSettingsRequest({
+          section: target.section as SettingsTarget['section'],
+          ...(target.field === 'slidesAiFonts' ? { field: 'slidesAiFonts' as const } : {}),
+        }),
       ),
     [],
   )
@@ -1214,12 +1436,15 @@ export function Home({
   const [folderMenu, setFolderMenu] = useState<{
     path: string
     where: 'tree' | 'table'
-    top: number
-    right: number
+    x: number
+    y: number
+    above: number
+    align: 'start' | 'end'
   } | null>(null)
   const menuOpenAt = (where: 'tree' | 'table', path: string) =>
     folderMenu?.where === where && folderMenu.path === path
   const folderMenuWrapRef = useRef<HTMLDivElement>(null)
+  const folderMenuPopRef = useRef<HTMLDivElement>(null)
   const [folderRenaming, setFolderRenaming] = useState<{
     path: string
     where: 'tree' | 'table'
@@ -1396,7 +1621,7 @@ export function Home({
       ? [q, filter, ...searchPage.hits.slice(0, 20).map((h) => h.path)].join('\n')
       : ''
   useEffect(() => {
-    if (!rerankKey) return
+    if (!rerankKey || !aiOn) return
     const key = rerankKey
     const paths = key.split('\n').slice(2)
     const timer = window.setTimeout(() => {
@@ -1406,7 +1631,7 @@ export function Home({
       })
     }, 600)
     return () => window.clearTimeout(timer)
-  }, [q, filter, rerankKey, rerankSettingsTick])
+  }, [q, filter, rerankKey, rerankSettingsTick, aiOn])
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -1491,29 +1716,34 @@ export function Home({
     window.addEventListener('scroll', close, true)
     return () => window.removeEventListener('scroll', close, true)
   }, [folderMenu])
+  // open to the right of the anchor, flipped above when short of room below, clamped to the viewport
+  useLayoutEffect(() => {
+    const el = folderMenuPopRef.current
+    if (!folderMenu || !el) return
+    const { left, top } = placeFolderMenu(
+      folderMenu,
+      { width: el.offsetWidth, height: el.offsetHeight },
+      { width: fixedViewportWidth(), height: document.documentElement.clientHeight },
+    )
+    el.style.left = `${left}px`
+    el.style.top = `${top}px`
+  }, [folderMenu])
 
   // Escape closes the row menu and the confirm dialogs
-  useEffect(() => {
-    if (
-      rowMenu === null &&
-      folderMenu === null &&
-      confirmDelete === null &&
-      confirmMissing === null &&
-      confirmDeleteFolder === null
-    )
-      return
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        setRowMenu(null)
-        setFolderMenu(null)
-        setConfirmDelete(null)
-        setConfirmMissing(null)
-        setConfirmDeleteFolder(null)
-      }
-    }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [rowMenu, folderMenu, confirmDelete, confirmMissing, confirmDeleteFolder])
+  useEscapeToClose(
+    rowMenu !== null ||
+      folderMenu !== null ||
+      confirmDelete !== null ||
+      confirmMissing !== null ||
+      confirmDeleteFolder !== null,
+    () => {
+      setRowMenu(null)
+      setFolderMenu(null)
+      setConfirmDelete(null)
+      setConfirmMissing(null)
+      setConfirmDeleteFolder(null)
+    },
+  )
 
   // WPS-style sortable "modified" column header, shared by both file tables
   const renderModifiedHeader = () => (
@@ -1617,6 +1847,7 @@ export function Home({
     setSelectedFolder(null)
     setAskMode(false)
     setDriveMode(false)
+    setProjectsMode(false)
     setSelected(new Set())
     setRowMenu(null)
     setGroupFilter(null)
@@ -1638,6 +1869,7 @@ export function Home({
     setSelectedFolder((prev) => (prev === dir ? null : dir))
     setAskMode(false)
     setDriveMode(false)
+    setProjectsMode(false)
     setSelected(new Set())
     setRowMenu(null)
     setFolderMenu(null)
@@ -1898,72 +2130,61 @@ export function Home({
       ? { dir: selectedFolder }
       : undefined
 
-  const NEW_ITEMS = [
-    {
-      ext: 'docx',
-      title: t('newDoc'),
-      sub: '.docx',
-      action: () => window.aiOffice.newDoc(newFileOpts),
-    },
-    {
-      ext: 'xlsx',
-      title: t('newSheet'),
-      sub: '.xlsx',
-      action: () => window.aiOffice.newSheet(newFileOpts),
-    },
-    {
-      ext: 'pptx',
-      title: t('newSlide'),
-      sub: '.pptx',
-      action: () => window.aiOffice.newSlide(newFileOpts),
-    },
-    {
-      ext: 'md',
-      title: t('newMarkdown'),
-      sub: '.md',
-      action: () => window.aiOffice.newMarkdown(newFileOpts),
-    },
-    {
-      ext: 'html',
-      title: t('newHtml'),
-      sub: '.html',
-      action: () => window.aiOffice.newHtml(newFileOpts),
-    },
-    {
-      ext: 'xmind',
-      title: t('newMindmap'),
-      sub: '.xmind',
-      action: () => window.aiOffice.newMindmap(newFileOpts),
-    },
-    {
-      ext: 'hwp',
-      title: t('newHwp'),
-      sub: '.hwp',
-      action: () => window.aiOffice.newHwp(newFileOpts),
-    },
-    {
-      ext: 'pdf',
-      title: t('newPdf'),
-      sub: '.pdf',
-      action: () => window.aiOffice.newPdf(newFileOpts),
-    },
-  ]
+  const NEW_ITEM_ACTION: Record<Exclude<HomeKind, 'pdfTools'>, () => Promise<void>> = {
+    docx: () => window.aiOffice.newDoc(newFileOpts),
+    xlsx: () => window.aiOffice.newSheet(newFileOpts),
+    pptx: () => window.aiOffice.newSlide(newFileOpts),
+    md: () => window.aiOffice.newMarkdown(newFileOpts),
+    html: () => window.aiOffice.newHtml(newFileOpts),
+    xmind: () => window.aiOffice.newMindmap(newFileOpts),
+    drawio: () => window.aiOffice.newDiagram(newFileOpts),
+    whiteboard: () => window.aiOffice.newWhiteboard(newFileOpts),
+    hwp: () => window.aiOffice.newHwp(newFileOpts),
+    pdf: () => window.aiOffice.newPdf(newFileOpts),
+  }
 
   function renderQuickCards() {
     return (
       <div className="quick-cards">
-        {NEW_ITEMS.map((item) => (
-          <button key={item.ext} className="quick-card" onClick={() => void item.action()}>
-            <FileBadge ext={item.ext} size={30} />
-            <span className="quick-text">
-              <span className="quick-title-row">
-                <span className="quick-title">{item.title}</span>
-                <span className="ai-chip">AI</span>
+        {/* Settings → General decides which kinds show and in what order */}
+        {shownKinds.map((kind) =>
+          kind === 'pdfTools' ? (
+            // decision 0030: PDF tasks without AI, in their own window
+            <button
+              key={kind}
+              className="quick-card"
+              data-kind={kind}
+              onClick={() => void window.aiOfficePdfToolsHome.open()}
+            >
+              <FileBadge ext="pdf" size={30} />
+              <span className="quick-text">
+                <span className="quick-title-row">
+                  <span className="quick-title">{t('pdfToolsCard')}</span>
+                </span>
+                <span className="quick-sub">{t('pdfToolsCardSub')}</span>
               </span>
-              <span className="quick-sub">{item.sub}</span>
-            </span>
-          </button>
-        ))}
+            </button>
+          ) : (
+            <button
+              key={kind}
+              className="quick-card"
+              data-kind={kind}
+              onClick={() => void NEW_ITEM_ACTION[kind]()}
+            >
+              <FileBadge ext={kind} size={30} />
+              <span className="quick-text">
+                <span className="quick-title-row">
+                  <span className="quick-title">{t(HOME_KIND_LABEL[kind].title)}</span>
+                  {/* "AI Docs" already says it; the chip is for titles that do not */}
+                  {!/\bAI\b/.test(t(HOME_KIND_LABEL[kind].title)) && (
+                    <span className="ai-chip">AI</span>
+                  )}
+                </span>
+                <span className="quick-sub">{HOME_KIND_LABEL[kind].sub}</span>
+              </span>
+            </button>
+          ),
+        )}
         <button
           className="quick-card"
           onClick={() => void window.aiOffice.browse()}
@@ -1977,16 +2198,6 @@ export function Home({
               <span className="quick-title">{t('openLocal')}</span>
             </span>
             <span className="quick-sub">{OPEN_LOCAL_EXTENSIONS}</span>
-          </span>
-        </button>
-        {/* decision 0030: PDF tasks without AI, in their own window */}
-        <button className="quick-card" onClick={() => void window.aiOfficePdfToolsHome.open()}>
-          <FileBadge ext="pdf" size={30} />
-          <span className="quick-text">
-            <span className="quick-title-row">
-              <span className="quick-title">{t('pdfToolsCard')}</span>
-            </span>
-            <span className="quick-sub">{t('pdfToolsCardSub')}</span>
           </span>
         </button>
       </div>
@@ -2054,19 +2265,17 @@ export function Home({
           setFolderMenu({
             path: entry.path,
             where: 'tree',
-            top: rect.bottom + 4,
-            right: fixedViewportWidth() - rect.right,
+            x: rect.right,
+            y: rect.bottom + 4,
+            above: rect.top - 4,
+            align: 'end',
           })
         }}
       >
         <MoreDots />
       </button>
       {folderMenu && menuOpenAt('tree', entry.path) && (
-        <div
-          className="folder-menu"
-          role="menu"
-          style={{ top: folderMenu.top, right: folderMenu.right }}
-        >
+        <div className="folder-menu" role="menu" ref={folderMenuPopRef}>
           {editableAt(entry.path) && (
             <button role="menuitem" onClick={() => startCreateFolder(entry.path)}>
               {t('newSubfolder')}
@@ -2188,8 +2397,10 @@ export function Home({
             setFolderMenu({
               path: entry.path,
               where: 'tree',
-              top: e.clientY + 2,
-              right: fixedViewportWidth() - e.clientX,
+              x: e.clientX + 2,
+              y: e.clientY + 2,
+              above: e.clientY + 2,
+              align: 'start',
             })
           }}
           draggable={!isRoot && !isRenaming}
@@ -2578,8 +2789,10 @@ export function Home({
             setFolderMenu({
               path: entry.path,
               where: 'table',
-              top: e.clientY + 2,
-              right: fixedViewportWidth() - e.clientX,
+              x: e.clientX + 2,
+              y: e.clientY + 2,
+              above: e.clientY + 2,
+              align: 'start',
             })
           }}
         >
@@ -2630,19 +2843,17 @@ export function Home({
                 setFolderMenu({
                   path: entry.path,
                   where: 'table',
-                  top: rect.bottom + 4,
-                  right: fixedViewportWidth() - rect.right,
+                  x: rect.right,
+                  y: rect.bottom + 4,
+                  above: rect.top - 4,
+                  align: 'end',
                 })
               }}
             >
               <MoreDots />
             </button>
             {folderMenu && menuOpenAt('table', entry.path) && (
-              <div
-                className="folder-menu"
-                role="menu"
-                style={{ top: folderMenu.top, right: folderMenu.right }}
-              >
+              <div className="folder-menu" role="menu" ref={folderMenuPopRef}>
                 <button
                   role="menuitem"
                   onClick={() => {
@@ -2859,7 +3070,7 @@ export function Home({
     )
   }
 
-  const rerankApplied = rerank && rerank.key === rerankKey ? rerank.result : null
+  const rerankApplied = aiOn && rerank && rerank.key === rerankKey ? rerank.result : null
 
   /** judged hits in Jev's order, then the rest in local order */
   const orderedSearchHits = (hits: readonly FileSearchHit[]): FileSearchHit[] => {
@@ -2927,7 +3138,22 @@ export function Home({
   }, [])
 
   useEffect(() => {
+    if (!active && quickLookPath) {
+      if (quickLookCloseTimerRef.current !== null) {
+        window.clearTimeout(quickLookCloseTimerRef.current)
+        quickLookCloseTimerRef.current = null
+      }
+      setQuickLookPath(null)
+      setQuickLookPayload(null)
+      setQuickLookLoading(false)
+      setQuickLookClosing(false)
+      setQuickLookNavDir('none')
+    }
+  }, [active, quickLookPath])
+
+  useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      if (!active) return
       if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) return
       const target = event.target as HTMLElement | null
       const tag = target?.tagName
@@ -2979,7 +3205,7 @@ export function Home({
           }
           return
         }
-      } else if (event.key === ' ' && !askMode && !driveMode) {
+      } else if (event.key === ' ' && !askMode && !driveMode && !projectsMode) {
         const checkedPath = selectedFolder ? folderSelectedPaths[0] : selectedPaths[0]
         const candidate = hoveredFilePathRef.current ?? checkedPath ?? null
         if (candidate) {
@@ -3071,7 +3297,7 @@ export function Home({
             )}
             <div className="file-search-group">
               {renderSearchBox()}
-              {renderSearchSettingsButton()}
+              {aiOn && renderSearchSettingsButton()}
             </div>
             {searchActive ? (
               renderSearchHeading()
@@ -3263,7 +3489,7 @@ export function Home({
             )}
             <div className="file-search-group">
               {renderSearchBox()}
-              {renderSearchSettingsButton()}
+              {aiOn && renderSearchSettingsButton()}
             </div>
             {searchActive ? (
               renderSearchHeading()
@@ -3330,9 +3556,43 @@ export function Home({
       return parent?.folders.some((f) => f.path === p) ?? false
     })
 
+  const activeNav =
+    !selectedFolder && !driveMode ? (projectsMode ? 'projects' : askMode ? 'ask' : view) : null
+
+  const onSidebarResizeStart = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const startX = e.clientX
+    const startW = sidebarRef.current?.getBoundingClientRect().width ?? SIDEBAR_MIN_WIDTH
+    const sign = getComputedStyle(e.currentTarget).direction === 'rtl' ? -1 : 1
+    const el = e.currentTarget
+    el.setPointerCapture(e.pointerId)
+    let next = startW
+    const move = (ev: PointerEvent) => {
+      next = Math.min(
+        SIDEBAR_MAX_WIDTH,
+        Math.max(SIDEBAR_MIN_WIDTH, startW + sign * (ev.clientX - startX)),
+      )
+      setSidebarWidth(next)
+    }
+    const up = () => {
+      el.removeEventListener('pointermove', move)
+      el.removeEventListener('pointerup', up)
+      try {
+        localStorage.setItem(SIDEBAR_WIDTH_KEY, String(Math.round(next)))
+      } catch {
+        // quota / private mode: the width lasts for this session only
+      }
+    }
+    el.addEventListener('pointermove', move)
+    el.addEventListener('pointerup', up)
+  }
+
   return (
     <div className="home">
-      <aside className="sidebar">
+      <aside
+        className="sidebar"
+        ref={sidebarRef}
+        style={sidebarWidth === null ? undefined : { width: sidebarWidth }}
+      >
         <div className="sidebar-logo">
           <img className="logo-lockup" src={logoLockup} alt={productName(lang)} />
           {RELEASE_IS_BETA && (
@@ -3343,7 +3603,8 @@ export function Home({
         </div>
         <nav className="sidebar-nav">
           <button
-            className={`nav-item${view === 'recent' && !selectedFolder ? ' active' : ''}`}
+            className={`nav-item${activeNav === 'recent' ? ' active' : ''}`}
+            aria-current={activeNav === 'recent' ? 'page' : undefined}
             onClick={() => changeView('recent')}
           >
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
@@ -3359,7 +3620,8 @@ export function Home({
             <span className="nav-count">{navCounts.recent}</span>
           </button>
           <button
-            className={`nav-item${view === 'starred' && !selectedFolder ? ' active' : ''}`}
+            className={`nav-item${activeNav === 'starred' ? ' active' : ''}`}
+            aria-current={activeNav === 'starred' ? 'page' : undefined}
             onClick={() => changeView('starred')}
           >
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
@@ -3373,34 +3635,69 @@ export function Home({
             <span className="nav-label">{t('navStarred')}</span>
             <span className="nav-count">{navCounts.starred}</span>
           </button>
-          <button
-            className={`nav-item${askMode && !selectedFolder ? ' active' : ''}`}
-            onClick={() => {
-              setAskMode(true)
-              setDriveMode(false)
-              setSelectedFolder(null)
-              setSelected(new Set())
-              setRowMenu(null)
-            }}
-          >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-              <path
-                d="M14 10.5c0 .9-.7 1.6-1.6 1.6H5.4L2 14.5V3.6C2 2.7 2.7 2 3.6 2h8.8c.9 0 1.6.7 1.6 1.6z"
-                stroke="currentColor"
-                strokeWidth="1.3"
-                strokeLinejoin="round"
-              />
-              <path
-                d="M5 6.2h6M5 8.6h4"
-                stroke="currentColor"
-                strokeWidth="1.3"
-                strokeLinecap="round"
-              />
-            </svg>
-            <span className="nav-label">{t('navAsk')}</span>
-          </button>
+          {aiOn && (
+            <button
+              className={`nav-item${activeNav === 'ask' ? ' active' : ''}`}
+              aria-current={activeNav === 'ask' ? 'page' : undefined}
+              onClick={() => {
+                setAskMode(true)
+                setDriveMode(false)
+                setProjectsMode(false)
+                setSelectedFolder(null)
+                setSelected(new Set())
+                setRowMenu(null)
+              }}
+            >
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <path
+                  d="M14 10.5c0 .9-.7 1.6-1.6 1.6H5.4L2 14.5V3.6C2 2.7 2.7 2 3.6 2h8.8c.9 0 1.6.7 1.6 1.6z"
+                  stroke="currentColor"
+                  strokeWidth="1.3"
+                  strokeLinejoin="round"
+                />
+                <path
+                  d="M5 6.2h6M5 8.6h4"
+                  stroke="currentColor"
+                  strokeWidth="1.3"
+                  strokeLinecap="round"
+                />
+              </svg>
+              <span className="nav-label">{t('navAsk')}</span>
+            </button>
+          )}
+          {projectsOffered && (
+            <button
+              className={`nav-item${activeNav === 'projects' ? ' active' : ''}`}
+              aria-current={activeNav === 'projects' ? 'page' : undefined}
+              data-testid="home-projects-nav"
+              onClick={() => {
+                setProjectsMode(true)
+                setAskMode(false)
+                setDriveMode(false)
+                setSelectedFolder(null)
+                setSelected(new Set())
+                setRowMenu(null)
+              }}
+            >
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <path
+                  d="M1.9 4.3c0-.7.6-1.3 1.3-1.3h2.9l1.4 1.5h5.3c.7 0 1.3.6 1.3 1.3v6.3c0 .7-.6 1.3-1.3 1.3H3.2c-.7 0-1.3-.6-1.3-1.3z"
+                  stroke="currentColor"
+                  strokeWidth="1.3"
+                  strokeLinejoin="round"
+                />
+                <path
+                  d="M5 8.4h6M5 10.6h3.6"
+                  stroke="currentColor"
+                  strokeWidth="1.3"
+                  strokeLinecap="round"
+                />
+              </svg>
+              <span className="nav-label">{projectsText(lang, 'navProjects')}</span>
+            </button>
+          )}
           {/* decision 0032: the agent opens a window of its own, hence the mark on the right */}
-          {window.aiOfficeAgent ? (
+          {aiOn && window.aiOfficeAgent ? (
             <button
               className="nav-item"
               title={agentText(lang, 'homeCardSub')}
@@ -3439,6 +3736,7 @@ export function Home({
               onClick={() => {
                 setDriveMode(true)
                 setAskMode(false)
+                setProjectsMode(false)
                 setSelectedFolder(null)
                 setSelected(new Set())
                 setRowMenu(null)
@@ -3453,28 +3751,55 @@ export function Home({
         {renderFolderPanel()}
         <AccountEntry
           connection={connection}
+          aiSettings={aiSettings}
           onOpenChange={handleSettingsOpenChange}
           onFileSearchSettingsChange={() => setRerankSettingsTick((n) => n + 1)}
           openRequest={settingsRequest}
+          overWelcome={welcomeOpen}
+          aiOn={aiOn}
         />
       </aside>
+      <div className="sidebar-resizer" onPointerDown={onSidebarResizeStart} />
       {selectedFolder && rootOf(selectedFolder, roots)?.readable ? (
         renderFolderContent()
       ) : driveMode && driveOffered ? (
-        <DrivePanel
-          lang={lang}
-          dateLocale={i18n.dateLocale}
-          onOpenSettings={() => setSettingsRequest({ section: 'integrations' })}
-        />
-      ) : askMode ? (
-        <KbAskPanel
-          connection={connection}
-          aiSettings={aiSettings}
-          noticeDue={noticeDue}
-          onOpenAiSettings={() => setSettingsRequest({ section: 'aiModel' })}
-          onOpenPath={(path) => void window.aiOffice.openPath(path)}
-          onGoToRecents={() => changeView('recent')}
-        />
+        <Suspense fallback={null}>
+          <DrivePanel
+            lang={lang}
+            dateLocale={i18n.dateLocale}
+            onOpenSettings={() => setSettingsRequest({ section: 'integrations' })}
+          />
+        </Suspense>
+      ) : projectsMode && projectsOffered ? (
+        <Suspense fallback={null}>
+          <ProjectsPanel
+            request={projectRequest}
+            aiSettings={aiSettings}
+            statuses={connection.statuses}
+            noticeDue={noticeDue}
+            onNoticeNeeded={() => setProjectsNoticeAsked(true)}
+            onOpenAiSettings={() => setSettingsRequest({ section: 'aiModel' })}
+            aiOn={aiOn}
+            onOpenHomeAsk={(chat) => {
+              if (!aiOn) return
+              setProjectsMode(false)
+              setAskMode(true)
+              setAskOpenChat((prev) => ({ ...chat, seq: (prev?.seq ?? 0) + 1 }))
+            }}
+          />
+        </Suspense>
+      ) : askMode && aiOn ? (
+        <Suspense fallback={null}>
+          <KbAskPanel
+            connection={connection}
+            aiSettings={aiSettings}
+            noticeDue={noticeDue}
+            onOpenAiSettings={() => setSettingsRequest({ section: 'aiModel' })}
+            openChatRequest={askOpenChat}
+            onOpenPath={(path) => void window.aiOffice.openPath(path)}
+            onGoToRecents={() => changeView('recent')}
+          />
+        </Suspense>
       ) : (
         renderGlobalContent()
       )}
@@ -3617,55 +3942,67 @@ export function Home({
           className={`ql-overlay${quickLookClosing ? ' ql-overlay-closing' : ''}`}
           onClick={closeQuickLook}
         >
-          <QuickLookView
-            lang={lang}
-            payload={quickLookPayload}
-            loading={quickLookLoading}
-            closing={quickLookClosing}
-            navDirection={quickLookNavDir}
-            canPrev={visiblePreviewPaths.indexOf(quickLookPath) > 0}
-            canNext={
-              visiblePreviewPaths.indexOf(quickLookPath) !== -1 &&
-              visiblePreviewPaths.indexOf(quickLookPath) < visiblePreviewPaths.length - 1
-            }
-            onPrev={() => {
-              const idx = visiblePreviewPaths.indexOf(quickLookPath)
-              if (idx > 0) {
-                const prev = visiblePreviewPaths[idx - 1]!
-                hoveredFilePathRef.current = prev
-                openQuickLook(prev, 'up')
+          <Suspense fallback={null}>
+            <QuickLookView
+              lang={lang}
+              payload={quickLookPayload}
+              loading={quickLookLoading}
+              closing={quickLookClosing}
+              navDirection={quickLookNavDir}
+              listIndex={visiblePreviewPaths.indexOf(quickLookPath)}
+              listTotal={visiblePreviewPaths.length}
+              canPrev={visiblePreviewPaths.indexOf(quickLookPath) > 0}
+              canNext={
+                visiblePreviewPaths.indexOf(quickLookPath) !== -1 &&
+                visiblePreviewPaths.indexOf(quickLookPath) < visiblePreviewPaths.length - 1
               }
-            }}
-            onNext={() => {
-              const idx = visiblePreviewPaths.indexOf(quickLookPath)
-              if (idx !== -1 && idx < visiblePreviewPaths.length - 1) {
-                const next = visiblePreviewPaths[idx + 1]!
-                hoveredFilePathRef.current = next
-                openQuickLook(next, 'down')
-              }
-            }}
-            onOpenInEditor={() => {
-              const target = quickLookPath
-              closeQuickLook()
-              void window.aiOffice.openPath(target)
-            }}
-            onRevealInFolder={() => {
-              void window.aiOffice.revealPath(quickLookPath)
-            }}
-            onClose={closeQuickLook}
-          />
+              onPrev={() => {
+                const idx = visiblePreviewPaths.indexOf(quickLookPath)
+                if (idx > 0) {
+                  const prev = visiblePreviewPaths[idx - 1]!
+                  hoveredFilePathRef.current = prev
+                  openQuickLook(prev, 'up')
+                }
+              }}
+              onNext={() => {
+                const idx = visiblePreviewPaths.indexOf(quickLookPath)
+                if (idx !== -1 && idx < visiblePreviewPaths.length - 1) {
+                  const next = visiblePreviewPaths[idx + 1]!
+                  hoveredFilePathRef.current = next
+                  openQuickLook(next, 'down')
+                }
+              }}
+              onOpenInEditor={() => {
+                const target = quickLookPath
+                closeQuickLook()
+                void window.aiOffice.openPath(target)
+              }}
+              onRevealInFolder={() => {
+                void window.aiOffice.revealPath(quickLookPath)
+              }}
+              onClose={closeQuickLook}
+            />
+          </Suspense>
         </div>
       )}
 
       {/* the first-connection notice comes up where a connection is made or first
           used from this screen: in Settings and on the ask panel (an editor's AI
           panel shows it for itself) */}
-      {noticeDue && (settingsVisited || askMode) && (
-        <FirstConnectionDialog onAcknowledge={onNoticeAcknowledge} />
-      )}
+      {firstConnectionNoticeShown({
+        aiOn,
+        noticeDue,
+        settingsVisited,
+        askMode,
+        projectsMode,
+        projectsNoticeAsked,
+      }) && <FirstConnectionDialog onAcknowledge={onNoticeAcknowledge} />}
       {/* documents with unsaved content left in recovery copies, asked about
           once at launch; the main process keeps Home in front meanwhile */}
       <LaunchRecoveryList />
+      {/* the one-time editor picker for people who passed the first-run guide
+          before it had a pick step: after the launch, on the home tab only */}
+      <OneTimeEditorPick />
       <DropToOpenOverlay />
     </div>
   )

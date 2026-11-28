@@ -100,8 +100,7 @@ function filesUnder(dir: string): string[] {
 }
 
 describe('the AI entry label', () => {
-  it('is one shared key with a value in all 21 languages', () => {
-    expect(LANGS).toHaveLength(21)
+  it('is one shared key with a value in every UI language', () => {
     for (const lang of LANGS) {
       expect(AI_SUBSCRIPTION_STRINGS[lang].aiAssistant.trim().length, lang).toBeGreaterThan(0)
     }
@@ -111,8 +110,14 @@ describe('the AI entry label', () => {
 
   it.each(Object.keys(EDITORS))('%s: the panel title and its resizer label use it', (name) => {
     const panel = source(EDITORS[name]!.panel)
-    const title = panel.match(/className="ai-panel-title">[\s\S]{0,160}?<\/span>/)
-    expect(title?.[0], 'panel title').toContain(LABEL_CALL)
+    const usesSharedHeader = /<AiPanelHeader\b/.test(panel)
+    if (usesSharedHeader) {
+      const header = source('packages/ui/src/AiPanelHeader.tsx')
+      expect(header, 'shared AiPanelHeader title').toContain(LABEL_CALL)
+    } else {
+      const title = panel.match(/className="ai-panel-title">[\s\S]{0,160}?<\/span>/)
+      expect(title?.[0], 'panel title').toContain(LABEL_CALL)
+    }
     const resizer = panel.match(/className="ai-panel-resizer"[\s\S]{0,260}?\/>/)
     expect(resizer?.[0], 'resizer label').toContain(`aria-label={${LABEL_CALL}}`)
   })
@@ -183,6 +188,131 @@ describe('the send gate', () => {
       )
     }
   })
+})
+
+describe('the subscription usage heads-up', () => {
+  // "83% used · resets at 5:10 PM" is long. Inside the composer footer it was
+  // squeezed between the token chip and the attach buttons and painted over
+  // them in a narrow panel, so it sits on its own row above the input card.
+  const PANELS: Record<string, string> = {
+    docs: 'apps/docs/src/renderer/ai/AiPanel.tsx',
+    sheets: 'apps/sheets/src/renderer/ai/AiChatPanel.tsx',
+    slides: 'apps/slides/src/renderer/ai/AiPanel.tsx',
+    pdf: 'apps/pdf/src/renderer/ai/AiPanel.tsx',
+    markdown: 'apps/markdown/src/renderer/ai/AiPanel.tsx',
+    html: 'apps/html/src/renderer/ai/AiPanel.tsx',
+    mindmap: 'apps/mindmap/src/renderer/ai/AiPanel.tsx',
+    hwp: 'apps/hwp/src/renderer/ai/AiPanel.tsx',
+    epub: 'apps/epub/src/renderer/ai/AiPanel.tsx',
+    diagram: 'apps/diagram/src/renderer/ai/AiPanel.tsx',
+  }
+
+  it.each(Object.entries(PANELS))('%s: renders it above the input card', (_name, path) => {
+    const panel = source(path)
+    const usage = panel.indexOf('<AiSubscriptionUsageLine')
+    expect(usage, 'usage line').toBeGreaterThan(-1)
+    const card = Math.min(
+      ...['<AiComposer', '<div className="ai-input-box">']
+        .map((needle) => panel.indexOf(needle))
+        .filter((index) => index >= 0),
+    )
+    expect(Number.isFinite(card), 'composer card').toBe(true)
+    // anything inside AiComposer's footerStart comes after the composer opens
+    expect(usage, `${path}: usage line must precede the composer card`).toBeLessThan(card)
+  })
+})
+
+describe('usage reported outside the chat stream', () => {
+  // A picture request is not a stream: the app main sends the usage it
+  // reported to every window, and every AI panel folds it into its usage line.
+  const USAGE: Record<
+    string,
+    { panel: string; preload: string; contract: string; client: string; ai: string }
+  > = {}
+  for (const name of [
+    'docs',
+    'html',
+    'hwp',
+    'markdown',
+    'mindmap',
+    'pdf',
+    'sheets',
+    'slides',
+    'epub',
+    'diagram',
+  ]) {
+    USAGE[name] = {
+      // sheets keeps the panel's usage state in App, beside its transport
+      panel:
+        name === 'sheets'
+          ? 'apps/sheets/src/renderer/App.tsx'
+          : `apps/${name}/src/renderer/ai/AiPanel.tsx`,
+      preload: `apps/${name}/src/preload/index.ts`,
+      contract: `apps/${name}/src/shared/subscription-api.ts`,
+      client:
+        name === 'pdf'
+          ? 'apps/pdf/src/renderer/ai/useSubscriptionConnection.ts'
+          : name === 'slides'
+            ? 'apps/slides/src/renderer/ai/subscription.ts'
+            : `apps/${name}/src/renderer/ai/subscription-client.ts`,
+      ai: `apps/${name}/src/renderer/ai`,
+    }
+  }
+
+  it.each(Object.keys(USAGE))('%s: the contract names the channel and the listener', (name) => {
+    const contract = source(USAGE[name]!.contract)
+    expect(contract).toContain(
+      "export const SUBSCRIPTION_USAGE_CHANNEL = 'ai:subscription-usage-update'",
+    )
+    expect(contract).toMatch(
+      /onUsage\(handler: \(usage: AiSubscriptionUsage\[\]\) => void\): \(\) => void/,
+    )
+  })
+
+  it.each(Object.keys(USAGE))('%s: the preload listens and can stop listening', (name) => {
+    const preload = source(USAGE[name]!.preload)
+    const bridge = preload.match(
+      /onUsage[\s\S]{0,420}?\n {2}\},?\n|onUsage:[\s\S]{0,260}?\n {4}\),\n/,
+    )
+    expect(bridge?.[0], 'onUsage bridge').toBeDefined()
+    const body = bridge![0]
+    const viaListen = /listen<\[unknown\]>\(SUBSCRIPTION_USAGE_CHANNEL,/.test(body)
+    const viaOn =
+      body.includes('ipcRenderer.on(SUBSCRIPTION_USAGE_CHANNEL, listener)') &&
+      body.includes('ipcRenderer.removeListener(SUBSCRIPTION_USAGE_CHANNEL, listener)')
+    expect(viaListen || viaOn, 'subscribes and returns the removal').toBe(true)
+    // no window hears the channel under a name of its own
+    expect(preload).not.toContain("'ai:subscription-usage-update'")
+  })
+
+  it.each(Object.keys(USAGE))(
+    '%s: the panel folds it in through the shared hook, on the bridge its connection uses',
+    (name) => {
+      const editor = USAGE[name]!
+      const panel = source(editor.panel)
+      const getter = source(editor.client).match(/api: (\(\) => window\.[\w.?]+),/)?.[1]
+      expect(getter, 'subscription bridge getter').toBeDefined()
+      const call = panel.match(/useSubscriptionUsageUpdates\(([\s\S]*?)\)\n/)
+      expect(call?.[1], 'hook call').toBeDefined()
+      const args = call![1]!.split(',').map((arg) => arg.trim())
+      expect(args[0]).toBe(getter)
+      expect(args[1]).toBe('setSubscriptionUsage')
+      const renderer = [editor.panel, ...filesUnder(editor.ai)].map((file) => ({
+        file,
+        text: source(file),
+      }))
+      // a panel with a merge of its own keeps its rules for these reports too
+      const ownMerge = renderer.some(({ text }) =>
+        /export function mergeSubscriptionUsage\b/.test(text),
+      )
+      if (ownMerge) expect(args[2]).toBe('mergeSubscriptionUsage')
+      else expect(args[2] ?? '').toBe('')
+      // the renderer never hears the IPC channel itself
+      for (const { file, text } of renderer) {
+        expect(text, file).not.toContain('ai:subscription-usage-update')
+      }
+    },
+  )
 })
 
 describe('reading subscription IPC answers', () => {

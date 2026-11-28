@@ -15,7 +15,15 @@ import {
   writeSheetTheme,
   type ThemeId,
 } from '@genoffice/xmind-engine'
-import { type BranchBoxes, mainBranchPath, subBranchPath } from '../src/renderer/map/branches'
+import {
+  type BranchBoxes,
+  mainBranchPath,
+  subBranchPath,
+  timelineStepDrawing,
+  TREE_INDENT,
+  TREE_TRUNK,
+  treeBranchPath,
+} from '../src/renderer/map/branches'
 import {
   branchCount,
   branchGeometry,
@@ -258,12 +266,81 @@ describe('the branch lines', () => {
     expect(sy).toBeLessThanOrEqual(main.pT + main.pH)
     expect(mainBranchPath(line, down)).toMatch(/ M [\d.]+ [\d.]+ H [\d.]+$/)
   })
+
+  // a parent at the top left, a topic below it and to the right
+  const tree: BranchBoxes = {
+    pT: 0,
+    pL: 0,
+    pW: 160,
+    pH: 40,
+    cT: 80,
+    cL: TREE_INDENT,
+    cW: 120,
+    cH: 30,
+    direction: 'rhs',
+  }
+
+  it('a tree runs down a trunk near the left edge of the central topic, then across to the main topic', () => {
+    const d = treeBranchPath(pill, tree, 'central')
+    const [sx, sy] = numbers(d)
+    expect(sx).toBe(TREE_TRUNK)
+    expect(sy).toBe(tree.pH - pill.centralInset)
+    expect(d).toMatch(new RegExp(` H ${TREE_INDENT}$`))
+    // the corner turns at the middle of the topic
+    expect(numbers(d).slice(-3, -1)).toEqual([TREE_TRUNK + 8, tree.cT + tree.cH / 2])
+  })
+
+  it('all topics below one parent share its trunk', () => {
+    const first = numbers(treeBranchPath(block, { ...tree, isFirst: true }, 'main'))
+    const second = numbers(treeBranchPath(block, { ...tree, cT: 140, isFirst: true }, 'main'))
+    expect(first.slice(0, 2)).toEqual(second.slice(0, 2))
+    expect(first.slice(0, 2)).toEqual([TREE_TRUNK, tree.pH])
+  })
+
+  it('below the main level the trunk and the topic sit inside the room around each topic', () => {
+    const d = treeBranchPath(pill, tree, 'sub')
+    const [sx, sy] = numbers(d)
+    expect(sx).toBe(pill.subPadX + TREE_TRUNK)
+    expect(sy).toBe(tree.pH - pill.subPadY)
+    expect(d).toMatch(new RegExp(` H ${tree.cL + pill.subPadX}$`))
+  })
+
+  it('in the line skeleton a branch of a tree runs on under the topic it reaches', () => {
+    const d = treeBranchPath(line, tree, 'sub')
+    expect(d).toMatch(new RegExp(` H ${tree.cL + tree.cW - line.subPadX}$`))
+  })
+
+  it('a step of a timeline goes from the topic before to this one and ends in an arrowhead', () => {
+    const step: BranchBoxes = {
+      ...tree,
+      pT: 0,
+      pL: 0,
+      pW: 100,
+      pH: 30,
+      cT: 0,
+      cL: 150,
+      cW: 90,
+      cH: 30,
+    }
+    // the arrowhead is drawn apart (so a pattern on the line never cuts it): line and head
+    // together draw what the one path with the head in it drew
+    const { d, arrow } = timelineStepDrawing(pill, step, false)
+    expect(numbers(d).slice(0, 2)).toEqual([100, 15])
+    // the arrowhead's point is just before the main topic, at its middle
+    expect(arrow).toMatch(/ L 148 15 L /)
+    expect(numbers(arrow).slice(-2)).toEqual([142, 15 + 6 * 0.7])
+    // from the central topic the line starts hidden under its edge
+    expect(numbers(timelineStepDrawing(pill, step, true).d)[0]).toBe(100 - pill.centralInset)
+    // in the line skeleton the main topic sits on its line
+    expect(timelineStepDrawing(line, step, false).d).toMatch(/ M 150 [\d.]+ H 240$/)
+  })
 })
 
 describe('the colours of a map are document content', () => {
   const tokens = chromeTokens()
   const mapCss = readFileSync(join(RENDERER, 'map.css'), 'utf8')
   const mapCode = readdirSync(join(RENDERER, 'map'))
+    .filter((name) => name.endsWith('.ts'))
     .filter((name) => name !== 'controller.ts' && name !== 'text-guard.ts')
     .map((name) => [name, readFileSync(join(RENDERER, 'map', name), 'utf8')] as const)
 
@@ -283,10 +360,14 @@ describe('the colours of a map are document content', () => {
   it('no rule of the map stylesheet refers to a chrome token', () => {
     const used = [...mapCss.matchAll(/var\(\s*(--[\w-]+)/g)].map((match) => match[1]!)
     expect(used.length).toBeGreaterThan(20)
-    for (const name of used) expect(tokens.has(name), name).toBe(false)
+    // --font-ui is the app UI font token, not a chrome colour token (allowed explicitly below)
+    for (const name of used) {
+      if (name === '--font-ui') continue
+      expect(tokens.has(name), name).toBe(false)
+    }
     // what it does refer to: the theme's own properties, the library's spacing, and the app's font
     for (const name of new Set(used)) {
-      expect(name, name).toMatch(/^--(?:mm-[\w-]+|node-gap-[xy]|font-ui)$/)
+      expect(name, name).toMatch(/^--(?:mm-[\w-]+|(?:node|main)-gap-[xy]|font-ui)$/)
     }
   })
 
@@ -302,12 +383,32 @@ describe('the colours of a map are document content', () => {
 
   it('the code that draws the look names no chrome token and reads no app theme', () => {
     expect(mapCode.map(([name]) => name).sort()).toEqual([
+      'ai-marks.ts',
+      'boundary-edit.ts',
+      'boundary-room.ts',
+      'boundary-shapes.ts',
+      'boundary-title.ts',
       'branches.ts',
       'decorate.ts',
+      'format-painter.ts',
       'images.ts',
+      'line-format.ts',
+      'line-resolve.ts',
+      'link-preview.ts',
       'look.ts',
+      'map-targets.ts',
       'markers.ts',
+      'multi-select.ts',
+      'picture-drop.ts',
+      'relations.ts',
+      'relationship-shapes.ts',
       'style-values.ts',
+      'summary-shapes.ts',
+      'text-format.ts',
+      'timeline-keys.ts',
+      'title-runs.ts',
+      'topic-resize.ts',
+      'use-picture-drop.ts',
     ])
     for (const [name, code] of mapCode) {
       const source = code.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')

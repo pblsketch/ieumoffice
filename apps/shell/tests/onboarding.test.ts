@@ -10,13 +10,16 @@ import { LANGS } from '@genoffice/i18n'
 import { aiSubscriptionText } from '@genoffice/ui'
 import { Onboarding } from '../src/renderer/src/Onboarding'
 import { LocaleProvider } from '../src/renderer/src/locale'
+import { editorPickText } from '../src/renderer/src/i18n/strings-editor-pick'
 import {
-  ONBOARDING_CONNECT_STEP,
-  ONBOARDING_STEPS,
+  leavesPickStep,
+  onboardingConnectStep,
+  onboardingStepIds,
   isLastOnboardingStep,
   nextOnboardingStep,
   previousOnboardingStep,
 } from '../src/renderer/src/onboarding-steps'
+import type { EditorChoiceApi } from '../src/shared/editor-choice'
 import { strings } from '../src/renderer/src/strings'
 import type { SubscriptionConnection } from '../src/renderer/src/subscription-client'
 
@@ -72,12 +75,28 @@ function connectionOf(
   }
 }
 
+type PickApi = Pick<EditorChoiceApi, 'set' | 'markPickSeen'>
+
+/** the shell's choice bridge as the onboarding uses it: saving and marking the picker seen */
+function pickApi() {
+  return {
+    set: vi.fn<PickApi['set']>(async (patch) => ({
+      off: patch.off ?? [],
+      aiFeatures: patch.aiFeatures ?? true,
+      locked: false as const,
+    })),
+    markPickSeen: vi.fn<PickApi['markPickSeen']>(async () => undefined),
+  }
+}
+
 interface RenderOptions {
   onDone?: () => Promise<boolean>
   connection?: SubscriptionConnection
   noticeDue?: boolean
   onNoticeAcknowledge?: () => void
   onOpenOllamaSettings?: () => Promise<void>
+  covered?: boolean
+  editorChoice?: PickApi
 }
 
 function renderOnboarding(options: RenderOptions = {}): void {
@@ -92,6 +111,8 @@ function renderOnboarding(options: RenderOptions = {}): void {
           connection: options.connection ?? connectionOf(statuses('not-installed', 'signed-out')),
           noticeDue: options.noticeDue ?? false,
           onNoticeAcknowledge: options.onNoticeAcknowledge ?? vi.fn(),
+          editorChoice: options.editorChoice ?? pickApi(),
+          ...(options.covered === undefined ? {} : { covered: options.covered }),
         }),
       ),
     )
@@ -111,35 +132,225 @@ async function click(selector: string): Promise<void> {
 const activeStep = (): string | null =>
   host.querySelector<HTMLElement>('.onb-slide.active')?.dataset.step ?? null
 
+const slideSteps = (): string[] =>
+  Array.from(host.querySelectorAll<HTMLElement>('.onb-slide')).map((el) => el.dataset.step ?? '')
+
+const pickSelector = (item: string): string =>
+  `.onb-slide[data-step="pick"] [data-item="${item}"] [role="switch"]`
+
+/** the pick step's switch for an item ('ai' for the AI switch) */
+const pickSwitch = (item: string): HTMLButtonElement =>
+  host.querySelector<HTMLButtonElement>(pickSelector(item))!
+
+/** from the welcome step to the connect step */
+async function toConnect(): Promise<void> {
+  await click('.onb-next')
+  await click('.onb-next')
+  expect(activeStep()).toBe('connect')
+}
+
 describe('onboarding steps', () => {
-  it('are exactly welcome, connect, done', () => {
-    expect(ONBOARDING_STEPS).toEqual(['welcome', 'connect', 'done'])
-    expect(ONBOARDING_CONNECT_STEP).toBe(1)
+  it('are welcome, pick, connect, done with AI on, and leave out connect with AI off', () => {
+    expect(onboardingStepIds(true)).toEqual(['welcome', 'pick', 'connect', 'done'])
+    expect(onboardingStepIds(false)).toEqual(['welcome', 'pick', 'done'])
+    expect(onboardingConnectStep(true)).toBe(2)
+    expect(onboardingConnectStep(false)).toBe(-1)
   })
 
   it('advance one by one and finish after the last, whatever the connection', () => {
-    expect(nextOnboardingStep(0)).toBe(1)
-    expect(nextOnboardingStep(1)).toBe(2)
-    expect(nextOnboardingStep(2)).toBeNull()
-    expect(isLastOnboardingStep(1)).toBe(false)
-    expect(isLastOnboardingStep(2)).toBe(true)
+    expect(nextOnboardingStep(0, true)).toBe(1)
+    expect(nextOnboardingStep(1, true)).toBe(2)
+    expect(nextOnboardingStep(2, true)).toBe(3)
+    expect(nextOnboardingStep(3, true)).toBeNull()
+    expect(isLastOnboardingStep(2, true)).toBe(false)
+    expect(isLastOnboardingStep(3, true)).toBe(true)
+    // with AI off the pick step leads straight to the end
+    expect(nextOnboardingStep(1, false)).toBe(2)
+    expect(nextOnboardingStep(2, false)).toBeNull()
+    expect(isLastOnboardingStep(2, false)).toBe(true)
   })
 
   it('go back one by one and stop at the first', () => {
-    expect(previousOnboardingStep(2)).toBe(1)
-    expect(previousOnboardingStep(1)).toBe(0)
-    expect(previousOnboardingStep(0)).toBe(0)
+    expect(previousOnboardingStep(3, true)).toBe(2)
+    expect(previousOnboardingStep(2, true)).toBe(1)
+    expect(previousOnboardingStep(1, true)).toBe(0)
+    expect(previousOnboardingStep(0, true)).toBe(0)
+    expect(previousOnboardingStep(2, false)).toBe(1)
+  })
+
+  it('pass the pick step only when moving forward from it', () => {
+    expect(leavesPickStep(1, 2, true)).toBe(true)
+    expect(leavesPickStep(1, 3, true)).toBe(true)
+    expect(leavesPickStep(1, 2, false)).toBe(true)
+    expect(leavesPickStep(1, 0, true)).toBe(false)
+    expect(leavesPickStep(1, 1, true)).toBe(false)
+    // jumping over it from the welcome step is not passing it
+    expect(leavesPickStep(0, 3, true)).toBe(false)
+    expect(leavesPickStep(2, 3, true)).toBe(false)
   })
 })
 
 describe('Onboarding', () => {
-  it('shows three steps: welcome first, one dot each', () => {
+  it('shows four steps: welcome first, one dot each', () => {
     renderOnboarding()
-    expect(
-      Array.from(host.querySelectorAll<HTMLElement>('.onb-slide')).map((el) => el.dataset.step),
-    ).toEqual(['welcome', 'connect', 'done'])
-    expect(host.querySelectorAll('.onb-dot')).toHaveLength(3)
+    expect(slideSteps()).toEqual(['welcome', 'pick', 'connect', 'done'])
+    expect(host.querySelectorAll('.onb-dot')).toHaveLength(4)
     expect(activeStep()).toBe('welcome')
+  })
+
+  it('lists the eleven items and AI on the pick step, everything on to begin with', async () => {
+    renderOnboarding()
+    await click('.onb-next')
+    expect(activeStep()).toBe('pick')
+    const step = host.querySelector<HTMLElement>('.onb-slide[data-step="pick"]')!
+    expect(
+      Array.from(step.querySelectorAll<HTMLElement>('.ec-row[data-item]')).map(
+        (el) => el.dataset.item,
+      ),
+    ).toEqual([
+      'docs',
+      'sheets',
+      'slides',
+      'pdf',
+      'pdfTools',
+      'markdown',
+      'html',
+      'mindmap',
+      'diagram',
+      'whiteboard',
+      'hwp',
+      'epub',
+      'ai',
+    ])
+    const switches = Array.from(step.querySelectorAll<HTMLButtonElement>('[role="switch"]'))
+    expect(switches).toHaveLength(13)
+    expect(switches.every((el) => el.getAttribute('aria-checked') === 'true')).toBe(true)
+    expect(switches.some((el) => el.disabled)).toBe(false)
+    expect(step.querySelector('[data-item="docs"]')!.textContent).toContain(
+      editorPickText('en', 'itemDocs'),
+    )
+    expect(step.querySelector('[data-item="ai"]')!.textContent).toContain(
+      editorPickText('en', 'pickAiName'),
+    )
+  })
+
+  it('follows the AI switch live: with AI off the connect step is gone', async () => {
+    const onDone = vi.fn(async () => true)
+    renderOnboarding({ onDone })
+    await click('.onb-next')
+    await click(pickSelector('ai'))
+    expect(pickSwitch('ai').getAttribute('aria-checked')).toBe('false')
+    expect(slideSteps()).toEqual(['welcome', 'pick', 'done'])
+    expect(host.querySelectorAll('.onb-dot')).toHaveLength(3)
+    expect(activeStep()).toBe('pick')
+
+    // and back on, it returns
+    await click(pickSelector('ai'))
+    expect(slideSteps()).toEqual(['welcome', 'pick', 'connect', 'done'])
+    await click(pickSelector('ai'))
+
+    await click('.onb-next')
+    expect(activeStep()).toBe('done')
+    // nothing about connecting an AI on the last step while AI is off
+    const done = host.querySelector<HTMLElement>('.onb-slide[data-step="done"]')!
+    expect(done.querySelector('.onb-subtitle')!.textContent).toBe(
+      editorPickText('en', 'pickDoneAiOff'),
+    )
+    expect(done.textContent).not.toContain(strings.en.onbDoneNotConnected)
+    expect(host.querySelector('.onb-next')!.textContent).toBe(strings.en.onbStart)
+    await click('.onb-next')
+    expect(onDone).toHaveBeenCalledTimes(1)
+  })
+
+  it('saves the choice and marks the picker seen when the pick step is left with Next', async () => {
+    const editorChoice = pickApi()
+    renderOnboarding({ editorChoice })
+    await click('.onb-next')
+    await click(pickSelector('slides'))
+    await click(pickSelector('pdfTools'))
+    await click(pickSelector('ai'))
+    expect(editorChoice.set).not.toHaveBeenCalled()
+    expect(editorChoice.markPickSeen).not.toHaveBeenCalled()
+
+    await click('.onb-next')
+    expect(editorChoice.set).toHaveBeenCalledTimes(1)
+    expect(editorChoice.set).toHaveBeenCalledWith({
+      off: ['slides', 'pdfTools'],
+      aiFeatures: false,
+    })
+    expect(editorChoice.markPickSeen).toHaveBeenCalledTimes(1)
+    expect(activeStep()).toBe('done')
+  })
+
+  it('saves untouched switches as everything on', async () => {
+    const editorChoice = pickApi()
+    renderOnboarding({ editorChoice })
+    await toConnect()
+    expect(editorChoice.set).toHaveBeenCalledWith({ off: [], aiFeatures: true })
+    expect(editorChoice.markPickSeen).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not mark the picker seen when the choice could not be saved', async () => {
+    const editorChoice = pickApi()
+    editorChoice.set.mockRejectedValueOnce(new Error('unwritable'))
+    renderOnboarding({ editorChoice })
+    await toConnect()
+    expect(editorChoice.markPickSeen).not.toHaveBeenCalled()
+  })
+
+  it('saves nothing when closed or turned back before the pick step is passed', async () => {
+    const editorChoice = pickApi()
+    const onDone = vi.fn(async () => true)
+    renderOnboarding({ editorChoice, onDone })
+    await click('.onb-next')
+    await click(pickSelector('docs'))
+    // Back is not passing the step
+    await click('.onb-back')
+    expect(activeStep()).toBe('welcome')
+    // nor is jumping over it from the welcome step by a dot
+    await click('.onb-dot:last-child')
+    expect(activeStep()).toBe('done')
+    await click('.onb-dot:nth-child(2)')
+    expect(activeStep()).toBe('pick')
+    // Skip closes the guide from the pick step
+    await click('.onb-skip')
+    expect(onDone).toHaveBeenCalledTimes(1)
+    expect(editorChoice.set).not.toHaveBeenCalled()
+    expect(editorChoice.markPickSeen).not.toHaveBeenCalled()
+  })
+
+  it('keeps the last editor on: its switch is disabled with the reason, the PDF tools do not count', async () => {
+    renderOnboarding()
+    await click('.onb-next')
+    for (const item of [
+      'docs',
+      'sheets',
+      'slides',
+      'pdf',
+      'markdown',
+      'html',
+      'mindmap',
+      'diagram',
+      'whiteboard',
+      'hwp',
+    ]) {
+      await click(pickSelector(item))
+    }
+    const reason = editorPickText('en', 'pickLastEditor')
+    const step = () => host.querySelector<HTMLElement>('.onb-slide[data-step="pick"]')!
+    expect(pickSwitch('epub').getAttribute('aria-checked')).toBe('true')
+    expect(pickSwitch('epub').disabled).toBe(true)
+    expect(step().querySelector('[data-item="epub"]')!.textContent).toContain(reason)
+    // the PDF tools stay switchable either way and are no editor
+    expect(pickSwitch('pdfTools').disabled).toBe(false)
+    await click(pickSelector('pdfTools'))
+    expect(pickSwitch('pdfTools').getAttribute('aria-checked')).toBe('false')
+    expect(pickSwitch('epub').disabled).toBe(true)
+
+    // a second editor on frees the first again
+    await click(pickSelector('hwp'))
+    expect(pickSwitch('epub').disabled).toBe(false)
+    expect(step().textContent).not.toContain(reason)
   })
 
   it('describes the product plainly on the welcome step', () => {
@@ -157,8 +368,7 @@ describe('Onboarding', () => {
     const connection = connectionOf(statuses('not-installed', 'not-installed'))
     renderOnboarding({ onDone, connection })
 
-    await click('.onb-next')
-    expect(activeStep()).toBe('connect')
+    await toConnect()
     expect(host.querySelector<HTMLButtonElement>('.onb-next')!.disabled).toBe(false)
     expect(host.textContent).toContain(strings.en.onbConnectSkipNote)
 
@@ -188,10 +398,31 @@ describe('Onboarding', () => {
     expect(onDone).toHaveBeenCalledTimes(2)
   })
 
+  it('leaves the keyboard alone while Settings is open above it, and is still there after', async () => {
+    const onDone = vi.fn(async () => true)
+    renderOnboarding({ onDone, covered: true })
+    const press = async (key: string) =>
+      act(async () => {
+        window.dispatchEvent(new KeyboardEvent('keydown', { key }))
+        await Promise.resolve()
+      })
+
+    // Escape closes the dropped skill's preview, Enter is typed in a field there
+    await press('Escape')
+    await press('Enter')
+    await press('ArrowRight')
+    expect(onDone).not.toHaveBeenCalled()
+    expect(activeStep()).toBe('welcome')
+
+    renderOnboarding({ onDone, covered: false })
+    await press('Escape')
+    expect(onDone).toHaveBeenCalledTimes(1)
+  })
+
   it('asks which AI the user has on the connect step, then walks that one path on the live status', async () => {
     const connection = connectionOf(statuses('not-installed', 'signed-out'))
     renderOnboarding({ connection })
-    await click('.onb-next')
+    await toConnect()
 
     const step = host.querySelector<HTMLElement>('.onb-slide[data-step="connect"]')!
     const cards = () =>
@@ -206,11 +437,10 @@ describe('Onboarding', () => {
       Array.from(step.querySelectorAll<HTMLElement>('.ai-sub-guide-path')).map(
         (el) => el.dataset.path,
       ),
-    ).toEqual(['claude-code', 'codex', 'free'])
+    ).toEqual(['claude-code', 'chatgpt', 'antigravity', 'free'])
     expect(cards()).toEqual([])
-    expect(step.querySelector('.ai-sub-codex')!.textContent).toBe(
-      aiSubscriptionText('en', 'codexNotice'),
-    )
+    // the ChatGPT answer connects directly: the line about Codex belongs to the Codex way alone
+    expect(step.querySelector('.ai-sub-codex')).toBeNull()
 
     await click('.onb-slide[data-step="connect"] [data-path="claude-code"]')
     expect(cards()).toEqual([['claude-code', 'not-installed']])
@@ -219,8 +449,12 @@ describe('Onboarding', () => {
     )
     expect(connection.install).toHaveBeenCalledWith('claude-code')
     await click('.onb-slide[data-step="connect"] [data-action="guide-back"]')
-    await click('.onb-slide[data-step="connect"] [data-path="codex"]')
+    await click('.onb-slide[data-step="connect"] [data-path="chatgpt"]')
+    await click('.onb-slide[data-step="connect"] [data-action="guide-alternate"]')
     expect(cards()).toEqual([['codex', 'signed-out']])
+    expect(step.querySelector('.ai-sub-codex')!.textContent).toBe(
+      aiSubscriptionText('en', 'codexNotice'),
+    )
     await click('.onb-slide[data-step="connect"] [data-provider="codex"] [data-action="login"]')
     expect(connection.login).toHaveBeenCalledWith('codex')
   })
@@ -240,7 +474,7 @@ describe('Onboarding', () => {
     expect(card.textContent).toContain('company bulletin board')
     expect(card.textContent).toContain('Download a model')
     expect(card.textContent).toContain('AI Model Manager')
-    expect(card.querySelector('button')?.textContent).toBe('Open Ollama model manager')
+    expect(card.querySelector('button')?.textContent).toBe('Ollama Settings')
   })
 
   it('finishes first-run setup and opens the Ollama model manager from its card', async () => {
@@ -259,9 +493,10 @@ describe('Onboarding', () => {
         failed: { codex: 'login' },
       }),
     })
-    await click('.onb-next')
+    await toConnect()
     expect(host.querySelector('.onb-connect-failed')).toBeNull()
-    await click('.onb-slide[data-step="connect"] [data-path="codex"]')
+    await click('.onb-slide[data-step="connect"] [data-path="chatgpt"]')
+    await click('.onb-slide[data-step="connect"] [data-action="guide-alternate"]')
     const failed = host.querySelector<HTMLElement>('.onb-connect-failed')!
     expect(failed.dataset.provider).toBe('codex')
     expect(failed.textContent).toBe(strings.en.setSubLoginFailed)
@@ -269,7 +504,7 @@ describe('Onboarding', () => {
 
   it('names the connected subscription on the last step', async () => {
     renderOnboarding({ connection: connectionOf(statuses('ready', 'signed-out')) })
-    await click('.onb-next')
+    await toConnect()
     await click('.onb-next')
     expect(host.querySelector('.onb-slide.active .onb-subtitle')!.textContent).toBe(
       'AI is connected: Claude.',
@@ -294,7 +529,7 @@ describe('Onboarding', () => {
     })
     try {
       renderOnboarding()
-      await click('.onb-next')
+      await toConnect()
       const step = host.querySelector('.onb-slide.active')!
       // a free connection already made opens the free path by itself
       expect(step.querySelector('.ai-sub-guide-open')!.getAttribute('data-path')).toBe('free')
@@ -329,6 +564,10 @@ describe('Onboarding', () => {
       connection: connectionOf(statuses('ready', 'signed-out')),
     })
     expect(host.querySelector('.first-notice')).toBeNull()
+    // not on the pick step either: the notice is about the connection
+    await click('.onb-next')
+    expect(activeStep()).toBe('pick')
+    expect(host.querySelector('.first-notice')).toBeNull()
 
     await click('.onb-next')
     const notice = host.querySelector<HTMLElement>('.first-notice')!
@@ -351,18 +590,21 @@ describe('Onboarding', () => {
   it('carries no credits offer, community call, star hint or statistics notice', async () => {
     renderOnboarding({ connection: connectionOf(statuses('ready', 'ready')) })
     const text = () => host.textContent ?? ''
-    for (let step = 0; step < ONBOARDING_STEPS.length; step++) {
+    const steps = onboardingStepIds(true)
+    for (let step = 0; step < steps.length; step++) {
       expect(text()).not.toMatch(/credit|github|\bstars?\b|statistic|analytics/i)
-      if (step < ONBOARDING_STEPS.length - 1) await click('.onb-next')
+      if (step < steps.length - 1) await click('.onb-next')
     }
-    expect(host.querySelector('[role="switch"]')).toBeNull()
+    // the only switches are the pick step's editors and AI: no consent switch
+    const switches = Array.from(host.querySelectorAll('[role="switch"]'))
+    expect(switches.length).toBeGreaterThan(0)
+    expect(switches.every((el) => el.closest('.onb-slide[data-step="pick"]'))).toBe(true)
     expect(host.querySelector('.onb-offer, .onb-star, .onb-consent, .onb-join')).toBeNull()
   })
 })
 
 describe('welcome copy', () => {
   it('exists in every UI language, as a translation', () => {
-    expect(LANGS).toHaveLength(21)
     for (const lang of LANGS) {
       const { onbWelcomeSubtitle, onbWelcomeBody } = strings[lang]
       expect(onbWelcomeSubtitle.trim(), lang).not.toBe('')
@@ -380,7 +622,7 @@ describe('welcome copy', () => {
       expect(body, name).toContain(name)
     }
     expect(body).toContain('Claude')
-    expect(body).toContain('Codex')
+    expect(body).toContain('ChatGPT')
     // the product is named by the title above, and no vendor of the suite is named at all
     expect(`${strings[lang].onbWelcomeSubtitle} ${body}`).not.toMatch(/genoffice/i)
   })

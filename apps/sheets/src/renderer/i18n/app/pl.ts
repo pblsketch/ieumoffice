@@ -102,8 +102,10 @@ export const pl = {
   appChartNoRepoint: 'Ten wykres nie obsługuje zmiany zakresów danych.',
   appKeepOneSeries: 'Zachowaj co najmniej jedną serię.',
   appNoCategoriesToSwitch: 'Brak kategorii do przełączenia.',
-  appComboNoSelectData: 'Zmiana źródła danych wykresu kombi nie jest jeszcze obsługiwana.',
+  appSelectDataUnsupported: 'Zmiana źródła danych tego typu wykresu nie jest obsługiwana.',
   appSeriesName: 'Nazwa serii',
+  appSeriesType: 'Typ serii',
+  appSecondaryAxis: 'Oś pomocnicza',
   appValuesRange: 'Zakres wartości',
   appCategoriesRange: 'Zakres kategorii',
   appKeepUnchanged: 'Pozostaw bez zmian',
@@ -188,6 +190,12 @@ export const pl = {
   appInvalidGroupField: 'Nieprawidłowe pole grupowania.',
   appInvalidPageField: 'Nieprawidłowe pole filtru raportu.',
   appPivotPageItemMissing: 'Element filtru „{item}” nie należy do pola „{label}”.',
+  appInvalidPivotBaseField:
+    'Pole podstawowe trybu „Pokaż wartości jako” musi znajdować się w wierszach lub kolumnach.',
+  appPivotBaseFieldMissing: 'Tryb „Pokaż wartości jako” pola wartości wymaga pola podstawowego.',
+  appPivotBaseFieldNotAxis:
+    'Pole podstawowe „{label}” musi znajdować się w wierszach lub kolumnach tabeli przestawnej.',
+  appPivotBaseItemMissing: 'Element podstawowy „{item}” nie należy do pola „{label}”.',
   appInvalidLabelFilterField: 'Pole filtru etykiet jest nieprawidłowe.',
   appInvalidValueFieldIndex: 'Indeks pola wartości {index} jest nieprawidłowy.',
   appInvalidValueField: 'Nieprawidłowe pole wartości.',
@@ -336,8 +344,7 @@ export const pl = {
     'Ten arkusz zawiera tabelę przestawną — przenoszenie zakresów nie jest jeszcze obsługiwane.',
   appMergeOverTable:
     'Zaznaczenie nachodzi na tabelę programu Excel — scalanie komórek w tabeli nie jest jeszcze obsługiwane.',
-  appTableFilterNoEdit:
-    'Filtr tego arkusza należy do tabeli programu Excel — edycji nie można jeszcze zapisać.',
+  appFilterToggleFailed: 'Filtr nie został zastosowany — najpierw zaznacz zakres z danymi.',
   appAutofillStreaming:
     'Autouzupełnianie do obszaru, który wciąż jest ładowany strumieniowo, nie jest jeszcze dozwolone.',
   appDvNeedsIndexed:
@@ -387,6 +394,9 @@ export const pl = {
   appTableNameUsed: 'Nazwa tabeli „{name}” została już użyta w tej sesji.',
   appTableNameInFile: 'Nazwa tabeli "{name}" jest już używana przez tabelę w pliku.',
   appTableOverlapsSession: 'Zakres nakłada się na tabelę „{name}” utworzoną w tej sesji.',
+  appTableOverlapsFile: 'Zakres nakłada się na tabelę „{name}” w pliku.',
+  appTableAlreadyInTable:
+    'Zaznaczenie znajduje się już w tabeli „{name}” — zmień styl w Projektowaniu tabeli.',
   appTablesNeedFile: 'Najpierw otwórz plik XLSX — tabele są zapisywane w pliku.',
   appTableSelectRange: 'Najpierw zaznacz zakres danych — nagłówki w pierwszym wierszu.',
   appTableCreated: 'Utworzono tabelę — zapisz za pomocą ⌘S.',
@@ -470,6 +480,7 @@ export const pl = {
   appGridlinesHidden: 'Linie siatki ukryte.',
   appGridlinesShown: 'Linie siatki pokazane.',
   appShowingFormulas: 'Wyświetlanie formuł — przełącz ponownie, aby zobaczyć wartości.',
+  appShowingFormulasActive: 'Wyświetlanie formuł',
   appShowingValues: 'Wyświetlanie obliczonych wartości.',
   appTraceNoFormula: 'Śledź poprzedniki: aktywna komórka nie zawiera formuły.',
   appTraceNoRefs: 'Śledź poprzedniki: ta formuła nie zawiera odwołań do komórek.',
@@ -567,6 +578,9 @@ export const pl = {
     'Eksport do CSV wymaga w pełni załadowanego skoroszytu — poczekaj na zakończenie ładowania.',
   appCsvExportTooLarge: 'Arkusz jest za duży, aby wyeksportować go do CSV.',
   appCsvExportCanceled: 'Anulowano eksport do CSV.',
+  appOdsExported: 'Wyeksportowano {path}.',
+  appOdsExportCanceled: 'Anulowano eksport do ODS.',
+  appOdsExportFailed: 'Eksport do ODS nie powiódł się.',
   appCsvExported: 'Wyeksportowano {path}.',
   appCsvExportedActiveOnly:
     'Pliki CSV zawierają tylko jeden arkusz — aktywny arkusz „{name}” wyeksportowano do {path}.',
@@ -584,8 +598,6 @@ export const pl = {
   appSaveFailed: 'Nie można zapisać skoroszytu.',
   appCfRuleUnsaveable:
     'Tej reguły formatowania warunkowego nie można zapisać w xlsx — użyj innego typu reguły.',
-  appSaveErrX14Dv:
-    'Ten arkusz ma rozszerzoną (x14) poprawność danych; edytowanie jej reguł nie jest jeszcze obsługiwane.',
   appSaveErrMultiSelectList:
     'Poprawności danych z listą wielokrotnego wyboru nie można zapisać w xlsx — usuń regułę przed zapisaniem.',
   appSaveErrX14Cf:
@@ -606,6 +618,10 @@ export const pl = {
     'Arkuszowi stylów tego skoroszytu brakuje podstawowej struktury; zmian stylów nie można zapisać.',
   appSaveErrPackageGuard:
     'Zapisanie zmieniłoby strukturę pakietu skoroszytu — przerwano, aby chronić plik.',
+  appSaveErrSheetNotFound:
+    'Nie znaleziono w skoroszycie arkusza, do którego odnosi się ten zapis — zapisywanie przerwano, a plik pozostał bez zmian.',
+  appSaveErrSheetNameReused:
+    'Nowy arkusz używa dawnej nazwy arkusza, którego nazwę zmieniono, więc nie można zapisać. Nadaj na razie nowemu arkuszowi inną nazwę, zapisz, a potem zmień ją. Plik pozostał bez zmian.',
   appSaveErrChartUnsupported:
     'Ten typ wykresu nie obsługuje tej edycji; zapisywanie przerwano — cofnij zmianę wykresu.',
   appSaveErrMoveOverlap:
@@ -716,6 +732,13 @@ export const pl = {
   appSaveAs: 'Zapisz jako',
   appUndo: 'Cofnij',
   appRedo: 'Wykonaj ponownie',
+  appQuickAccessCustomize: 'Dostosuj pasek narzędzi Szybki dostęp',
+  appQuickAccessHint:
+    'Naciśnij Alt i cyfrę, aby uruchomić przycisk na tej pozycji, licząc od lewej.',
+  appQuickAccessMoveEarlier: 'Przesuń bliżej początku',
+  appQuickAccessMoveLater: 'Przesuń bliżej końca',
+  appQuickAccessReset: 'Przywróć domyślne',
+  appQuickAccessFull: 'Pasek mieści najwyżej 10 przycisków.',
   appUnsavedEditOne: '● {count} niezapisana zmiana',
   appUnsavedEditMany: '● {count} niezapisanych zmian',
   appSavedState: 'Zapisano',
@@ -746,7 +769,6 @@ export const pl = {
   appLinkPlaceholder: 'https://example.com lub Sheet1!A1',
   appRemoveLink: 'Usuń link',
   appNotAvailableYet: 'Jeszcze niedostępne',
-  appComingSoon: 'Wkrótce',
   appGroupChartLayouts: 'Układy wykresu',
   appAddChartElement: 'Dodaj element wykresu',
   appAddChartElementTitle: 'Tytuły, etykiety danych, legenda',
@@ -1180,6 +1202,8 @@ export const pl = {
   appRefreshAll: 'Odśwież wszystko',
   appWorkbookNoPivot: 'Brak tabel przestawnych w tym skoroszycie.',
   appRefreshAllTitle: 'Odśwież wszystkie tabele przestawne',
+  appQueriesConnections: 'Zapytania i połączenia',
+  appQueriesConnectionsTitle: 'Pokaż zapytania i połączenia danych skoroszytu',
   appErrorCheckingDetail: 'Skanuj arkusz w poszukiwaniu błędów',
   appErrorsFound: 'Błędy: {count} — w {cell}: {value}',
   appCheckingErrors: 'Skanowanie całego arkusza w poszukiwaniu błędów…',
@@ -1214,6 +1238,7 @@ export const pl = {
   appGroupForecast: 'Prognoza',
   appWhatIfAnalysis: 'Analiza warunkowa',
   appGoalSeek: 'Szukaj wyniku',
+  appDataTable: 'Tabela danych',
   appWhatIfTitle: 'Znajdź wejście dla wartości docelowej',
   appGoalSeekNeedsFormula: 'Komórka musi zawierać formułę.',
   appGoalSeekByCellNotNumber: 'Zmieniana komórka musi zawierać liczbę lub być pusta.',
@@ -1475,6 +1500,15 @@ export const pl = {
   appTableFileUnnamed: 'Ta tabela nie ma nazwy w pliku i nie można jej tutaj zmienić.',
   appTableRowsNotLoaded: 'Wiersze tabeli nadal się ładują — spróbuj ponownie za chwilę.',
   appTableTotalLabel: 'Suma',
+  appNotePicturesPaneTitle: 'Obrazy notatek',
+  appNotePicturesClose: 'Zamknij',
+  appNotePicturesNone: 'Żadna notatka w tym skoroszycie nie zawiera obrazu.',
+  appNotePictureUnavailable: 'Tego obrazu nie można wyświetlić.',
+  appNotePicturesToggle: 'Obrazy notatek',
+  appNoteInsertPicture: 'Wstaw obraz',
+  appNotePictureInserted: 'Dodano obraz do notatki w {cell}. Zapisz, aby zapisać go w pliku.',
+  appNotePictureRemoved: 'Usunięto obraz z notatki w {cell}.',
+  appNotePictureRemove: 'Usuń obraz',
   appCommentsPaneTitle: 'Komentarze',
   appThreadReply: 'Odpowiedz',
   appThreadReplyPlaceholder: 'Odpowiedz…',
@@ -1541,4 +1575,33 @@ export const pl = {
   appVisualFlipV: 'Odbij w pionie',
   appVisualFlipH: 'Odbij w poziomie',
   appCtxPasteVisual: 'Wklej obraz lub kształt',
+
+  // ── Spelling check (F7 / Review ▸ Proofing) ──
+  appSpellTitle: 'Pisownia',
+  appSpellBtnDetail: 'Sprawdź tekst arkusza (F7)',
+  appSpellToggle: 'Sprawdzanie pisowni',
+  appSpellToggleTip:
+    'Włącza sprawdzanie pisowni (F7 i przycisk Recenzja); po wyłączeniu pola komentarzy przestają pokazywać faliste podkreślenia',
+  appSpellOn: 'Sprawdzanie pisowni włączone.',
+  appSpellOff: 'Sprawdzanie pisowni jest wyłączone. Włącz je w Recenzja ▸ Sprawdzanie.',
+  appSpellRecheck: 'Sprawdź ponownie',
+  appSpellNone: 'Nie znaleziono podejrzanych błędów pisowni.',
+  appSpellFindings: 'Podejrzanych błędów: {count}. Kliknij wiersz, aby przejść.',
+  appSpellTruncated: 'Zbyt wiele komórek z tekstem; sprawdzono tylko pierwsze.',
+  appSpellColWord: 'Podejrzane',
+  appSpellIgnore: 'Ignoruj',
+  appSpellIgnoreAll: 'Ignoruj wszystkie',
+  appSpellLearn: 'Dodaj do słownika',
+  appSpellNoSuggestions: 'Brak sugestii',
+  appSpellIgnoredAll: 'Słowo „{word}” nie będzie już oznaczane w tej sesji.',
+  appSpellLearned: 'Słowo „{word}” dodano do słownika.',
+  appSpellChanged: 'Poprawiono {address}.',
+  appSpellChangeFailed: 'Nie udało się poprawić {address}.',
+  appSpellUnavailable: 'Sprawdzanie pisowni jest niedostępne w tym oknie.',
+  appSpellReplaceAll: 'Zamień wszystkie na „{suggestion}”',
+  appSpellChangedAll: 'Poprawiono {count} komórek ze słowem „{word}”.',
+
+  // ── ODS import ──
+  appOdsImportNotice: 'Plik ODS otwarto jako kopię xlsx. Zapis utworzy plik xlsx.',
+  appOdsFormulasDropped: 'W {count} formułach zachowano tylko wartości.',
 } satisfies Record<keyof typeof zh, string>

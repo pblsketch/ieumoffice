@@ -14,9 +14,11 @@
  *   notice comes first and the request is held until it is acknowledged.
  */
 import {
+  AI_SUBSCRIPTION_NOTICE_VERSION,
   AI_SUBSCRIPTION_PROVIDERS,
   isSubscriptionProvider,
   selectAiProvider,
+  subscriptionStateOf,
   type AiProviderChoice,
   type AiSettings,
   type AiSubscriptionProviderId,
@@ -30,7 +32,11 @@ type NotConnectedChoice = Extract<AiProviderChoice, { connected: false }>
 /** The part of the settings the gate reads */
 export type AiSendGateSettings = Pick<
   AiSettings,
-  'provider' | 'providers' | 'meteredAccepted' | 'subscriptionNoticeSeen'
+  | 'provider'
+  | 'providers'
+  | 'meteredAccepted'
+  | 'subscriptionNoticeSeen'
+  | 'subscriptionNoticeVersion'
 >
 
 export type AiSendGate =
@@ -54,7 +60,7 @@ export type AiSendGate =
 /**
  * A status check that has not reported yet may still turn "not connected" into
  * "connected": the selected subscription is being checked, or under `auto` one
- * of the two is (a missing status reads as `checking`). An unfinished key
+ * of them is (a missing CLI status reads as `checking`). An unfinished key
  * provider waits for no check.
  */
 function connectionStillChecking(
@@ -63,7 +69,40 @@ function connectionStillChecking(
 ): boolean {
   if (choice.reason === 'checking') return true
   if (choice.reason !== 'no-subscription') return false
-  return AI_SUBSCRIPTION_PROVIDERS.some((id) => (statuses[id]?.state ?? 'checking') === 'checking')
+  return AI_SUBSCRIPTION_PROVIDERS.some((id) => subscriptionStateOf(statuses, id) === 'checking')
+}
+
+/** The current wording of the first-connection notice: version 2 added the PDF sentence */
+export { AI_SUBSCRIPTION_NOTICE_VERSION }
+
+/**
+ * The notice version these settings acknowledge. A file written before the
+ * version existed carries only `subscriptionNoticeSeen`; that acknowledged
+ * version 1, so those users see the added PDF sentence once.
+ */
+export function aiSubscriptionNoticeVersion(
+  settings: Pick<AiSettings, 'subscriptionNoticeSeen' | 'subscriptionNoticeVersion'>,
+): number {
+  const version = settings.subscriptionNoticeVersion
+  const seen = settings.subscriptionNoticeSeen === true
+  // an unnormalised object from an older caller: the boolean means "seen",
+  // and a zero next to it is the default object, not a stored version
+  if (seen && (typeof version !== 'number' || !Number.isInteger(version) || version <= 0)) {
+    return AI_SUBSCRIPTION_NOTICE_VERSION
+  }
+  if (typeof version === 'number' && Number.isInteger(version) && version >= 0) {
+    return Math.min(version, AI_SUBSCRIPTION_NOTICE_VERSION)
+  }
+  return seen ? AI_SUBSCRIPTION_NOTICE_VERSION : 0
+}
+
+/** Whether the first-connection notice should be shown (again) for these settings */
+export function aiSubscriptionNoticeDue(
+  settings:
+    Pick<AiSettings, 'subscriptionNoticeSeen' | 'subscriptionNoticeVersion'> | null | undefined,
+): boolean {
+  if (!settings) return false
+  return aiSubscriptionNoticeVersion(settings) < AI_SUBSCRIPTION_NOTICE_VERSION
 }
 
 /** The gate for the current settings and statuses; either one still unread is `checking` */
@@ -79,7 +118,7 @@ export function aiSendGate(
       ? { kind: 'checking', choice }
       : { kind: 'connect', choice }
   }
-  if (isSubscriptionProvider(choice.provider) && settings.subscriptionNoticeSeen !== true) {
+  if (isSubscriptionProvider(choice.provider) && aiSubscriptionNoticeDue(settings)) {
     return { kind: 'notice', provider: choice.provider, choice }
   }
   return { kind: 'run', choice }
@@ -136,7 +175,11 @@ export function aiConnectPromptChoice(
 
 /** The settings after the first-connection notice was acknowledged */
 export function withAiSubscriptionNoticeSeen<S extends AiSettings>(settings: S): S {
-  return { ...settings, subscriptionNoticeSeen: true }
+  return {
+    ...settings,
+    subscriptionNoticeSeen: true,
+    subscriptionNoticeVersion: AI_SUBSCRIPTION_NOTICE_VERSION,
+  }
 }
 
 /**

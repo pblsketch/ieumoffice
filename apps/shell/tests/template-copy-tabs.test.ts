@@ -94,6 +94,7 @@ const createHwpView = vi.fn((..._args: unknown[]) => makeFakeView())
 vi.mock('../../hwp/src/main/hwp-main', () => ({
   createHwpView: (...args: unknown[]) => createHwpView(...args),
   hwpIsDirty: vi.fn(() => false),
+  hwpMemoModalOpen: vi.fn(() => false),
   requestHwpClose: vi.fn(),
 }))
 

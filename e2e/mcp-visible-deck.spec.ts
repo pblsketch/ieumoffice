@@ -1,10 +1,10 @@
 import { test, expect } from '@playwright/test'
-import { launchShell, closeAndSaveVideo, waitForPageWithUrl } from './helpers'
+import { launchShell, closeAndSaveVideo, waitForPageWithUrl, freeMcpPort } from './helpers'
 import { existsSync } from 'node:fs'
 import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import http, { createServer } from 'node:http'
+import http from 'node:http'
 import JSZip from 'jszip'
 
 /**
@@ -15,18 +15,6 @@ import JSZip from 'jszip'
  * file). Asserts the on-disk pptx content and that a slides tab actually
  * appeared in the shell UI.
  */
-
-async function freePort(): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const server = createServer()
-    server.on('error', reject)
-    server.listen(0, '127.0.0.1', () => {
-      const address = server.address()
-      const port = typeof address === 'object' && address ? address.port : 0
-      server.close(() => resolve(port))
-    })
-  })
-}
 
 interface RpcResponse {
   status: number
@@ -103,13 +91,18 @@ async function waitForHealth(port: number, timeoutMs = 20_000): Promise<void> {
 
 test.describe('MCP visible deck session', () => {
   test('creates, edits and saves a pptx through a visible slides tab', async () => {
-    const port = await freePort()
+    const port = await freeMcpPort()
     const outDir = await mkdtemp(join(tmpdir(), 'genoffice-mcp-deck-'))
     const outFile = join(outDir, 'mcp-deck.pptx')
     const userDataDir = await mkdtemp(join(tmpdir(), 'genoffice-mcp-deck-userdata-'))
     await writeFile(
       join(userDataDir, 'app-settings.json'),
-      JSON.stringify({ onboardingSeen: true, mcpEnabled: true, mcpPort: port }),
+      JSON.stringify({
+        onboardingSeen: true,
+        editorPickSeen: true,
+        mcpEnabled: true,
+        mcpPort: port,
+      }),
     )
     const launched = await launchShell({
       videoDir: 'mcp-visible-deck',

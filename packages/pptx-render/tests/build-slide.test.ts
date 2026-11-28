@@ -997,7 +997,7 @@ describe('picture spPr fill backdrop (napierone 0027)', () => {
 })
 
 describe('metafile pictures get an opaque white backdrop (PlanS academy banner)', () => {
-  it('sets bgColor for EMF data URLs and leaves raster images alone', async () => {
+  it('sets bgColor for EMF data URLs and leaves raster images and WMF alone', async () => {
     const { deck } = await openPptx(enginePptx('01_standard_business.pptx'))
     const slide = deck.slides[0]!
     const mk = (dataUrl: string): any => ({
@@ -1016,15 +1016,27 @@ describe('metafile pictures get an opaque white backdrop (PlanS academy banner)'
     const rs = buildRenderSlide(
       {
         ...slide,
-        elements: [mk('data:image/x-emf;base64,AAAA'), mk('data:image/png;base64,AAAA')],
+        elements: [
+          mk('data:image/x-emf;base64,AAAA'),
+          mk('data:image/png;base64,AAAA'),
+          mk('genoffice-slide-media://archive/emf?mime=image%2Fx-emf'),
+          mk('genoffice-slide-media://archive/png?mime=image%2Fpng'),
+          mk('data:image/x-wmf;base64,AAAA'),
+          mk('genoffice-slide-media://archive/wmf?mime=image%2Fx-wmf'),
+        ],
         decorations: [],
       },
       deck.size,
       { fitWidthPx: 1280 },
     )
-    const [emf, png] = rs.nodes as any[]
+    const [emf, png, lazyEmf, lazyPng, wmf, lazyWmf] = rs.nodes as any[]
     expect(emf.bgColor).toBe('#FFFFFF')
     expect(png.bgColor).toBeUndefined()
+    expect(lazyEmf.bgColor).toBe('#FFFFFF')
+    expect(lazyPng.bgColor).toBeUndefined()
+    // a WMF plays back transparent: the shape behind it shows through
+    expect(wmf.bgColor).toBeUndefined()
+    expect(lazyWmf.bgColor).toBeUndefined()
   })
 
   it('a clrChange metafile drops the white DC backing (the recolor sees through it)', async () => {

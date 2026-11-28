@@ -12,10 +12,13 @@ import {
 } from './ai-subscription'
 import { AiSubscriptionCard, type AiSubscriptionCardActions } from './AiSubscriptionCard'
 import { AiCodexNotice } from './AiSubscriptionNotices'
+import { IconCheck } from './icons'
 import {
   AI_CONNECT_STEP_KEYS,
+  aiConnectAlternatePath,
   aiConnectGuideView,
   aiConnectInfoText,
+  aiConnectPathText,
   aiConnectStepsView,
   type AiConnectChoice,
   type AiConnectPath,
@@ -130,12 +133,12 @@ export function AiConnectGuide({
           disabled={disabled}
           actions={actions}
           after={renderAfterCard?.(view.open)}
-          needKey={view.options.find((option) => option.path === view.open)!.bodyKey}
+          needKey={aiConnectPathText(view.open).bodyKey}
+          onAlternate={(path) => setChosen(path)}
         />
       )}
-      {codexNotice && (view.open === null || view.open === 'codex') && (
-        <AiCodexNotice lang={lang} />
-      )}
+      {/* the question's ChatGPT answer connects directly; the line is about the Codex way alone */}
+      {codexNotice && view.open === 'codex' && <AiCodexNotice lang={lang} />}
       {view.open !== null && (
         <button
           type="button"
@@ -165,6 +168,7 @@ function GuidePath({
   actions,
   after,
   needKey,
+  onAlternate,
 }: {
   readonly provider: AiSubscriptionProviderId
   readonly statuses: AiSubscriptionStatuses
@@ -173,8 +177,13 @@ function GuidePath({
   readonly actions: AiSubscriptionCardActions
   readonly after: React.ReactNode
   readonly needKey: Parameters<typeof aiSubscriptionText>[1]
+  /** open the other way along the same answer (ChatGPT directly, or through Codex) */
+  readonly onAlternate: (path: AiConnectPath) => void
 }): React.JSX.Element {
   const status = aiSubscriptionStatusOf(statuses, provider)
+  const alternate = aiConnectAlternatePath(provider)
+  // a way that already works needs no way around it
+  const offerAlternate = alternate !== null && status.state !== 'ready' && !status.signingIn
   const steps = aiConnectStepsView(status)
   const params = {
     vendor: aiSubscriptionVendorName(provider),
@@ -193,7 +202,7 @@ function GuidePath({
             aria-current={steps.current === step.id && !step.done ? 'step' : undefined}
           >
             <span className="ai-sub-guide-step-mark" aria-hidden="true">
-              {step.done ? '✓' : index + 1}
+              {step.done ? <IconCheck size={12} /> : index + 1}
             </span>
             <span className="ai-sub-guide-step-name">
               {aiSubscriptionText(lang, AI_CONNECT_STEP_KEYS[step.id])}
@@ -203,6 +212,17 @@ function GuidePath({
       </ol>
       <AiSubscriptionCard status={status} lang={lang} compact disabled={disabled} {...actions} />
       {after}
+      {offerAlternate && (
+        <button
+          type="button"
+          className="ai-sub-link ai-sub-guide-alternate"
+          data-action="guide-alternate"
+          data-path={alternate}
+          onClick={() => onAlternate(alternate)}
+        >
+          {aiSubscriptionText(lang, provider === 'chatgpt' ? 'guideUseCodex' : 'guideUseDirect')}
+        </button>
+      )}
     </div>
   )
 }

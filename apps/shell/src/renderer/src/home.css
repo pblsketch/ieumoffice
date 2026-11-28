@@ -2,8 +2,8 @@
  * before this file in main.tsx); only shell-specific tokens live here. */
 :root {
   /* guide/onboarding accent is the brand blue */
-  --accent: #0f7fff;
-  --accent-hover: #0e72e5;
+  --accent: #0a68d4;
+  --accent-hover: #0959b8;
   /* selected-option tint for the shared dropdown (gs-dd) */
   --accent-soft: #eaf0fd;
   --modal-width-sm: 480px;
@@ -14,7 +14,6 @@
   --timeline-user-text: #5a6170;
   /* lift for the active segment in gray-track tab pills */
   --shadow-pill: 0 1px 2px rgb(0 0 0 / 8%);
-  --shadow-composer: 0 6px 30px rgb(0 0 0 / 8%);
 
   /* genoffice-logo.svg is pure black-and-white; dark themes flip it to 1 */
   --logo-invert: 0;
@@ -35,16 +34,15 @@
 
 /* Explicit dark: [data-theme="dark"] on <html> */
 [data-theme='dark'] {
-  --accent: #3f99ff;
-  --accent-hover: #5ba5ff;
+  --accent: #4a9eff;
+  --accent-hover: #6aaeff;
   --accent-soft: #24354d;
   --avatar-bg: #333;
-  --badge-bg: #2a3a4a;
+  --badge-bg: #24354d;
   --checkbox-bg: #333;
   --timeline-user-bg: #2a2a3a;
   --timeline-user-text: #b0b0c0;
   --shadow-pill: 0 1px 2px rgb(0 0 0 / 40%);
-  --shadow-composer: 0 6px 30px rgb(0 0 0 / 30%);
   --logo-invert: 1;
   --shadow-composer: 0 1px 3px rgb(0 0 0 / 25%);
   --explorer-folder-back: #ca8a04;
@@ -61,16 +59,15 @@
 /* System dark: no data-theme or data-theme="system" — follow OS preference */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']):not([data-theme='dark']) {
-    --accent: #3f99ff;
-    --accent-hover: #5ba5ff;
+    --accent: #4a9eff;
+    --accent-hover: #6aaeff;
     --accent-soft: #24354d;
     --avatar-bg: #333;
-    --badge-bg: #2a3a4a;
+    --badge-bg: #24354d;
     --checkbox-bg: #333;
     --timeline-user-bg: #2a2a3a;
     --timeline-user-text: #b0b0c0;
     --shadow-pill: 0 1px 2px rgb(0 0 0 / 40%);
-    --shadow-composer: 0 6px 30px rgb(0 0 0 / 30%);
     --logo-invert: 1;
     --shadow-composer: 0 1px 3px rgb(0 0 0 / 25%);
     --explorer-folder-back: #ca8a04;
@@ -100,7 +97,7 @@
 }
 
 :root:lang(ko) {
-  --ui-cjk: 'Apple SD Gothic Neo', 'Malgun Gothic';
+  --ui-cjk: 'UI Pretendard', 'Apple SD Gothic Neo', 'Malgun Gothic';
 }
 
 :root:lang(zh-TW) {
@@ -137,9 +134,21 @@ body.vib .home {
   flex-direction: column;
   flex-shrink: 0;
   width: 232px;
+  /* a dragged width never crowds the file list out of a narrow window */
+  max-width: 45vw;
   padding: 18px 12px 16px;
   border-right: 1px solid var(--border);
   overflow: hidden;
+}
+
+/* drag strip straddling the sidebar's right border (genoffice#2169) */
+.sidebar-resizer {
+  flex: none;
+  position: relative;
+  z-index: 2;
+  width: 7px;
+  margin: 0 -4px 0 -3px;
+  cursor: col-resize;
 }
 
 .sidebar-logo {
@@ -224,7 +233,7 @@ body.vib .home {
   justify-content: center;
 }
 
-/* ---- bottom-left settings entry: where the AI subscription connection stands ---- */
+/* ---- bottom-left settings entry: "Settings" over the state of the AI in use ---- */
 /* clicking it opens the settings modal (settings.css) directly, which hosts
    the connection plus preferences (language / theme / save location / update channel) */
 
@@ -269,7 +278,7 @@ body.vib .home {
 }
 
 .account-avatar.logged-in {
-  background: linear-gradient(135deg, #3d7ff5, #1b58cf);
+  background: var(--accent);
   color: #fff;
 }
 
@@ -360,9 +369,10 @@ body.vib .home {
 
 .quick-cards {
   display: grid;
-  /* cards wrap onto another line instead of squeezing their titles: 186px is
-     the widest card title with its AI chip across the UI languages */
-  grid-template-columns: repeat(auto-fit, minmax(186px, 1fr));
+  /* A fixed five-column desk grid: the ten cards sit on two even rows instead
+     of overflowing one line. A track can be narrower than a long title, so the
+     title wraps below instead of being clipped. */
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   align-items: stretch;
   gap: 10px;
 }
@@ -370,7 +380,6 @@ body.vib .home {
 .quick-card {
   position: relative;
   min-width: 0;
-  max-width: 280px;
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -413,17 +422,18 @@ body.vib .home {
   max-width: 100%;
   min-width: 0;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
+  gap: 4px 6px;
 }
 
 .quick-title {
   min-width: 0;
-  overflow: hidden;
   font-size: 14px;
   font-weight: 600;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+  hyphens: auto;
 }
 
 .quick-sub {
@@ -448,6 +458,7 @@ body.vib .home {
 }
 
 .ai-chip {
+  flex-shrink: 0;
   padding: 1px 6px;
   border-radius: 4px;
   background: var(--badge-bg);
@@ -460,10 +471,6 @@ body.vib .home {
 @media (max-width: 1100px) {
   .quick-cards {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .quick-card {
-    max-width: none;
   }
 }
 
@@ -515,9 +522,12 @@ body.vib .home {
    A 40px rail on the recents page. */
 .filter-pills {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  height: 40px;
-  padding: 0 3px;
+  min-height: 40px;
+  max-width: 100%;
+  padding: 3px;
+  row-gap: 2px;
   border-radius: 10px;
   background: var(--checkbox-bg);
   flex-shrink: 0;
@@ -555,6 +565,9 @@ body.vib .home {
   flex-direction: column;
   align-items: flex-start;
   gap: 6px;
+  /* a narrow window wraps the pills inside their track instead of widening the page */
+  min-width: 0;
+  max-width: 100%;
 }
 
 /* group list inside the move-to-group modal (visual language of .picker-tree) */
@@ -1282,7 +1295,7 @@ body.vib .home {
   width: 14px;
   height: 14px;
   border: none;
-  border-radius: 3px;
+  border-radius: 4px;
   background: none;
   color: var(--text-muted);
   cursor: pointer;
@@ -1331,7 +1344,8 @@ body.vib .home {
   color: var(--text);
 }
 
-/* fixed-position popup anchored via inline top/right (set at open time) so it
+/* fixed-position popup; left/top are set in a layout effect (placeFolderMenu) so it
+   opens to the right of the pointer and stays inside the viewport, and it
    escapes the scrollable tree without the tree losing overflow-y */
 .folder-menu {
   position: fixed;
@@ -1386,7 +1400,7 @@ body.vib .home {
   gap: 4px;
   padding: 4px 10px 4px 7px;
   border: 1px solid var(--border);
-  border-radius: 7px;
+  border-radius: 8px;
   background: var(--surface);
   color: var(--text);
   font: inherit;
@@ -1728,7 +1742,7 @@ body.vib .home {
   background: none;
   padding: 8px 11px;
   font-size: 13px;
-  border-radius: 7px;
+  border-radius: 8px;
   cursor: pointer;
   color: var(--text);
 }
@@ -1815,6 +1829,12 @@ body.vib .home {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* the line that says skill files are taken too: a sentence, so it wraps */
+.home-drop-card .home-drop-skills {
+  white-space: normal;
+  text-align: center;
 }
 
 /* Motion accessibility: suppress all animation for users who opt out */
@@ -2090,7 +2110,7 @@ html[dir='rtl'] .quick-title-row {
   font-size: 14px;
   font-weight: 500;
 }
-.kb-ask-headbar span {
+.kb-ask-headbar > span {
   font-size: 12px;
   color: var(--text-tertiary);
 }
@@ -2133,15 +2153,11 @@ html[dir='rtl'] .quick-title-row {
   padding-bottom: 8px;
 }
 .kb-ask-hero-icon {
-  width: 52px;
-  height: 52px;
-  border-radius: 15px;
-  background: var(--accent-soft);
-  color: var(--accent);
+  color: var(--text-secondary);
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-bottom: 16px;
+  margin-bottom: 12px;
 }
 .kb-ask-hero h3 {
   margin: 0 0 6px;
@@ -2150,7 +2166,7 @@ html[dir='rtl'] .quick-title-row {
 }
 .kb-ask-hero > p {
   margin: 0;
-  font-size: 13.5px;
+  font-size: 14px;
   color: var(--text-secondary);
   max-width: 46ch;
   line-height: 1.6;
@@ -2175,11 +2191,12 @@ html[dir='rtl'] .quick-title-row {
   flex-shrink: 0;
   width: 21px;
   height: 21px;
-  border-radius: 99px;
+  border-radius: 999px;
   background: var(--accent-soft);
   color: var(--accent);
-  font-size: 11.5px;
+  font-size: 12px;
   font-weight: 500;
+  line-height: 1;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2191,7 +2208,7 @@ html[dir='rtl'] .quick-title-row {
   font-weight: 500;
   margin: 1px 0 3px;
 }
-.kb-ask-step span {
+.kb-ask-step > div > span {
   font-size: 12px;
   color: var(--text-secondary);
   line-height: 1.5;
@@ -2201,12 +2218,12 @@ html[dir='rtl'] .quick-title-row {
   appearance: none;
   border: none;
   font: inherit;
-  font-size: 13.5px;
+  font-size: 14px;
   font-weight: 500;
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  background: var(--accent);
+  background: var(--color-btn-primary);
   color: var(--color-btn-primary-text);
   border-radius: 10px;
   padding: 9px 18px;
@@ -2214,19 +2231,19 @@ html[dir='rtl'] .quick-title-row {
   transition: background var(--transition-fast, 150ms);
 }
 .kb-ask-cta:hover {
-  background: var(--accent-hover);
+  background: var(--color-btn-primary-hover);
 }
 
 /* has corpus, nothing asked yet: one quiet centered line */
 .kb-ask-hint {
   margin: auto 0;
   text-align: center;
-  font-size: 12.5px;
+  font-size: 13px;
   opacity: 0.65;
 }
 .kb-ask-login {
   margin: 0 2px 8px;
-  font-size: 12.5px;
+  font-size: 13px;
   color: var(--text-secondary);
 }
 .kb-ask-login-link {
@@ -2253,7 +2270,7 @@ html[dir='rtl'] .quick-title-row {
 }
 
 .kb-ask-msg {
-  font-size: 13.5px;
+  font-size: 14px;
   line-height: 1.55;
   max-width: 92%;
   white-space: normal;
@@ -2344,16 +2361,41 @@ html[dir='rtl'] .quick-title-row {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--text-secondary);
   padding: 3px 9px;
-  border-radius: 99px;
+  border-radius: 999px;
   background: var(--surface-subtle);
   border: 1px solid var(--border-subtle);
 }
 .kb-ask-tool-note svg {
   color: var(--text-tertiary);
   flex-shrink: 0;
+}
+.kb-ask-tool-note.is-done {
+  color: var(--text);
+}
+.kb-ask-tool-open {
+  appearance: none;
+  border: none;
+  background: none;
+  padding: 0;
+  margin-left: 2px;
+  font: inherit;
+  font-weight: 600;
+  color: var(--text);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.kb-ask-tool-open:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 2px;
+}
+.kb-ask-hero-project {
+  margin: 12px 0 0;
+  color: var(--text-secondary);
+  font-size: 13px;
 }
 .kb-ask-actions {
   display: flex;
@@ -2368,10 +2410,10 @@ html[dir='rtl'] .quick-title-row {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--text-secondary);
   padding: 3px 9px;
-  border-radius: 99px;
+  border-radius: 999px;
   border: 1px solid var(--border);
   background: var(--surface);
   cursor: pointer;
@@ -2397,8 +2439,26 @@ html[dir='rtl'] .quick-title-row {
   color: var(--accent);
 }
 .kb-ask-action-error {
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--danger);
+}
+
+/* icon buttons in the composer footer beside the model picker (the MCP server button) */
+.kb-ask .ai-attach-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+.kb-ask .ai-attach-btn:hover {
+  filter: brightness(0.7);
 }
 
 /* citation links inside answers (filenav): a soft pill, click opens the file */
@@ -2408,13 +2468,20 @@ html[dir='rtl'] .quick-title-row {
   gap: 4px;
   color: var(--accent);
   text-decoration: none;
-  font-size: 12.5px;
+  font-size: 13px;
   background: var(--accent-soft);
-  border-radius: 5px;
+  border-radius: 6px;
   padding: 1px 7px;
   margin: 0 1px;
   vertical-align: 1px;
 }
 .kb-ask-assistant a:hover {
   text-decoration: underline;
+}
+
+/* thin scrollbars without arrow buttons, as in the AI panel */
+.content,
+.sidebar {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
 }

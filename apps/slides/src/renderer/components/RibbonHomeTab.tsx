@@ -9,6 +9,7 @@ import {
   isSymbolFontFamily,
   matchesFontQuery,
   splitHangulFamilies,
+  useScrollWindow,
 } from '@genoffice/ui'
 import { useI18n } from '../i18n/locale'
 import { saveEditSelection } from '../TextEditOverlay'
@@ -27,6 +28,8 @@ import {
   IconDirRtl,
   IconAlignRight,
   IconBullets,
+  IconChangeCase,
+  IconCharSpacing,
   IconClearFormat,
   IconCopy,
   IconCut,
@@ -47,6 +50,11 @@ import {
   IconObjDistributeH,
   IconObjDistributeV,
   IconObjFlipH,
+  IconSameHeight,
+  IconSameSize,
+  IconSameWidth,
+  IconSelectionPane,
+  IconTextHighlight,
   IconObjFlipV,
   IconPaste,
   IconPlayCurrent,
@@ -88,9 +96,11 @@ const fontPreviewFamily = (f: string): string | undefined =>
 export function RibbonHomeTab({ rb }: { rb: RibbonTabCtx }) {
   const { lang } = useI18n()
   const {
+    aiOn,
     aiOpen,
     brushMode,
     canDistribute,
+    canMatchSize,
     canPaste,
     curBulletChar,
     curAlign,
@@ -134,7 +144,18 @@ export function RibbonHomeTab({ rb }: { rb: RibbonTabCtx }) {
     onTextToggle,
     onToggleAi,
     onToggleFormat,
+    onChangeCase,
+    onHighlight,
+    onLetterSpacing,
+    selectionPaneOpen,
+    onToggleSelectionPane,
     arrangeOpen,
+    caseOpen,
+    setCaseOpen,
+    highlightOpen,
+    setHighlightOpen,
+    spacingOpen,
+    setSpacingOpen,
     closePanels,
     collapseOpen,
     colorOpen,
@@ -172,6 +193,7 @@ export function RibbonHomeTab({ rb }: { rb: RibbonTabCtx }) {
     t,
   } = rb
   const [hangDraft, setHangDraft] = useState('')
+  const [lastHighlight, setLastHighlight] = useState('#FFFF00')
   // Typed-ahead font query: only what the user actually typed filters the menu
   // (opening via the caret or focusing shows the full list)
   const [fontFilter, setFontFilter] = useState('')
@@ -195,11 +217,15 @@ export function RibbonHomeTab({ rb }: { rb: RibbonTabCtx }) {
   )
   // anywhere in the name, or in its Korean name
   const matchesFontFilter = (f: string) => matchesFontQuery(fontFilter, f, fontInfo)
+  const fontMenuWindow = useScrollWindow(fontOpen)
+  let fontRow = 0
+  const previewAt = (f: string) =>
+    fontMenuWindow.inWindow(fontRow++) ? fontPreviewFamily(f) : undefined
   const fontOption = (f: string) => (
     <button
       key={f}
       className={f === curFontFamily ? 'on' : ''}
-      style={{ fontFamily: fontPreviewFamily(f) }}
+      style={{ fontFamily: previewAt(f) }}
       onMouseDown={(e) => {
         e.preventDefault()
         onFontFamily(f)
@@ -243,58 +269,62 @@ export function RibbonHomeTab({ rb }: { rb: RibbonTabCtx }) {
   }
   return (
     <>
-      <Group label={aiSubscriptionText(lang, 'aiAssistant')}>
-        <button
-          className={`rb-big ai-entry${aiOpen ? ' active' : ''}`}
-          data-tip={t('aiOpenAssistant')}
-          onClick={onToggleAi}
-        >
-          <span className="rb-big-icon">
-            <AiMark size={26} />
-          </span>
-          <span>{aiSubscriptionText(lang, 'aiAssistant')}</span>
-        </button>
-        <button
-          className="rb-big ai-entry"
-          disabled={!hasDoc || deckEmpty}
-          data-tip={t('aiBeautifyBtn')}
-          onClick={() => onAiPreset(t('aiBeautifyPrompt'), { slideShot: true })}
-        >
-          <span className="rb-big-icon">
-            <span className="ai-feature-icon" aria-hidden="true">
-              <IconAiBeautify />
-            </span>
-          </span>
-          <span>{t('aiBeautifyBtn')}</span>
-        </button>
-        <button
-          className="rb-big ai-entry"
-          disabled={!hasDoc || deckEmpty}
-          data-tip={t('aiFactCheckBtn')}
-          onClick={() => onAiPreset(t('aiFactCheckPrompt'))}
-        >
-          <span className="rb-big-icon">
-            <span className="ai-feature-icon" aria-hidden="true">
-              <IconAiFactCheck />
-            </span>
-          </span>
-          <span>{t('aiFactCheckBtn')}</span>
-        </button>
-        <button
-          className="rb-big ai-entry"
-          disabled={!hasDoc || deckEmpty}
-          data-tip={t('aiImageBtn')}
-          onClick={() => onAiPreset(t('aiImagePrompt'))}
-        >
-          <span className="rb-big-icon">
-            <span className="ai-feature-icon" aria-hidden="true">
-              <IconAiImage />
-            </span>
-          </span>
-          <span>{t('aiImageBtn')}</span>
-        </button>
-      </Group>
-      <div className="ribbon-sep" />
+      {aiOn && (
+        <>
+          <Group label={aiSubscriptionText(lang, 'aiAssistant')}>
+            <button
+              className={`rb-big ai-entry${aiOpen ? ' active' : ''}`}
+              data-tip={t('aiOpenAssistant')}
+              onClick={onToggleAi}
+            >
+              <span className="rb-big-icon">
+                <AiMark size={26} />
+              </span>
+              <span>{aiSubscriptionText(lang, 'aiAssistant')}</span>
+            </button>
+            <button
+              className="rb-big ai-entry"
+              disabled={!hasDoc || deckEmpty}
+              data-tip={t('aiBeautifyBtn')}
+              onClick={() => onAiPreset(t('aiBeautifyPrompt'), { slideShot: true })}
+            >
+              <span className="rb-big-icon">
+                <span className="ai-feature-icon" aria-hidden="true">
+                  <IconAiBeautify />
+                </span>
+              </span>
+              <span>{t('aiBeautifyBtn')}</span>
+            </button>
+            <button
+              className="rb-big ai-entry"
+              disabled={!hasDoc || deckEmpty}
+              data-tip={t('aiFactCheckBtn')}
+              onClick={() => onAiPreset(t('aiFactCheckPrompt'))}
+            >
+              <span className="rb-big-icon">
+                <span className="ai-feature-icon" aria-hidden="true">
+                  <IconAiFactCheck />
+                </span>
+              </span>
+              <span>{t('aiFactCheckBtn')}</span>
+            </button>
+            <button
+              className="rb-big ai-entry"
+              disabled={!hasDoc || deckEmpty}
+              data-tip={t('aiImageBtn')}
+              onClick={() => onAiPreset(t('aiImagePrompt'))}
+            >
+              <span className="rb-big-icon">
+                <span className="ai-feature-icon" aria-hidden="true">
+                  <IconAiImage />
+                </span>
+              </span>
+              <span>{t('aiImageBtn')}</span>
+            </button>
+          </Group>
+          <div className="ribbon-sep" />
+        </>
+      )}
       <Group label={t('ribbonGroupClipboard')}>
         <button
           className="rb-big"
@@ -351,6 +381,8 @@ export function RibbonHomeTab({ rb }: { rb: RibbonTabCtx }) {
                       ? t('ribbonBrushTipHasFormat')
                       : t('ribbonBrushTipDefault')
             }
+            // Keeps focus (and the text selection) in the editor: the painter can pick up selected text
+            onMouseDown={(e) => e.preventDefault()}
             onClick={onFormatBrushClick}
             onDoubleClick={(e) => {
               e.preventDefault()
@@ -627,6 +659,8 @@ export function RibbonHomeTab({ rb }: { rb: RibbonTabCtx }) {
               {fontOpen && (
                 <div
                   className="rb-drop rb-menu rb-menu-scroll rb-font-menu"
+                  ref={fontMenuWindow.ref}
+                  onScroll={fontMenuWindow.onScroll}
                   onMouseDown={(e) => e.stopPropagation()}
                 >
                   {(curFontFamily &&
@@ -747,6 +781,57 @@ export function RibbonHomeTab({ rb }: { rb: RibbonTabCtx }) {
             </div>
             {fmtBtn('fontSizeUp', <IconGrowFont size={18} />, t('ribbonGrowFont'))}
             {fmtBtn('fontSizeDown', <IconShrinkFont size={18} />, t('ribbonShrinkFont'))}
+            {onChangeCase && (
+              <div className="rb-drop-wrap">
+                <button
+                  className={`rb-icon ${caseOpen ? 'active' : ''}`}
+                  disabled={!editing && !hasSelection}
+                  data-tip={t('ribbonChangeCase')}
+                  aria-label={t('ribbonChangeCase')}
+                  onMouseDown={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    if (!editing && !hasSelection) return
+                    if (editing) saveEditSelection()
+                    closeSiblingPanels(e, closePanels, 'case')
+                    setCaseOpen((v) => !v)
+                  }}
+                >
+                  <IconChangeCase size={18} />
+                  <span className="rb-font-caret">
+                    <RbCaret />
+                  </span>
+                </button>
+                {caseOpen && (
+                  <div
+                    className="rb-drop rb-menu"
+                    data-keep-edit=""
+                    onMouseDown={(e) => e.stopPropagation()}
+                  >
+                    {(
+                      [
+                        ['sentence', t('ribbonCaseSentence')],
+                        ['lower', t('ribbonCaseLower')],
+                        ['upper', t('ribbonCaseUpper')],
+                        ['title', t('ribbonCaseTitle')],
+                        ['toggle', t('ribbonCaseToggle')],
+                      ] as const
+                    ).map(([mode, label]) => (
+                      <button
+                        key={mode}
+                        onMouseDown={(e) => {
+                          e.preventDefault()
+                          setCaseOpen(false)
+                          onChangeCase(mode)
+                        }}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
             {fmtBtn(
               'removeFormat',
               <IconClearFormat size={18} />,
@@ -828,6 +913,7 @@ export function RibbonHomeTab({ rb }: { rb: RibbonTabCtx }) {
                       themeColors: t('ribbonThemeColorsSection'),
                       standardColors: t('ribbonStandardColors'),
                       moreColors: t('ribbonMoreColors'),
+                      eyedropper: t('ribbonEyedropper'),
                     }}
                     onPick={(hex) => {
                       if (!hex) return
@@ -849,6 +935,105 @@ export function RibbonHomeTab({ rb }: { rb: RibbonTabCtx }) {
                 </div>
               )}
             </div>
+            {onHighlight && (
+              <div className="rb-drop-wrap">
+                <button
+                  className={`rb-icon ${highlightOpen ? 'active' : ''}`}
+                  disabled={!editing && !hasSelection}
+                  data-tip={t('ribbonTextHighlight')}
+                  aria-label={t('ribbonTextHighlight')}
+                  onMouseDown={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    if (!editing && !hasSelection) return
+                    if (editing) saveEditSelection()
+                    closeSiblingPanels(e, closePanels, 'highlight')
+                    setHighlightOpen((v) => !v)
+                  }}
+                >
+                  <span className="rb-font-color">
+                    <IconTextHighlight size={14} />
+                    <span className="rb-color-underbar" style={{ background: lastHighlight }} />
+                  </span>
+                  <span className="rb-font-caret">
+                    <RbCaret />
+                  </span>
+                </button>
+                {highlightOpen && (
+                  <div
+                    className="rb-color-pop"
+                    data-keep-edit=""
+                    onMouseDown={(e) => e.stopPropagation()}
+                  >
+                    <ColorPicker
+                      value={lastHighlight}
+                      strings={{
+                        auto: t('ribbonNoHighlight'),
+                        themeColors: t('ribbonThemeColorsSection'),
+                        standardColors: t('ribbonStandardColors'),
+                        eyedropper: t('ribbonEyedropper'),
+                      }}
+                      onPick={(hex) => {
+                        if (hex) setLastHighlight(hex)
+                        onHighlight(hex)
+                        setHighlightOpen(false)
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+            {onLetterSpacing && (
+              <div className="rb-drop-wrap">
+                <button
+                  className={`rb-icon ${spacingOpen ? 'active' : ''}`}
+                  disabled={!editing && !hasSelection}
+                  data-tip={t('ribbonCharSpacing')}
+                  aria-label={t('ribbonCharSpacing')}
+                  onMouseDown={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    if (!editing && !hasSelection) return
+                    if (editing) saveEditSelection()
+                    closeSiblingPanels(e, closePanels, 'spacing')
+                    setSpacingOpen((v) => !v)
+                  }}
+                >
+                  <IconCharSpacing size={18} />
+                  <span className="rb-font-caret">
+                    <RbCaret />
+                  </span>
+                </button>
+                {spacingOpen && (
+                  <div
+                    className="rb-drop rb-menu"
+                    data-keep-edit=""
+                    onMouseDown={(e) => e.stopPropagation()}
+                  >
+                    {(
+                      [
+                        [-3, t('ribbonSpacingVeryTight')],
+                        [-1.5, t('ribbonSpacingTight')],
+                        [0, t('ribbonSpacingNormal')],
+                        [3, t('ribbonSpacingLoose')],
+                        [6, t('ribbonSpacingVeryLoose')],
+                      ] as const
+                    ).map(([pt, label]) => (
+                      <button
+                        key={pt}
+                        onMouseDown={(e) => {
+                          e.preventDefault()
+                          setSpacingOpen(false)
+                          onLetterSpacing(pt)
+                        }}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </Group>
@@ -1260,6 +1445,19 @@ export function RibbonHomeTab({ rb }: { rb: RibbonTabCtx }) {
           </span>
           <span>{t('ribbonFormatPane')}</span>
         </button>
+        {onToggleSelectionPane && (
+          <button
+            className={`rb-big ${selectionPaneOpen ? 'active' : ''}`}
+            disabled={!hasDoc}
+            onClick={onToggleSelectionPane}
+            data-tip={t('ribbonSelectionPaneTip')}
+          >
+            <span className="rb-big-icon">
+              <IconSelectionPane size={BIG} />
+            </span>
+            <span>{t('ribbonSelectionPane')}</span>
+          </button>
+        )}
       </Group>
       <div className="ribbon-sep" />
       <Group label={t('ribbonGroupArrange')}>
@@ -1328,6 +1526,31 @@ export function RibbonHomeTab({ rb }: { rb: RibbonTabCtx }) {
                   data-tip={canDistribute ? undefined : t('ribbonDistributeHint', { title: label })}
                   aria-label={
                     canDistribute ? undefined : t('ribbonDistributeHint', { title: label })
+                  }
+                  onClick={() => {
+                    setArrangeOpen(false)
+                    onArrange?.(kind)
+                  }}
+                >
+                  <span className="rb-menu-glyph">{icon}</span>
+                  {label}
+                </button>
+              ))}
+              <div className="rb-menu-div" />
+              {(
+                [
+                  ['same-w', <IconSameWidth key="i" size={20} />, t('ribbonSameWidth')],
+                  ['same-h', <IconSameHeight key="i" size={20} />, t('ribbonSameHeight')],
+                  ['same-size', <IconSameSize key="i" size={20} />, t('ribbonSameSize')],
+                ] as const
+              ).map(([kind, icon, label]) => (
+                <button
+                  key={kind}
+                  disabled={!canMatchSize}
+                  data-tip={
+                    canMatchSize
+                      ? t('ribbonSameSizeTip', { title: label })
+                      : t('ribbonSameSizeHint', { title: label })
                   }
                   onClick={() => {
                     setArrangeOpen(false)

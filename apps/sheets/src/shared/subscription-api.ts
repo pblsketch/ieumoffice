@@ -7,7 +7,9 @@
 
 import type {
   AiSubscriptionProviderId,
+  AiSubscriptionUsage,
   SubscriptionLaunchResult,
+  SubscriptionLoginMode,
   SubscriptionMeteredResult,
   SubscriptionStatusMap,
 } from '@genoffice/ai-provider/browser'
@@ -27,7 +29,10 @@ export interface SubscriptionApi {
   /** look again (both providers when none is named) and answer when done */
   recheck(providers?: AiSubscriptionProviderId[]): Promise<SubscriptionStatusMap>
   /** open the program's own sign-in */
-  login(provider: AiSubscriptionProviderId): Promise<SubscriptionLaunchResult>
+  login(
+    provider: AiSubscriptionProviderId,
+    mode?: SubscriptionLoginMode,
+  ): Promise<SubscriptionLaunchResult>
   /** run the vendor's official install command in a visible terminal window */
   install(provider: AiSubscriptionProviderId): Promise<SubscriptionLaunchResult>
   /** run the official update of a program below the app's floor, in a terminal window */
@@ -41,4 +46,9 @@ export interface SubscriptionApi {
   ): Promise<SubscriptionMeteredResult>
   /** the statuses changed (any window, any cause); returns an unsubscribe */
   onChanged(handler: (statuses: SubscriptionStatusMap) => void): () => void
+  /** usage a request outside the chat stream (a picture) reported, sent to every window; returns an unsubscribe */
+  onUsage(handler: (usage: AiSubscriptionUsage[]) => void): () => void
 }
+
+/** main → every window: (AiSubscriptionUsage[]) the usage a picture request reported, the chat chunk's `subscription-usage` shape */
+export const SUBSCRIPTION_USAGE_CHANNEL = 'ai:subscription-usage-update'

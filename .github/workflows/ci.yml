@@ -23,7 +23,10 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    # The suite grew past the 45m set at the first release: typecheck, the Rust
+    # sidecar build and the tests now take about 42m together, so the job was
+    # cut off mid-run (#609). Keep 15m of room, as the e2e job does.
+    timeout-minutes: 60
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -44,10 +47,14 @@ jobs:
         with:
           toolchain: stable
 
-      - name: Cache cargo (xlsx-sidecar)
+      - name: Cache cargo (Rust crates)
         uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
-          workspaces: apps/sheets/native/xlsx-engine
+          workspaces: |
+            apps/sheets/native/xlsx-engine
+            packages/file-parse/native/parse-sidecar
+            packages/hwp5-wasm
+            packages/print-layout/wasm
 
       # electron's postinstall downloads its binary from GitHub Releases on every
       # fresh install; a cache hit skips the download (and its 5xx flakes)
@@ -71,6 +78,24 @@ jobs:
         with:
           command: check licenses
           manifest-path: apps/sheets/native/xlsx-engine/Cargo.toml
+
+      - name: Check Rust dependency licenses (ieum-parse-sidecar)
+        uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
+        with:
+          command: check licenses
+          manifest-path: packages/file-parse/native/parse-sidecar/Cargo.toml
+
+      - name: Check Rust dependency licenses (hwp5-wasm)
+        uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
+        with:
+          command: check licenses
+          manifest-path: packages/hwp5-wasm/Cargo.toml
+
+      - name: Check Rust dependency licenses (print-layout-wasm)
+        uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
+        with:
+          command: check licenses
+          manifest-path: packages/print-layout/wasm/Cargo.toml
 
       - name: Check formatting
         env:
@@ -105,12 +130,18 @@ jobs:
           fi
           npm run check:skill-version
 
-      # Whole-tree, not changed-files: every one of the manual's 21 languages
+      # Whole-tree, not changed-files: every one of the manual's 22 languages
       # has to match the English article's structure. A language that quietly
       # falls behind is exactly what no reviewer sees, and it is invisible in a
       # diff — the change that causes it looks like an ordinary translation.
       - name: Check manual language coverage
         run: npm run check:help-langs
+
+      # Prose no type can see: an AGENTS.md or doc that still says "all N
+      # languages" after one was added is read as an instruction, and the new
+      # language is skipped. The count comes from LANGS.
+      - name: Check stated language counts
+        run: npm run check:lang-count
 
       # Keep tracked code comments and contributor-facing documentation
       # English-only; functional CJK strings and AI prompt examples are allowed.
@@ -144,6 +175,20 @@ jobs:
       - name: Install xmllint
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libxml2-utils
 
+      # `sheet apply`'s dependent-cache audit lives in the Rust xlsx-sidecar, and
+      # the CLI suite skips its sidecar-backed tests (`it.skipIf(!sidecar)`) when
+      # the binary is missing. Only the sheets package's test script builds it,
+      # and the root `test` script runs @genoffice/cli before @genoffice/sheets —
+      # so build the sidecar up front or CI's pass proves nothing about the
+      # audit. The cargo cache above holds the target dir, so this is cheap.
+      - name: Build native Rust sidecars (for file-parse, shell, and CLI tests)
+        run: |
+          npm run native:build -w @genoffice/file-parse
+          npm run native:build -w @genoffice/sheets
+          # the sidecar-gated CLI tests read the generated compatibility fixture
+          # (gitignored, normally produced by the sheets gate below)
+          npm run fixtures -w @genoffice/sheets
+
       - name: Test
         run: npm test
 
@@ -158,7 +203,9 @@ jobs:
     # 22.04, not -latest: 24.04's AppArmor hardening blocks Electron renderer
     # spawn under xvfb even with --no-sandbox and the userns sysctl lifted
     runs-on: ubuntu-22.04
-    timeout-minutes: 45
+    # A cold font install took 24m in #124; leave room for the full serial
+    # Electron suite as well as setup. Individual test timeouts stay unchanged.
+    timeout-minutes: 60
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -175,10 +222,14 @@ jobs:
         with:
           toolchain: stable
 
-      - name: Cache cargo (xlsx-sidecar)
+      - name: Cache cargo (Rust crates)
         uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
-          workspaces: apps/sheets/native/xlsx-engine
+          workspaces: |
+            apps/sheets/native/xlsx-engine
+            packages/file-parse/native/parse-sidecar
+            packages/hwp5-wasm
+            packages/print-layout/wasm
 
       # electron's postinstall downloads its binary from GitHub Releases on every
       # fresh install; a cache hit skips the download (and its 5xx flakes)

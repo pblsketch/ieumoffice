@@ -58,3 +58,11 @@ Meta viewport je záměrně vynecháno: tento dokument se vykresluje v panelu na
 `lang` sleduje jazyk uživatelského rozhraní aplikace, takže kostru, kterou vložíte, je ta, na kterou jsou vaše nástroje již nastaveny. Potom ji můžete libovolně upravovat.
 
 Položka se zobrazuje pouze v režimu úprav a pouze dokud je dokument prázdný — jakmile je tu obsah, není kam kostru _vložit_.
+
+## Upravit rovnici
+
+Zadávejte vizuálně nebo upravujte LaTeX. HTML uchová zdroj pro pozdější úpravy.
+
+Na panelu zvolte Vložit rovnici, použijte vizuální pole, šablony nebo LaTeX a potvrďte. Uloženou rovnici upravíte kliknutím v náhledu. Pro vložení do textu vyberte odstavec a vypněte samostatný řádek; rovnice se přidá na konec odstavce.
+
+Výraz, který sazba nezvládne, se neztratí: rovnice si ponechá zdroj LaTeX a v dokumentu zobrazí surový text, takže ji lze znovu otevřít a opravit.

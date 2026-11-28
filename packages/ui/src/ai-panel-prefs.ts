@@ -20,15 +20,19 @@ export interface AiPanelPrefs {
   /** Body text size in px, used only when `fontSize` is `'custom'` */
   readonly customFontSize: number
   readonly spellcheck: boolean
-  /** Off: every new document opens with the panel collapsed, ignoring the remembered state */
+  /** Off: every document opens with the panel collapsed, ignoring the remembered state */
   readonly openInNewDocs: boolean
-  /** Off: the panel and its rail button are hidden and new documents never open
-   * it, the way Word treats the Copilot pane — an explicit Ask-AI action (ribbon,
-   * context menu, shortcut) still opens the panel for the current document, and
-   * turning the switch off closes one that was already open (for users who want
-   * a plain editor without a broken Ask-AI) */
+  /** Off: the panel and its rail button are hidden, the way Word treats the
+   * Copilot pane — an explicit Ask-AI action (ribbon, context menu, shortcut)
+   * still opens the panel for the current document, and turning it off closes
+   * one that was already open (for users who want a plain editor without a
+   * broken Ask-AI) */
   readonly showAiSidebar: boolean
 }
+
+/** What the AI panel should do when a document view starts. */
+export const AI_PANEL_STARTS = ['off', 'collapsed', 'last'] as const
+export type AiPanelStart = (typeof AI_PANEL_STARTS)[number]
 
 export const DEFAULT_AI_PANEL_PREFS: AiPanelPrefs = {
   side: 'left',
@@ -37,6 +41,19 @@ export const DEFAULT_AI_PANEL_PREFS: AiPanelPrefs = {
   spellcheck: true,
   openInNewDocs: true,
   showAiSidebar: true,
+}
+
+/** The one choice the settings screen shows, read from the two switches it stores. */
+export function aiPanelStartOf(prefs: AiPanelPrefs): AiPanelStart {
+  if (prefs.showAiSidebar === false) return 'off'
+  return prefs.openInNewDocs === false ? 'collapsed' : 'last'
+}
+
+/** The stored switch values for one start choice (no new settings-file field). */
+export function aiPanelStartPatch(
+  start: AiPanelStart,
+): Pick<AiPanelPrefs, 'showAiSidebar' | 'openInNewDocs'> {
+  return { showAiSidebar: start !== 'off', openInNewDocs: start === 'last' }
 }
 
 export function isAiFontSize(value: unknown): value is AiFontSize {

@@ -90,6 +90,8 @@
   --slides-select-hover-bg: color-mix(in srgb, var(--accent) 6%, var(--surface));
   --slides-select-active-bg: var(--accent-soft);
   --slides-cell-focus-bg: color-mix(in srgb, var(--accent) 8%, var(--surface));
+  --slides-table-sel-fill: rgb(196 62 28 / 16%);
+  --slides-table-sel-stroke: #c43e1c;
   --slides-ok: #2e9e44;
   --slides-error: #ef4444;
   --slides-error-bg: #fdecec;
@@ -184,6 +186,8 @@
   --slides-toast-ok: #34c759;
   --slides-mask-bg: rgb(0 0 0 / 50%);
   --slides-copilot-grad: linear-gradient(135deg, #6a5cff 0%, #2b88f8 55%, #29c3a6 120%);
+  /* the gradient is the same in both themes, so its ink is too */
+  --slides-on-gradient: #fff;
   --slides-shadow-badge: 0 2px 6px rgb(74 92 255 / 35%);
   --slides-shadow-badge-soft: 0 2px 6px rgb(74 92 255 / 25%);
   --slides-shadow-menu: 0 8px 24px rgb(0 0 0 / 18%);
@@ -196,7 +200,7 @@
   --slides-shadow-tip: 0 4px 6px rgb(0 0 0 / 10%);
   --slides-shadow-toast: 0 4px 16px rgb(0 0 0 / 18%);
   --slides-shadow-copilot: 4px 0 16px rgb(82 41 31 / 5%);
-  --slides-shadow-composer: 0 6px 30px rgb(0 0 0 / 8%);
+  --slides-shadow-composer: 0 1px 3px rgb(0 0 0 / 8%);
   --slides-shadow-stage: 0 2px 14px rgb(0 0 0 / 18%);
   --slides-shadow-reading: 0 10px 36px rgb(0 0 0 / 50%);
 }
@@ -204,6 +208,8 @@
 [data-theme='dark'] {
   --accent: #e8663f;
   --accent-dark: #d4552f;
+  /* the dark accent is light: white on it fell to 3.3:1 */
+  --slides-on-accent: #141414;
   --accent-soft: #43261d;
   --slides-statusbar-bg: #252525;
   --slides-rail-bg: #252525;
@@ -224,6 +230,8 @@
   --slides-select-hover-bg: color-mix(in srgb, var(--accent) 12%, var(--surface));
   --slides-select-active-bg: var(--accent-soft);
   --slides-cell-focus-bg: color-mix(in srgb, var(--accent) 14%, var(--surface));
+  --slides-table-sel-fill: rgb(232 102 63 / 22%);
+  --slides-table-sel-stroke: #e8663f;
   --slides-ok: #58b380;
   --slides-error: #e57373;
   --slides-error-bg: rgb(229 115 115 / 12%);
@@ -253,6 +261,7 @@
   :root:not([data-theme='light']):not([data-theme='dark']) {
     --accent: #e8663f;
     --accent-dark: #d4552f;
+    --slides-on-accent: #141414;
     --accent-soft: #43261d;
     --slides-statusbar-bg: #252525;
     --slides-rail-bg: #252525;
@@ -273,6 +282,8 @@
     --slides-select-hover-bg: color-mix(in srgb, var(--accent) 12%, var(--surface));
     --slides-select-active-bg: var(--accent-soft);
     --slides-cell-focus-bg: color-mix(in srgb, var(--accent) 14%, var(--surface));
+    --slides-table-sel-fill: rgb(232 102 63 / 22%);
+    --slides-table-sel-stroke: #e8663f;
     --slides-ok: #58b380;
     --slides-error: #e57373;
     --slides-error-bg: rgb(229 115 115 / 12%);
@@ -314,7 +325,7 @@
 }
 
 :root:lang(ko) {
-  --ui-cjk: 'Apple SD Gothic Neo', 'Malgun Gothic';
+  --ui-cjk: 'UI Pretendard', 'Apple SD Gothic Neo', 'Malgun Gothic';
 }
 
 :root:lang(zh-TW) {
@@ -603,7 +614,7 @@ button {
   width: 22px;
   height: 22px;
   border-radius: 7px;
-  color: var(--slides-on-accent);
+  color: var(--slides-on-gradient);
   background: var(--slides-copilot-grad);
   box-shadow: var(--slides-shadow-badge);
 }
@@ -1220,6 +1231,9 @@ button {
   background: var(--surface);
   border-right: 1px solid var(--border);
   overflow-y: auto;
+  /* keep the scrollbar lane even when nothing scrolls: App sizes the thumbnails
+     to the width left beside it, so a scrollbar never covers their right edge */
+  scrollbar-gutter: stable;
   padding: 10px;
 }
 
@@ -1287,6 +1301,21 @@ body.vib .slide-list {
 
 .thumb.active {
   border-color: var(--accent);
+}
+
+/* A slide the AI panel's last run changed: a small dot in the corner, screen only
+   (the thumbnail picture itself is drawn from the deck and never carries it) */
+.thumb.thumb-ai-changed::after {
+  content: '';
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-ai-changed-line);
+  box-shadow: 0 0 0 1.5px var(--slides-paper);
+  pointer-events: none;
 }
 
 .thumb-num {
@@ -1751,14 +1780,6 @@ body.vib .slide-list {
 .ai-header-btn:hover {
   background: var(--hover);
   color: var(--text);
-}
-
-.ai-header-btn.ai-undo-btn {
-  width: auto;
-  gap: 4px;
-  padding: 0 7px;
-  font: inherit;
-  font-size: 12px;
 }
 
 .ai-header-btn:disabled {
@@ -2503,46 +2524,6 @@ body.vib .slide-list {
   cursor: default;
 }
 
-/* Hairline before the roll-back action; hidden unless an icon action precedes it */
-.ai-rollback-sep {
-  display: none;
-  width: 1px;
-  height: 14px;
-  align-self: center;
-  background: var(--border);
-}
-
-.ai-msg-tool-btn ~ .ai-rollback-sep {
-  display: block;
-}
-
-/* Quiet roll-back in the message toolbar (after copy/regenerate): dim at rest, solid on hover */
-.ai-rollback-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  flex-shrink: 0;
-  height: 30px;
-  border: none;
-  background: none;
-  color: var(--text-dim);
-  font-size: 12px;
-  font-family: inherit;
-  padding: 0 8px;
-  border-radius: 6px;
-  cursor: pointer;
-}
-
-.ai-rollback-btn:hover:not(:disabled) {
-  color: var(--text);
-  background: var(--hover);
-}
-
-.ai-rollback-btn:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
 .ai-msg-tool-btn:focus-visible {
   outline: none;
   box-shadow: 0 0 0 3px var(--slides-focus-ring-blue);
@@ -2561,8 +2542,14 @@ body.vib .slide-list {
 
 .ai-msg-error {
   margin-top: 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--danger-border);
+  border-radius: var(--radius-8);
+  background: var(--danger-bg);
   color: var(--slides-ai-error);
   font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
 }
 
 .ai-composer {
@@ -3032,12 +3019,13 @@ body.vib .slide-list {
   padding: 1px 7px;
   border-radius: 999px;
   background: var(--active-bg);
-  font-size: 10.5px;
-  color: var(--color-text-secondary);
+  font-size: 11px;
+  /* on the active fill the panel grey fell to 3.7:1 in dark */
+  color: var(--text-secondary);
 }
 
 .ai-tpl-card-date {
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--color-text-tertiary);
 }
 
@@ -3052,7 +3040,7 @@ body.vib .slide-list {
 
 .ai-tpl-foot-note {
   margin: 0;
-  font-size: 11.5px;
+  font-size: 12px;
   line-height: 1.5;
   color: var(--color-text-secondary);
 }
@@ -5481,6 +5469,87 @@ body.vib .slide-list {
   cursor: default;
 }
 
+/* ── Selection pane (reuses the comments-pane skeleton) ───────────────── */
+
+.sel-pane .comments-list {
+  padding: 8px;
+}
+
+.sel-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: 5px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.sel-row:hover {
+  background: var(--hover);
+}
+
+.sel-row.selected {
+  background: var(--accent-soft);
+}
+
+.sel-row-kind {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.sel-row-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 12.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sel-row.hidden .sel-row-name,
+.sel-row.hidden .sel-row-kind {
+  color: var(--text-dim);
+  font-style: italic;
+}
+
+.sel-row-input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: 12.5px;
+  padding: 1px 4px;
+  border: 1px solid var(--border-strong);
+  border-radius: 3px;
+  background: var(--surface);
+  color: var(--text);
+}
+
+.sel-row-eye {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-self: center;
+  border: none;
+  background: none;
+  padding: 2px;
+  border-radius: 3px;
+  color: var(--text-dim);
+  cursor: pointer;
+  visibility: hidden;
+}
+
+.sel-row:hover .sel-row-eye,
+.sel-row.selected .sel-row-eye,
+.sel-row.hidden .sel-row-eye {
+  visibility: visible;
+}
+
+.sel-row-eye:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+
 /* ── Canvas animation preview overlay (covers .stage-rel) ──────────────── */
 
 .anim-preview-overlay {
@@ -5503,6 +5572,10 @@ body.vib .slide-list {
   border-radius: 6px;
   box-shadow: var(--slides-shadow-menu);
   padding: 4px;
+  /* Never taller than the viewport: the body scrolls instead (flyouts are fixed-positioned
+     in ContextMenu.tsx so this scroll box cannot clip them) */
+  max-height: calc(100vh - 8px);
+  overflow-y: auto;
 }
 
 .shape-gallery-pop {
@@ -5562,18 +5635,15 @@ body.vib .slide-list {
   background: var(--hover);
 }
 
+/* First-frame placement only; the layout effect re-anchors the flyout as position: fixed */
 .ctx-menu.ctx-submenu {
   position: absolute;
   left: 100%;
   top: -5px;
   margin-left: 2px;
-}
-
-.ctx-menu.ctx-submenu.ctx-submenu-left {
-  left: auto;
-  right: 100%;
-  margin-left: 0;
-  margin-right: 2px;
+  /* A wheel over the flyout must not chain into the parent scroll box, whose onScroll
+     would dismiss this flyout while the pointer is still over it */
+  overscroll-behavior: contain;
 }
 
 .ctx-swatches {
@@ -6104,7 +6174,8 @@ body.vib .slide-list {
 }
 
 .notes-pane textarea::placeholder {
-  color: var(--text-tertiary);
+  /* the notes pane sits on the grey canvas, where the tertiary grey reads too faint */
+  color: var(--text-secondary);
 }
 
 /* Long notes must stay readable at any pane height: native wheel scrolling
@@ -7547,12 +7618,35 @@ body.show-curtain::after {
   border-radius: 2px;
 }
 
+/* drag handle between the frame and the side column (PresenterView's splitter):
+ * overlaps the column's border and takes no width of its own; cursor-only
+ * affordance, with a ring while it has keyboard focus */
+.presenter .pv-splitter {
+  flex: none;
+  width: 8px;
+  margin: 0 -4px;
+  position: relative;
+  z-index: 1;
+  cursor: col-resize;
+  background: transparent;
+}
+
+.presenter .pv-splitter:focus {
+  outline: none;
+}
+
+.presenter .pv-splitter:focus-visible {
+  outline: 2px solid var(--slides-pv-accent);
+  outline-offset: -2px;
+}
+
+/* width comes from PresenterView (presenter-layout.ts); 340px is the default */
 .presenter .pv-side {
   width: 340px;
   flex: none;
   box-sizing: border-box;
   padding: 12px 14px;
-  border-left: 1px solid var(--slides-show-line-10);
+  border-inline-start: 1px solid var(--slides-show-line-10);
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -7874,6 +7968,13 @@ body.show-curtain::after {
   min-width: 0;
 }
 
+/* a validation hint under a dialog's fields (Custom Slide Size) */
+.modal .dlg-note {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--danger);
+}
+
 /* Override .modal label / .modal input full-row styles: checkbox/radio rows lay out inline */
 .modal label.dlg-radio,
 .modal label.dlg-check {
@@ -7950,524 +8051,6 @@ body.show-curtain::after {
   justify-content: center;
   color: var(--text-dim);
   font-size: 13px;
-}
-
-/* AI survey card */
-/* Clarify card docked in the composer slot */
-.ai-clarify-card {
-  display: flex;
-  flex-direction: column;
-  box-sizing: border-box;
-  width: 100%;
-  /* The card sits outside the chat scroll area, so without a height clamp a
-     long option list pushes the Skip/next/submit row below the window edge
-     on short windows — leaving no reachable way to advance the wizard (r58).
-     Clamp the card and let the question block scroll instead. */
-  max-height: min(560px, 62vh);
-  padding: 12px 16px;
-  font-size: 16px;
-  color: var(--color-text-primary);
-  background: var(--color-bg-page);
-  border: 1px solid var(--color-border-default);
-  border-radius: 12px;
-  animation: ai-clarify-rise 220ms cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-@keyframes ai-clarify-rise {
-  from {
-    opacity: 0;
-    transform: translateY(8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-/* Header band bleeding to the card edges */
-.ai-clarify-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin: -12px -16px 16px;
-  padding: 12px 16px;
-  background: var(--color-bg-subtle);
-  border-bottom: 1px solid var(--color-border-default);
-  border-radius: 12px 12px 0 0;
-}
-
-.ai-clarify-head-label {
-  flex: 1;
-  font-size: 16px;
-  font-weight: 400;
-  color: var(--color-text-primary);
-  line-height: 1.35;
-  word-break: break-word;
-}
-
-/* "N / M" progress + 22px pager arrows */
-.ai-clarify-head-progress {
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--color-text-tertiary);
-  font-variant-numeric: tabular-nums;
-  letter-spacing: 0.01em;
-  min-width: 4em;
-  text-align: center;
-}
-
-.ai-clarify-head-arrows {
-  display: inline-flex;
-  gap: 4px;
-}
-
-.ai-clarify-head-arrow {
-  width: 22px;
-  height: 22px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  background: transparent;
-  border: none;
-  border-radius: 6px;
-  color: var(--color-text-tertiary);
-  font-size: 17px;
-  line-height: 1;
-  cursor: pointer;
-  transition:
-    background 150ms cubic-bezier(0.4, 0, 0.2, 1),
-    color 150ms cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.ai-clarify-head-arrow:hover:not(:disabled) {
-  background: var(--color-bg-page);
-  color: var(--color-text-primary);
-}
-
-.ai-clarify-head-arrow:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 2px var(--slides-focus-ring-soft);
-}
-
-.ai-clarify-head-arrow:disabled {
-  opacity: 0.3;
-  cursor: default;
-}
-
-/* One question at a time; directional slide (240ms / cubic-bezier(.16,1,.3,1)) */
-.ai-clarify-q {
-  min-height: 140px;
-  /* scroll region when the clamped card cannot fit the whole option list;
-     head and actions stay pinned either side of it */
-  flex: 1 1 auto;
-  overflow-y: auto;
-  margin-bottom: 16px;
-}
-
-.ai-clarify-q.slide-next {
-  animation: ai-clarify-slide-next 240ms cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.ai-clarify-q.slide-prev {
-  animation: ai-clarify-slide-prev 240ms cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-@keyframes ai-clarify-slide-next {
-  from {
-    opacity: 0;
-    transform: translateX(16px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
-
-@keyframes ai-clarify-slide-prev {
-  from {
-    opacity: 0;
-    transform: translateX(-16px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
-
-.ai-clarify-question-head {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  margin: 0 0 8px;
-}
-
-.ai-clarify-label {
-  flex: 1;
-  min-width: 0;
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--color-text-primary);
-  margin: 0;
-  line-height: 1.4;
-}
-
-.ai-clarify-multi-badge {
-  flex-shrink: 0;
-  margin-top: 2px;
-  padding: 2px 7px;
-  color: var(--color-text-secondary);
-  background: var(--color-bg-subtle);
-  border: 1px solid var(--color-border-strong);
-  border-radius: 999px;
-  font-size: 10px;
-  font-weight: 600;
-  line-height: 1.4;
-  letter-spacing: 0.03em;
-  white-space: nowrap;
-}
-
-.ai-clarify-desc {
-  font-size: 14px;
-  color: var(--color-text-secondary);
-  margin: 0 0 8px;
-  line-height: 1.5;
-}
-
-/* Options: column of DS choice rows, never wrapping */
-.ai-clarify-opts {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin-bottom: 8px;
-}
-
-.ai-clarify-opt {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  background: transparent;
-  border: 1px solid var(--color-border-default);
-  border-radius: 8px;
-  cursor: pointer;
-  font-family: inherit;
-  text-align: left;
-  transition:
-    background 150ms cubic-bezier(0.4, 0, 0.2, 1),
-    box-shadow 150ms cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.ai-clarify-opt:hover {
-  background: var(--color-bg-subtle);
-}
-
-.ai-clarify-opt:active {
-  filter: brightness(0.96);
-}
-
-.ai-clarify-opt:focus-visible {
-  outline: none;
-  box-shadow: inset 0 0 0 2px var(--slides-focus-ring-strong);
-}
-
-.ai-clarify-opt-label {
-  flex: 1;
-  min-width: 0;
-  font-size: 14px;
-  font-weight: 500;
-  line-height: 1.4;
-  color: var(--color-text-primary);
-}
-
-/* 16px radio/checkbox glyph; selection is neutral black */
-.ai-clarify-opt-box {
-  flex-shrink: 0;
-  box-sizing: border-box;
-  width: 16px;
-  height: 16px;
-  border: 2px solid var(--color-border-strong);
-  border-radius: 50%;
-  background: var(--color-bg-page);
-  transition: all 150ms cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.ai-clarify-opt.multi .ai-clarify-opt-box {
-  border-radius: 4px;
-}
-
-/* Composer variant: single-select radios are visually removed — selection reads
-   from the row fill; a hover-revealed advance arrow appears on the right */
-.ai-clarify-opt:not(.multi) .ai-clarify-opt-box {
-  display: none;
-}
-
-.ai-clarify-opt-arrow {
-  margin-left: auto;
-  align-self: center;
-  color: var(--color-text-secondary);
-  opacity: 0;
-  transition: opacity 150ms cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.ai-clarify-opt:hover .ai-clarify-opt-arrow {
-  opacity: 1;
-}
-
-.ai-clarify-opt-on {
-  background: var(--color-bg-subtle);
-  border-color: var(--color-border-default);
-}
-
-.ai-clarify-opt-on .ai-clarify-opt-box {
-  border-color: var(--color-btn-primary);
-}
-
-.ai-clarify-opt-on:not(.multi) .ai-clarify-opt-box {
-  background: var(--color-btn-primary);
-  box-shadow: inset 0 0 0 3px var(--color-bg-page);
-}
-
-.ai-clarify-opt-on.multi .ai-clarify-opt-box {
-  background-color: var(--color-btn-primary);
-  background-image: var(--slides-choice-check);
-  background-size: 12px;
-  background-position: center;
-  background-repeat: no-repeat;
-}
-
-/* Free-text answer input */
-.ai-clarify-other {
-  width: 100%;
-  min-height: 38px;
-  padding: 6px 12px;
-  font-family: inherit;
-  font-size: 14px;
-  line-height: 21px;
-  color: var(--color-text-primary);
-  background: var(--color-bg-page);
-  border: 1px solid var(--color-border-default);
-  border-radius: 8px;
-  box-sizing: border-box;
-  transition: border-color 150ms cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.ai-clarify-other::placeholder {
-  color: var(--color-text-tertiary);
-}
-
-.ai-clarify-other:focus {
-  outline: none;
-  border-color: var(--color-btn-primary);
-  box-shadow: 0 0 0 3px var(--slides-focus-ring);
-}
-
-/* Footer actions */
-.ai-clarify-actions {
-  display: flex;
-  justify-content: flex-end;
-  align-items: center;
-  gap: 8px;
-  margin-top: 8px;
-  flex-wrap: wrap;
-}
-
-/* Multi-select foot: "{n} selected" left, actions right */
-.ai-clarify-actions.multi {
-  justify-content: space-between;
-  flex-wrap: nowrap;
-  margin-top: 12px;
-}
-
-.ai-clarify-count {
-  font-size: 14px;
-  color: var(--color-text-tertiary);
-  font-variant-numeric: tabular-nums;
-}
-
-.ai-clarify-actions-btns {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  margin-left: auto;
-}
-
-/* Explicit multi-select advance action: text avoids looking like an unlabeled pager. */
-.ai-clarify-next {
-  min-width: 82px;
-  height: 36px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 0 14px;
-  font-family: inherit;
-  background: var(--color-btn-primary);
-  color: var(--color-btn-primary-text);
-  border: none;
-  border-radius: 8px;
-  font-size: 14px;
-  font-weight: 600;
-  white-space: nowrap;
-  cursor: pointer;
-  transition: opacity 150ms cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.ai-clarify-next-arrow {
-  font-size: 16px;
-  font-weight: 400;
-  line-height: 1;
-}
-
-.ai-clarify-next:hover:not(:disabled) {
-  opacity: 0.85;
-}
-
-.ai-clarify-next:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 3px var(--slides-focus-ring-soft);
-}
-
-.ai-clarify-next:disabled {
-  opacity: 0.38;
-  cursor: default;
-}
-
-.ai-clarify-skip {
-  height: 36px;
-  padding: 0 14px;
-  font-family: inherit;
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--color-text-secondary);
-  background: transparent;
-  border: 1px solid var(--color-border-default);
-  border-radius: 8px;
-  white-space: nowrap;
-  cursor: pointer;
-  transition:
-    border-color 150ms cubic-bezier(0.4, 0, 0.2, 1),
-    color 150ms cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.ai-clarify-skip:hover {
-  border-color: var(--color-border-strong);
-  color: var(--color-text-primary);
-}
-
-.ai-clarify-submit {
-  height: 36px;
-  padding: 0 16px;
-  font-family: inherit;
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--color-btn-primary-text);
-  background: var(--color-btn-primary);
-  border: 1px solid transparent;
-  border-radius: 8px;
-  white-space: nowrap;
-  cursor: pointer;
-  transition: filter 150ms cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.ai-clarify-submit:hover:not(:disabled) {
-  filter: brightness(0.92);
-}
-
-.ai-clarify-submit:active:not(:disabled) {
-  filter: brightness(0.88);
-  transform: scale(0.98);
-}
-
-.ai-clarify-submit:disabled {
-  opacity: 0.38;
-  cursor: default;
-}
-
-.ai-clarify-skip:focus-visible,
-.ai-clarify-submit:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 3px var(--slides-focus-ring);
-}
-
-/* Answered receipt: the submitted Q/A shown as a right-aligned user-reply card
-   (answered state) */
-.ai-clarify-answered {
-  align-self: flex-end;
-  margin: 8px 0 0 auto;
-  max-width: 420px;
-  padding: 12px 16px;
-  background: var(--color-bg-subtle);
-  border: none;
-  border-radius: 12px;
-}
-
-.ai-clarify-answered-row {
-  margin: 0 0 8px;
-}
-
-.ai-clarify-answered-row:last-child {
-  margin-bottom: 0;
-}
-
-.ai-clarify-answered-q {
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--color-text-primary);
-  margin: 0 0 2px;
-}
-
-.ai-clarify-answered-a {
-  font-size: 16px;
-  font-weight: 400;
-  color: var(--color-text-secondary);
-  margin: 0;
-}
-
-/* Pending marker chip left in the stream while the card is docked */
-.ai-clarify-chip {
-  align-self: flex-start;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 12px;
-  background: var(--color-bg-subtle);
-  border: 1px solid var(--color-border-default);
-  border-radius: 999px;
-  font-size: 14px;
-  color: var(--color-text-secondary);
-  max-width: 100%;
-}
-
-.ai-clarify-chip-eyebrow {
-  font-weight: 500;
-  color: var(--color-text-primary);
-}
-
-.ai-clarify-chip-arrow {
-  font-weight: 700;
-  color: var(--color-text-secondary);
-  animation: ai-clarify-chip-bounce 1.6s ease-in-out infinite;
-}
-
-@keyframes ai-clarify-chip-bounce {
-  0%,
-  100% {
-    transform: translateY(-1.5px);
-  }
-  50% {
-    transform: translateY(1.5px);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .ai-clarify-card,
-  .ai-clarify-chip-arrow,
-  .ai-clarify-q.slide-next,
-  .ai-clarify-q.slide-prev {
-    animation: none;
-  }
 }
 
 /* ================= Generation progress card (deck-progress-card) ================= */
@@ -9317,6 +8900,46 @@ body.show-curtain::after {
 .master-close-btn:hover {
   background: var(--slides-on-accent-hover);
 }
+/* Insert controls (text box / shapes gallery) in the master bar; the accent
+ * background needs its own on-accent tokens, same as the close button */
+.master-tools {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.master-tool {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--slides-on-accent);
+  cursor: pointer;
+}
+.master-tool:hover,
+.master-tool.active {
+  background: var(--slides-on-accent-hover);
+}
+.master-tool-anchor {
+  position: relative;
+  display: flex;
+}
+.master-tool-drop {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 60;
+  padding: 6px;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: var(--slides-shadow-drop);
+  color: var(--text);
+}
 .master-body {
   flex: 1;
   display: flex;
@@ -9419,6 +9042,17 @@ body.show-curtain::after {
   width: 100%;
   height: 100%;
   border: 0;
+}
+.print-schematic-pane {
+  height: 100%;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  padding: 10px;
+  overflow: auto;
+}
+.print-options > * {
+  flex-shrink: 0;
 }
 .print-preview-empty {
   height: 100%;
@@ -9632,4 +9266,160 @@ body.show-curtain::after {
   background: var(--bullet-img) center / contain no-repeat;
   user-select: none;
   pointer-events: none;
+}
+
+/* The default fonts line under the template cards (Settings › General, decision 0115) */
+.ai-tpl-fonts-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--color-border-default);
+}
+
+.ai-tpl-fonts-text {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 12px;
+  color: var(--color-text-primary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ai-tpl-fonts-row + .ai-tpl-foot {
+  border-top: none;
+  padding-top: 4px;
+}
+
+.comment-thread {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.comment-replies {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-left: 14px;
+  border-left: 2px solid var(--border);
+}
+
+.comment-reply-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-left: 14px;
+}
+
+.comment-reply-input {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-6);
+  background: var(--surface);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 12px;
+  resize: vertical;
+}
+
+.comment-reply-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.comment-reply-btn {
+  align-self: flex-start;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-6);
+  background: var(--surface);
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.comment-reply-btn:hover {
+  background: var(--hover);
+  color: var(--text-primary);
+}
+
+/* Slides AI deck structure chips & speaker-notes separation toggle */
+.ai-deck-options {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-bottom: 7px;
+}
+
+.ai-deck-struct-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.ai-deck-struct-label {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+.ai-deck-struct-locked {
+  font-size: 11px;
+  color: var(--color-text-tertiary);
+}
+
+.ai-deck-struct-chips {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.ai-deck-struct-chip {
+  padding: 2px 8px;
+  border: 1px solid var(--color-border-default);
+  border-radius: 999px;
+  background: var(--color-bg-page);
+  color: var(--color-text-secondary);
+  font: inherit;
+  font-size: 11px;
+  line-height: 1.4;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.ai-deck-struct-chip:hover {
+  background: var(--color-bg-subtle);
+  color: var(--color-text-primary);
+}
+
+.ai-deck-struct-chip[aria-pressed='true'] {
+  border-color: var(--accent);
+  background: var(--color-bg-subtle);
+  color: var(--color-text-primary);
+  font-weight: 600;
+}
+
+.ai-deck-notes-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+
+.ai-deck-notes-toggle input[type='checkbox'] {
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
 }

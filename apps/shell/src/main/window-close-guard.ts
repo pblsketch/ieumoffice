@@ -9,6 +9,8 @@ import { requestHtmlClose } from '../../../html/src/main/html-main'
 import { requestMindmapClose } from '../../../mindmap/src/main/mindmap-main'
 import { requestHwpClose } from '../../../hwp/src/main/hwp-main'
 import { requestEpubClose } from '../../../epub/src/main/epub-main'
+import { requestDiagramClose } from '../../../diagram/src/main/diagram-main'
+import { requestWhiteboardClose } from '../../../whiteboard/src/main/whiteboard-main'
 import type { TabManager } from './tab-manager'
 
 /** what the shell window's close guard reports back */
@@ -63,8 +65,11 @@ export function installShellCloseGuard(
     const dirtyMarkdown = manager.dirtyMarkdownTabs()
     const dirtyHtml = manager.dirtyHtmlTabs()
     const dirtyMindmap = manager.dirtyMindmapTabs()
-    const dirtyHwp = manager.dirtyHwpTabs()
+    // a clean document with an open memo editor must be asked too: its text is not saved
+    const dirtyHwp = manager.dirtyOrMemoHwpTabs()
     const dirtyEpub = manager.dirtyEpubTabs()
+    const dirtyDiagram = manager.dirtyDiagramTabs()
+    const dirtyWhiteboard = manager.dirtyWhiteboardTabs()
     const dirtySlides = manager.dirtySlidesTabs()
     const docsTabs = manager.docsTabs()
     // Nothing to protect, so let this close event through untouched. Cancelling
@@ -80,6 +85,8 @@ export function installShellCloseGuard(
       dirtyMindmap.length === 0 &&
       dirtyHwp.length === 0 &&
       dirtyEpub.length === 0 &&
+      dirtyDiagram.length === 0 &&
+      dirtyWhiteboard.length === 0 &&
       dirtySlides.length === 0 &&
       docsTabs.length === 0
     ) {
@@ -124,6 +131,14 @@ export function installShellCloseGuard(
           for (const tab of dirtyEpub) {
             manager.activateTab(tab.id)
             if (!(await requestEpubClose(tab.webContents, win))) return true
+          }
+          for (const tab of dirtyDiagram) {
+            manager.activateTab(tab.id)
+            if (!(await requestDiagramClose(tab.webContents, win))) return true
+          }
+          for (const tab of dirtyWhiteboard) {
+            manager.activateTab(tab.id)
+            if (!(await requestWhiteboardClose(tab.webContents, win))) return true
           }
           for (const tab of dirtySlides) {
             manager.activateTab(tab.id)

@@ -6,7 +6,7 @@ O GenOffice fala o Model Context Protocol, por isso um agente de programação c
 
 É em **Configurações ▸ Integrações** que isto se faz. O painel tem duas metades, e pode usar uma ou as duas.
 
-**A skill.** Uma linha por cada agente de programação encontrado nesta máquina — Claude Code, Codex, Cursor, Gemini CLI, Copilot CLI, OpenCode, Windsurf —, cada uma com **Instalar**, **Atualizar** e **Desinstalar**, a que se juntam **Instalar em outra pasta…**, **Baixar skill (zip)** e **Copiar caminho**. Se o seu assistente não estiver na lista, indique ao GenOffice uma pasta de onde ele lê o `SKILL.md`, ou grave o zip e deixe o assistente instalá-lo. A skill e o MCP podem andar lado a lado: o assistente escolhe um dos dois, e fazem exatamente as mesmas coisas.
+**A skill.** Uma linha por cada agente de programação encontrado nesta máquina — Claude Code, a pasta compartilhada `~/.agents` (lida pelo Codex, Cursor, Gemini CLI, Copilot CLI e OpenCode), Windsurf —, cada uma com **Instalar**, **Atualizar** e **Desinstalar**, a que se juntam **Instalar em outra pasta…**, **Baixar skill (zip)** e **Copiar caminho**. Se o seu assistente não estiver na lista, indique ao GenOffice uma pasta de onde ele lê o `SKILL.md`, ou grave o zip e deixe o assistente instalá-lo. A skill e o MCP podem andar lado a lado: o assistente escolhe um dos dois, e fazem exatamente as mesmas coisas. Uma cópia instalada antes na pasta própria de uma dessas cinco ferramentas continua listada sob a linha da pasta compartilhada e segue sendo atualizada; quando a pasta compartilhada tiver a skill, você pode remover essa cópia.
 
 **MCP.** São oferecidas duas vias: **Iniciado pelo assistente (recomendado)**, em que acrescenta a configuração apresentada ao seu cliente e o assistente arranca o servidor sozinho, e o **Servidor HTTP local**, que a aplicação executa por si. De qualquer forma, o assistente acaba a falar com o GenOffice e nunca escreve um comando.
 
@@ -58,7 +58,7 @@ Cada comando é uma ferramenta. As interessantes:
 Um pedido que chega do comando `ieumoffice` ou de um cliente MCP não foi escrito por si na aplicação, por isso o GenOffice trata-o com cuidado.
 
 - **A pesquisa** funciona sempre e é gratuita por predefinição. A chave de um fornecedor de pesquisa só é usada se tiver selecionado uma.
-- **Gerar uma imagem** precisa da chave de um fornecedor de imagens. Nesta versão, uma assinatura não gera imagens.
+- **Gerar uma imagem** segue a opção de geração de imagens das configurações. O padrão, Plano do ChatGPT (programa Codex), usa o seu plano do ChatGPT pelo programa Codex e **não é usado a menos que você permita** (veja abaixo). Caso contrário, usa a chave de um fornecedor de imagens configurado. Um modelo indicado pelo agente é usado quando esse caminho o oferece.
 - **Descrever uma imagem** usa um fornecedor com chave quando há um configurado. A sua assinatura do Claude ou do Codex **não é usada a menos que o autorize**.
 - **Vídeo e áudio** precisam de um fornecedor com chave que suporte vídeo.
 

@@ -242,6 +242,41 @@
   color: var(--hwp-error);
 }
 
+/* Edits a run left undone, under its reply */
+.ai-unfinished {
+  align-self: stretch;
+  margin-top: 8px;
+  padding: 6px 10px;
+  border: 1px solid var(--hwp-error-border);
+  border-radius: 8px;
+  background: var(--danger-bg);
+  color: var(--hwp-error);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.ai-unfinished-summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.ai-unfinished-summary:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--hwp-focus-ring);
+  border-radius: 4px;
+}
+
+.ai-unfinished-note {
+  margin: 6px 0 4px;
+  color: var(--color-text-primary);
+}
+
+.ai-unfinished-list {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--color-text-primary);
+}
+
 .ai-md p,
 .ai-md ul,
 .ai-md ol {
@@ -781,7 +816,7 @@
   border: 1px solid var(--color-border-default);
   border-radius: var(--radius-16);
   background: var(--color-bg-page);
-  box-shadow: 0 6px 30px var(--hwp-shadow-soft);
+  box-shadow: 0 1px 3px var(--hwp-shadow-soft);
   transition:
     border-color var(--transition-fast),
     box-shadow var(--transition-fast);
@@ -884,7 +919,7 @@
 
 .ai-retry-btn {
   border: 1px solid var(--hwp-error-border);
-  border-radius: 4px;
+  border-radius: var(--radius-6);
   background: none;
   padding: 1px 8px;
   font-size: 12px;
@@ -894,160 +929,6 @@
 
 .ai-retry-btn:hover {
   background: var(--hwp-error-bg);
-}
-
-/* ---- what a run changed in the document, and the button that takes it back ---- */
-
-.ai-changes {
-  margin-top: 8px;
-  border: 1px solid var(--color-border-default);
-  border-radius: var(--radius-8);
-  background: var(--color-bg-subtle);
-  font-size: 12px;
-}
-
-.ai-changes-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 6px 8px 6px 10px;
-}
-
-.ai-changes-title {
-  font-weight: 600;
-  color: var(--color-text-secondary);
-}
-
-.ai-changes-revert {
-  flex: none;
-  border: 1px solid var(--color-border-strong);
-  border-radius: 4px;
-  background: var(--surface);
-  padding: 2px 10px;
-  font-size: 12px;
-  color: var(--color-text-primary);
-  cursor: pointer;
-}
-
-.ai-changes-revert:hover:not(:disabled) {
-  background: var(--hover);
-}
-
-.ai-changes-revert:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
-}
-
-.ai-changes-revert:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
-/* takes the marks of the changes off the pages: quieter than undo, right before it */
-.ai-changes-unmark {
-  flex: none;
-  margin-left: auto;
-  border: none;
-  border-radius: 4px;
-  background: none;
-  padding: 2px 6px;
-  font-size: 12px;
-  color: var(--color-text-secondary);
-  cursor: pointer;
-}
-
-.ai-changes-unmark:hover {
-  background: var(--hover);
-  color: var(--color-text-primary);
-}
-
-.ai-changes-unmark:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
-}
-
-.ai-changes-list {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  max-height: 180px;
-  margin: 0;
-  padding: 0 10px 8px;
-  overflow-y: auto;
-  list-style: none;
-}
-
-.ai-change {
-  line-height: 1.5;
-  overflow-wrap: anywhere;
-}
-
-/* a change that can be shown in the document: the whole line is the button */
-.ai-change-go {
-  display: block;
-  width: calc(100% + 8px);
-  margin: 0 -4px;
-  padding: 1px 4px;
-  border: 0;
-  border-radius: 4px;
-  background: none;
-  color: inherit;
-  font: inherit;
-  line-height: inherit;
-  text-align: start;
-  overflow-wrap: anywhere;
-  cursor: pointer;
-}
-
-.ai-change-go:hover {
-  background: var(--hover);
-}
-
-.ai-change-go:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
-}
-
-.ai-change-from {
-  color: var(--color-text-tertiary);
-  text-decoration: line-through;
-}
-
-.ai-change-to {
-  color: var(--color-text-primary);
-  text-decoration: none;
-}
-
-.ai-change-field {
-  font-weight: 600;
-  color: var(--color-text-secondary);
-}
-
-.ai-change-mark {
-  margin-inline-end: 6px;
-  font-weight: 600;
-  color: var(--color-text-secondary);
-}
-
-.ai-change-arrow {
-  margin: 0 6px;
-  color: var(--color-text-tertiary);
-}
-
-.ai-change-count {
-  margin-inline-start: 6px;
-  color: var(--color-text-tertiary);
-}
-
-.ai-changes-reverted .ai-changes-list {
-  opacity: 0.55;
-}
-
-.ai-changes-note {
-  padding: 0 10px 8px;
-  line-height: 1.5;
-  color: var(--hwp-error);
 }
 
 /* chat attachments: the same rules as the other editors' panels */
@@ -1221,8 +1102,8 @@
 
 .ai-attach-notice {
   margin-bottom: 7px;
-  font-size: 11.5px;
-  color: var(--hx-error);
+  font-size: 12px;
+  color: var(--hwp-error);
 }
 
 .ai-panel-dragover {
@@ -1243,7 +1124,7 @@
   padding: 3px 10px;
   border-radius: var(--radius-30);
   background: var(--accent-soft);
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--accent-dark);
   font-weight: 500;
 }
@@ -1282,11 +1163,361 @@
   border: 1px solid var(--color-border-default);
   border-radius: var(--radius-8);
   background: var(--color-bg-page);
-  font-size: 11.5px;
+  font-size: 12px;
   line-height: 1.5;
   color: var(--color-text-secondary);
   max-height: 96px;
   overflow-y: auto;
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+/* ---- memo panel and modal (T3): its column beside the document, its cards and its editor ---- */
+
+.ai-rail:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* the memo column sits between the AI dock and the document, as the PDF editor's notes do;
+ * it is hidden, not unmounted, while closed so the panel's list and locks survive */
+.memo-side {
+  position: relative;
+  display: flex;
+  flex-shrink: 0;
+  min-width: 0;
+  min-height: 0;
+}
+
+.memo-side.collapsed {
+  display: none;
+}
+
+/* drag handle on the edge toward the document */
+.memo-side-resizer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: col-resize;
+  z-index: 20;
+  background: transparent;
+}
+
+.memo-side-resizing {
+  cursor: col-resize;
+  user-select: none;
+}
+
+.memo-panel {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--color-bg-page);
+  color: var(--color-text-primary);
+  font-family: var(--gs-font-sans);
+  /* the AI dock beside it draws its own edge; this one meets the document */
+  border-right: 1px solid var(--color-border-strong);
+}
+
+.memo-panel-head {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--color-border-default);
+  font-size: var(--text-small);
+  font-weight: 600;
+}
+
+.memo-panel-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.memo-panel-count {
+  padding: 0 6px;
+  border-radius: 10px;
+  background: var(--hover);
+  color: var(--color-text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.memo-panel-tools {
+  flex: 0 0 auto;
+  padding: 8px 10px 0;
+}
+
+.memo-add-button {
+  width: 100%;
+}
+
+.memo-panel-warning {
+  flex: 0 0 auto;
+  margin: 8px 10px 0;
+  padding: 8px 10px;
+  border: 1px solid var(--danger-border);
+  border-radius: var(--radius-8);
+  background: var(--danger-bg);
+  color: var(--hwp-error);
+  font-size: var(--text-caption);
+  line-height: 1.45;
+}
+
+.memo-list {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+  padding: 8px 10px 14px;
+  overflow-y: auto;
+}
+
+.memo-list-error {
+  padding: 8px 4px;
+  color: var(--hwp-error);
+  font-size: var(--text-caption);
+}
+
+.memo-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 36px 16px;
+  color: var(--color-text-secondary);
+  text-align: center;
+}
+
+.memo-empty p {
+  margin: 0;
+  font-size: var(--text-caption);
+}
+
+.memo-card {
+  flex: 0 0 auto;
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-8);
+  background: var(--color-bg-page);
+}
+
+.memo-card.selected {
+  border-color: var(--accent);
+  background: var(--hover);
+}
+
+.memo-card-select {
+  display: block;
+  width: 100%;
+  padding: 9px 10px 3px;
+  border: 0;
+  border-radius: var(--radius-8);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.memo-card-select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.memo-card-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.memo-card-author {
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--text-caption);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.memo-card-page,
+.memo-card-date {
+  flex: none;
+  color: var(--color-text-secondary);
+  font-size: 11px;
+}
+
+.memo-readonly-badge {
+  margin-inline-start: auto;
+  padding: 0 5px;
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-6);
+  color: var(--color-text-secondary);
+  font-size: 11px;
+}
+
+.memo-card-text {
+  display: block;
+  margin-top: 4px;
+  font-size: var(--text-caption);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.memo-card-empty {
+  color: var(--color-text-secondary);
+}
+
+.memo-card-reason {
+  display: block;
+  margin-top: 4px;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.memo-card-actions {
+  display: flex;
+  gap: 4px;
+  padding: 0 8px 8px;
+}
+
+.memo-card-button {
+  padding: 3px 8px;
+  font-size: 12px;
+}
+
+.memo-card-delete {
+  color: var(--hwp-error);
+}
+
+.memo-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 26px;
+  padding: 4px 10px;
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-6);
+  background: var(--color-bg-page);
+  color: var(--color-text-primary);
+  font: inherit;
+  font-size: var(--text-caption);
+  cursor: pointer;
+}
+
+.memo-button:hover:not(:disabled) {
+  background: var(--hover);
+}
+
+.memo-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.memo-button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.memo-button-primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--surface);
+}
+
+.memo-button-primary:hover:not(:disabled) {
+  border-color: var(--accent-dark);
+  background: var(--accent-dark);
+}
+
+.memo-icon-button {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: var(--radius-6);
+  background: transparent;
+  color: var(--color-text-secondary);
+  font: inherit;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.memo-icon-button:hover {
+  background: var(--hover);
+  color: var(--color-text-primary);
+}
+
+.memo-icon-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* the memo-removal question of the AI panel covers the panel, not the window */
+.ai-memo-approval-backdrop {
+  position: absolute;
+  z-index: 40;
+  padding: 12px;
+}
+
+.ai-memo-approval-backdrop::before {
+  opacity: 0.9;
+}
+
+.ai-memo-approval {
+  width: min(420px, 100%);
+  max-height: calc(100% - 24px);
+}
+
+.ai-memo-approval-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ai-memo-approval-item {
+  padding: 8px 10px;
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-6);
+  background: var(--color-bg-page);
+}
+
+.ai-memo-approval-meta {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  color: var(--color-text-secondary);
+  font-size: var(--text-caption);
+}
+
+.ai-memo-approval-author {
+  color: var(--color-text-primary);
+  font-weight: 600;
+}
+
+.ai-memo-approval-preview {
+  margin-top: 2px;
+  font-size: var(--text-caption);
+  line-height: 1.45;
+  overflow-wrap: anywhere;
 }

@@ -68,6 +68,32 @@ describe('genoffice render', () => {
     expect(existsSync(files[0]!.path)).toBe(true)
   })
 
+  it('prints a Hangul document through the app export before rasterizing', async () => {
+    if (process.platform === 'win32') return
+    const dir = tempDir()
+    const ops = join(dir, 'ops.json')
+    writeFileSync(
+      ops,
+      JSON.stringify([{ op: 'insert_paragraphs', where: 'end', paragraphs: ['견적서'] }]),
+    )
+    const env = {
+      ...process.env,
+      GENOFFICE_APP_BIN: fakeApp(dir, writeMinimalPdf(join(dir, 'export.pdf'))),
+    }
+    for (const ext of ['hwp', 'hwpx']) {
+      const doc = join(dir, `quote.${ext}`)
+      expect((await run(['create', '--type', ext, '--ops', ops, '--out', doc])).code).toBe(0)
+      const shots = join(dir, `shots-${ext}`)
+      const r = await run(['render', doc, '--out', shots, '--json'], { env })
+      expect(r.code).toBe(0)
+      expect(r.json().detail.via).toContain('headless-export')
+      expect(r.json().detail.files).toEqual([
+        { page: 1, path: join(shots, 'quote-01.png'), width: 612, height: 792 },
+      ])
+      expect(existsSync(join(shots, 'quote-01.png'))).toBe(true)
+    }
+  })
+
   it('crops a slide to an element and builds a contact sheet', async () => {
     if (process.platform === 'win32') return
     const dir = tempDir()
@@ -145,5 +171,23 @@ describe('genoffice render', () => {
     const noOut = await run(['render', writeMinimalPdf(join(dir, 'a.pdf')), '--json'])
     expect(noOut.code).toBe(1)
     expect(noOut.json().message).toContain('--out')
+  })
+})
+
+describe('render grid option preflight with real PDFium', () => {
+  it('preserves existing page output when a grid option is invalid', async () => {
+    const dir = tempDir()
+    const input = writeMinimalPdf(join(dir, 'input.pdf'))
+    const out = join(dir, 'shots')
+    const initial = await run(['render', input, '--out', out, '--json'])
+    expect(initial.code).toBe(0)
+    const path = join(out, 'input-01.png')
+    const sentinel = Buffer.from('do not replace this output')
+    writeFileSync(path, sentinel)
+    const before = readFileSync(input)
+    const result = await run(['render', input, '--out', out, '--grid', '--cols', '0', '--json'])
+    expect(result.code).toBe(1)
+    expect(readFileSync(path)).toEqual(sentinel)
+    expect(readFileSync(input)).toEqual(before)
   })
 })

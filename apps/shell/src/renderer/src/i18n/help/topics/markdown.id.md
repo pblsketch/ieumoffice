@@ -8,6 +8,7 @@ Editor Markdown membuka .md / .markdown — dan .txt / .json, langsung ke tampil
 - **Menyimpan**: setia byte demi byte — BOM, CRLF, dan keberadaan baris baru di akhir file dipertahankan; penyimpanan tanpa perubahan tidak menulis ulang file.
 - **Cari dan ganti**: ctrl+F mencari di sumber; Ganti Semua menuliskan hasilnya kembali.
 - **AI**: tombol siap pakai membiarkan asisten menulis ulang, memperpanjang, atau menerjemahkan dokumen. Seleksi bisa disembunyikan dari AI (lihat bab panel AI).
+- **Membuka tautan**: saat mengedit, Ctrl+klik tautan (⌘ di Mac) membukanya di browser; klik biasa menempatkan kursor di teks tautan agar dapat diedit. Dalam mode presentasi (F5), klik biasa membukanya.
 
 ## Bilah alat
 
@@ -36,6 +37,7 @@ Menu File, semuanya lokal dan semuanya menanyakan tempat untuk menaruh hasilnya:
 
 - **Ekspor sebagai Word…** dan **Ekspor sebagai PDF…** menulis .docx atau .pdf yang sungguhan.
 - **Ekspor sebagai ODT…** menulis file .odt (teks OpenDocument) lewat konversi yang sama dengan ekspor Word; jika ada yang berubah atau hilang di tengah jalan, Anda melihat daftarnya dan mengonfirmasi lebih dulu.
+- **Ekspor sebagai dokumen HWP…** menulis dokumen HWP (.hwp atau .hwpx) dengan konversi yang sama; judul, daftar, dan tabel masuk sebagai bagian dokumen HWP, dan tabel yang panjang berlanjut ke halaman berikutnya. Jika ada yang tidak dapat dibawa, Anda melihat daftarnya dan mengonfirmasi lebih dulu.
 - **Ekspor sebagai gambar…** menulis satu PNG per halaman ke dalam direktori yang Anda pilih.
 - **Konversi dan buka di Docs** mengonversi ke .docx dan membukanya di tab Docs bawaan di dalam aplikasi ini — ini bukan serah terima ke apa pun di cloud, dan salinan hasil konversi tinggal di folder cache yang dibersihkan setelah sekitar seminggu.
 
@@ -43,6 +45,7 @@ Menu File, semuanya lokal dan semuanya menanyakan tempat untuk menaruh hasilnya:
 
 Pita memuat sakelar **Sumber** (ikut dilokalkan bersama aplikasi). Nyalakan, dan editor diganti oleh Markdown mentah: persis teks yang ditulis sebuah penyimpanan, tidak ada yang dirapikan, tidak ada yang dinormalisasi di bawah Anda.
 
+- **Papan ketik**: Ctrl+E (⌘E di Mac) beralih antara tampilan sumber dan kanvas pengeditan yang dirender. Tekan F5 untuk membaca layar penuh.
 - **Penyuntingan setia byte demi byte.** Penyimpanan dari tampilan sumber menghasilkan byte yang sama dengan penyimpanan dari editor — BOM, CRLF, dan keberadaan baris baru di akhir file semuanya tetap utuh.
 - **Ini dokumen yang sama.** Berganti bolak-balik sesuka hati; sumber itu adalah teks milik editor itu sendiri, bukan salinan yang harus digabungkan.
 - **Bilah alat format tidak tersedia** selama tampilan ini terbuka, karena sebagian besar tombol itu menyisipkan konstruksi editor yang hanya bermakna di sisi hasil render. Bilah alat itu kembali begitu Anda menutup tampilan ini.

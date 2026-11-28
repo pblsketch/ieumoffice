@@ -19,7 +19,13 @@
  * and auto-hide after 5s of resting on the same control. Clicking hides the
  * tip and keeps it hidden until the pointer leaves that control. Keyboard
  * focus shows the tip too, Escape or blur hides it, and the visible tip is
- * linked to its anchor through aria-describedby. */
+ * linked to its anchor through aria-describedby.
+ *
+ * A tip shown under the pointer keeps clear of the pointer's own picture. The
+ * arrow hangs down and right from its hot spot, so a tip that lands in that
+ * square drops below it (or goes above the control when the window ends
+ * first). The square's side is the `--os-pointer-size` the shell stamps on
+ * `:root` from the system setting; without it, the 32px default. */
 
 const INITIAL_DELAY_MS = 500
 const RESHOW_DELAY_MS = 100
@@ -27,6 +33,8 @@ const WARM_WINDOW_MS = 500
 const AUTO_HIDE_MS = 5000
 const OFFSET_PX = 6
 const EDGE_PAD_PX = 4
+const POINTER_SIZE_VAR = '--os-pointer-size'
+const DEFAULT_POINTER_PX = 32
 
 interface TipState {
   el: HTMLDivElement
@@ -43,6 +51,8 @@ let described: Element | null = null
 // clicked anchor: the tip stays hidden until the pointer leaves it (Office behavior)
 let suppressed: Element | null = null
 let warmUntil = 0
+// hot spot of the pointer that armed the tip; null when focus armed it
+let pointerAt: { x: number; y: number } | null = null
 
 function ensureTip(doc: Document): TipState {
   if (tip && tip.el.isConnected) return tip
@@ -67,6 +77,14 @@ function cancelShow(): void {
     window.clearTimeout(showTimer)
     showTimer = null
   }
+}
+
+function pointerSize(doc: Document): number {
+  const raw = doc.defaultView
+    ?.getComputedStyle(doc.documentElement)
+    .getPropertyValue(POINTER_SIZE_VAR)
+  const px = Number.parseFloat(raw ?? '')
+  return Number.isFinite(px) && px > 0 ? px : DEFAULT_POINTER_PX
 }
 
 function hide(): void {
@@ -124,6 +142,21 @@ function show(el: Element, doc: Document): void {
     if (top + tipRect.height > window.innerHeight - EDGE_PAD_PX)
       top = rect.top - tipRect.height - OFFSET_PX
   }
+  if (pointerAt) {
+    const side = pointerSize(doc)
+    const covered =
+      left < pointerAt.x + side &&
+      left + tipRect.width > pointerAt.x &&
+      top < pointerAt.y + side &&
+      top + tipRect.height > pointerAt.y
+    if (covered) {
+      const below = pointerAt.y + side + 2
+      top =
+        below + tipRect.height <= window.innerHeight - EDGE_PAD_PX
+          ? below
+          : Math.max(EDGE_PAD_PX, Math.min(rect.top, pointerAt.y) - tipRect.height - OFFSET_PX)
+    }
+  }
   t.el.style.left = `${Math.round(left)}px`
   t.el.style.top = `${Math.round(top)}px`
   t.el.style.visibility = 'visible'
@@ -136,9 +169,10 @@ function show(el: Element, doc: Document): void {
 
 /** Install the global ScreenTip listeners. Call once from the app entry; returns an uninstaller. */
 export function installScreenTips(doc: Document = document): () => void {
-  const arm = (target: EventTarget | null): void => {
+  const arm = (target: EventTarget | null, at: { x: number; y: number } | null): void => {
     const el = (target instanceof Element ? target : null)?.closest('[data-tip]') ?? null
     if (el === anchor) return
+    pointerAt = at
     if (suppressed && suppressed !== el) suppressed = null
     hide()
     if (!el || el === suppressed) return
@@ -150,8 +184,12 @@ export function installScreenTips(doc: Document = document): () => void {
       if (anchor === el && el.isConnected) show(el, doc)
     }, delay)
   }
-  const onPointerOver = (e: PointerEvent): void => arm(e.target)
-  const onFocusIn = (e: FocusEvent): void => arm(e.target)
+  const onPointerOver = (e: PointerEvent): void => arm(e.target, { x: e.clientX, y: e.clientY })
+  // the tip shows where the pointer rests, not where it entered the control
+  const onPointerMove = (e: PointerEvent): void => {
+    if (pointerAt && showTimer !== null) pointerAt = { x: e.clientX, y: e.clientY }
+  }
+  const onFocusIn = (e: FocusEvent): void => arm(e.target, null)
   const onFocusOut = (e: FocusEvent): void => {
     if (anchor && e.target instanceof Node && anchor.contains(e.target)) hide()
   }
@@ -173,6 +211,7 @@ export function installScreenTips(doc: Document = document): () => void {
   const onHide = (): void => hide()
 
   doc.addEventListener('pointerover', onPointerOver, true)
+  doc.addEventListener('pointermove', onPointerMove, { capture: true, passive: true })
   doc.addEventListener('pointerout', onPointerOut, true)
   doc.addEventListener('pointerdown', onPointerDown, true)
   doc.addEventListener('focusin', onFocusIn, true)
@@ -183,6 +222,7 @@ export function installScreenTips(doc: Document = document): () => void {
   window.addEventListener('resize', onHide)
   return () => {
     doc.removeEventListener('pointerover', onPointerOver, true)
+    doc.removeEventListener('pointermove', onPointerMove, true)
     doc.removeEventListener('pointerout', onPointerOut, true)
     doc.removeEventListener('pointerdown', onPointerDown, true)
     doc.removeEventListener('focusin', onFocusIn, true)

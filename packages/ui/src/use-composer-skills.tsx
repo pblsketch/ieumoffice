@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import type { Lang } from '@genoffice/i18n'
+import type { SkillEditorId } from '@genoffice/agent-core'
 import {
   aiSkillsBridge,
   chipsAfterListChange,
@@ -61,6 +62,8 @@ export interface AiComposerSkills {
   chips: readonly SkillChipView[]
   notice: string | null
   dollarAtStartOnly?: boolean | undefined
+  /** MCP servers registered and on; the chip row names the others (spec 8) */
+  usableMcpServers?: ReadonlySet<string> | undefined
   /** the list opened: read it again (spec 9.2) */
   onOpen: () => void
   onPick: (item: SkillPickerItem) => void
@@ -72,11 +75,18 @@ export interface ComposerSkillsOptions {
   lang: Lang
   /** 'panel' (editors, home ask) leaves agent-only skills out */
   surface?: SkillPickerSurface | undefined
+  /** the editor this panel belongs to: skills set for other editors are not listed; none in home ask */
+  editor?: SkillEditorId | undefined
   /** sheets: `$` opens only at the start of the input */
   dollarAtStartOnly?: boolean | undefined
   onTemplateSkill?: OnTemplateSkill | undefined
   /** total cap of the added text */
   maxChars?: number | undefined
+  /**
+   * MCP servers registered and on (spec 8): the chips name the others and the
+   * request tells the model they cannot be used; none by default
+   */
+  usableMcpServers?: ReadonlySet<string> | undefined
   /** tests inject one; the default is the window's `aiOfficeUserSkills` */
   bridge?: AiSkillsBridge | null | undefined
 }
@@ -117,12 +127,20 @@ function sameIds(a: readonly SkillChipView[], b: readonly SkillChipView[]): bool
  * gets for them. Never starts an AI run by itself.
  */
 export function useComposerSkills(options: ComposerSkillsOptions): ComposerSkills {
-  const { lang, surface = 'panel', dollarAtStartOnly, maxChars = SKILL_SEND_MAX_CHARS } = options
+  const {
+    lang,
+    surface = 'panel',
+    editor,
+    dollarAtStartOnly,
+    maxChars = SKILL_SEND_MAX_CHARS,
+  } = options
   const bridgeRef = useRef<AiSkillsBridge | null>(null)
   bridgeRef.current = options.bridge !== undefined ? options.bridge : aiSkillsBridge()
   const hasBridge = bridgeRef.current !== null
   const templateRef = useRef(options.onTemplateSkill)
   templateRef.current = options.onTemplateSkill
+  const usableMcpRef = useRef(options.usableMcpServers)
+  usableMcpRef.current = options.usableMcpServers
 
   const [items, setItems] = useState<SkillPickerItem[]>([])
   const [loaded, setLoaded] = useState(false)
@@ -148,7 +166,7 @@ export function useComposerSkills(options: ComposerSkillsOptions): ComposerSkill
       .list()
       .then((raw) => {
         if (!liveRef.current || seq !== listSeqRef.current) return
-        const next = pickerSkillsOf(raw, langRef.current, surface)
+        const next = pickerSkillsOf(raw, langRef.current, surface, editor)
         setItems(next)
         setLoaded(true)
         setGone(new Set())
@@ -158,7 +176,7 @@ export function useComposerSkills(options: ComposerSkillsOptions): ComposerSkill
         })
       })
       .catch(() => {})
-  }, [surface])
+  }, [surface, editor])
 
   useEffect(() => {
     liveRef.current = true
@@ -244,7 +262,10 @@ export function useComposerSkills(options: ComposerSkillsOptions): ComposerSkill
             setNotice(t('missingNotice'))
             return
           }
-          const built = buildSkillRequest(skills, maxChars)
+          const usable = usableMcpRef.current
+          const built = buildSkillRequest(skills, maxChars, {
+            mcpServerUsable: usable ? (name) => usable.has(name) : undefined,
+          })
           if (!built.ok) {
             setNotice(t('tooLarge'))
             return
@@ -289,6 +310,7 @@ export function useComposerSkills(options: ComposerSkillsOptions): ComposerSkill
         chips,
         notice,
         dollarAtStartOnly,
+        usableMcpServers: options.usableMcpServers,
         onOpen: refresh,
         onPick,
         onRemove,
@@ -329,6 +351,12 @@ export interface SkillPickerInput {
   /** the chips, placed where the attachments sit */
   chipRow: React.ReactNode
   open: boolean
+  /** true when opened manually via the `/` toolbar button (without mutating draft text) */
+  manualOpen?: boolean | undefined
+  /** toggle the standalone `/` skill picker popover without inserting `/` into the draft */
+  toggleSkillMenu?: (() => void) | undefined
+  /** close the standalone `/` skill picker popover */
+  closeSkillMenu?: (() => void) | undefined
 }
 
 /**
@@ -352,6 +380,7 @@ export function useSkillPickerInput({
   const [caret, setCaret] = useState<number | null>(null)
   const [composing, setComposing] = useState(false)
   const [dismissed, setDismissed] = useState<number | null>(null)
+  const [manualOpen, setManualOpen] = useState(false)
   const [selection, setSelection] = useState({ key: '', index: 0 })
   const pendingCaretRef = useRef<number | null>(null)
 
@@ -363,15 +392,47 @@ export function useSkillPickerInput({
   const frozenRef = useRef<SkillTrigger | null>(null)
   if (!composing) frozenRef.current = live
   const trigger = composing ? frozenRef.current : live
-  const matches = trigger && skills ? filterPickerSkills(skills.items, trigger.query) : []
-  const open = !!trigger && matches.length > 0 && dismissed !== trigger.start
-  const key = trigger ? `${trigger.start}:${trigger.query}` : ''
+  const typedMatches = trigger && skills ? filterPickerSkills(skills.items, trigger.query) : []
+  const typedOpen = !!trigger && typedMatches.length > 0 && dismissed !== trigger.start
+  const standaloneOpen = manualOpen && !!skills && !typedOpen
+  const matches = typedOpen ? typedMatches : standaloneOpen && skills ? [...skills.items] : []
+  const open = typedOpen || standaloneOpen
+  const key =
+    typedOpen && trigger ? `${trigger.start}:${trigger.query}` : standaloneOpen ? 'manual' : ''
   const active = selection.key === key ? Math.min(selection.index, matches.length) : 0
 
   // a closed trigger forgets that Esc dismissed it
   useEffect(() => {
     if (!trigger && dismissed !== null) setDismissed(null)
   }, [trigger, dismissed])
+
+  // close manual menu if skills bridge disappears
+  useEffect(() => {
+    if (!skills && manualOpen) setManualOpen(false)
+  }, [skills, manualOpen])
+
+  // outside press / capture Escape closes standalone manual menu without stopping an active AI run
+  useEffect(() => {
+    if (!standaloneOpen) return
+    const onPointerDown = (e: PointerEvent) => {
+      const target = e.target as Element | null
+      if (target?.closest('.ai-skill-picker, .ai-skill-trigger-btn')) return
+      setManualOpen(false)
+    }
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        e.stopPropagation()
+        setManualOpen(false)
+      }
+    }
+    window.addEventListener('pointerdown', onPointerDown, true)
+    window.addEventListener('keydown', onKeyDown, true)
+    return () => {
+      window.removeEventListener('pointerdown', onPointerDown, true)
+      window.removeEventListener('keydown', onKeyDown, true)
+    }
+  }, [standaloneOpen])
 
   const onOpen = skills?.onOpen
   useEffect(() => {
@@ -391,17 +452,39 @@ export function useSkillPickerInput({
   }, [value, textareaRef])
 
   const pick = (index: number) => {
-    if (!skills || !trigger) return
+    if (!skills) return
     if (index >= matches.length) {
-      setDismissed(trigger.start)
+      if (trigger && typedOpen) setDismissed(trigger.start)
+      setManualOpen(false)
       skills.onManage()
       return
     }
     const item = matches[index]
     if (!item) return
-    const next = removeSkillTrigger(value, trigger)
-    pendingCaretRef.current = next.caret
-    onChange(next.value)
+    if (typedOpen && trigger) {
+      const next = removeSkillTrigger(value, trigger)
+      pendingCaretRef.current = next.caret
+      onChange(next.value)
+    }
+    setManualOpen(false)
+    skills.onPick(item)
+  }
+
+  const applyExample = (item: SkillPickerItem) => {
+    if (!skills || !item.example) return
+    if (typedOpen && trigger) setDismissed(trigger.start)
+    const end = item.example.length
+    if (value === item.example) {
+      pendingCaretRef.current = null
+      textareaRef.current?.focus()
+      textareaRef.current?.setSelectionRange(end, end)
+      setCaret(end)
+    } else {
+      pendingCaretRef.current = end
+      onChange(item.example)
+      textareaRef.current?.focus()
+    }
+    setManualOpen(false)
     skills.onPick(item)
   }
 
@@ -412,17 +495,28 @@ export function useSkillPickerInput({
       isComposing: e.nativeEvent.isComposing || composing,
       open,
     })
-    if (!action || !trigger) return false
+    if (!action || !open) return false
     e.preventDefault()
     // an Esc that closes the list must not reach a handler that stops the run
     e.stopPropagation()
     const count = matches.length + 1
     if (action === 'next') setSelection({ key, index: (active + 1) % count })
     else if (action === 'prev') setSelection({ key, index: (active - 1 + count) % count })
-    else if (action === 'close') setDismissed(trigger.start)
-    else pick(active)
+    else if (action === 'close') {
+      if (typedOpen && trigger) setDismissed(trigger.start)
+      setManualOpen(false)
+    } else pick(active)
     return true
   }
+
+  const toggleSkillMenu = useCallback(() => {
+    if (!skills) return
+    setManualOpen((prev) => !prev)
+  }, [skills])
+
+  const closeSkillMenu = useCallback(() => {
+    setManualOpen(false)
+  }, [])
 
   const track = (el: HTMLTextAreaElement) => {
     if (!skills) return
@@ -448,6 +542,7 @@ export function useSkillPickerInput({
           active={active}
           onPick={pick}
           onHover={(index) => setSelection({ key, index })}
+          onUseExample={(item) => applyExample(item)}
         />
       </div>
     ) : null
@@ -457,6 +552,7 @@ export function useSkillPickerInput({
       lang={skills.lang}
       chips={skills.chips}
       notice={skills.notice}
+      usableMcpServers={skills.usableMcpServers}
       onRemove={skills.onRemove}
     />
   ) : null
@@ -474,5 +570,8 @@ export function useSkillPickerInput({
     popup,
     chipRow,
     open,
+    manualOpen: standaloneOpen,
+    toggleSkillMenu,
+    closeSkillMenu,
   }
 }

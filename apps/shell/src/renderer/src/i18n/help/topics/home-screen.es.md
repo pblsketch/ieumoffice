@@ -8,6 +8,7 @@ Inicio es la página de arranque de GenOffice: una barra de navegación a la izq
 - **Destacados**: los archivos que marcó como destacados. Pase el cursor por una fila y haga clic en la estrella para añadirlos o quitarlos. **Mover a grupo** en el menú ⋯ ordena los archivos destacados en grupos con nombre; la vista Destacados filtra por ellos.
 - **Guía del usuario**: abre este manual.
 - **Ask AI**: el panel de base de conocimiento — pregunta y recibe respuestas citadas desde tus archivos destacados (ver abajo).
+- **Proyectos**: las carpetas (proyectos) con las que puede trabajar la IA. Cree un proyecto o use una carpeta existente, y abra uno para gestionar sus instrucciones, su memoria, sus archivos y sus chats. Véase [Proyectos](help://projects).
 - **Carpetas**: los directorios que añade a la barra lateral con **Añadir carpeta…**, o que arrastra hasta ella desde el explorador de archivos. Cada uno se convierte en una raíz que puede abrir, en la que crear subcarpetas, renombrar y quitar; la que se quede sin conexión se muestra como no disponible y se puede quitar de la lista. **Nueva carpeta** crea otra.
 - **La fila de abajo del todo**: muestra si hay una IA conectada —**Conectar IA**, o el nombre de la suscripción conectada— y abre Configuración.
 
@@ -43,6 +44,8 @@ Las tarjetas que están encima de las listas crean un documento en un solo paso.
 
 El archivo nuevo va a la carpeta seleccionada en la barra lateral; si no hay ninguna, va a la carpeta predeterminada.
 
+Para ocultar tarjetas o cambiar su orden, usa **Documentos nuevos en Inicio** en Configuración → General. Un tipo desactivado solo desaparece de las tarjetas y de los menús Nuevo; sus archivos se siguen abriendo igual. En Inicio, ⌘N/Ctrl+N crea el primer tipo que sigue visible. Desactivar un editor en Configuración → Editores e IA es otra cosa: también desaparecen sus tarjetas y sus entradas de menú, y al abrir sus archivos se pregunta primero.
+
 Qué hace cada tarjeta:
 
 - **AI Docs** (.docx): un documento de texto en blanco en el editor Docs. El archivo se escribe en el disco solo al **guardar por primera vez**; los documentos nuevos se abren con el panel de IA desplegado (se desactiva en Configuración → «Abrir el panel de IA en documentos nuevos»).
@@ -60,5 +63,6 @@ Qué hace cada tarjeta:
 - Destaca primero archivos (cualquier tipo que la app lea); la cabecera del panel cuenta el corpus, y una base vacía te invita a destacar algo.
 - Las respuestas citan los archivos de origen; haz clic en una cita para abrir el archivo en su editor.
 - Necesita una IA conectada; véase [Conexión por suscripción](help://subscription). La conversación vive solo en memoria — cerrar la app la termina.
+- Si elige un proyecto debajo del campo de entrada, también se buscan y se leen los archivos de esa carpeta, y el chat se guarda en ella para poder seguir en otro editor. Sin proyecto, el chat vive solo en memoria, como se indica arriba.
 - La búsqueda usa el índice local de archivos, como la de Inicio; los archivos desaparecidos se salen del corpus sin ruido.
 - Los grupos solo organizan la lista Destacados — la base de conocimiento siempre abarca todos los archivos destacados.

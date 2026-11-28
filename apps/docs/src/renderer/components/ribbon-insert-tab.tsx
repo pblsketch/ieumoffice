@@ -3,8 +3,8 @@ import type { CSSProperties } from 'react'
 import { getMarkRange } from '@tiptap/core'
 import type { Editor } from '@tiptap/core'
 import { ShapePreview, WORDART_PRESETS, wordArtStrokePx } from '@genoffice/ui'
-import type { ChartDisplay, HeaderFooter, NewChart } from '@genoffice/docx-engine'
-import { hfHasPageField, hfWithoutPageMarks } from '../editor/hf-dom'
+import type { ChartDisplay, NewChart } from '@genoffice/docx-engine'
+import { hfHasPageField, hfPageNumberOnly, hfWithoutPageMarks } from '../editor/hf-dom'
 import { EquationGallery, EquationModal } from './EquationModal'
 import {
   COVER_PRESETS,
@@ -548,7 +548,13 @@ export function LinkInsertModal({ editor, onClose }: { editor: Editor; onClose: 
           .chain()
           .focus()
           .setTextSelection({ from: linkAtOpen.from, to: linkAtOpen.to })
-          .setMark('link', { href, rId: null, tooltip: linkAtOpen.tooltip })
+          .setMark('link', {
+            href,
+            rId: null,
+            anchor: null,
+            history: null,
+            tooltip: linkAtOpen.tooltip,
+          })
           .run()
       } else {
         editor
@@ -558,7 +564,18 @@ export function LinkInsertModal({ editor, onClose }: { editor: Editor; onClose: 
           .insertContentAt(linkAtOpen.from, {
             type: 'text',
             text,
-            marks: [{ type: 'link', attrs: { href, rId: null, tooltip: linkAtOpen.tooltip } }],
+            marks: [
+              {
+                type: 'link',
+                attrs: {
+                  href,
+                  rId: null,
+                  anchor: null,
+                  history: null,
+                  tooltip: linkAtOpen.tooltip,
+                },
+              },
+            ],
           })
           .run()
       }
@@ -1255,13 +1272,7 @@ export function InsertTab({
                   <button
                     key={label}
                     onClick={() => {
-                      // Word gallery semantics: replace the area's content with a single page-number paragraph
-                      const hf: HeaderFooter = {
-                        text: '#',
-                        pageNumber: true,
-                        paras: [{ align, runs: [{ text: '#' }] }],
-                      }
-                      ;(kind === 'header' ? onHeader : onFooter)(hf)
+                      ;(kind === 'header' ? onHeader : onFooter)(hfPageNumberOnly(align))
                       setDropdown(() => null)
                     }}
                   >

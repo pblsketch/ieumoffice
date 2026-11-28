@@ -1,6 +1,8 @@
 import type { zh } from './zh'
 
 export const pl = {
+  appLegacyPptImported:
+    'Plik .ppt otwarto jako przekonwertowaną kopię .pptx. Oryginał pozostaje bez zmian; zapis tworzy nowy plik .pptx. Notatki prelegenta i animacje nie są przenoszone.',
   redactMenuLabel: 'Ukryj zaznaczenie przed AI',
   redactDialogDesc:
     'Zaznaczona zawartość zostaje w dokumencie i w pliku; model widzi tylko symbol. Nadaj mu nazwę, by wiedział, co oznacza.',
@@ -178,6 +180,9 @@ export const pl = {
   appPrintLandscape: 'Pozioma',
   appPrintFrame: 'Obramowanie slajdów',
   appPrintHidden: 'Drukuj ukryte slajdy',
+  appPrintRangeSelected: 'Zaznaczone slajdy',
+  appPrintLayoutBlocked:
+    'Materiały informacyjne i strony notatek drukują się po jednej stronie na arkusz. Aby rozmieścić strony, wybierz Slajdy na całej stronie.',
   appPrintPageCount: 'Stron: {n}',
   appPrintNoPages: 'Brak slajdów do wydrukowania',
   appPrintRendering: 'Generowanie podglądu…',
@@ -188,6 +193,7 @@ export const pl = {
   appCtxSendToBack: 'Przesuń na spód',
   appCtxBringForward: 'Przesuń do przodu',
   appCtxSendBackward: 'Przesuń do tyłu',
+  appCtxRotate: 'Obróć',
   appCtxRotateLeft90: 'Obróć o 90° w lewo',
   appCtxRotateRight90: 'Obróć o 90° w prawo',
   appCtxFlipH: 'Przerzuć w poziomie',
@@ -227,6 +233,8 @@ export const pl = {
   appMasterFillNone: 'Brak wypełnienia',
   appMasterStroke: 'Kolor konturu…',
   appMasterStrokeNone: 'Brak konturu',
+  appMasterInsertTextBox: 'Pole tekstowe',
+  appMasterInsertShape: 'Kształty',
   appStartOpening: 'Otwieranie…',
   appReadingSlideTitle:
     'Kliknij, aby przejść do następnego slajdu (Esc, aby wyjść z widoku do czytania)',
@@ -265,4 +273,12 @@ export const pl = {
   appStatusSummaryZoomInserted: 'Wstawiono slajd powiększenia podsumowania z {count} kafelkami',
   appSectionSummary: 'Sekcja podsumowania',
   appSectionN: 'Sekcja {n}',
+  appStatusAnimPainterNone: 'Zaznaczony element nie ma animacji',
+  appStatusAnimPainterOnce:
+    'Kliknij element, do którego chcesz zastosować animacje; kliknij przycisk dwukrotnie, aby włączyć tryb ciągły',
+  appStatusAnimPainterContinuous: 'Tryb ciągły Malarza animacji; naciśnij Esc, aby wyjść',
+  appStatusAnimPainted: 'Zastosowano animacje',
+  appStatusMergeUnsupported:
+    'Nie można scalić tych kształtów (linie, obrazy, tabele, wykresy i niektóre kształty są pomijane)',
+  appStatusMergeEmpty: 'Po scaleniu nic nie zostało (kształty nie nakładają się)',
 } satisfies Record<keyof typeof zh, string>

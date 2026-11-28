@@ -1,48 +1,62 @@
 /**
- * The "Attach from Drive" window (decision 0033). One at a time, above the
- * window of the editor that asked. The page lists Drive and ticks entries; it
- * never sees a path. On "Attach" this process downloads what was ticked and
- * hands the paths to the editor that asked; closing the window cancels.
+ * The in-app "Attach from Google Drive" modal window: lets the person tick
+ * already-chosen Drive files without opening the browser again, or click
+ * "Add from Google Drive" to open Google's picker and bring in more files.
+ *
+ * Mirrors `doc-picker-window.ts`: one modal window at a time, validating every
+ * submitted file id against the ids that main listed or received from Google's
+ * picker during this window session.
  */
 import { join } from 'node:path'
 import { BrowserWindow, ipcMain, shell } from 'electron'
 import type { IpcMainInvokeEvent } from 'electron'
 import { productName, type Lang } from '@genoffice/i18n'
 import { safeExternalUrl } from '@genoffice/electron-utils'
-import type { DriveApi } from '@genoffice/google-drive'
-import type { DriveListResult } from '../../shared/drive-api'
+import type { DriveAttachResult, DriveListResult } from '../../shared/drive-api'
 import {
   DRIVE_PICKER_CHANNELS,
-  type DriveAttachResult,
-  type DrivePick,
   type DrivePickerChooseResult,
   type DrivePickerInit,
+  type DrivePickerPickMoreResult,
   type DrivePickerTheme,
 } from '../../shared/drive-picker-api'
 import { driveUiText } from '../../renderer/src/i18n/strings-drive'
-import { downloadPicks } from './drive-attach'
+import { MAX_ATTACH_FILES, type AttachDownload } from './drive-attach'
+
+const DRIVE_ID_RE = /^[\w-]{1,200}$/
+
+export type DriveAttachBlockReason = 'not-connected' | 'training' | 'free-ai'
 
 export interface DrivePickerDeps {
-  api: () => DriveApi
-  connected: () => boolean
+  list: (raw: unknown, pageToken: unknown) => Promise<DriveListResult>
+  pickMore: () => Promise<DrivePickerPickMoreResult>
+  cancelPickMore: () => void
+  download: (ids: readonly string[]) => Promise<AttachDownload>
+  /** Re-checked before downloading; returns a refusal reason or null when allowed */
+  guard: () => DriveAttachBlockReason | null
   lang: () => Lang
   theme: () => DrivePickerTheme
-  /** the same listing the home screen gets */
-  list: (raw: unknown, pageToken: unknown) => Promise<DriveListResult>
-  /** where downloads for attachments go */
-  attachDir: () => string
 }
 
-const MAX_PICKS = 100
-
-function picksOf(raw: unknown): DrivePick[] {
-  if (!Array.isArray(raw)) return []
-  const out: DrivePick[] = []
-  for (const item of raw.slice(0, MAX_PICKS)) {
-    const p = (item && typeof item === 'object' ? item : {}) as Record<string, unknown>
-    if (typeof p.id === 'string' && /^[\w-]{1,200}$/.test(p.id)) {
-      out.push({ id: p.id, folder: p.folder === true })
-    }
+/**
+ * Keep only well-formed Drive file ids that main listed as openable or
+ * received from Google's picker in this session, without duplicates, up to
+ * `maxPicks`. Anything else is dropped silently.
+ */
+export function validateDrivePickIds(
+  raw: unknown,
+  knownIds: ReadonlySet<string>,
+  maxPicks: number = MAX_ATTACH_FILES,
+): string[] {
+  if (!Array.isArray(raw) || knownIds.size === 0 || maxPicks <= 0) return []
+  const out: string[] = []
+  const seen = new Set<string>()
+  for (const item of raw) {
+    if (typeof item !== 'string' || !DRIVE_ID_RE.test(item)) continue
+    if (!knownIds.has(item) || seen.has(item)) continue
+    seen.add(item)
+    out.push(item)
+    if (out.length >= maxPicks) break
   }
   return out
 }
@@ -50,7 +64,9 @@ function picksOf(raw: unknown): DrivePick[] {
 export function createDrivePicker(deps: DrivePickerDeps) {
   let win: BrowserWindow | null = null
   let settle: ((result: DriveAttachResult) => void) | null = null
-  let working = false
+  let knownIds = new Set<string>()
+  let choosing = false
+  let pickingMore = false
 
   const fromWindow = (event: IpcMainInvokeEvent) =>
     !!win && !win.isDestroyed() && event.sender === win.webContents
@@ -58,6 +74,7 @@ export function createDrivePicker(deps: DrivePickerDeps) {
   const finish = (result: DriveAttachResult) => {
     const done = settle
     settle = null
+    choosing = false
     done?.(result)
     if (win && !win.isDestroyed()) win.close()
   }
@@ -65,38 +82,80 @@ export function createDrivePicker(deps: DrivePickerDeps) {
   ipcMain.handle(DRIVE_PICKER_CHANNELS.getInit, (event): DrivePickerInit | null =>
     fromWindow(event) ? { lang: deps.lang(), theme: deps.theme() } : null,
   )
-  ipcMain.handle(DRIVE_PICKER_CHANNELS.list, (event, raw: unknown, pageToken: unknown) =>
-    fromWindow(event)
-      ? deps.list(raw, pageToken)
-      : Promise.resolve<DriveListResult>({ ok: false, kind: 'not-found' }),
-  )
+
   ipcMain.handle(
-    DRIVE_PICKER_CHANNELS.choose,
-    async (event, raw: unknown): Promise<DrivePickerChooseResult> => {
-      if (!fromWindow(event) || working) return { ok: false, kind: 'network' }
-      const picks = picksOf(raw)
-      if (picks.length === 0) {
-        finish({ ok: false, reason: 'cancelled' })
-        return { ok: true }
+    DRIVE_PICKER_CHANNELS.list,
+    async (event, raw: unknown, pageToken: unknown): Promise<DriveListResult> => {
+      if (!fromWindow(event)) return { ok: false, kind: 'not-connected' }
+      const result = await deps.list(raw, pageToken)
+      if (result.ok) {
+        for (const entry of result.files) {
+          if (entry.openable && DRIVE_ID_RE.test(entry.id)) knownIds.add(entry.id)
+        }
       }
-      if (!deps.connected()) return { ok: false, kind: 'not-connected' }
-      working = true
+      return result
+    },
+  )
+
+  ipcMain.handle(
+    DRIVE_PICKER_CHANNELS.pickMore,
+    async (event): Promise<DrivePickerPickMoreResult> => {
+      if (!fromWindow(event)) return { ok: false, reason: 'not-connected' }
+      if (choosing || pickingMore) return { ok: false, reason: 'busy' }
+      pickingMore = true
       try {
-        const got = await downloadPicks(deps.api(), picks, deps.attachDir())
-        finish({ ok: true, ...got })
-        return { ok: true }
+        const result = await deps.pickMore()
+        if (result.ok) {
+          for (const id of result.picked) {
+            if (DRIVE_ID_RE.test(id)) knownIds.add(id)
+          }
+        }
+        return result
       } finally {
-        working = false
+        pickingMore = false
       }
     },
   )
+
+  ipcMain.handle(
+    DRIVE_PICKER_CHANNELS.choose,
+    async (event, raw: unknown): Promise<DrivePickerChooseResult> => {
+      if (!fromWindow(event)) return { ok: false, kind: 'unavailable' }
+      if (choosing) return { ok: false, kind: 'unavailable' }
+      const blocked = deps.guard()
+      if (blocked) {
+        finish({ ok: false, reason: blocked })
+        return { ok: true }
+      }
+      const ids = validateDrivePickIds(raw, knownIds, MAX_ATTACH_FILES)
+      if (ids.length === 0) {
+        finish({ ok: false, reason: 'cancelled' })
+        return { ok: true }
+      }
+      choosing = true
+      try {
+        const got = await deps.download(ids)
+        if (!settle) return { ok: true }
+        finish({ ok: true, ...got })
+        return { ok: true }
+      } catch {
+        if (settle) finish({ ok: false, reason: 'failed' })
+        return { ok: false, kind: 'unavailable' }
+      } finally {
+        choosing = false
+      }
+    },
+  )
+
   ipcMain.handle(DRIVE_PICKER_CHANNELS.cancel, (event) => {
-    if (fromWindow(event) && !working) finish({ ok: false, reason: 'cancelled' })
+    if (!fromWindow(event)) return
+    if (pickingMore) deps.cancelPickMore()
+    finish({ ok: false, reason: 'cancelled' })
   })
 
-  /** Ask the person for Drive files; resolves when they attach or close the window */
   function open(parent: BrowserWindow | null): Promise<DriveAttachResult> {
     if (win && !win.isDestroyed()) {
+      win.show()
       win.focus()
       return Promise.resolve({ ok: false, reason: 'busy' })
     }
@@ -113,7 +172,7 @@ export function createDrivePicker(deps: DrivePickerDeps) {
       maximizable: false,
       fullscreenable: false,
       autoHideMenuBar: true,
-      title: `${driveUiText(lang, 'drivePickTitle')} - ${productName(lang)}`,
+      title: `${driveUiText(lang, 'drivePickerTitle')} - ${productName(lang)}`,
       webPreferences: {
         preload: join(__dirname, '../preload/drive-picker.js'),
         contextIsolation: true,
@@ -122,6 +181,9 @@ export function createDrivePicker(deps: DrivePickerDeps) {
       },
     })
     win = next
+    knownIds = new Set<string>()
+    choosing = false
+    pickingMore = false
     next.removeMenu()
     next.webContents.setWindowOpenHandler(({ url }) => {
       const target = safeExternalUrl(url)
@@ -132,7 +194,12 @@ export function createDrivePicker(deps: DrivePickerDeps) {
     next.once('ready-to-show', () => next.show())
     next.on('closed', () => {
       if (win === next) win = null
-      // closing the window is cancelling, unless a result already went out
+      knownIds = new Set<string>()
+      if (pickingMore) {
+        pickingMore = false
+        deps.cancelPickMore()
+      }
+      choosing = false
       const done = settle
       settle = null
       done?.({ ok: false, reason: 'cancelled' })
@@ -145,5 +212,11 @@ export function createDrivePicker(deps: DrivePickerDeps) {
     return result
   }
 
-  return { open, close: () => win?.close() }
+  return {
+    open,
+    isOpen: () => !!win && !win.isDestroyed(),
+    close: () => {
+      if (win && !win.isDestroyed()) win.close()
+    },
+  }
 }

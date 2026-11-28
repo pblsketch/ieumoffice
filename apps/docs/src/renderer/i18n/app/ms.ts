@@ -1,6 +1,8 @@
 import type { zh } from './zh'
 
 export const ms = {
+  appLegacyDocImported:
+    'Fail .{ext} dibuka sebagai salinan .docx yang ditukar. Fail asal kekal seperti sedia ada; menyimpan akan menulis fail .docx baharu.',
   appScTitle: 'Pintasan Papan Kekunci',
   appScFilter: 'Cari pintasan',
   appScNone: 'Tiada pintasan yang sepadan',
@@ -55,6 +57,7 @@ export const ms = {
     'Dokumen ini mengandungi teks menegak (dipaparkan mendatar buat masa ini; penyimpanan tidak terjejas)',
   appNewDocCreated:
     'Dokumen kosong telah dibuat. Terangkan kandungan yang hendak dijana di panel AI sebelah kiri.',
+  appNewDocCreatedNoAi: 'Dokumen kosong dicipta.',
   appNewFailed: 'Gagal membuat dokumen: {error}',
   appSaveFailed: 'Gagal menyimpan: {error}',
   appAutoSavedAt: 'Disimpan secara automatik ({time})',
@@ -97,6 +100,9 @@ export const ms = {
   appPrintRangeAll: 'Semua halaman',
   appPrintRangeCurrent: 'Halaman semasa',
   appPrintRangeCustom: 'Julat tersuai',
+  appPrintRangeSelection: 'Pilihan',
+  appPrintSelectionPreparing: 'Menyusun pilihan ke halaman…',
+  appPrintSelectionFailed: 'Tidak dapat menyusun pilihan ke halaman: {error}',
   appPrintRangeHint: 'cth. 1,3,5-8',
   appPrintPageCount: '{n} halaman',
   appPrintNoPages: 'Tiada halaman untuk dicetak',
@@ -354,6 +360,9 @@ export const ms = {
   appAiBadgeTip: 'Menggunakan AI',
   appTranslate: 'Terjemah',
   appTranslateTo: 'Terjemah ke {lang}',
+  appEasyWords: 'Terangkan dengan kata mudah',
+  appEasyWordsPrompt:
+    'Terangkan teks yang dipilih dalam bahasa Melayu supaya mudah difahami juga oleh orang yang memerlukan bacaan mudah (kanak-kanak, warga emas, orang yang sedang belajar bahasa Melayu). Gunakan perkataan harian dan ayat pendek, serta kekalkan semua fakta, nombor dan syarat. Jangan ubah dokumen: "{text}"',
   redactMenuLabel: 'Sembunyikan pilihan daripada AI',
   redactDialogDesc:
     'Perkataan kekal dalam dokumen dan fail; model hanya melihat placeholder di bawah. Beri nama supaya model tahu apa yang diwakili.',
@@ -384,6 +393,7 @@ export const ms = {
   appLangHindi: 'Hindi',
   appLangTraditionalChinese: 'Cina Tradisional',
   appLangVietnamese: 'Vietnam',
+  appLangTurkish: 'Turki',
   appWrapTextMenu: 'Lilit Teks',
   appViewImage: 'Lihat Imej',
   appSaveImageAs: 'Simpan Imej Sebagai…',
@@ -477,6 +487,12 @@ export const ms = {
   appLatexPlaceholder: 'cth. x = \\frac{-b \\pm \\sqrt{b^2-4ac}}{2a}',
   appLatexPreviewHint: 'Taip LaTeX untuk melihat pratonton',
   appPreviewUnavailable: 'Tidak dapat menjana pratonton',
+  appMathTypeConvertNote:
+    'Persamaan MathType — menyimpan akan menukarkannya kepada persamaan Word asli (OMML).',
+  appMathTypeConvertOnlyNote:
+    'Persamaan MathType ini menggunakan struktur di luar subset LaTeX. Anda boleh menukarkannya terus kepada persamaan Word asli (OMML) sambil mengekalkan susun aturnya.',
+  appMathTypeConvertAction: 'Tukar & Kemas Kini',
+  appMathTypeEditHint: 'Persamaan MathType (dwiklik untuk edit atau tukar)',
   appInlineEquationToggle: 'Persamaan sebaris (disisipkan pada kursor, mengalir dengan teks)',
   appInsertNewEquation: 'π Sisipkan Persamaan Baharu (LaTeX)…',
   appEqCircleArea: 'Luas Bulatan',
@@ -583,4 +599,13 @@ export const ms = {
   appOdtLabelObject: 'Objek (dipaparkan dalam Hancom)',
   appOdtLabelNotice:
     'Objek yang dilukis sebagai kotak berlabel mungkin kelihatan berbeza daripada paparannya dalam Hancom Office.',
+  appMergeSourceLoaded: '{name} dimuatkan ({n} rekod)',
+  appMergeWritten: '{n} dokumen ditulis',
+  appMergeNothingToWrite: 'Tiada untuk ditulis',
+  appExportingHwp: 'Mengeksport dokumen HWP…',
+  appExportedHwp: 'Dokumen HWP dieksport: {path}',
+  appExportHwpFailed: 'Eksport HWP gagal: {error}',
+  appExportHwpCanceled: 'Eksport HWP dibatalkan',
+  appExportHwpReadback:
+    'Dokumen ini tidak dapat ditulis tepat sebagai .hwp. Cuba simpan sebagai .hwpx.',
 } satisfies Record<keyof typeof zh, string>

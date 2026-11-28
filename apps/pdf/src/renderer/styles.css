@@ -21,6 +21,7 @@
   --pdf-statusbar-hover: rgb(0 0 0 / 8%);
   --pdf-swatch-ring: rgb(0 0 0 / 15%);
   --pdf-scroll-thumb: rgb(0 0 0 / 25%);
+  --pdf-knob-dot: #fff;
 
   /* content-side constants: pages are paper, page overlays sit on paper —
    * these never follow the theme */
@@ -82,11 +83,13 @@
   --pdf-shadow-page: 0 1px 4px rgb(0 0 0 / 18%);
   --pdf-shadow-pin: 0 1px 4px rgb(0 0 0 / 30%);
   --pdf-shadow-drop: 0 6px 20px rgb(0 0 0 / 14%), 0 1px 3px rgb(0 0 0 / 8%);
-  --pdf-shadow-composer: 0 6px 30px rgb(0 0 0 / 8%);
+  --pdf-shadow-composer: 0 1px 3px rgb(0 0 0 / 8%);
 }
 
 [data-theme='dark'] {
   --accent: #e8663f;
+  /* the dark accent is light: white on it does not read */
+  --pdf-on-accent: #141414;
   --accent-dark: #d4552f;
   --accent-soft: #43261d;
   --pdf-error: #e57373;
@@ -113,6 +116,7 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']):not([data-theme='dark']) {
     --accent: #e8663f;
+    --pdf-on-accent: #141414;
     --accent-dark: #d4552f;
     --accent-soft: #43261d;
     --pdf-error: #e57373;
@@ -152,7 +156,7 @@
 }
 
 :root:lang(ko) {
-  --ui-cjk: 'Apple SD Gothic Neo', 'Malgun Gothic';
+  --ui-cjk: 'UI Pretendard', 'Apple SD Gothic Neo', 'Malgun Gothic';
 }
 
 :root:lang(zh-TW) {
@@ -197,6 +201,7 @@ button {
 .app.pdf-presenting .ai-dock,
 .app.pdf-presenting .pdf-thumbs,
 .app.pdf-presenting .pdf-side-resizer,
+.app.pdf-presenting .pdf-side-reopen,
 .app.pdf-presenting .status-bar,
 .app.pdf-presenting .pdf-search-bar {
   display: none !important;
@@ -268,6 +273,57 @@ button {
   flex-shrink: 0;
 }
 
+/* ---- autosave toggle (pill in the title bar) ---- */
+
+.autosave-toggle {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  margin-left: 4px;
+  margin-right: 4px;
+  user-select: none;
+}
+
+.autosave-toggle input {
+  display: none;
+}
+
+.autosave-knob {
+  width: 26px;
+  height: 14px;
+  border-radius: 7px;
+  background: var(--border-strong);
+  position: relative;
+  transition: background 0.15s;
+}
+
+.autosave-knob::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--pdf-knob-dot);
+  transition: left 0.15s;
+}
+
+.autosave-toggle.on .autosave-knob {
+  background: var(--accent);
+}
+
+.autosave-toggle.on .autosave-knob::after {
+  left: 14px;
+}
+
+.autosave-text {
+  font-size: 11px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
 /* ── ribbon tab strip (docs/Word-style: semibold labels, accent underline on the active tab) ── */
 .ribbon-tab {
   position: relative;
@@ -303,6 +359,10 @@ button {
   background: var(--accent);
 }
 
+.ribbon-band {
+  position: relative;
+}
+
 .ribbon-body {
   display: flex;
   align-items: stretch;
@@ -323,6 +383,60 @@ button {
      padding, keeping the 80px band and the content area unchanged; Chromium
      paints a thumb only while the row actually overflows. */
   padding-bottom: 1px;
+}
+
+/* Edge chevrons appear only when .ribbon-body actually overflows sideways,
+   giving a visible affordance and one-click scroll alongside the scrollbar
+   and mouse wheel. */
+.ribbon-scroll-btn {
+  position: absolute;
+  top: 0;
+  bottom: 5px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  padding: 0;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.ribbon-scroll-btn:hover {
+  color: var(--text-primary);
+}
+
+.ribbon-scroll-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.ribbon-scroll-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 28px;
+  border-radius: 4px;
+}
+
+.ribbon-scroll-btn:hover .ribbon-scroll-icon {
+  background: var(--hover);
+}
+
+.ribbon-scroll-left {
+  left: 0;
+  justify-content: flex-start;
+  padding-left: 2px;
+  background: linear-gradient(to right, var(--chrome-bg) 62%, transparent);
+}
+
+.ribbon-scroll-right {
+  right: 0;
+  justify-content: flex-end;
+  padding-right: 2px;
+  background: linear-gradient(to left, var(--chrome-bg) 62%, transparent);
 }
 
 .ribbon-body::-webkit-scrollbar {
@@ -465,7 +579,12 @@ button {
 .rb-col {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  justify-content: center;
+  gap: 2px;
+}
+
+.rb-col-3 {
+  gap: 1px;
 }
 
 .rb-row {
@@ -520,16 +639,53 @@ button {
   border: none;
   background: none;
   border-radius: 3px;
-  padding: 3px 8px;
+  padding: 4px 7px;
   font-size: 12px;
+  line-height: 1.25;
   text-align: left;
   cursor: pointer;
   color: var(--text);
   white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.rb-col-3 .rb-small {
+  padding: 2px 7px;
+  line-height: 1.2;
+}
+
+.rb-small-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--text-primary);
+}
+
+.rb-small-icon svg {
+  width: 16px;
+  height: 16px;
+  /* Re-pin painted stroke when 24-unit ribbon icons scale down to 16px */
+  stroke-width: 1.8;
+}
+
+.rb-col-3 .rb-small-icon svg {
+  width: 14px;
+  height: 14px;
+  stroke-width: 2;
 }
 
 .rb-small:hover:not(:disabled) {
   background: var(--hover);
+}
+
+.rb-small.active {
+  background: var(--active-bg);
+}
+
+.rb-small:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
 
 /* ---- Compact ribbon (⌥⌘K / Ctrl+Alt+K), docs parity, see #362 ----
@@ -545,6 +701,10 @@ button {
   height: 45px;
   padding-top: 5px;
   padding-bottom: 1px;
+}
+
+.ribbon-compact .ribbon-scroll-icon {
+  height: 22px;
 }
 
 .ribbon-compact .rb-big {
@@ -566,6 +726,29 @@ button {
  * hasText and getByRole(name) both read it) but take it out of the visual
  * flow. display: none here would strip the accessible name. */
 .ribbon-compact .rb-big > span:not(.rb-big-icon) {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+.ribbon-compact .rb-small {
+  gap: 0;
+  padding: 3px 5px;
+}
+
+.ribbon-compact .rb-small-icon svg {
+  width: 18px;
+  height: 18px;
+  stroke-width: 1.7;
+}
+
+.ribbon-compact .rb-small > span:not(.rb-small-icon) {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -724,6 +907,14 @@ button {
   background: var(--border);
 }
 
+/* shortcut beside a menu label (cut / copy / paste pages) */
+.thumb-menu-key {
+  margin-left: auto;
+  padding-left: 24px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
 /* ── Markup context menu (right click on a highlight/underline/strikeout) ── */
 
 .pdf-markup-menu {
@@ -778,18 +969,68 @@ button {
 
 /* ── Markup floating bar for selected text ── */
 
+/* Placed by App.tsx (placeSelectionBar) inside the viewer; above the selection the
+   color row goes on top so the button row keeps its place next to the text */
 .pdf-sel-popup {
   position: fixed;
   z-index: 30;
   display: flex;
-  gap: 2px;
+  flex-direction: column;
+  gap: 4px;
   padding: 4px;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 8px;
   box-shadow: var(--pdf-shadow-popup);
-  transform: translateX(-50%);
   user-select: none;
+}
+
+.pdf-sel-popup.is-above {
+  flex-direction: column-reverse;
+}
+
+.pdf-sel-popup-row {
+  display: flex;
+  gap: 2px;
+}
+
+/* The color row under (or over) the buttons after an underline, squiggly or strikeout */
+.pdf-sel-colors {
+  display: flex;
+  gap: 6px;
+  padding: 2px 4px;
+}
+
+.pdf-sel-popup .pdf-sel-colors button {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+  background-clip: padding-box;
+}
+
+.pdf-sel-popup .pdf-sel-colors button.is-current {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.pdf-sel-popup button.pdf-sel-pen {
+  width: 26px;
+}
+
+.pdf-sel-popup button.pdf-sel-pen.is-editing {
+  background: var(--hover);
+}
+
+/* A pen's color picker (right-click on a pen), placed by App.tsx like the bar */
+.pdf-sel-pen-picker {
+  position: fixed;
+  z-index: 31;
+}
+
+.pdf-sel-pen-picker .pdf-color-popover {
+  position: static;
 }
 
 .pdf-sel-popup button {
@@ -1192,6 +1433,38 @@ button {
   cursor: col-resize;
   z-index: 20;
   background: transparent;
+}
+
+/* a closed sidebar leaves this tab on the edge of the page area where the
+ * sidebar sits: one press brings the thumbnails back (the View tab button does
+ * the same). Logical sides, so it follows the sidebar in right-to-left languages. */
+.pdf-side-reopen {
+  position: absolute;
+  inset-inline-start: 0;
+  top: 12px;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-inline-start: none;
+  border-start-end-radius: 6px;
+  border-end-end-radius: 6px;
+  background: var(--surface);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.pdf-side-reopen:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+
+[dir='rtl'] .pdf-side-reopen svg {
+  transform: scaleX(-1);
 }
 
 .pdf-thumb {
@@ -1631,6 +1904,44 @@ button {
   gap: 10px;
 }
 
+/* The print dialog carries the shared page layout panel: it scrolls inside the view */
+.pdf-modal.pdf-print-dialog {
+  width: 420px;
+  max-width: calc(100% - 32px);
+  max-height: calc(100% - 128px);
+  overflow-y: auto;
+}
+
+.pdf-modal.pdf-print-dialog.pdf-print-dialog-split {
+  margin-top: 16px;
+  width: min(1040px, calc(100% - 32px));
+  height: min(760px, calc(100% - 32px));
+  max-height: calc(100% - 32px);
+  overflow: hidden;
+  padding: 0;
+  gap: 0;
+}
+
+.pdf-modal.pdf-print-dialog.pdf-print-dialog-split > .gs-pl-dialog-split-body {
+  padding: 12px 16px;
+}
+
+.pdf-modal.pdf-print-dialog.pdf-print-dialog-split > .pdf-modal-title {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.pdf-modal.pdf-print-dialog.pdf-print-dialog-split > .pdf-modal-actions {
+  padding: 10px 16px;
+  border-top: 1px solid var(--border);
+}
+
+.pdf-print-dialog-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
 .pdf-modal-title {
   font-size: 13px;
   font-weight: 600;
@@ -1708,6 +2019,113 @@ button {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
+}
+
+/* Attachments panel: rows with a pending tag while the edit has not been saved */
+.pdf-attachments {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  overflow-y: auto;
+}
+
+.pdf-attachments-add {
+  align-self: flex-start;
+}
+
+.pdf-attachments-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.pdf-attachment {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  border-radius: 6px;
+}
+
+.pdf-attachment:hover {
+  background: var(--hover);
+}
+
+.pdf-attachment.removing {
+  opacity: 0.55;
+}
+
+.pdf-attachment-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.92em;
+}
+
+.pdf-attachment-tag {
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: var(--pdf-prop-bg);
+  color: var(--text-secondary);
+  font-size: 0.78em;
+}
+
+.pdf-attachment-size {
+  color: var(--text-secondary);
+  font-size: 0.8em;
+}
+
+/* Label rows inside form dialogs: control left, label beside it, one per line */
+.pdf-perm-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+}
+
+.pdf-perm-row > span:first-child {
+  min-width: 150px;
+}
+
+.pdf-perm-row > input[type='text'],
+.pdf-perm-row > input[type='number'],
+.pdf-perm-row > input[type='password'] {
+  flex: 1;
+}
+
+/* Bates preview: a page outline with the number strips where the position puts them */
+.pdf-bates-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.pdf-bates-preview-page {
+  height: 64px;
+  border: 1px dashed var(--border-strong);
+  border-radius: 4px;
+}
+
+.pdf-bates-preview-strip {
+  font-family: ui-monospace, monospace;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.pdf-bates-positions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  column-gap: 16px;
 }
 
 /* Design-system modal footer buttons: secondary = bg-subtle, primary = black (#232425) */
@@ -1798,6 +2216,16 @@ button {
   font-size: 12px;
   color: var(--text-dim);
   white-space: nowrap;
+}
+
+/* Option toggles (Aa / W): same word-style active plate as the selection markup bar */
+.pdf-search-bar .pdf-search-opt {
+  font-size: 12px;
+}
+
+.pdf-search-bar .pdf-search-opt.is-active {
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 1px var(--accent);
 }
 
 .pdf-search-layer {
@@ -2121,6 +2549,25 @@ button {
 .pdf-scroll.pdf-drawing .textLayer {
   user-select: none;
   pointer-events: none;
+}
+
+/* Hand tool: dragging the pane moves the view instead of selecting text
+   (pan-drag.ts); links keep their pointer and still follow on a plain click */
+.pdf-scroll.pdf-hand,
+.pdf-scroll.pdf-hand .pdf-page,
+.pdf-scroll.pdf-hand .textLayer span {
+  cursor: grab;
+}
+
+.pdf-scroll.pdf-hand .textLayer {
+  user-select: none;
+}
+
+/* set by pan-drag.ts for the length of a drag, from either button */
+.pdf-scroll[data-panning],
+.pdf-scroll[data-panning] * {
+  cursor: grabbing !important;
+  user-select: none;
 }
 
 .pdf-draw-shape {
@@ -2752,6 +3199,15 @@ button {
   pointer-events: none;
 }
 
+/* Scan patches (paper over recognized words of a scanned page): opaque, under the
+   text-edit and text-insert previews that carry the replacement text */
+.pdf-imgedit-scan {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+}
+
 /* Below-text previews: multiply with the page raster so existing ink shows
    through, matching how the saved PDF paints text over the image */
 .pdf-imgedit-under {
@@ -3065,6 +3521,54 @@ button {
   color: var(--pdf-on-accent);
 }
 
+/* Ink color: the signature's own, apart from the drawing pen */
+.pdf-sign-colors {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pdf-sign-colors-label {
+  font-size: 12.5px;
+  color: var(--text-dim);
+}
+
+.pdf-sign-color {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+  background-clip: padding-box;
+  cursor: pointer;
+}
+
+.pdf-sign-color.is-current {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.pdf-sign-color-more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface);
+  color: var(--text-dim);
+  font-size: 14px;
+  line-height: 1;
+}
+
+.pdf-sign-color-more-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.pdf-sign-color-more-wrap .pdf-color-popover {
+  left: 0;
+  right: auto;
+  z-index: 8;
+}
+
 .pdf-sign-pad {
   border: 1px dashed var(--border-strong);
   border-radius: 6px;
@@ -3348,6 +3852,20 @@ button {
   cursor: default;
 }
 
+.rb-menu-sep {
+  height: 1px;
+  margin: 4px 0;
+  background: var(--border);
+}
+
+/* Section name inside a ribbon dropdown (the PNG / JPG exports of the converter menu) */
+.rb-menu-heading {
+  padding: 4px 10px 2px;
+  font-size: 11.5px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
 /* Dialog color well (stamp dialog): swatch trigger + the shared picker popover.
    The popover is fixed + anchored so it escapes the modal's overflow-y clip. */
 .pdf-color-well-wrap {
@@ -3418,18 +3936,21 @@ button {
   pointer-events: none;
 }
 
+/* Links take no pointer input either: the text under them stays selectable by
+   drag and keeps its right-click menu. LinkLayer.tsx follows a plain click on a
+   link and marks the hovered one (is-hover, data-link-hover on the page). */
 .pdf-link {
   position: absolute;
   border-radius: 2px;
-  pointer-events: auto;
 }
 
-/* Text editing owns page clicks, including text covered by link annotations. */
-.pdf-editing-text .pdf-link {
-  pointer-events: none;
+.pdf-scroll .pdf-page[data-link-hover] .pdf-page-content,
+.pdf-scroll .pdf-page[data-link-hover] .textLayer span,
+.pdf-scroll .pdf-page[data-link-hover] .pdf-ocr-layer span {
+  cursor: pointer;
 }
 
-.pdf-link:hover {
+.pdf-link.is-hover {
   background: var(--pdf-link-hover-bg);
   box-shadow: 0 0 0 1px var(--pdf-link-hover-ring);
 }
@@ -3912,6 +4433,24 @@ button {
   color: var(--text);
 }
 
+/* icon buttons in the composer footer beside the model picker (the MCP server button) */
+.ai-attach-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+.ai-attach-btn:hover {
+  filter: brightness(0.7);
+}
+
 .ai-chat {
   display: flex;
   flex: 1;
@@ -4121,6 +4660,15 @@ button {
   font-size: 14px;
   font-weight: 500;
   color: var(--color-ai-action);
+}
+
+.pdf-sel-popup button.pdf-sel-note {
+  width: auto;
+  gap: 5px;
+  padding: 0 9px;
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
 }
 
 .ai-ask-pop {
@@ -4752,16 +5300,20 @@ button {
   color: var(--text);
   background: var(--pdf-prop-bg);
   border-bottom: 1px solid var(--border);
-  border-inline-start: 3px solid var(--pdf-ok);
 }
 
-.pdf-sig-banner.warning,
-.pdf-sig-banner.untrusted {
-  border-inline-start-color: var(--pdf-sig-warn);
+.pdf-sig-banner > svg {
+  flex-shrink: 0;
+  color: var(--pdf-ok);
 }
 
-.pdf-sig-banner.invalid {
-  border-inline-start-color: var(--danger);
+.pdf-sig-banner.warning > svg,
+.pdf-sig-banner.untrusted > svg {
+  color: var(--pdf-sig-warn);
+}
+
+.pdf-sig-banner.invalid > svg {
+  color: var(--danger);
 }
 
 .pdf-sig-banner > span {
@@ -4770,6 +5322,24 @@ button {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* ── Another program changed the open file (issue #405) ── */
+
+.pdf-disk-change-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 14px;
+  font-size: 12.5px;
+  color: var(--text);
+  background: var(--pdf-prop-bg);
+  border-bottom: 1px solid var(--border);
+}
+
+.pdf-disk-change-bar > span {
+  flex: 1;
+  min-width: 0;
 }
 
 .pdf-sig-dialog {
@@ -4783,17 +5353,7 @@ button {
   gap: 8px;
   padding: 10px;
   border: 1px solid var(--border);
-  border-inline-start: 3px solid var(--pdf-ok);
   border-radius: 8px;
-}
-
-.pdf-sig-card.warning,
-.pdf-sig-card.untrusted {
-  border-inline-start-color: var(--pdf-sig-warn);
-}
-
-.pdf-sig-card.invalid {
-  border-inline-start-color: var(--danger);
 }
 
 .pdf-sig-head {
@@ -5051,6 +5611,22 @@ button {
   flex-wrap: wrap;
 }
 
+.pdf-job-provider {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pdf-job-provider > span {
+  flex-shrink: 0;
+  color: var(--text-secondary);
+  font-size: var(--text-caption);
+}
+
+.pdf-job-provider > select {
+  max-width: 220px;
+}
+
 .pdf-ai-read-paid {
   font-weight: 600;
   color: var(--pdf-sig-warn);
@@ -5065,15 +5641,14 @@ button {
   color: var(--text);
   background: var(--pdf-prop-bg);
   border-bottom: 1px solid var(--border);
-  border-inline-start: 3px solid var(--accent);
 }
 
-.pdf-job-strip.is-done {
-  border-inline-start-color: var(--pdf-ok);
+.pdf-job-strip.is-done .pdf-job-strip-title {
+  color: var(--pdf-ok);
 }
 
-.pdf-job-strip.is-stopped {
-  border-inline-start-color: var(--pdf-sig-warn);
+.pdf-job-strip.is-stopped .pdf-job-strip-title {
+  color: var(--pdf-sig-warn);
 }
 
 .pdf-job-strip-text {
@@ -5142,8 +5717,7 @@ button {
   padding: 10px 12px;
   font-size: 12.5px;
   color: var(--text);
-  border: 1px solid var(--border);
-  border-inline-start: 3px solid var(--pdf-sig-warn);
+  border: 1px solid var(--pdf-sig-warn);
   border-radius: 6px;
 }
 
@@ -5383,10 +5957,20 @@ button {
   white-space: pre-wrap;
 }
 
-.bl-item.bl-linked:hover,
+/* a sentence-linked paragraph reacts per sentence, so it does not light as a whole on hover */
+.bl-item.bl-linked:not(.bl-sentences):hover,
 .bl-item.bl-hover,
 .bl-continued.bl-hover {
   background: var(--accent-soft);
+}
+
+.bl-sent {
+  border-radius: 2px;
+}
+
+.bl-sent.bl-sent-hover {
+  background: var(--accent-soft);
+  box-shadow: 0 0 0 1px var(--accent);
 }
 
 .bl-heading {
@@ -5485,6 +6069,14 @@ button {
   box-sizing: border-box;
   border: 2px solid var(--accent);
   border-radius: 2px;
+}
+
+/* the lines of the source sentence whose translation is hovered: same screen-only layer */
+.bl-overlay-sent {
+  position: absolute;
+  border-radius: 2px;
+  background: var(--accent);
+  opacity: 0.28;
 }
 
 @media print {
@@ -6032,6 +6624,19 @@ button.ai-overview-term-page:hover {
   animation: pdf-quote-flash 2s ease-out forwards;
 }
 
+/* what the last AI run changed (screen only, like the search hits); the look is the
+   shared .ai-changed-mark */
+.pdf-ai-marks-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.pdf-ai-mark {
+  position: absolute;
+}
+
 @keyframes pdf-quote-flash {
   0%,
   70% {
@@ -6405,4 +7010,712 @@ button.ai-overview-term-page:hover {
   min-width: 0;
   color: var(--text-muted);
   font-size: 11px;
+}
+
+/* Bookmark editing (pending outline tree) */
+.pdf-bookmark-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+}
+.pdf-bookmark-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border: none;
+  background: none;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+.pdf-bookmark-actions {
+  display: none;
+  flex-shrink: 0;
+}
+.pdf-bookmark-row:hover .pdf-bookmark-actions {
+  display: inline-flex;
+}
+.pdf-bookmark-add {
+  margin: 4px 8px;
+  padding: 4px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+/* Compare panel: summary, then one tappable row per differing page */
+.pdf-compare {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  overflow-y: auto;
+}
+
+.pdf-compare-pick {
+  align-self: flex-start;
+}
+
+.pdf-compare-swap {
+  align-self: flex-start;
+  border: none;
+  background: none;
+  color: var(--accent);
+  cursor: pointer;
+  padding: 0;
+  font-size: 0.85em;
+}
+
+.pdf-compare-other {
+  color: var(--text-muted);
+}
+
+.pdf-compare-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.pdf-compare-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  border: none;
+  background: none;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 6px;
+  text-align: start;
+  color: inherit;
+  font: inherit;
+}
+
+.pdf-compare-row:hover {
+  background: var(--hover);
+}
+
+.pdf-compare-page {
+  min-width: 72px;
+  font-size: 0.88em;
+}
+
+.pdf-compare-added {
+  color: var(--pdf-ok);
+  font-size: 0.82em;
+}
+
+.pdf-compare-removed {
+  color: var(--pdf-error);
+  font-size: 0.82em;
+}
+
+.pdf-compare-truncated {
+  color: var(--pdf-sig-warn);
+  font-size: 0.82em;
+}
+
+/* a page whose probe failed: same frame as a rendered page, an error line instead of a canvas */
+.pdf-page-broken {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  background: var(--surface);
+  color: var(--danger);
+  font-size: 12px;
+}
+
+/* ── Split PDF dialog (visual thumbnails + scissor lines + 4 modes) ── */
+.pdf-modal-mask.pdf-split-mask {
+  align-items: center;
+  padding: 16px;
+}
+
+.pdf-split-modal {
+  margin-top: 0;
+  width: min(940px, 100%);
+  max-width: 100%;
+  height: min(640px, 100%);
+  max-height: 100%;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.pdf-split-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px 12px;
+  border-bottom: 1px solid var(--border-subtle);
+  flex: none;
+}
+
+.pdf-split-head .pdf-modal-title {
+  margin: 0;
+}
+
+.pdf-split-close {
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-6);
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.pdf-split-close:hover:not(:disabled) {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+
+.pdf-split-body {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(300px, 0.95fr);
+  overflow: hidden;
+}
+
+@media (max-width: 760px) {
+  .pdf-split-body {
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr 1fr;
+  }
+}
+
+.pdf-split-visual {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--surface-subtle);
+  border-right: 1px solid var(--border-subtle);
+}
+
+.pdf-split-visual-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--surface);
+  flex-wrap: wrap;
+}
+
+.pdf-split-visual-hint {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.pdf-split-visual-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.pdf-split-mini-btn {
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+.pdf-split-grid {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 14px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  align-content: flex-start;
+  row-gap: 14px;
+  column-gap: 2px;
+}
+
+.pdf-split-tile {
+  width: 112px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 6px;
+  border-radius: var(--radius-8);
+  border: 1.5px solid var(--border);
+  background: var(--surface);
+  transition:
+    border-color 0.12s ease,
+    opacity 0.12s ease;
+}
+
+.pdf-split-tile.excluded {
+  opacity: 0.42;
+  border-style: dashed;
+}
+
+.pdf-split-tile.g-0 {
+  border-color: var(--accent);
+}
+
+.pdf-split-tile.g-1 {
+  border-color: var(--pdf-ok);
+}
+
+.pdf-split-tile.g-2 {
+  border-color: var(--pdf-sig-warn);
+}
+
+.pdf-split-tile.g-3 {
+  border-color: var(--text-secondary);
+}
+
+.pdf-split-tile-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  font-size: 11px;
+}
+
+.pdf-split-page-num {
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.pdf-split-group-badge {
+  padding: 1px 5px;
+  border-radius: var(--radius-4);
+  font-size: 10px;
+  font-weight: 600;
+  background: var(--accent-soft);
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+.pdf-split-tile.g-1 .pdf-split-group-badge {
+  color: var(--pdf-ok);
+  background: var(--surface-subtle);
+}
+
+.pdf-split-tile.g-2 .pdf-split-group-badge {
+  color: var(--pdf-sig-warn);
+  background: var(--surface-subtle);
+}
+
+.pdf-split-tile.g-3 .pdf-split-group-badge {
+  color: var(--text-primary);
+  background: var(--surface-subtle);
+}
+
+.pdf-split-thumb-frame {
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  background: var(--surface-subtle);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-4);
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pdf-split-thumb-frame canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.pdf-split-thumb-placeholder {
+  font-size: 16px;
+  color: var(--text-secondary);
+}
+
+.pdf-split-cut-btn {
+  position: relative;
+  width: 24px;
+  height: 164px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  flex: none;
+}
+
+.pdf-split-cut-btn:disabled {
+  cursor: default;
+  opacity: 0.25;
+}
+
+.pdf-split-cut-line {
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  left: 50%;
+  width: 0;
+  border-left: 2px dashed transparent;
+  transform: translateX(-50%);
+  transition: border-color 0.12s ease;
+}
+
+.pdf-split-cut-icon {
+  position: relative;
+  z-index: 1;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  opacity: 0.22;
+  transition:
+    opacity 0.12s ease,
+    background 0.12s ease,
+    color 0.12s ease,
+    border-color 0.12s ease;
+}
+
+.pdf-split-cut-btn:hover:not(:disabled) .pdf-split-cut-line {
+  border-left-color: var(--accent);
+}
+
+.pdf-split-cut-btn:hover:not(:disabled) .pdf-split-cut-icon {
+  opacity: 1;
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.pdf-split-cut-btn.active .pdf-split-cut-line {
+  border-left-color: var(--accent);
+}
+
+.pdf-split-cut-btn.active .pdf-split-cut-icon {
+  opacity: 1;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--color-btn-primary-text);
+}
+
+.pdf-split-controls {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--surface);
+}
+
+.pdf-split-tabs {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border-subtle);
+  flex: none;
+}
+
+.pdf-split-tab {
+  padding: 6px 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-6);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pdf-split-tab:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.pdf-split-tab.active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.pdf-split-panel {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.pdf-split-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.pdf-split-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.pdf-split-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.pdf-split-range-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 168px;
+  overflow-y: auto;
+}
+
+.pdf-split-range-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pdf-split-range-tag {
+  font-size: 12px;
+  color: var(--text-secondary);
+  min-width: 54px;
+}
+
+.pdf-split-num {
+  width: 68px;
+  margin-bottom: 0;
+  padding: 5px 8px;
+}
+
+.pdf-split-num-wide {
+  width: 110px;
+  margin-bottom: 0;
+}
+
+.pdf-split-unit {
+  width: 78px;
+  margin-bottom: 0;
+}
+
+.pdf-split-dash {
+  color: var(--text-secondary);
+}
+
+.pdf-split-row-del {
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-4);
+  cursor: pointer;
+}
+
+.pdf-split-row-del:hover:not(:disabled) {
+  background: var(--surface-hover);
+  color: var(--danger);
+}
+
+.pdf-split-row-del:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.pdf-split-row-actions,
+.pdf-split-presets,
+.pdf-split-size-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.pdf-split-chip {
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.pdf-split-chip:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.pdf-split-chip.active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.pdf-split-radios {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.pdf-split-check {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12.5px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.pdf-split-hint {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.45;
+}
+
+.pdf-split-empty {
+  padding: 12px;
+  border-radius: var(--radius-6);
+  background: var(--surface-subtle);
+  color: var(--text-secondary);
+  font-size: 12.5px;
+}
+
+.pdf-split-error {
+  font-size: 12px;
+  color: var(--danger);
+}
+
+.pdf-split-preview {
+  padding: 10px 12px;
+  border-radius: var(--radius-6);
+  background: var(--surface-subtle);
+  border: 1px solid var(--border-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pdf-split-preview-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.pdf-split-preview-count {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.pdf-split-link-btn {
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 0;
+}
+
+.pdf-split-link-btn:hover {
+  text-decoration: underline;
+}
+
+.pdf-split-file-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 120px;
+  overflow-y: auto;
+}
+
+.pdf-split-file-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.pdf-split-file-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+}
+
+.pdf-split-file-pages {
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+  flex: none;
+}
+
+.pdf-split-output {
+  border-top: 1px solid var(--border-subtle);
+  padding-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.pdf-split-subhead {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.pdf-split-output-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.pdf-split-output-grid .pdf-modal-input {
+  margin-bottom: 0;
+}
+
+.pdf-split-foot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 18px;
+  border-top: 1px solid var(--border-subtle);
+  flex: none;
+}
+
+.pdf-split-progress {
+  margin-right: auto;
+  font-size: 12.5px;
+  color: var(--text-secondary);
 }

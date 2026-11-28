@@ -1,6 +1,35 @@
 import type { zh } from './zh'
 
 export const id = {
+  mathInsert: 'Sisipkan persamaan',
+  mathEdit: 'Edit persamaan',
+  mathHelp: 'Ketik secara visual atau edit LaTeX. HTML menyimpan sumber untuk diedit kembali.',
+  mathVisualInput: 'Input persamaan visual',
+  mathSource: 'Sumber LaTeX',
+  mathDisplay: 'Tampilkan pada baris terpisah',
+  mathPreview: 'Pratinjau',
+  mathUnsupported:
+    'Ekspresi ini tidak dapat ditampilkan. Sumber akan disimpan untuk diperbaiki nanti.',
+  mathTooLong: 'Gunakan maksimal {n} karakter.',
+  mathStale: 'Dokumen berubah. Salin draf, tutup jendela ini, lalu buka kembali persamaan.',
+  mathShortcut: '⌘+Enter untuk menerapkan',
+  mathApply: 'Terapkan persamaan',
+  mathKeyboard: 'Papan ketik matematika',
+  mathFraction: 'Pecahan',
+  mathRoot: 'Akar kuadrat',
+  mathNthRoot: 'Akar ke-n',
+  mathPower: 'Pangkat',
+  mathSubscript: 'Subskrip',
+  mathSum: 'Jumlah',
+  mathProduct: 'Hasil kali',
+  mathIntegral: 'Integral',
+  mathLimit: 'Limit',
+  mathMatrix: 'Matriks',
+  mathVector: 'Vektor',
+  mathCases: 'Sistem',
+  mathPiecewise: 'Fungsi bertahap',
+  mathBinomial: 'Koefisien binomial',
+
   redactMenuLabel: 'Sembunyikan pilihan dari AI',
   redactDialogDesc:
     'Kata-kata tetap ada di dokumen dan berkas; model hanya melihat placeholder di bawah. Beri nama agar model tahu apa yang diwakili.',
@@ -17,6 +46,11 @@ export const id = {
   saveFailedStatus: 'Gagal menyimpan',
   exportFailed: 'Ekspor gagal',
   printFailed: 'Gagal mencetak: {error}',
+  printRangeEmpty:
+    'Dokumen ini memiliki {count} halaman. Ketik nomor halaman di dalam rentang itu.',
+  printPagesFailed: 'Tidak dapat menghitung halaman yang akan dicetak: {error}',
+  printLayoutSaved: 'Hasil tata letak disimpan sebagai PDF.',
+  printLayoutSaveFailed: 'Tidak dapat menyimpan PDF: {error}',
   exportHtmlSkipped: 'Diekspor, tetapi {count} aset tidak dapat disematkan (mis. {first})',
   viewPreview: 'Pratinjau',
   viewSplit: 'Terpisah',
@@ -50,7 +84,8 @@ export const id = {
   slideThumbs: 'Daftar slide',
   slideThumbGo: 'Buka slide {n}',
   previewNeedsSave: 'Gambar dan gaya relatif akan tampil di pratinjau setelah file disimpan',
-  inspectHint: 'Klik elemen di pratinjau untuk memilih, klik dua kali untuk mengedit teks',
+  inspectHint:
+    'Klik elemen di pratinjau untuk memilih, klik dua kali untuk mengedit teks, Shift+klik atau {alt}+seret untuk memilih beberapa',
   nodeDynamic:
     'Elemen ini dibuat oleh skrip halaman dan tidak ada di sumber; edit lewat sumber atau AI',
   nodeDynamicShort: 'dibuat skrip',
@@ -100,6 +135,7 @@ export const id = {
   alignLeft: 'Rata kiri',
   alignCenter: 'Rata tengah',
   alignRight: 'Rata kanan',
+  alignJustify: 'Rata kanan-kiri',
   fontSizeDec: 'Perkecil ukuran font',
   fontSizeInc: 'Perbesar ukuran font',
   typography: 'Tipografi',

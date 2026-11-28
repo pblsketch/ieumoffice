@@ -1,21 +1,28 @@
 import React, { useEffect, useState } from 'react'
-import type { Lang } from '@genoffice/i18n'
+import { htmlLang, type Lang } from '@genoffice/i18n'
+import { IconArrowDown, IconArrowUp, IconClose } from '@genoffice/ui/icons'
 import type {
   QuickLookDocBlock,
   QuickLookMindmapSheet,
+  QuickLookOrigin,
   QuickLookPayload,
   QuickLookSheet,
   QuickLookSlide,
 } from '../../../shared/quick-look-api'
 import { quickLookText } from '../i18n/strings-quick-look'
+import './quick-look.css'
 
 export interface QuickLookViewProps {
   lang: Lang
   payload: QuickLookPayload | null
   loading?: boolean
   standalone?: boolean
+  origin?: QuickLookOrigin
   closing?: boolean
   navDirection?: 'up' | 'down' | 'none'
+  /** 0-based position in the host file list (shown as "3 / 12" when total > 0) */
+  listIndex?: number
+  listTotal?: number
   canPrev?: boolean
   canNext?: boolean
   onPrev?: () => void
@@ -32,6 +39,19 @@ function formatBytes(bytes: number): string {
   if (kb < 1024) return `${kb.toFixed(1)} KB`
   const mb = kb / 1024
   return `${mb.toFixed(1)} MB`
+}
+
+function formatModifiedDate(mtimeMs: number, lang: Lang): string | null {
+  if (!Number.isFinite(mtimeMs) || mtimeMs <= 0) return null
+  try {
+    return new Intl.DateTimeFormat(htmlLang(lang), {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    }).format(new Date(mtimeMs))
+  } catch {
+    return null
+  }
 }
 
 function colName(index: number): string {
@@ -95,13 +115,7 @@ function SheetsBody({ sheets }: { sheets: QuickLookSheet[] }): React.JSX.Element
   )
 }
 
-function SlidesBody({
-  slides,
-  lang,
-}: {
-  slides: QuickLookSlide[]
-  lang: Lang
-}): React.JSX.Element {
+function SlidesBody({ slides, lang }: { slides: QuickLookSlide[]; lang: Lang }): React.JSX.Element {
   return (
     <div className="ql-slides">
       {slides.map((slide) => (
@@ -212,11 +226,7 @@ function DocBlocksBody({ blocks }: { blocks: QuickLookDocBlock[] }): React.JSX.E
                   {block.rows.map((row, rIdx) => (
                     <tr key={rIdx}>
                       {row.map((cell, cIdx) =>
-                        rIdx === 0 ? (
-                          <th key={cIdx}>{cell}</th>
-                        ) : (
-                          <td key={cIdx}>{cell}</td>
-                        ),
+                        rIdx === 0 ? <th key={cIdx}>{cell}</th> : <td key={cIdx}>{cell}</td>,
                       )}
                     </tr>
                   ))}
@@ -247,8 +257,11 @@ export function QuickLookView({
   payload,
   loading = false,
   standalone = false,
+  origin,
   closing = false,
   navDirection = 'none',
+  listIndex,
+  listTotal,
   canPrev = false,
   canNext = false,
   onPrev,
@@ -277,8 +290,15 @@ export function QuickLookView({
 
   const extLabel = (payload?.ext || payload?.family || 'FILE').toUpperCase()
   const metaParts: string[] = []
+  if (payload) {
+    metaParts.push(extLabel)
+  }
   if (payload && payload.sizeBytes > 0) {
     metaParts.push(formatBytes(payload.sizeBytes))
+  }
+  const modifiedLabel = payload ? formatModifiedDate(payload.mtimeMs, lang) : null
+  if (modifiedLabel) {
+    metaParts.push(modifiedLabel)
   }
   if (payload?.sheets?.length) {
     metaParts.push(quickLookText(lang, 'sheetCount', { n: payload.sheets.length }))
@@ -288,6 +308,12 @@ export function QuickLookView({
     const lines = payload.plainText.split('\n').length
     metaParts.push(quickLookText(lang, 'lineCount', { n: lines }))
   }
+  const showPosition =
+    typeof listIndex === 'number' &&
+    typeof listTotal === 'number' &&
+    listIndex >= 0 &&
+    listTotal > 0 &&
+    listIndex < listTotal
 
   const hasBothThumbAndContent =
     payload?.ok &&
@@ -299,9 +325,7 @@ export function QuickLookView({
       Boolean(payload.docBlocks?.length) ||
       Boolean(payload.plainText?.trim()))
 
-  const contentStageKey = payload
-    ? `${payload.path}:${payload.mtimeMs}:${viewTab}`
-    : 'loading'
+  const contentStageKey = payload ? `${payload.path}:${payload.mtimeMs}:${viewTab}` : 'loading'
 
   function renderBody(): React.JSX.Element {
     if (loading || !payload) {
@@ -371,16 +395,14 @@ export function QuickLookView({
     return <div className="ql-state">{quickLookText(lang, 'empty')}</div>
   }
 
-  const rootClass = [
-    standalone ? 'ql-standalone' : 'ql-modal',
-    closing ? 'ql-closing' : '',
-  ]
+  const rootClass = [standalone ? 'ql-standalone' : 'ql-modal', closing ? 'ql-closing' : '']
     .filter(Boolean)
     .join(' ')
 
   return (
     <div
       className={rootClass}
+      data-origin={origin}
       role="dialog"
       aria-modal="true"
       aria-label={payload?.name || quickLookText(lang, 'windowTitle')}
@@ -399,6 +421,11 @@ export function QuickLookView({
           </div>
         </div>
         <div className="ql-actions">
+          {showPosition && (
+            <span className="ql-position" aria-live="polite">
+              {listIndex + 1} / {listTotal}
+            </span>
+          )}
           {(onPrev || onNext) && (
             <>
               <button
@@ -409,7 +436,7 @@ export function QuickLookView({
                 title={quickLookText(lang, 'prevFile')}
                 aria-label={quickLookText(lang, 'prevFile')}
               >
-                ↑
+                <IconArrowUp size={14} />
               </button>
               <button
                 type="button"
@@ -419,7 +446,7 @@ export function QuickLookView({
                 title={quickLookText(lang, 'nextFile')}
                 aria-label={quickLookText(lang, 'nextFile')}
               >
-                ↓
+                <IconArrowDown size={14} />
               </button>
             </>
           )}
@@ -436,7 +463,7 @@ export function QuickLookView({
             title={quickLookText(lang, 'close')}
             aria-label={quickLookText(lang, 'close')}
           >
-            ✕
+            <IconClose size={14} />
           </button>
         </div>
       </div>

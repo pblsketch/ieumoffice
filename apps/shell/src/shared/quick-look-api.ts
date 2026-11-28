@@ -9,6 +9,7 @@ export type QuickLookFamily =
   | 'pdf'
   | 'hwp'
   | 'xmind'
+  | 'whiteboard'
   | 'md'
   | 'html'
   | 'image'
@@ -30,6 +31,7 @@ const FAMILY_BY_EXT: Readonly<Record<string, QuickLookFamily>> = {
   hwp: 'hwp',
   hwpx: 'hwp',
   xmind: 'xmind',
+  whiteboard: 'whiteboard',
   md: 'md',
   markdown: 'md',
   html: 'html',
@@ -122,10 +124,25 @@ export interface QuickLookPayload {
   errorMessage?: string
 }
 
+export type QuickLookOrigin = 'explorer' | 'file-panel'
+
+export interface QuickLookNavState {
+  enabled: boolean
+  canPrev: boolean
+  canNext: boolean
+  direction: 'up' | 'down' | 'none'
+  origin?: QuickLookOrigin
+  /** 0-based index in the host list */
+  index?: number
+  /** total previewable items in the host list */
+  total?: number
+}
+
 export interface QuickLookWindowInit {
   lang: Lang
   theme: QuickLookTheme
   payload: QuickLookPayload | null
+  nav?: QuickLookNavState
 }
 
 export type QuickLookInit = QuickLookWindowInit
@@ -133,10 +150,12 @@ export type QuickLookInit = QuickLookWindowInit
 export interface QuickLookWindowApi {
   getInit(): Promise<QuickLookWindowInit>
   onUpdate(handler: (payload: QuickLookPayload) => void): () => void
+  onNavChanged(handler: (nav: QuickLookNavState) => void): () => void
   onWillShow(handler: () => void): () => void
   onWillHide(handler: () => void): () => void
   onThemeChanged(handler: (theme: QuickLookTheme) => void): () => void
   onLangChanged(handler: (lang: Lang) => void): () => void
+  step(delta: -1 | 1): Promise<void>
   openInEditor(): Promise<void>
   revealInFolder(): Promise<void>
   close(): Promise<void>
@@ -145,10 +164,12 @@ export interface QuickLookWindowApi {
 export const QUICK_LOOK_WINDOW_CHANNELS = {
   getInit: 'quick-look:get-init',
   update: 'quick-look:payload',
+  navChanged: 'quick-look:nav-changed',
   willShow: 'quick-look:will-show',
   willHide: 'quick-look:will-hide',
   themeChanged: 'quick-look:theme-changed',
   langChanged: 'quick-look:lang-changed',
+  step: 'quick-look:step',
   openInEditor: 'quick-look:open-in-editor',
   revealInFolder: 'quick-look:reveal-in-folder',
   close: 'quick-look:close',

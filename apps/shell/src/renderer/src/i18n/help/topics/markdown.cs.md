@@ -8,6 +8,7 @@ Editor Markdown otevírá .md / .markdown — a .txt / .json, rovnou v zobrazen�
 - **Ukládání**: věrné bajt po bajtu — BOM, znaky CRLF i přítomnost prázdného řádku na konci se zachovávají; uložení bez změn soubor nepřepíše.
 - **Najít a nahradit**: ctrl+F hledá ve zdroji; Nahradit vše zapíše výsledek.
 - **AI**: předvolená tlačítka nechají asistenta dokument přepsat, rozšířit nebo přeložit. Výběr lze skrýt před AI (viz kapitola o AI panelu).
+- **Otevírání odkazů**: při úpravách otevře Ctrl+kliknutí na odkaz (⌘ na Macu) v prohlížeči; běžné kliknutí umístí kurzor do textu odkazu, aby se dal upravit. V režimu prezentace (F5) odkaz otevře běžné kliknutí.
 
 ## Pruh nástrojů
 
@@ -36,6 +37,7 @@ Nabídka Soubor, všechno místní a všechno se ptá, kam výsledek uložit:
 
 - **Exportovat jako Word…** a **Exportovat jako PDF…** zapíšou skutečný .docx nebo .pdf.
 - **Exportovat jako ODT…** zapíše .odt (text OpenDocument) stejným převodem jako export do Wordu; pokud se při něm něco změní nebo vypadne, uvidíte seznam a nejdřív to potvrdíte.
+- **Exportovat jako dokument HWP…** zapíše stejným převodem dokument HWP (.hwp nebo .hwpx); nadpisy, seznamy a tabulky se do dokumentu HWP přenesou jako takové a dlouhá tabulka pokračuje na další stránce. Pokud něco přenést nelze, nejprve uvidíte seznam a potvrdíte ho.
 - **Exportovat jako obrázky…** zapíše jeden PNG na každou stránku do složky, kterou vyberete.
 - **Převést a otevřít v Docs** převede na .docx a otevře ho ve vestavěné kartě Docs tady v aplikaci — nejde o předání do cloudu a převedená kopie žije v cache složce, která se po asi týdnu uklidí.
 
@@ -43,6 +45,7 @@ Nabídka Soubor, všechno místní a všechno se ptá, kam výsledek uložit:
 
 Pásek obsahuje přepínač **Zdroj** (překládá se spolu s aplikací). Když jej zapnete, editor nahradí nezpracovaný Markdown: přesně ten text, který uložení zapisuje, nic není zkrášlené, nic není pod ním znormalizované.
 
+- **Klávesnice**: Ctrl+E (⌘E na Macu) přepíná mezi zobrazením zdroje a vykreslenou editační plochou. Stiskněte F5 pro čtení na celé obrazovce.
 - **Úpravy jsou věrné bajtům.** Uložení ze zobrazení zdroje vytvoří stejné bajty jako uložení z editoru — BOM, CRLF i přítomnost koncového znaku nového řádku zůstanou zachovány.
 - **Je to stejný dokument.** Klidně mezi nimi přepínejte; zdroj je vlastní text editoru, ne kopie, kterou by bylo nutno slučovat.
 - **Pruh nástrojů pro formátování není dostupný**, dokud je zobrazení otevřené, protože většina těchto tlačítek vkládá konstrukce editoru, které dávají smysl jen na vykreslené straně. Když zobrazení zavřete, vrátí se.

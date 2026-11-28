@@ -17,22 +17,28 @@
  *   one material again (8.4 applies), converts it, and opens the result as a
  *   new unsaved tab; a failed read converts nothing and says why. A chosen
  *   conversion that is no longer offered never turns into an AI request.
+ * - Editors turned off (editor choice spec 7.3): "make" asks before anything
+ *   is read or converted. The AI kinds need their editor ([Turn on and open]
+ *   [Cancel]); a conversion can also make the file only, which is written
+ *   where new documents go and shown in its folder. While AI is off, an AI
+ *   "make" is refused (the window hides it; this is the second wall).
  */
 import type { Lang } from '@genoffice/i18n'
-import type {
-  AiTargetKind,
-  ConvertKind,
-  ConvertProblem,
-  GenerateHandoff,
-  GenerateMode,
-  GenerateWindowState,
-  MaterialView,
+import {
+  CONVERT_TARGETS,
+  type AiTargetKind,
+  type ConvertKind,
+  type ConvertProblem,
+  type GenerateHandoff,
+  type GenerateMode,
+  type GenerateWindowState,
+  type MaterialView,
 } from '../../shared/generate-api'
 import { defaultGeneratePrompt } from '../../shared/generate-default-prompts'
 import { MAX_IMAGE_MATERIAL_BYTES, MAX_MATERIAL_BYTES, MAX_MATERIALS } from './limits'
 import {
-  IMAGE_MATERIAL_EXTS,
   materialKey,
+  materialMaxBytes,
   summarizeMaterials,
   untitledMaterial,
   type MaterialStatus,
@@ -45,6 +51,12 @@ import {
 } from './request'
 import type { ConvertedDocument, ConvertResult } from './convert'
 import { MAX_OUTLINE_SLIDES } from '../mcp/pptx-outline'
+
+/** the editors a new document of the window opens in */
+export type GenerateEditor = AiTargetKind | (typeof CONVERT_TARGETS)[ConvertKind]
+
+/** the answer before "make" while that editor is off; `open` when it is on */
+export type GenerateEditorAnswer = 'open' | 'file-only' | 'cancel'
 
 /** where a row came from: a file, or an open document that was never saved */
 export type MaterialRef = { path: string } | { untitled: { webContentsId: number; title: string } }
@@ -75,6 +87,20 @@ export interface GenerateSessionDeps {
   openConvertedTab?(doc: ConvertedDocument): void
   /** whether converting this markdown file carries withheld spans over as their labels */
   redactionNotice?(path: string): Promise<boolean>
+  /**
+   * Before "make" (editor choice spec 7.3): asks while `editor` is off.
+   * `withFileOnly` offers "create the file only" (a conversion); `source` is
+   * the material a conversion reads. Without it, "make" never asks.
+   */
+  askEditor?(
+    editor: GenerateEditor,
+    withFileOnly: boolean,
+    source?: string,
+  ): Promise<GenerateEditorAnswer>
+  /** whether AI features are on; an AI "make" is refused while they are off */
+  aiOn?(): boolean
+  /** "create the file only": write a conversion's result as a file and show it in its folder */
+  saveConvertedFile?(doc: ConvertedDocument): Promise<void>
   push(state: GenerateWindowState): void
   close(): void
   newId(): string
@@ -108,6 +134,7 @@ export class GenerateSession {
   private inFlight = 0
   private mode: GenerateMode = 'ai'
   private convertKind: ConvertKind | null = null
+  private speakerNotesSeparate = false
 
   constructor(
     private readonly deps: GenerateSessionDeps,
@@ -129,6 +156,7 @@ export class GenerateSession {
     this.convertProblem = null
     this.mode = 'ai'
     this.convertKind = null
+    this.speakerNotesSeparate = false
     this.appendRefs(refs)
     await this.refresh()
   }
@@ -163,6 +191,7 @@ export class GenerateSession {
       saving: [...this.saving],
       failure: this.failure,
       convertProblem: this.failure === 'convert' ? this.convertProblem : null,
+      speakerNotesSeparate: this.speakerNotesSeparate,
       limits: {
         maxMaterials: MAX_MATERIALS,
         maxMaterialMb: Math.round(MAX_MATERIAL_BYTES / 1024 / 1024),
@@ -184,7 +213,7 @@ export class GenerateSession {
       ...(s.sizeBytes !== undefined ? { sizeBytes: s.sizeBytes } : {}),
     }
     if (s.problem) {
-      const limit = IMAGE_MATERIAL_EXTS.has(s.ext) ? MAX_IMAGE_MATERIAL_BYTES : MAX_MATERIAL_BYTES
+      const limit = materialMaxBytes(s.ext)
       return {
         ...base,
         state: 'excluded',
@@ -296,6 +325,12 @@ export class GenerateSession {
     this.push()
   }
 
+  setSpeakerNotesSeparate(enabled: unknown): void {
+    if (typeof enabled !== 'boolean' || this.making) return
+    this.speakerNotesSeparate = enabled
+    this.push()
+  }
+
   /** 8.6: choose a conversion on offer, or null for back to the AI kinds */
   setConvert(kind: unknown): void {
     if (this.making) return
@@ -368,10 +403,18 @@ export class GenerateSession {
     this.failure = null
     this.push()
     try {
+      const converting = this.mode === 'convert'
+      // the window hides the AI "make" while AI is off; one that still arrives is refused
+      if (!converting && this.deps.aiOn && !this.deps.aiOn()) return this.stopMaking(false)
+      // nothing is read, converted or opened before the answer
+      const answer = await this.askEditor(converting)
+      if (answer === 'cancel') return this.stopMaking(false)
       await this.refresh()
-      if (this.mode === 'convert') {
+      if (converting) {
         const convertKind = this.chosenConversion(this.conversions())
-        return convertKind ? await this.convertAndOpen(convertKind) : this.stopMaking(false)
+        return convertKind
+          ? await this.convertAndOpen(convertKind, answer === 'file-only')
+          : this.stopMaking(false)
       }
       const candidates = this.rows.filter((r) => r.status && !r.status.problem && 'path' in r.ref)
       const prepared = await prepareGenerateRequest(
@@ -393,6 +436,9 @@ export class GenerateSession {
         text: trimmed || defaultGeneratePrompt(this.deps.lang(), this.kind),
         defaultText: !trimmed,
         createdAt: this.deps.now(),
+        ...(this.kind === 'slides' && this.speakerNotesSeparate
+          ? { speakerNotesSeparate: true }
+          : {}),
       }
       this.deps.openTargetTab(handoff)
       this.closed = true
@@ -404,12 +450,25 @@ export class GenerateSession {
     }
   }
 
+  /** the question before "make" while the new document's editor is off */
+  private async askEditor(converting: boolean): Promise<GenerateEditorAnswer> {
+    const ask = this.deps.askEditor
+    if (!ask) return 'open'
+    if (!converting) return ask(this.kind, false)
+    const kind = this.chosenConversion(this.conversions())
+    if (!kind) return 'open'
+    const [row] = this.listedRows()
+    const source = row && 'path' in row.ref ? row.ref.path : undefined
+    return ask(CONVERT_TARGETS[kind], !!this.deps.saveConvertedFile, source)
+  }
+
   /**
    * 8.6: the one material, read again just now (8.4: not open with unsaved
    * changes, saved at least once), converted without AI and opened as a new
-   * unsaved tab. A failed conversion opens nothing and keeps the window.
+   * unsaved tab, or, with `fileOnly`, written as a file and shown in its
+   * folder. A failed conversion opens nothing and keeps the window.
    */
-  private async convertAndOpen(kind: ConvertKind): Promise<boolean> {
+  private async convertAndOpen(kind: ConvertKind, fileOnly = false): Promise<boolean> {
     const [row] = this.listedRows()
     if (!row || !('path' in row.ref) || !this.deps.convert || !this.deps.openConvertedTab) {
       return this.stopMaking(false)
@@ -426,12 +485,14 @@ export class GenerateSession {
       this.convertProblem = result.problem
       return this.stopMaking(false)
     }
-    this.deps.openConvertedTab({
+    const doc: ConvertedDocument = {
       id: this.deps.newId(),
       content: result.content,
       sources: [source],
       createdAt: this.deps.now(),
-    })
+    }
+    if (fileOnly && this.deps.saveConvertedFile) await this.deps.saveConvertedFile(doc)
+    else this.deps.openConvertedTab(doc)
     this.closed = true
     this.deps.close()
     return true

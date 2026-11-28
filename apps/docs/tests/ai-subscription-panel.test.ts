@@ -43,7 +43,9 @@ function settingsWith(
 function statuses(claude: AiSubscriptionState, codex: AiSubscriptionState): SubscriptionStatusMap {
   return {
     'claude-code': { provider: 'claude-code', state: claude, meteredAccepted: false },
+    chatgpt: { provider: 'chatgpt', state: 'signed-out', meteredAccepted: false },
     codex: { provider: 'codex', state: codex, meteredAccepted: false },
+    antigravity: { provider: 'antigravity', state: 'signed-out', meteredAccepted: false },
   }
 }
 
@@ -281,7 +283,7 @@ describe('AI panel: failed runs', () => {
     expect(harness.composerText()).toBe('summarize this')
     // which AI the user has comes first; each answer leads to its own card
     expect(container.querySelector('.ai-sub-guide-question')).not.toBeNull()
-    expect(container.querySelectorAll('.ai-sub-guide-path')).toHaveLength(3)
+    expect(container.querySelectorAll('.ai-sub-guide-path')).toHaveLength(4)
     // the refused send points at the prompt
     expect(scrolled).toContain(container.querySelector('.ai-sub-prompt'))
   })

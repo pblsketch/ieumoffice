@@ -16,6 +16,7 @@ export const nl = {
   cvTargetNone: 'Nog niet gekozen',
   cvTargetChoose: 'Kiezen…',
   cvCover: 'Eerste pagina als omslag gebruiken',
+  cvPageBreaks: 'Elke originele pagina op een nieuw scherm beginnen',
   cvBookTitle: 'Titel',
   cvBookAuthor: 'Auteur',
   cvBookLanguage: 'Taal',
@@ -66,6 +67,9 @@ export const nl = {
   cvErrFailed: 'Omzetten is mislukt.',
   cvPageImageAlt: 'Pagina {page}',
   imgExportWholePages: "Hele pagina's",
+  imgExportCurrentPage: 'Alleen de huidige pagina',
+  imgExportCurrentPageTip: 'De pagina die je bekijkt exporteren als één PNG-bestand',
+  imgExportCurrentPageJpgTip: 'De pagina die je bekijkt exporteren als één JPG-bestand',
   imgExportEmbedded: "Alleen de afbeeldingen in de pagina's",
   imgExportEmbeddedTip:
     "De afbeeldingen in de pagina's opslaan als PNG-bestanden in de oorspronkelijke resolutie",

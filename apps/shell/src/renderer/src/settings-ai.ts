@@ -10,6 +10,7 @@ import {
   activeCustomEndpoint,
   customEndpointLabel,
   imageProviderSelection,
+  isKeyProviderConfigured,
   isSubscriptionProvider,
   normalizeAiSettings,
   providerSelectionOf,
@@ -47,6 +48,9 @@ export const CODEX_MAY_KEEP_HISTORY = true
 const SUBSCRIPTION_PROGRAM_NAMES: Record<AiSubscriptionProviderId, string> = {
   'claude-code': 'Claude Code',
   codex: 'Codex',
+  // no program: its sign-out is the app's own and asks with words of its own
+  chatgpt: 'ChatGPT',
+  antigravity: 'Antigravity CLI',
 }
 
 export function subscriptionProgramName(provider: AiSubscriptionProviderId): string {
@@ -126,6 +130,8 @@ export function withLiveSelectionFields(draft: AiSettings, latest: AiSettings | 
     headlessSubscriptionEnabled: latest.headlessSubscriptionEnabled,
     headlessSubscriptionConsentVersion: latest.headlessSubscriptionConsentVersion,
     subscriptionNoticeSeen: latest.subscriptionNoticeSeen,
+    subscriptionNoticeVersion: latest.subscriptionNoticeVersion,
+    pdfSendNoticeSeen: latest.pdfSendNoticeSeen,
     readUrl: latest.readUrl,
   }
 }
@@ -267,33 +273,63 @@ export function withAiSelection(settings: AiSettings, choice: AiSelectionChoice)
   return { ...settings, provider: choice.provider }
 }
 
+/**
+ * The "AI to use" entry for the key provider the Advanced pane shows, offered
+ * as a button there: present only while that provider's settings are filled in
+ * and it is not the stored selection. Saving a key never selects it (key
+ * providers run only when chosen), so without this the user has to find "AI to
+ * use" to make a saved key take effect. A self-hosted endpoint is matched by
+ * its id; subscriptions never match, the program list decides those.
+ */
+export function advancedPaneUseChoice(
+  settings: AiSettings,
+  provider: AiProviderId,
+  endpoint?: string,
+): AiSelectionChoice | undefined {
+  const value = choiceValue(provider, provider === 'custom' ? endpoint : undefined)
+  if (value === aiSelectionValue(settings)) return undefined
+  // key entries do not depend on subscription statuses, so none are needed
+  return aiSelectionChoices(settings, {}).find(
+    (choice) => choice.kind === 'key' && !choice.unavailable && choice.value === value,
+  )
+}
+
 // ── key providers (Advanced) ──────────────────────────────
 
 /**
  * Providers the Advanced key pane lists: everything that has something to
- * fill in there. Claude runs on its own login and has no field of its own;
- * Codex stays for the path of a custom install.
+ * fill in there. The two subscription CLIs take no key, and stay for the path
+ * of an install the automatic lookup cannot reach (a GUI app on macOS never
+ * sees the PATH a shell profile sets).
  */
 export function advancedProviderIds(catalog: readonly { id: string }[]): AiProviderId[] {
   const known = new Set<string>(AI_PROVIDERS.map((meta) => meta.id))
-  return catalog
-    .map((entry) => entry.id)
-    .filter((id) => known.has(id) && id !== 'claude-code') as AiProviderId[]
+  return catalog.map((entry) => entry.id).filter((id) => known.has(id)) as AiProviderId[]
 }
 
 /**
  * The provider the key pane opens on: the stored selection when it is one of
- * the listed providers, else the first one that takes a key. Opening the pane
- * never changes which AI is in use.
+ * the listed providers, else the first key provider whose settings are filled
+ * in (so a saved key that is not in use opens with its "use this AI" button),
+ * else the first one that takes a key. Opening the pane never changes which AI
+ * is in use.
  */
 export function initialAdvancedProvider(
-  settings: Pick<AiSettings, 'provider'>,
+  settings: Pick<AiSettings, 'provider'> & Partial<Pick<AiSettings, 'providers'>>,
   catalog: readonly { id: string; needsCliPath?: boolean | undefined }[],
 ): AiProviderId | undefined {
   const listed = advancedProviderIds(catalog)
   const selected = providerSelectionOf(settings)
   if (selected !== 'auto' && listed.includes(selected)) return selected
-  return listed.find((id) => !catalog.find((entry) => entry.id === id)?.needsCliPath) ?? listed[0]
+  const providers = settings.providers
+  const filled = providers
+    ? listed.find((id) => isKeyProviderConfigured({ providers }, id))
+    : undefined
+  return (
+    filled ??
+    listed.find((id) => !catalog.find((entry) => entry.id === id)?.needsCliPath) ??
+    listed[0]
+  )
 }
 
 // ── image generation, image analysis, video analysis ──────
@@ -315,6 +351,25 @@ export function mediaSpecialChoices(
   if (block === 'image') return codexImageAvailable ? ['codex', 'none'] : ['none']
   if (block === 'analysis') return ['chat']
   return ['none']
+}
+
+/**
+ * Whether the image generation block says to connect the Codex program with
+ * the same ChatGPT account: the app's direct ChatGPT connection is ready, yet
+ * it cannot make images (OpenAI does not allow it), Codex is not ready on a
+ * subscription login, and the tool report says image generation has no route
+ * right now. The stored selection does not decide it; an unread report
+ * (`null`) shows nothing.
+ */
+export function chatGptImageConnectShown(
+  statuses: AiSubscriptionStatuses,
+  imageGenerationAvailable: boolean | null,
+): boolean {
+  return (
+    statuses.chatgpt?.state === 'ready' &&
+    statuses.codex?.state !== 'ready' &&
+    imageGenerationAvailable === false
+  )
 }
 
 /** Key providers able to serve a media block */

@@ -1,4 +1,22 @@
 export { AiPanelSideButton } from './AiPanelSideButton'
+export { AiPanelHeader, type AiPanelHeaderProps } from './AiPanelHeader'
+export { AiEmptyHints, type AiEmptyHintsProps } from './AiEmptyHints'
+export {
+  AiAttachMenu,
+  connectorPickedOf,
+  type AiAttachMenuProps,
+  type ConnectorAttachSources,
+  type ConnectorAttachWireResult,
+} from './AiAttachMenu'
+export {
+  CONNECTOR_ATTACH_STRINGS,
+  connectorAttachText,
+  type ConnectorAttachStringKey,
+} from './strings-attach-menu'
+export { AiWorkSteps, type AiWorkStep, type AiWorkStepsProps } from './AiWorkSteps'
+export { AiReplyFooter, type AiReplyFooterProps } from './AiReplyFooter'
+export { AiScrollToBottom, useScrollToBottom, type ScrollToBottomState } from './AiScrollToBottom'
+export { AI_PANEL_STRINGS, aiPanelText, type AiPanelStringKey } from './strings-ai-panel'
 export { DriveAttachButton, drivePickedOf } from './DriveAttachButton'
 export type { DriveAttachPicked } from './DriveAttachButton'
 export { DocAttachButton, docPickedOf } from './DocAttachButton'
@@ -48,17 +66,20 @@ export {
   type DocMentionStringKey,
 } from './strings-doc-mention'
 export { AiComposer } from './AiComposer'
+export { clipboardPictureIsRendering } from './clipboard-picture'
 export {
   SKILL_CHIPS_MAX,
   aiSkillsBridge,
   chipsAfterListChange,
   filterPickerSkills,
+  isMadeUpSkillName,
   pickerSkillsOf,
   removeSkillTrigger,
   skillChipOf,
   skillChipRef,
   skillChipRefsOf,
   skillDisplayName,
+  skillNameBeside,
   skillPickerKeyAction,
   skillSourceLabel,
   skillTriggerAt,
@@ -80,6 +101,7 @@ export {
   skillForRequestOf,
   skillRequestText,
   type SkillForRequest,
+  type SkillRequestOptions,
   type SkillRequestBuild,
 } from './skill-send'
 export { SentSkillChips, SkillChip, SkillChipRow, SkillPicker } from './SkillPicker'
@@ -109,6 +131,9 @@ export {
   skillCardNameVerdict,
   skillCardSaveBlock,
   skillCardSaveFailureKey,
+  SAME_NAME_ON,
+  sameNameSourcesOf,
+  skillCardDraftLabel,
   skillCardSaveInput,
   skillCardSaveResultOf,
   skillCardSavedRecord,
@@ -133,6 +158,13 @@ export {
   type SkillProposalCardProps,
 } from './SkillProposalCard'
 export {
+  SkillEditorsChooser,
+  skillEditorName,
+  skillEditorsSummary,
+  type SkillEditorsDraft,
+} from './SkillEditorsChooser'
+export { skillEditorsText, type SkillEditorsStringKey } from './strings-skill-editors'
+export {
   panelUserSkills,
   useSkillProposals,
   type PanelUserSkillsOptions,
@@ -140,6 +172,26 @@ export {
   type SkillProposalsOptions,
 } from './use-skill-proposals'
 export { SKILL_CARD_STRINGS, skillCardText, type SkillCardStringKey } from './strings-skill-card'
+export { McpPermissionCard, McpPermissionPrompt } from './McpPermissionCard'
+export { McpServerButton } from './McpServerButton'
+export {
+  resolveMcpWindowState,
+  useDriveWindow,
+  useMcpPermissionRequests,
+  useMcpWindow,
+  type DriveWindowView,
+  type McpWindowView,
+} from './use-mcp-window'
+export {
+  MCP_INPUT_PREVIEW_CHARS,
+  mcpInputPreview,
+  mcpInputText,
+  mcpServerAction,
+  mcpServerButtonVisible,
+  mcpServerStatusText,
+  type McpServerAction,
+} from './user-mcp-model'
+export { USER_MCP_STRINGS, userMcpText, type UserMcpStringKey } from './strings-user-mcp'
 export {
   TEMPLATE_EDITORS,
   chipRefForSkill,
@@ -161,6 +213,7 @@ export {
   PreviewTemplateActions,
   SkillCardPreviewLine,
 } from './SkillTemplateActions'
+export { createHandedRun, type HandedRun } from './handed-run'
 export {
   useSkillTemplates,
   type SkillTemplateNote,
@@ -183,14 +236,18 @@ export {
   AI_CUSTOM_FONT_MIN_PX,
   AI_FONT_BASE_PX,
   AI_FONT_SIZES,
+  AI_PANEL_STARTS,
   DEFAULT_AI_PANEL_PREFS,
   aiPanelFontPx,
+  aiPanelStartOf,
+  aiPanelStartPatch,
   clampAiCustomFontSize,
   isAiFontSize,
   normalizeAiPanelPrefs,
   type AiFontSize,
   type AiPanelPrefs,
   type AiPanelSide,
+  type AiPanelStart,
 } from './ai-panel-prefs'
 export {
   applyAiPanelPrefs,
@@ -218,11 +275,15 @@ export {
   type ColorPickerProps,
   type ColorPickerStrings,
   type ColorSwatch,
+  canPickScreenColor,
+  pickScreenColor,
 } from './color-picker'
+export { COLOR_SWATCH_NAMES, colorSwatchName } from './strings-color-names'
 export { installScreenTips } from './screentip'
 export {
   installPopoverDismiss,
   useDismissablePopover,
+  useEscapeToClose,
   type PopoverDismissOptions,
 } from './popover-dismiss'
 export { Dropdown, type DropdownOption } from './dropdown'
@@ -247,8 +308,32 @@ export {
   type RibbonCollapseLabels,
   type RibbonDensity,
 } from './ribbon-collapse'
-export { AiTypingIndicator } from './AiTypingIndicator'
-export { IconSend, IconStop, type IconProps } from './icons'
+export { AiReplyProgress, AiTypingIndicator } from './AiTypingIndicator'
+export {
+  IconArrowDown,
+  IconArrowLeft,
+  IconArrowUp,
+  IconArrowUpRight,
+  IconCheck,
+  IconChevronLeft,
+  IconChevronRight,
+  IconClose,
+  IconCloudDrive,
+  IconCopy,
+  IconFileDoc,
+  IconPaperclip,
+  IconPicture,
+  IconPlus,
+  IconRetry,
+  IconSend,
+  IconSlash,
+  IconStepDone,
+  IconStepError,
+  IconStepRunning,
+  IconStop,
+  IconTable,
+  type IconProps,
+} from './icons'
 export { AiMark, type AiMarkProps } from './AiMark'
 export { Markdown, type MarkdownNav } from './Markdown'
 export { FILE_NAV_SCHEME, createFileNav, fileNavHref, parseFileNavHref } from './file-nav'
@@ -266,6 +351,13 @@ export {
   type FontFamilyInfo,
   type FontFamilyInfoMap,
 } from './font-list'
+export {
+  createSystemFontSource,
+  useSystemFontSource,
+  type SystemFontEnv,
+  type SystemFontSource,
+  type SystemFonts,
+} from './system-fonts'
 export {
   WORDART_PRESETS,
   wordArtSolidColor,
@@ -326,6 +418,9 @@ export {
   createWheelPager,
   createZoomWheelClassifier,
   notchStep,
+  WHEEL_ZOOM_STEP,
+  wheelZoomStep,
+  wheelZoomStepPercent,
   type ZoomWheelIntent,
 } from './wheel-zoom'
 export { AiModelPicker, aiModelPopoverStyle, type AiModelPickerBridge } from './AiModelPicker'
@@ -368,10 +463,13 @@ export {
   type AiSubscriptionCardView,
 } from './ai-subscription'
 export {
+  AI_SUBSCRIPTION_NOTICE_VERSION,
   aiConnectPromptChoice,
   aiHeldRequestStep,
   aiHoldReason,
   aiSendGate,
+  aiSubscriptionNoticeDue,
+  aiSubscriptionNoticeVersion,
   changeStoredAiSettings,
   withAiContinueProvider,
   withAiSubscriptionNoticeSeen,
@@ -383,10 +481,32 @@ export {
 } from './ai-send-gate'
 export { useAiSendGate, type AiSendGateArgs, type AiSendGateController } from './use-ai-send-gate'
 export {
+  useSubscriptionConnection,
+  type SubscriptionApiLike,
+  type SubscriptionConnection,
+  type SubscriptionLaunchKind,
+  type UseSubscriptionConnectionOptions,
+} from './use-subscription-connection'
+export {
+  mergeLatestSubscriptionUsage,
+  subscriptionUsageOf,
+  useSubscriptionUsageUpdates,
+  type SubscriptionUsageMerge,
+  type SubscriptionUsageSource,
+} from './use-subscription-usage-updates'
+export {
   AI_SUBSCRIPTION_STRINGS,
   aiSubscriptionText,
   type AiSubscriptionStringKey,
 } from './strings-ai-subscription'
+export {
+  AI_CONTEXT_STRINGS,
+  aiContextConfirmText,
+  aiContextText,
+  type AiContextStringKey,
+  type AiContextWarning,
+} from './strings-ai-context'
+export { AiToolsUnsupportedNotice } from './AiToolsUnsupportedNotice'
 export {
   BUILTIN_SKILL_NAMES,
   BUILTIN_SKILL_STRINGS,
@@ -417,6 +537,24 @@ export {
   type AiConnectStepsView,
 } from './connect-guide'
 export { AiBlockedNotice } from './AiBlockedNotice'
+export { AiRunStopNotice } from './AiRunStopNotice'
+export {
+  runContinueNote,
+  runStopCode,
+  runStopNotice,
+  runStopText,
+  type RunStopNotice,
+} from './run-stop'
+export { AI_RUN_STOP_LABELS, type AiRunStopLabels } from './strings-run-stop'
+export {
+  AiChangesCard,
+  aiChangesLabels,
+  aiChangesNote,
+  aiChangesTitle,
+  type AiChangeLine,
+  type AiChangesState,
+} from './AiChangesCard'
+export { AI_CHANGES_LABELS, type AiChangesLabels } from './strings-ai-changes'
 export { AiSubscriptionUsageLine } from './AiSubscriptionUsageLine'
 export {
   AiCodexNotice,
@@ -427,3 +565,237 @@ export {
 export { ProviderLogo } from './provider-logos'
 export { useRedactLabelField } from './use-redact-label'
 export type { RedactLabelField } from './use-redact-label'
+export { ProjectPicker, projectPickerOptionId, type ProjectPickerProps } from './ProjectPicker'
+export { ProjectChatMenu, projectChatOptionId, type ProjectChatMenuProps } from './ProjectChatMenu'
+export {
+  ProjectNoticeLine,
+  ProjectNoticeList,
+  ProjectFolderHintLine,
+  ProjectMemoryEventLine,
+  ProjectMemoryConsolidatedLine,
+  ProjectToolSummaryLine,
+  ProjectProblemLine,
+  MEMORY_ALREADY_GONE_MS,
+  memoryRemoveOutcome,
+  type ProjectMemoryRemoveOutcome,
+} from './ProjectNotices'
+export {
+  projectPickerItems,
+  projectPickerAction,
+  projectPickerInitialIndex,
+  projectMatchesQuery,
+  projectChipText,
+  projectChatRows,
+  projectChatMenuItems,
+  projectChatTitle,
+  projectEditorLabel,
+  projectRelativeTime,
+  projectFullTime,
+  projectNoticeView,
+  projectNoticeActionLabel,
+  projectMemoryEventText,
+  projectConsolidatedText,
+  projectToolSummaryText,
+  projectAddProblem,
+  projectPrepareProblem,
+  projectProblemText,
+  placeRemoteEntries,
+  type ProjectProblem,
+  type ProjectPickerItem,
+  type ProjectPickerAction,
+  type ProjectChatMenuItem,
+  type ProjectNoticeAction,
+  type ProjectNoticeView,
+} from './project-panel-model'
+export {
+  PROJECT_PANEL_STRINGS,
+  projectPanelText,
+  type ProjectPanelStringKey,
+} from './strings-project-panel'
+export {
+  PROJECT_TOOLS,
+  createProjectRun,
+  forgetMemoryLine,
+  memoryEntriesAfter,
+  memoryLineGone,
+  memoryLinesOf,
+  panelProjectSkill,
+  projectSystemPrompt,
+  windowProjectFolderBridge,
+} from './project-skill'
+export type {
+  CreateProjectRunOptions,
+  PanelProjectSkillOptions,
+  ProjectMemoryLine,
+  ProjectRun,
+  ProjectRunPrepared,
+  ProjectRunSnapshot,
+  ProjectSkillBridge,
+} from './project-skill'
+export {
+  createProjectChatController,
+  useProjectChat,
+  windowLegacyChatApi,
+} from './use-project-chat'
+export type {
+  LegacyChatApi,
+  ProjectActiveChat,
+  ProjectChat,
+  ProjectChatBridge,
+  ProjectChatController,
+  ProjectChatEntry,
+  ProjectChatLoop,
+  ProjectChatOpened,
+  ProjectChatOptions,
+  ProjectChatRecord,
+  ProjectChatState,
+} from './use-project-chat'
+export {
+  consolidateProjectMemory,
+  parseConsolidatedMemory,
+  undoProjectMemoryConsolidation,
+} from './project-memory-consolidate'
+export type {
+  ConsolidateProjectMemoryOptions,
+  ConsolidateProjectMemoryResult,
+  ProjectMemoryBridge,
+} from './project-memory-consolidate'
+export { PROJECT_CHAT_STRINGS, projectChatText } from './strings-project-chat'
+export { useProjectPanel } from './use-project-panel'
+export type {
+  ProjectConsolidationRoute,
+  ProjectMessageParts,
+  ProjectPanel,
+  ProjectPanelOptions,
+  ProjectToolRecord,
+} from './use-project-panel'
+export type { ProjectChatStringKey } from './strings-project-chat'
+export { useScrollWindow } from './scroll-window'
+export {
+  NAME_FROM_TITLE_DELAY_MS,
+  nameFromTitle,
+  useNameFromTitle,
+  type SuggestSkillName,
+} from './skill-name-from-title'
+export { createImeEnterGuard, useImeEnterGuard, type ImeEnterGuard } from './ime-enter'
+export { isShortcutLetter, shortcutLetterOf, type ShortcutLetterEvent } from './shortcut-letter'
+export * from './print-layout'
+export {
+  PRINT_LAYOUT_STRINGS,
+  printLayoutText,
+  type PrintLayoutStringKey,
+} from './strings-print-layout'
+export {
+  ALL_ON_APP_CHOICE_STATE,
+  PENDING_APP_CHOICE_STATE,
+  aiVisible,
+  useAppChoice,
+  type AppChoiceSource,
+  type AppChoiceState,
+} from './use-app-choice'
+
+export { SLOW_RESPONSE_HINT_AFTER_S } from './AiTypingIndicator'
+export {
+  AI_DIAGNOSTICS_STRINGS,
+  aiDiagnosticsText,
+  type AiDiagnosticsStringKey,
+} from './strings-ai-diagnostics'
+export {
+  A2UI_JSON_CLOSE_TAG,
+  A2UI_JSON_OPEN_TAG,
+  QUESTION_FORM_CLOSE_TAG,
+  QUESTION_FORM_MAX_OPTIONS,
+  QUESTION_FORM_MAX_QUESTIONS,
+  QUESTION_FORM_MIN_QUESTIONS,
+  QUESTION_FORM_OPEN_TAG,
+  normalizeQuestionOption,
+  parseQuestionBlocks,
+  questionFormView,
+  validateQuestionFormSpec,
+  type NormalizedQuestionOption,
+  type QuestionBlockFormat,
+  type QuestionBlockSegment,
+  type QuestionField,
+  type QuestionFieldType,
+  type QuestionFormSpec,
+  type QuestionOption,
+} from './question-blocks'
+export {
+  AiQuestionCard,
+  AiQuestionCardPending,
+  AiQuestionCardReadOnly,
+  type AiQuestionCardProps,
+  type AiQuestionCardReadOnlyProps,
+  type QuestionCardReadOnlyContent,
+  type QuestionCardStatus,
+  type QuestionCardSubmission,
+} from './AiQuestionCard'
+export {
+  AiQuestionReceipt,
+  isQuestionToolActivity,
+  questionToolActivities,
+  type AiQuestionReceiptProps,
+  type QuestionToolActivity,
+} from './AiQuestionReceipt'
+export {
+  questionAnswerText,
+  questionAnswerValueText,
+  questionCardTitleText,
+  questionRecordText,
+  recordedAnswerText,
+} from './question-answer-text'
+export {
+  QUESTION_CARD_STRINGS,
+  questionCardText,
+  type QuestionCardStringKey,
+} from './strings-question-card'
+export {
+  MAX_NEXT_STEPS,
+  computeNextSteps,
+  openGenerateForCurrentDocument,
+  type NextStepContext,
+  type NextStepDescriptor,
+  type NextStepId,
+} from './next-steps-rules'
+export { AiNextSteps, type AiNextStepsProps } from './AiNextSteps'
+export { NEXT_STEPS_STRINGS, nextStepsText, type NextStepsStringKey } from './strings-next-steps'
+export {
+  ReviewMemoPicker,
+  buildMemoBatchPromptSection,
+  type MemoAttachSource,
+  type ReviewMemoItem,
+  type ReviewMemoPickerProps,
+} from './ReviewMemoPicker'
+export {
+  REVIEW_MEMO_STRINGS,
+  reviewMemoText,
+  type ReviewMemoStringKey,
+} from './strings-review-memo'
+export type { CraftFragmentText } from './skill-send'
+export { AiQualityBadge, type AiQualityBadgeProps } from './AiQualityBadge'
+export {
+  QUALITY_AUDIT_STRINGS,
+  qualityAuditText,
+  type QualityAuditStringKey,
+} from './strings-quality-audit'
+export {
+  VersionTimelineDrawer,
+  type DrawerVersionEntry,
+  type DrawerVersionSource,
+  type VersionTimelineDrawerProps,
+} from './VersionTimelineDrawer'
+export {
+  VERSION_TIMELINE_STRINGS,
+  versionTimelineText,
+  type VersionTimelineStringKey,
+} from './strings-version-timeline'
+export { TWEAKS_STRINGS, tweaksText, type TweaksStringKey } from './strings-tweaks'
+export { skillExampleText, type SkillExampleStringKey } from './strings-skill-example'
+export { memoReplyText, type MemoReplyStringKey } from './strings-memo-reply'
+export {
+  useAiInlineQuestions,
+  type ActiveQuestionCardState,
+  type AiInlineQuestions,
+  type TextQuestionCardState,
+} from './useAiInlineQuestions'
+export { AiAssistantBody, type AiAssistantBodyProps } from './AiAssistantBody'

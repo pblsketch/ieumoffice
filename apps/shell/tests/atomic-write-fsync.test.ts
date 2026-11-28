@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -41,6 +41,21 @@ describe('atomicWriteFile durability', () => {
       expect(synced).toHaveLength(process.platform === 'win32' ? 1 : 2)
       expect(synced[0]).toMatch(/\.report\.docx\.[0-9a-f]{12}\.tmp$/)
       if (process.platform !== 'win32') expect(synced[1]).toBe(dir)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('replaces a file whose name is near the 255-byte file-name limit', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'genoffice-fsync-'))
+    // 78 Hangul letters + ".docx" is 239 bytes; a temp name must not grow past 255
+    const name = `${'가'.repeat(78)}.docx`
+    const target = join(dir, name)
+    try {
+      writeFileSync(target, 'old')
+      await atomicWriteFile(target, new TextEncoder().encode('new'))
+      expect(readFileSync(target, 'utf8')).toBe('new')
+      expect(readdirSync(dir)).toEqual([name])
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }

@@ -19,6 +19,10 @@ export interface LocalImageEdit {
       from this so they set an absolute level instead of compounding. Cleared by any
       other pixel edit (flip/crop/cutout/replace/insert-rotate). */
   opacityBase?: string
+  /** Paper patch that erases words on a scanned page (see scan-edit.ts). The saved
+      patch sits over the page picture, so the preview paints it opaque instead of
+      multiplying it into the page like other below-text images. */
+  scanPatch?: true
 }
 
 /** Existing images are addressed by their listed rect; stable across renders, not saves */
@@ -257,6 +261,8 @@ export function ImageEditLayer({
   }
 
   const underImgs: ReactElement[] = []
+  // Scan patches: under the pending text previews (the new text sits on them)
+  const scanImgs: ReactElement[] = []
   // Hit targets of untouched existing images; rendered below the pending-op elements so
   // an invisible page-sized image cannot swallow clicks meant for delete markers/ghosts
   const existingEls: ReactElement[] = []
@@ -294,7 +300,8 @@ export function ImageEditLayer({
           {...pointerProps(target, e.input.rect)}
         />
       )
-      if (isBelow(e)) underImgs.push(img)
+      if (e.scanPatch) scanImgs.push(img)
+      else if (isBelow(e)) underImgs.push(img)
       else mainEls.push(img)
     } else {
       mainEls.push(
@@ -359,6 +366,7 @@ export function ImageEditLayer({
 
   return (
     <>
+      {scanImgs.length > 0 && <div className="pdf-imgedit-scan">{scanImgs}</div>}
       {underImgs.length > 0 && <div className="pdf-imgedit-under">{underImgs}</div>}
       <div ref={layerRef} className="pdf-imgedit-layer">
         {existingEls}

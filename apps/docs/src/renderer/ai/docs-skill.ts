@@ -1,7 +1,7 @@
 import { placeholderInstruction } from './redact'
 import { redactLabelsOf } from './redact-view'
 import type { Editor } from '@tiptap/core'
-import type { AgentSkill } from '@genoffice/agent-core'
+import { attachedImageNote, type AgentSkill } from '@genoffice/agent-core'
 import {
   AGENT_SYSTEM_PROMPT,
   buildDocContext,
@@ -19,6 +19,7 @@ import {
   type AiHeaderFooterAccess,
   type FrozenSelection,
   type AiDocExtras,
+  type AiAttachmentAccess,
 } from './tools'
 import type { AiNotesAccess } from './note-ops'
 import type { AgentToolDef } from '../../shared/ipc'
@@ -26,7 +27,7 @@ import { isOdtSession } from '../odt-gate'
 import { ODT_SYSTEM_NOTE, odtToolFilter } from './odt-tools'
 
 const IMAGE_GEN_OFF_NOTE =
-  '\n\nNote: generate_image is currently unavailable (no image provider: no Codex subscription connected and no image API key in Settings). Do not call or promise it; use image_search for imagery.'
+  '\n\nNote: generate_image is currently unavailable (no image provider: no Codex subscription connected and no image API key in Settings). Do not call or promise it; use image_search for imagery. If the user uses a ChatGPT plan: making images needs the Codex program signed in with the same ChatGPT account (Settings > AI > Codex); the direct ChatGPT connection in the app cannot make images because OpenAI does not allow it. Tell the user this when they ask for an image.'
 
 const MEDIA_ANALYSIS_OFF_NOTE =
   '\n\nNote: analyze_media is currently unavailable (no media provider: no AI connection that can look at pictures and no media API key in Settings). You cannot see what a picture inside the document shows — tell the user that instead of guessing at its content.'
@@ -52,6 +53,8 @@ export function createDocsSkill(
   getNotes?: () => AiNotesAccess | undefined,
   /** same as imageGenAvailable, for analyze_media (seeing pictures that are in the document) */
   mediaAnalysisAvailable?: () => boolean,
+  /** the files attached to this chat, so insert_image can take one the user made elsewhere */
+  getAttachments?: () => AiAttachmentAccess | undefined,
 ): AgentSkill {
   // Selection frozen per run: tools act on the range the prompt described,
   // not on wherever the user's live selection has wandered mid-run. The doc
@@ -81,7 +84,11 @@ export function createDocsSkill(
         : []
       const redact = labels.length > 0 ? `\n\n${placeholderInstruction(labels)}` : ''
       const odt = isOdtSession() ? ODT_SYSTEM_NOTE : ''
-      return AGENT_SYSTEM_PROMPT + mediaOffNote() + redact + odt
+      const attached = attachedImageNote(
+        getAttachments?.()?.names() ?? [],
+        'call insert_image with attachment set to the name',
+      )
+      return AGENT_SYSTEM_PROMPT + mediaOffNote() + attached + redact + odt
     },
     get tools() {
       const hidden = mediaToolsOff()
@@ -115,6 +122,7 @@ export function createDocsSkill(
         getPageSetup?.(),
         getExtras?.(),
         getNotes?.(),
+        getAttachments?.(),
       ),
   }
 }

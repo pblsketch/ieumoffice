@@ -1,6 +1,37 @@
 import type { zh } from './zh'
 
 export const de = {
+  mathInsert: 'Formel einfügen',
+  mathEdit: 'Formel bearbeiten',
+  mathHelp:
+    'Formeln direkt eingeben oder LaTeX bearbeiten. HTML speichert den Quelltext zur späteren Bearbeitung.',
+  mathVisualInput: 'Visuelle Formeleingabe',
+  mathSource: 'LaTeX-Quelltext',
+  mathDisplay: 'In eigener Zeile anzeigen',
+  mathPreview: 'Vorschau',
+  mathUnsupported:
+    'Diese Formel kann nicht gesetzt werden. Der Quelltext wird zur späteren Korrektur gespeichert.',
+  mathTooLong: 'Höchstens {n} Zeichen eingeben.',
+  mathStale:
+    'Das Dokument wurde geändert. Kopieren Sie Ihren Entwurf, schließen Sie dieses Fenster und öffnen Sie die Formel erneut.',
+  mathShortcut: '⌘+Enter zum Anwenden',
+  mathApply: 'Formel anwenden',
+  mathKeyboard: 'Mathematiktastatur',
+  mathFraction: 'Bruch',
+  mathRoot: 'Quadratwurzel',
+  mathNthRoot: 'n-te Wurzel',
+  mathPower: 'Potenz',
+  mathSubscript: 'Index',
+  mathSum: 'Summe',
+  mathProduct: 'Produkt',
+  mathIntegral: 'Integral',
+  mathLimit: 'Grenzwert',
+  mathMatrix: 'Matrix',
+  mathVector: 'Vektor',
+  mathCases: 'Gleichungssystem',
+  mathPiecewise: 'Stückweise Funktion',
+  mathBinomial: 'Binomialkoeffizient',
+
   redactMenuLabel: 'Auswahl vor der KI verbergen',
   redactDialogDesc:
     'Die Wörter bleiben im Dokument und in der Datei; das Modell sieht nur den Platzhalter. Geben Sie ihm einen Namen.',
@@ -17,6 +48,11 @@ export const de = {
   saveFailedStatus: 'Speichern fehlgeschlagen',
   exportFailed: 'Export fehlgeschlagen',
   printFailed: 'Druck fehlgeschlagen: {error}',
+  printRangeEmpty:
+    'Dieses Dokument hat {count} Seiten. Geben Sie Seitenzahlen innerhalb dieser Seiten ein.',
+  printPagesFailed: 'Die zu druckenden Seiten konnten nicht gezählt werden: {error}',
+  printLayoutSaved: 'Das angeordnete Ergebnis wurde als PDF gespeichert.',
+  printLayoutSaveFailed: 'Das PDF konnte nicht gespeichert werden: {error}',
   exportHtmlSkipped:
     'Exportiert, aber {count} Ressource(n) konnten nicht eingebettet werden (z. B. {first})',
   viewPreview: 'Vorschau',
@@ -52,7 +88,8 @@ export const de = {
   slideThumbGo: 'Zu Folie {n} wechseln',
   previewNeedsSave:
     'Relative Bilder und Stile erscheinen in der Vorschau, sobald die Datei gespeichert ist',
-  inspectHint: 'Element in der Vorschau anklicken zum Auswählen, Doppelklick zum Textbearbeiten',
+  inspectHint:
+    'Element in der Vorschau anklicken zum Auswählen, Doppelklick zum Textbearbeiten, Umschalt+Klick oder {alt}+Ziehen für mehrere',
   nodeDynamic:
     'Dieses Element wurde vom Seitenskript erzeugt und existiert nicht im Quelltext; über Quelltext oder KI bearbeiten',
   nodeDynamicShort: 'skriptgeneriert',
@@ -102,6 +139,7 @@ export const de = {
   alignLeft: 'Linksbündig',
   alignCenter: 'Zentriert',
   alignRight: 'Rechtsbündig',
+  alignJustify: 'Blocksatz',
   fontSizeDec: 'Schriftgrad verkleinern',
   fontSizeInc: 'Schriftgrad vergrößern',
   typography: 'Typografie',

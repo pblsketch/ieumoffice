@@ -11,15 +11,12 @@ import type {
   FormValueInput,
   MarkupType,
   MetadataInput,
+  OutlineEntryInput,
   PageImageRef,
 } from '../shared/ipc'
 
-/** pdf.js AnnotationType codes for the markup subtypes we can delete */
-export const MARKUP_TYPE_BY_ANNOT: Record<number, MarkupType> = {
-  9: 'highlight',
-  10: 'underline',
-  12: 'strikeout',
-}
+/** Shared pdf.js subtype mapping for saved markups and their comments. */
+export { PDFJS_MARKUP_TYPE_BY_ANNOT as MARKUP_TYPE_BY_ANNOT } from './note-threads'
 
 export const rectsNear = (a: readonly number[], b: readonly number[], tolerance = 2): boolean =>
   a.length === 4 &&
@@ -113,6 +110,8 @@ export interface SavedSnapshot {
   blankPageIds: Set<string>
   rotations: Map<number, number>
   metadata: MetadataInput | null
+  /** The edited bookmark tree this save wrote (same object the pending edit holds), or null */
+  outline: OutlineEntryInput[] | null
   /** Old original page index → its index in the saved file (saved deletions/reorder applied) */
   pageMap: Map<number, number>
 }

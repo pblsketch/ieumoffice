@@ -17,6 +17,7 @@ import {
   claudeCodeModels,
   claudeCodeOutputSchema,
   claudeCodeUsage,
+  directCallInput,
   listClaudeCodeModels,
   parseClaudeCodeTurn,
   streamClaudeCodeCli,
@@ -152,11 +153,89 @@ function initEvent(overrides: Record<string, unknown> = {}): unknown {
   }
 }
 
+/** The report of a structured turn: the CLI's structured-output tool and nothing else */
+function structuredInit(overrides: Record<string, unknown> = {}): unknown {
+  return initEvent({ tools: ['StructuredOutput'], ...overrides })
+}
+
 function textDelta(text: string): unknown {
   return {
     type: 'stream_event',
     event: { type: 'content_block_delta', index: 1, delta: { type: 'text_delta', text } },
   }
+}
+
+const STRUCTURED_ID = 'toolu_structured'
+
+/** The model starts its StructuredOutput call */
+function structuredStart(index = 1, id = STRUCTURED_ID): unknown {
+  return {
+    type: 'stream_event',
+    event: {
+      type: 'content_block_start',
+      index,
+      content_block: { type: 'tool_use', id, name: 'StructuredOutput', input: {} },
+    },
+  }
+}
+
+/** A piece of the StructuredOutput call's input as it streams */
+function jsonDelta(partial: string, index = 1): unknown {
+  return {
+    type: 'stream_event',
+    event: {
+      type: 'content_block_delta',
+      index,
+      delta: { type: 'input_json_delta', partial_json: partial },
+    },
+  }
+}
+
+function parsedObject(raw: string): Record<string, unknown> | undefined {
+  try {
+    const value: unknown = JSON.parse(raw)
+    return value !== null && typeof value === 'object' && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : undefined
+  } catch {
+    return undefined
+  }
+}
+
+/** The whole StructuredOutput call, then the acknowledgement the CLI sends back itself */
+function structuredCall(raw: string, id = STRUCTURED_ID): unknown[] {
+  return [
+    {
+      type: 'assistant',
+      message: {
+        content: [
+          { type: 'tool_use', id, name: 'StructuredOutput', input: parsedObject(raw) ?? {} },
+        ],
+      },
+    },
+    {
+      type: 'user',
+      message: {
+        content: [
+          {
+            type: 'tool_result',
+            tool_use_id: id,
+            content: 'Structured output provided successfully',
+          },
+        ],
+      },
+    },
+  ]
+}
+
+/** The result of a structured turn: the answer as the CLI validated it, when it is one */
+function structuredResult(raw: string, overrides: Record<string, unknown> = {}): unknown {
+  const output = parsedObject(raw)
+  return resultEvent(raw, {
+    stop_reason: 'tool_use',
+    ...(output ? { structured_output: output } : {}),
+    ...overrides,
+  })
 }
 
 function resultEvent(result: string, overrides: Record<string, unknown> = {}): unknown {
@@ -181,15 +260,15 @@ function rateLimitEvent(info: Record<string, unknown>): unknown {
   return { type: 'rate_limit_event', rate_limit_info: info }
 }
 
-/** A whole successful turn whose text is `raw`, streamed in `chunkSize` pieces */
+/** A whole structured turn whose StructuredOutput input is `raw`, streamed in `chunkSize` pieces */
 function answer(raw: string, chunkSize = 7): FakeScript {
   return {
     onUser: (child) => {
-      child.send(initEvent())
+      child.send(structuredInit(), structuredStart())
       for (let index = 0; index < raw.length; index += chunkSize) {
-        child.send(textDelta(raw.slice(index, index + chunkSize)))
+        child.send(jsonDelta(raw.slice(index, index + chunkSize)))
       }
-      child.send(resultEvent(raw))
+      child.send(...structuredCall(raw), structuredResult(raw))
     },
   }
 }
@@ -305,7 +384,8 @@ describe('Claude Code bridge: what is started', () => {
       'SECRET-SYSTEM-PROMPT',
     )
     expect(record.command).toBe(PROGRAM.command)
-    expect(record.args).toEqual(claudeCodeCliLaunchArgs('haiku'))
+    const schema = claudeCodeOutputSchema(tools)
+    expect(record.args).toEqual(claudeCodeCliLaunchArgs('haiku', schema))
     expect(record.args).toEqual([
       '-p',
       '--input-format',
@@ -324,14 +404,28 @@ describe('Claude Code bridge: what is started', () => {
       '--no-session-persistence',
       '--model',
       'haiku',
+      '--json-schema',
+      JSON.stringify(schema),
     ])
     const commandLine = record.args.join('\n')
     expect(commandLine).not.toContain('SECRET-USER-TEXT')
     expect(commandLine).not.toContain('SECRET-SYSTEM-PROMPT')
-    expect(commandLine).not.toContain('replace_text')
+    // of the tools, only their names: never a description or an input schema
+    expect(commandLine).not.toContain('Replace document text')
+    expect(commandLine).not.toContain('before')
     // never the API-key-only minimal mode, never a shell
     expect(record.args).not.toContain('--bare')
     expect(record.options?.shell).toBeFalsy()
+  })
+
+  it('puts only API-shaped tool names on the command line and refuses any other', async () => {
+    expect(claudeCodeCliLaunchArgs('haiku')).not.toContain('--json-schema')
+    const odd: AgentToolDef = { ...tools[0]!, name: 'replace text; --tools Bash' }
+    expect(() => claudeCodeOutputSchema([odd])).toThrow(/tool name/i)
+    const record = harness(answer(turnJson('Done.')))
+    await expect(stream(record, undefined, undefined, [odd])).rejects.toThrow(/tool name/i)
+    // nothing was started for it
+    expect(record.child).toBeUndefined()
   })
 
   it('leaves the model to the CLI when none is configured and refuses a flag-shaped model', async () => {
@@ -351,6 +445,39 @@ describe('Claude Code bridge: what is started', () => {
       ),
     ).rejects.toThrow(/model/i)
     expect(record.child).toBeUndefined()
+  })
+
+  it('hands a configured effort to --effort, and only a level the CLI takes', async () => {
+    expect(claudeCodeCliLaunchArgs('opus', undefined, 'high')).toEqual([
+      ...claudeCodeCliLaunchArgs('opus'),
+      '--effort',
+      'high',
+    ])
+    // after the model and before the schema
+    const schema = claudeCodeOutputSchema(tools)
+    expect(claudeCodeCliLaunchArgs('opus', schema, ' max ').slice(-4)).toEqual([
+      '--effort',
+      'max',
+      '--json-schema',
+      JSON.stringify(schema),
+    ])
+    // Codex's levels, flag-shaped text and anything else run the CLI's own default
+    for (const effort of ['', 'none', 'minimal', '--tools Bash', 'HIGH', 'ultra']) {
+      expect(claudeCodeCliLaunchArgs('opus', undefined, effort)).toEqual(
+        claudeCodeCliLaunchArgs('opus'),
+      )
+    }
+    const record = harness(answer(turnJson('Done.')))
+    await streamClaudeCodeCli(
+      { ...config, effort: 'low' },
+      'system',
+      [{ role: 'user', text: 'hi' }],
+      tools,
+      1024,
+      record.callbacks,
+      record.deps,
+    )
+    expect(record.args).toEqual(claudeCodeCliLaunchArgs('haiku', schema, 'low'))
   })
 
   it('starts the CLI without the variables that would move it off the subscription', async () => {
@@ -451,9 +578,10 @@ describe('Claude Code bridge: what goes over stdin', () => {
     expect(initialize.request.subtype).toBe('initialize')
     expect(initialize.request.systemPrompt[0]).toBe('APP SYSTEM PROMPT')
     const contract = initialize.request.systemPrompt.slice(1).join('\n')
-    expect(contract).toMatch(/no tools of your own/i)
-    expect(contract).toMatch(/exactly one JSON object/i)
-    // no schema is handed to the CLI: that would add its StructuredOutput tool
+    expect(contract).toMatch(/must not try/i)
+    expect(contract).toMatch(/calling StructuredOutput exactly once/i)
+    expect(contract).toMatch(/never write a tool call into "text"/i)
+    // the schema goes on the command line, not in the setup request
     expect(initialize.request.jsonSchema).toBeUndefined()
     expect(user.type).toBe('user')
     expect(user.message.role).toBe('user')
@@ -662,15 +790,53 @@ describe('Claude Code bridge: the structured turn', () => {
     const raw = turnJson('Whole answer.')
     const record = harness({
       onUser: (child) => {
-        child.send(
-          initEvent(),
-          { type: 'assistant', message: { content: [{ type: 'text', text: raw }] } },
-          resultEvent(raw),
-        )
+        child.send(structuredInit(), ...structuredCall(raw), resultEvent(raw))
       },
     })
     await stream(record)
     expect(record.deltas).toEqual(['Whole answer.'])
+  })
+
+  it('prefers the answer the CLI validated over what was streamed', async () => {
+    const streamed = turnJson('First try.')
+    const validated = turnJson('Second try.', [
+      { name: 'replace_text', inputJson: JSON.stringify({ before: 'a', after: 'b' }) },
+    ])
+    const record = harness({
+      onUser: (child) => {
+        child.send(
+          structuredInit(),
+          structuredStart(),
+          jsonDelta(streamed),
+          structuredResult(validated),
+        )
+      },
+    })
+    await stream(record)
+    expect(record.toolCalls.map(({ name, input }) => ({ name, input }))).toEqual([
+      { name: 'replace_text', input: { before: 'a', after: 'b' } },
+    ])
+    // the turn ended on the CLI's own tool: for the loop it is a finished turn
+    expect(record.stopReasons).toEqual(['end_turn'])
+  })
+
+  it('never takes prose written beside the call as the answer', async () => {
+    // seen live before decision 0082: tool calls written as text in the model's own markup
+    const prose =
+      '먼저 표를 읽겠습니다.\n\n<invoke name="read_table">\n<parameter name="table">1</parameter>\n</invoke>'
+    const record = harness({
+      onUser: (child) => {
+        child.send(structuredInit(), textDelta(prose), resultEvent(prose))
+      },
+    })
+    const failure = await stream(record).then(
+      () => undefined,
+      (error: unknown) => error,
+    )
+    // nothing shown, and the loop replays the turn instead of ending the run on it
+    expect((failure as Error).message).toContain('(empty stream)')
+    expect(record.deltas).toEqual([])
+    expect(record.toolCalls).toEqual([])
   })
 
   it('delivers the text at the end when the answer does not open with it', async () => {
@@ -742,12 +908,8 @@ describe('Claude Code bridge: the structured turn', () => {
     expect(record.toolCalls[0]!.input).toEqual({})
   })
 
-  it('takes an answer in plain prose as text without tool calls', async () => {
-    // seen live: after its tool calls had run, the model answered a bare "done"
-    const record = harness(answer('done'))
-    await stream(record)
-    expect(record.deltas.join('')).toBe('done')
-    expect(record.toolCalls).toEqual([])
+  it('reads a structure-less answer as text without tool calls', () => {
+    // the parser's own fallback; a structured turn only hands it what the StructuredOutput call carried
     expect(parseClaudeCodeTurn('  I would rather answer in plain prose.  ', tools)).toEqual({
       text: 'I would rather answer in plain prose.',
       toolCalls: [],
@@ -800,7 +962,12 @@ describe('Claude Code bridge: the structured turn', () => {
     const raw = '{"text":"A very long answer that never'
     const record = harness({
       onUser: (child) => {
-        child.send(initEvent(), textDelta(raw), resultEvent(raw, { stop_reason: 'max_tokens' }))
+        child.send(
+          structuredInit(),
+          structuredStart(),
+          jsonDelta(raw),
+          resultEvent(raw, { stop_reason: 'max_tokens' }),
+        )
       },
     })
     await stream(record)
@@ -813,7 +980,12 @@ describe('Claude Code bridge: the structured turn', () => {
       '{"text":"Writing.","toolCalls":[{"name":"replace_text","inputJson":"{\\"before\\":\\"a'
     const record = harness({
       onUser: (child) => {
-        child.send(initEvent(), textDelta(raw), resultEvent(raw, { stop_reason: 'max_tokens' }))
+        child.send(
+          structuredInit(),
+          structuredStart(),
+          jsonDelta(raw),
+          resultEvent(raw, { stop_reason: 'max_tokens' }),
+        )
       },
     })
     await stream(record)
@@ -835,11 +1007,12 @@ describe('Claude Code bridge: the structured turn', () => {
     const record = harness({
       onUser: (child) => {
         child.send(
-          initEvent(),
+          structuredInit(),
           thinking(''),
           thinking('Considering.'),
-          textDelta(raw),
-          resultEvent(raw),
+          structuredStart(),
+          jsonDelta(raw),
+          structuredResult(raw),
         )
       },
     })
@@ -848,11 +1021,17 @@ describe('Claude Code bridge: the structured turn', () => {
   })
 })
 
-describe('Claude Code bridge: zero tools or no run', () => {
+describe('Claude Code bridge: only the allowed tool, or no run', () => {
   const answering = (init: unknown): FakeScript => ({
     onUser: (child) => {
       const raw = turnJson('This must never be shown.')
-      child.send(init, textDelta(raw), resultEvent(raw))
+      child.send(
+        init,
+        structuredStart(),
+        jsonDelta(raw),
+        ...structuredCall(raw),
+        structuredResult(raw),
+      )
     },
   })
 
@@ -869,14 +1048,252 @@ describe('Claude Code bridge: zero tools or no run', () => {
     expect(record.killed).toEqual([record.child])
   })
 
-  it('counts even the CLI own structured-output tool as a tool', async () => {
-    const record = harness(answering(initEvent({ tools: ['StructuredOutput'] })))
+  it('runs a structured turn only with exactly the structured-output tool', async () => {
+    for (const listed of [
+      [],
+      ['StructuredOutput', 'Read'],
+      ['Read'],
+      ['StructuredOutput', 'StructuredOutput2'],
+    ]) {
+      const record = harness(answering(initEvent({ tools: listed })))
+      await expect(stream(record)).rejects.toMatchObject({ kind: 'unsafe-tools' })
+      expect(record.deltas).toEqual([])
+      expect(record.toolCalls).toEqual([])
+    }
+  })
+
+  it('runs a plain chat with no tool at all, not even the structured-output one', async () => {
+    const wd = createStreamWatchdog()
+    const chat = harness(answering(structuredInit()))
+    await expect(
+      wd.guard(() => chatClaudeCodeCli(wd, config, 'system', 'hi', chat.deps)),
+    ).rejects.toMatchObject({ kind: 'unsafe-tools' })
+    // and it is started without a schema
+    expect(chat.args).not.toContain('--json-schema')
+  })
+
+  it('refuses a tool result the CLI did not owe a StructuredOutput call', async () => {
+    const raw = turnJson('This must never be shown.')
+    const record = harness({
+      onUser: (child) => {
+        child.send(structuredInit(), structuredStart(), jsonDelta(raw), {
+          type: 'user',
+          message: {
+            content: [{ type: 'tool_result', tool_use_id: 'toolu_other', content: 'ran' }],
+          },
+        })
+      },
+    })
     await expect(stream(record)).rejects.toMatchObject({ kind: 'unsafe-tools' })
+    expect(record.toolCalls).toEqual([])
+  })
+
+  const directUse = {
+    type: 'tool_use',
+    id: 'toolu_direct',
+    name: 'replace_text',
+    input: { before: 'x', after: 'y' },
+  }
+
+  /** The model calls an app tool directly, as seen live, after a line of prose */
+  const directAppCall = (extra: unknown[] = []): unknown[] => [
+    {
+      type: 'stream_event',
+      event: {
+        type: 'content_block_start',
+        index: 1,
+        content_block: { ...directUse, input: {} },
+      },
+    },
+    jsonDelta('{"before":"x","after":"y"}', 1),
+    {
+      type: 'assistant',
+      message: {
+        content: [{ type: 'text', text: 'Replacing x.' }, directUse, ...extra],
+        usage: { input_tokens: 500, output_tokens: 40 },
+      },
+    },
+    {
+      type: 'user',
+      message: {
+        content: [
+          {
+            type: 'tool_result',
+            tool_use_id: 'toolu_direct',
+            content: '<tool_use_error>Error: No such tool available: replace_text</tool_use_error>',
+            is_error: true,
+          },
+        ],
+      },
+    },
+  ]
+
+  it('takes a direct call to an app tool as the request and ends the CLI before it answers it', async () => {
+    const record = harness({
+      onUser: (child) => {
+        child.send(structuredInit(), ...directAppCall())
+      },
+    })
+    await stream(record)
+    expect(record.deltas.join('')).toBe('Replacing x.')
+    expect(record.toolCalls.map(({ name, input }) => ({ name, input }))).toEqual([
+      { name: 'replace_text', input: { before: 'x', after: 'y' } },
+    ])
+    expect(record.toolCalls[0]!.id).toMatch(/^claude-/)
+    expect(record.usage).toEqual([{ inputTokens: 500, outputTokens: 40 }])
+    // ended at once: the model never sees the CLI's "no such tool"
+    expect(record.killed).toEqual([record.child])
+  })
+
+  it('undoes the input shapes a model guesses for a tool the CLI does not know', () => {
+    const fill: AgentToolDef = {
+      name: 'fill_cells',
+      description: 'Fill cells',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          table: { type: 'integer' },
+          cells: { type: 'array', items: { type: 'object' } },
+          note: { type: 'string' },
+          options: { type: 'object' },
+          header: { type: 'boolean' },
+        },
+      },
+    }
+    // seen live: the real input wrapped as a toolCalls item's inputJson
+    expect(directCallInput(fill, { inputJson: '{"table":1,"cells":[]}' })).toEqual({
+      inputJson: '{"table":1,"cells":[]}',
+    })
+    // seen live: an array written as a JSON string; the numeric string is the loop's to repair
+    expect(
+      directCallInput(fill, {
+        table: '1',
+        cells: '[{"row":1,"col":2,"text":"a"}]',
+        note: '[not parsed: a string field]',
+        options: '{"fit":true}',
+      }),
+    ).toEqual({
+      input: {
+        table: '1',
+        cells: [{ row: 1, col: 2, text: 'a' }],
+        note: '[not parsed: a string field]',
+        options: { fit: true },
+      },
+    })
+    // seen live: a yes/no written as a string, which the loop refused three times over
+    expect(directCallInput(fill, { header: 'true', note: 'true' })).toEqual({
+      input: { header: true, note: 'true' },
+    })
+    expect(directCallInput(fill, { header: 'false' })).toEqual({ input: { header: false } })
+    // a string that is not the declared shape stays as it is, for the loop to report
+    expect(directCallInput(fill, { cells: 'three cells' })).toEqual({
+      input: { cells: 'three cells' },
+    })
+    expect(directCallInput(fill, { header: 'yes' })).toEqual({ input: { header: 'yes' } })
+    expect(directCallInput(fill, { header: '1' })).toEqual({ input: { header: '1' } })
+    expect(directCallInput(fill, 'not an object')).toEqual({ input: {} })
+  })
+
+  it('passes a wrapped direct call on as the input it wraps', async () => {
+    const record = harness({
+      onUser: (child) => {
+        child.send(structuredInit(), {
+          type: 'assistant',
+          message: {
+            content: [{ ...directUse, input: { inputJson: '{"before":"p","after":"q"}' } }],
+          },
+        })
+      },
+    })
+    await stream(record)
+    expect(record.toolCalls.map(({ name, input }) => ({ name, input }))).toEqual([
+      { name: 'replace_text', input: { before: 'p', after: 'q' } },
+    ])
+  })
+
+  it('checks a direct call like a requested one', async () => {
+    const record = harness({
+      onUser: (child) => {
+        child.send(structuredInit(), {
+          type: 'assistant',
+          message: { content: [{ ...directUse, input: 'not an object' }] },
+        })
+      },
+    })
+    await stream(record)
+    expect(record.toolCalls).toHaveLength(1)
+    expect(record.toolCalls[0]).toMatchObject({ name: 'replace_text', input: {} })
+  })
+
+  it('answers with StructuredOutput when a message carries both, and refuses a direct call reported as run', async () => {
+    const raw = turnJson('Structured.')
+    const record = harness({
+      onUser: (child) => {
+        child.send(
+          structuredInit(),
+          {
+            type: 'assistant',
+            message: {
+              content: [
+                directUse,
+                {
+                  type: 'tool_use',
+                  id: STRUCTURED_ID,
+                  name: 'StructuredOutput',
+                  input: JSON.parse(raw),
+                },
+              ],
+            },
+          },
+          {
+            type: 'user',
+            message: {
+              content: [{ type: 'tool_result', tool_use_id: 'toolu_direct', content: 'Replaced.' }],
+            },
+          },
+        )
+      },
+    })
+    await expect(stream(record)).rejects.toMatchObject({ kind: 'unsafe-tools' })
+    expect(record.toolCalls).toEqual([])
+  })
+
+  it('refuses tool input that streams into anything but the StructuredOutput call', async () => {
+    const record = harness({
+      onUser: (child) => {
+        child.send(structuredInit(), structuredStart(1), jsonDelta('{"command":"ls"}', 2))
+      },
+    })
+    await expect(stream(record)).rejects.toMatchObject({ kind: 'unsafe-tools' })
+  })
+
+  it('refuses another tool call next to the StructuredOutput call', async () => {
+    const raw = turnJson('This must never be shown.')
+    const record = harness({
+      onUser: (child) => {
+        child.send(structuredInit(), {
+          type: 'assistant',
+          message: {
+            content: [
+              {
+                type: 'tool_use',
+                id: STRUCTURED_ID,
+                name: 'StructuredOutput',
+                input: JSON.parse(raw),
+              },
+              { type: 'tool_use', id: 'toolu_2', name: 'Bash', input: { command: 'ls' } },
+            ],
+          },
+        })
+      },
+    })
+    await expect(stream(record)).rejects.toMatchObject({ kind: 'unsafe-tools' })
+    expect(record.toolCalls).toEqual([])
   })
 
   it('refuses when an MCP server is attached, even with no tool listed yet', async () => {
     const record = harness(
-      answering(initEvent({ mcp_servers: [{ name: 'notion', status: 'pending' }] })),
+      answering(structuredInit({ mcp_servers: [{ name: 'notion', status: 'pending' }] })),
     )
     await expect(stream(record)).rejects.toMatchObject({ kind: 'unsafe-tools' })
     expect(record.deltas).toEqual([])
@@ -893,7 +1310,7 @@ describe('Claude Code bridge: zero tools or no run', () => {
   it('refuses an answer that arrives before the tool list was reported', async () => {
     const raw = turnJson('This must never be shown.')
     const record = harness({
-      onUser: (child) => child.send(textDelta(raw), resultEvent(raw)),
+      onUser: (child) => child.send(structuredStart(), jsonDelta(raw), structuredResult(raw)),
     })
     await expect(stream(record)).rejects.toMatchObject({ kind: 'unsafe-tools' })
     expect(record.deltas).toEqual([])
@@ -904,7 +1321,14 @@ describe('Claude Code bridge: zero tools or no run', () => {
     const raw = turnJson('This must never be shown.')
     const record = harness({
       onUser: (child) => {
-        child.send(initEvent(), initEvent({ tools: ['Bash'] }), textDelta(raw), resultEvent(raw))
+        child.send(
+          structuredInit(),
+          structuredInit({ tools: ['StructuredOutput', 'Bash'] }),
+          structuredStart(),
+          jsonDelta(raw),
+          ...structuredCall(raw),
+          structuredResult(raw),
+        )
       },
     })
     await expect(stream(record)).rejects.toMatchObject({ kind: 'unsafe-tools' })
@@ -914,7 +1338,7 @@ describe('Claude Code bridge: zero tools or no run', () => {
   it('ends the run when the model starts a tool of the CLI after all', async () => {
     const record = harness({
       onUser: (child) => {
-        child.send(initEvent(), {
+        child.send(structuredInit(), {
           type: 'stream_event',
           event: {
             type: 'content_block_start',
@@ -931,7 +1355,7 @@ describe('Claude Code bridge: zero tools or no run', () => {
   it('ends the run when the CLI asks for permission to use a tool', async () => {
     const record = harness({
       onUser: (child) => {
-        child.send(initEvent(), {
+        child.send(structuredInit(), {
           type: 'control_request',
           request_id: 'perm-1',
           request: { subtype: 'can_use_tool', tool_name: 'Bash', input: {} },
@@ -1017,8 +1441,9 @@ describe('Claude Code bridge: subscription usage', () => {
     const record = harness({
       onUser: (child) => {
         child.send(
-          initEvent(),
-          textDelta(raw),
+          structuredInit(),
+          structuredStart(),
+          jsonDelta(raw),
           rateLimitEvent({ status: 'allowed' }),
           rateLimitEvent({
             status: 'allowed',
@@ -1056,7 +1481,7 @@ describe('Claude Code bridge: failures', () => {
     return {
       onUser: (child) => {
         child.send(
-          initEvent(),
+          structuredInit(),
           ...before,
           {
             type: 'assistant',
@@ -1217,7 +1642,7 @@ describe('Claude Code bridge: failures', () => {
   it('stops a CLI that writes an endless line', async () => {
     const record = harness({
       onUser: (child) => {
-        child.send(initEvent())
+        child.send(structuredInit())
         child.stdout.write('x'.repeat(MAX_SSE_LINE_BYTES + 16))
       },
     })
@@ -1232,7 +1657,7 @@ describe('Claude Code bridge: cancelling and process lifetime', () => {
     const record = harness(
       {
         onUser: (child) => {
-          child.send(initEvent(), textDelta('{"text":"Star'))
+          child.send(structuredInit(), structuredStart(), jsonDelta('{"text":"Star'))
           setTimeout(() => controller.abort(), 10)
         },
       },
@@ -1260,7 +1685,14 @@ describe('Claude Code bridge: cancelling and process lifetime', () => {
   it('closes stdin after the answer and ends a CLI that does not leave by itself', async () => {
     const raw = turnJson('Done.')
     const record = harness({
-      onUser: (child) => child.send(initEvent(), textDelta(raw), resultEvent(raw)),
+      onUser: (child) =>
+        child.send(
+          structuredInit(),
+          structuredStart(),
+          jsonDelta(raw),
+          ...structuredCall(raw),
+          structuredResult(raw),
+        ),
       // ignores the end of input and stays alive
       onStdinEnd: () => undefined,
     })
@@ -1285,7 +1717,13 @@ describe('Claude Code bridge: cancelling and process lifetime', () => {
       {
         onUser: (child) => {
           sizeDuringRun = registry.size
-          child.send(initEvent(), textDelta(raw), resultEvent(raw))
+          child.send(
+            structuredInit(),
+            structuredStart(),
+            jsonDelta(raw),
+            ...structuredCall(raw),
+            structuredResult(raw),
+          )
         },
       },
       { deps: { registry } },
@@ -1298,7 +1736,7 @@ describe('Claude Code bridge: cancelling and process lifetime', () => {
 
   it('surfaces a stalled CLI as a timeout and ends it', async () => {
     // the CLI reports its tools and then goes silent
-    const record = harness({ onUser: (child) => child.send(initEvent()) })
+    const record = harness({ onUser: (child) => child.send(structuredInit()) })
     const wd = createStreamWatchdog(undefined, 1_000, 1_000)
     const failure = await wd
       .guard(() =>
@@ -1484,6 +1922,44 @@ describe('Claude Code bridge: the model list', () => {
     const failure = (await list(record).catch((error: unknown) => error)) as Error
     expect(failure).toBeInstanceOf(Error)
     expect(failure.message).not.toMatch(/Acme|Seoul/)
+  })
+
+  it('reads the effort levels each model takes, only those --effort accepts', () => {
+    const models = claudeCodeModels({
+      models: [
+        {
+          value: 'default',
+          resolvedModel: 'claude-opus-5-5',
+          displayName: 'Default',
+          supportsEffort: true,
+          supportedEffortLevels: ['max', 'low', 'high', 'medium', 'xhigh'],
+        },
+        {
+          value: 'sonnet',
+          displayName: 'Sonnet',
+          supportsEffort: true,
+          supportedEffortLevels: ['low', 'medium', 'high', 'ultra', '--tools'],
+        },
+        { value: 'haiku', displayName: 'Haiku' },
+        // the CLI says the model takes none: a stray list is not believed
+        {
+          value: 'claude-haiku-4-5',
+          displayName: 'Haiku 4.5',
+          supportsEffort: false,
+          supportedEffortLevels: ['low'],
+        },
+        { value: 'fable', displayName: 'Fable', supportedEffortLevels: ['none', 'minimal'] },
+      ],
+    })
+    expect(models.map((model) => [model.id, model.efforts])).toEqual([
+      ['', ['low', 'medium', 'high', 'xhigh', 'max']],
+      ['sonnet', ['low', 'medium', 'high']],
+      ['haiku', undefined],
+      ['claude-haiku-4-5', undefined],
+      ['fable', undefined],
+    ])
+    // the status keeps them as they are
+    expect(subscriptionModelsOf(models)).toEqual(models)
   })
 
   it('is the model source of the status check for Claude', async () => {

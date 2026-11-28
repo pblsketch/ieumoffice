@@ -77,10 +77,11 @@ vi.mock('@genoffice/file-parse', () => ({
   ATTACHABLE_EXTS: new Set<string>(),
   ATTACHABLE_IMAGE_EXTS: new Set<string>(),
   ATTACHABLE_MAX_BYTES: 25 * 1024 * 1024,
+  attachableMaxBytes: () => 25 * 1024 * 1024,
   ATTACHABLE_IMAGE_MAX_BYTES: 5 * 1024 * 1024,
 }))
 
-import { createHwpView } from '../src/main/hwp-main'
+import { configureHwpRuntime, createHwpView } from '../src/main/hwp-main'
 import { HWP_CHANNELS } from '../src/shared/ipc'
 import type { BeginSaveResult, CommitSaveResult } from '../src/shared/ipc'
 
@@ -132,6 +133,29 @@ describe('an untitled copy in an HWP tab', () => {
     expect([...readFileSync(copyPath)]).toEqual([...HWPX])
   })
 
+  it('offers the project folder when its panel has a project (spec 6), else as before', async () => {
+    const project = join(dir, 'Report')
+    configureHwpRuntime({ preloadPath: '', newDocumentDir: async () => project })
+    try {
+      const contents = createHwpView(copyPath, { untitledCopy: true })
+        .webContents as unknown as FakeContents
+      await call<Promise<Uint8Array>>(HWP_CHANNELS.readFile, contents, copyPath)
+      await call<Promise<BeginSaveResult>>(HWP_CHANNELS.beginSave, contents, 'save')
+      const options = showSaveDialog.mock.calls.at(-1)!.at(-1) as { defaultPath: string }
+      expect(options.defaultPath).toBe(join(project, 'Family letter.hwpx'))
+    } finally {
+      configureHwpRuntime({ preloadPath: '', newDocumentDir: async () => null })
+    }
+    const plain = createHwpView(copyPath, { untitledCopy: true })
+      .webContents as unknown as FakeContents
+    await call<Promise<Uint8Array>>(HWP_CHANNELS.readFile, plain, copyPath)
+    await call<Promise<BeginSaveResult>>(HWP_CHANNELS.beginSave, plain, 'save')
+    const options = showSaveDialog.mock.calls.at(-1)!.at(-1) as { defaultPath: string }
+    expect(options.defaultPath).toBe(
+      join(tmpdir(), 'hwp-test-documents', 'PosidOffice', 'Family letter.hwpx'),
+    )
+  })
+
   it('becomes the chosen file after its first save', async () => {
     const target = join(dir, 'saved.hwpx')
     showSaveDialog.mockResolvedValueOnce({ canceled: false, filePath: target })
@@ -148,6 +172,27 @@ describe('an untitled copy in an HWP tab', () => {
     const again = await call<Promise<BeginSaveResult>>(HWP_CHANNELS.beginSave, contents, 'save')
     expect(again).toMatchObject({ ok: true, path: target })
     expect(showSaveDialog).toHaveBeenCalledTimes(1)
+  })
+
+  it('names a PDF opened to be imported as the document it becomes (decision 0116)', async () => {
+    const pdfPath = join(dir, 'Annual report.pdf')
+    const PDF = Uint8Array.from([0x25, 0x50, 0x44, 0x46, 0x2d, 0x31, 0x2e, 0x37])
+    writeFileSync(pdfPath, PDF)
+    const contents = createHwpView(pdfPath, { untitledCopy: { baseName: 'Annual report' } })
+      .webContents as unknown as FakeContents
+    expect(call(HWP_CHANNELS.consumePending, contents)).toBe(pdfPath)
+    // Settings has no default format here: a new document is .hwp
+    expect(call(HWP_CHANNELS.untitledCopy, contents)).toEqual({
+      name: 'Annual report.hwp',
+      format: 'hwp',
+    })
+    // the PDF reaches the editor as it is; its import converts it
+    const bytes = await call<Promise<Uint8Array>>(HWP_CHANNELS.readFile, contents, pdfPath)
+    expect([...bytes]).toEqual([...PDF])
+    await call<Promise<BeginSaveResult>>(HWP_CHANNELS.beginSave, contents, 'save')
+    const options = showSaveDialog.mock.calls.at(-1)!.at(-1) as { defaultPath: string }
+    expect(basename(options.defaultPath)).toBe('Annual report.hwp')
+    expect([...readFileSync(pdfPath)]).toEqual([...PDF])
   })
 
   it('leaves an ordinary open as it was', async () => {

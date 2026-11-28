@@ -547,6 +547,8 @@ describe('the context block for the model', () => {
     expect(block).toContain(`"${builtin.name}"`)
     expect(block).toContain(`id "${builtin.id}"`)
     expect(block).toContain('Do not ask the user about style')
+    expect(block).toContain('neither in ask_questions nor in text')
+    expect(block).not.toContain('ask_clarification')
     expect(block).toContain("Leave generate_deck's style_template empty")
     expect(block).toContain("Leave generate_deck's style empty")
     expect(block).toContain("in the user's own terms")

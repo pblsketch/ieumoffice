@@ -2,6 +2,7 @@ import { PRODUCT_NAME } from '@genoffice/i18n'
 import { controlEndpoint, controlRequest } from '../control'
 import { resolveInput } from '../fs'
 import type { CommandDef } from '../registry'
+import { cutIndex } from '../preview'
 import { CliError, EXIT } from '../result'
 
 export const selectionCommand: CommandDef = {
@@ -23,7 +24,8 @@ export const selectionCommand: CommandDef = {
   },
 }
 
-function summarize(result: Record<string, unknown>): string {
+/** One line for the agent: what the user has selected, with a long text cut to a short preview. */
+export function summarize(result: Record<string, unknown>): string {
   if (result.none) return 'nothing is selected'
   if (Array.isArray(result.elements)) {
     return result.elements.length
@@ -46,5 +48,5 @@ function summarize(result: Record<string, unknown>): string {
 
 function preview(text: string): string {
   const flat = text.replace(/\s+/g, ' ').trim()
-  return flat.length > 80 ? `${flat.slice(0, 79)}…` : flat
+  return flat.length > 80 ? `${flat.slice(0, cutIndex(flat, 0, 79))}…` : flat
 }

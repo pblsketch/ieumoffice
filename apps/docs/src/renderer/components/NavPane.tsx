@@ -1,12 +1,14 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
   type DragEvent,
   type PointerEvent as ReactPointerEvent,
 } from 'react'
+import { useDismissablePopover } from '@genoffice/ui'
 import type { Editor } from '@tiptap/core'
 import type { Node as PmNode } from '@tiptap/pm/model'
 import { TextSelection, type Transaction } from '@tiptap/pm/state'
@@ -146,6 +148,7 @@ export function NavPane({
   doc,
   zoom,
   pageInfo,
+  subscribeCurrentPage,
   onClose,
 }: {
   editor: Editor
@@ -153,6 +156,8 @@ export function NavPane({
   /** canvas zoom factor (1 = 100%) */
   zoom: number
   pageInfo: { current: number; total: number }
+  /** optional scroll-page subscription so App need not re-render on scroll */
+  subscribeCurrentPage?: (listener: (page: number) => void) => () => void
   onClose: () => void
 }) {
   const { t } = useI18n()
@@ -175,6 +180,19 @@ export function NavPane({
   const dragFromRef = useRef<number | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const treeRef = useRef<HTMLDivElement>(null)
+  const bodyRef = useRef<HTMLDivElement>(null)
+  // Page thumbnails fit the body's inner width, which leaves out the pane border
+  // and the scrollbar lane (reserved on the Pages tab), so their right edge stays in view
+  const [bodyW, setBodyW] = useState(0)
+  useLayoutEffect(() => {
+    const body = bodyRef.current
+    if (!body) return
+    const measure = () => setBodyW(body.clientWidth)
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(body)
+    return () => ro.disconnect()
+  }, [])
   const indexRef = useRef(0)
   const matchesRef = useRef<FindMatch[]>([])
   const scanTokenRef = useRef<{ aborted: boolean } | null>(null)
@@ -490,6 +508,16 @@ export function NavPane({
   const [layoutVersion, setLayoutVersion] = useState(0)
   useEffect(() => setLayoutVersion((v) => v + 1), [doc, pageInfo.total])
 
+  const pageInfoCurrent = pageInfo.current
+  const [liveCurrentPage, setLiveCurrentPage] = useState(pageInfoCurrent)
+  useEffect(() => {
+    setLiveCurrentPage(pageInfoCurrent)
+  }, [pageInfoCurrent])
+  useEffect(() => {
+    if (tab !== 'pages' || !subscribeCurrentPage) return
+    return subscribeCurrentPage(setLiveCurrentPage)
+  }, [tab, subscribeCurrentPage])
+
   const tabs: Array<{ id: NavTab; label: string }> = [
     { id: 'headings', label: t('appNavTabHeadings') },
     { id: 'pages', label: t('appNavTabPages') },
@@ -549,7 +577,7 @@ export function NavPane({
           </button>
         ))}
       </div>
-      <div className="nav-body">
+      <div ref={bodyRef} className={`nav-body${tab === 'pages' ? ' nav-body-pages' : ''}`}>
         {tab === 'headings' && (
           <div
             className="nav-tree"
@@ -628,9 +656,9 @@ export function NavPane({
           <NavPageThumbs
             editor={editor}
             zoom={zoom}
-            width={width}
+            width={bodyW}
             layoutVersion={layoutVersion}
-            currentPage={pageInfo.current}
+            currentPage={liveCurrentPage}
             hitPositions={hitPositions}
           />
         )}
@@ -746,22 +774,11 @@ function NavMenu({
     setPos({ left, top })
   }, [menu])
 
-  useEffect(() => {
-    const close = (e: MouseEvent) => {
-      if (!ref.current?.contains(e.target as Node)) onClose()
-    }
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
-    }
-    window.addEventListener('mousedown', close)
-    window.addEventListener('keydown', onKey)
-    window.addEventListener('blur', onClose)
-    return () => {
-      window.removeEventListener('mousedown', close)
-      window.removeEventListener('keydown', onKey)
-      window.removeEventListener('blur', onClose)
-    }
-  }, [onClose])
+  // unified dismissal: outside press, Escape, window blur
+  useDismissablePopover(heading != null, onClose, {
+    inside: () => [ref.current],
+    escape: true,
+  })
 
   if (!heading) return null
   const item = (label: string, onClick: () => void, disabled = false) => (

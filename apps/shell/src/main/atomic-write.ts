@@ -1,6 +1,6 @@
-import { randomBytes } from 'node:crypto'
 import { open, rename, unlink, writeFile } from 'node:fs/promises'
-import { basename, dirname, join } from 'node:path'
+import { dirname } from 'node:path'
+import { tempPathBeside } from '@genoffice/electron-utils/atomic-write'
 
 export { atomicCopyFile } from '@genoffice/electron-utils/atomic-write'
 
@@ -18,10 +18,7 @@ export function atomicWriteFile(filePath: string, data: Uint8Array): Promise<voi
 }
 
 async function viaTemp(filePath: string, fill: (tmp: string) => Promise<void>): Promise<void> {
-  const tmp = join(
-    dirname(filePath),
-    `.${basename(filePath)}.${randomBytes(6).toString('hex')}.tmp`,
-  )
+  const tmp = tempPathBeside(filePath)
   try {
     await fill(tmp)
     await fsyncPath(tmp)

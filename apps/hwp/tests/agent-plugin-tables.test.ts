@@ -6,7 +6,7 @@
 import { readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
-import { beforeAll, describe, expect, it } from 'vitest'
+import { beforeAll, describe, expect, it, vi } from 'vitest'
 import init, { HwpDocument } from '@rhwp/core'
 import { agentPlugin, type AgentPluginHost } from '../studio-plugin/agent-plugin.mjs'
 
@@ -195,6 +195,26 @@ function openForm(
       cursor.position = at
       host.automation.execute('ext:ieum-select-word')
     },
+    /** the user clicks three times at a place: the caret goes there, then the paragraph command */
+    tripleClick: (at: Position) => {
+      cursor.anchor = null
+      cursor.position = at
+      host.automation.execute('ext:ieum-select-paragraph')
+    },
+    /**
+     * the user double-clicks at one place and drags to another: the studio anchors its drag at
+     * the click and moves the selection's end to the pointer, then the word-drag step runs
+     */
+    dragWords: (from: Position, to: Position) => {
+      cursor.anchor = null
+      cursor.position = from
+      host.automation.execute('ext:ieum-word-drag', { phase: 'start' })
+      cursor.anchor = { ...from }
+      cursor.position = to
+      host.automation.execute('ext:ieum-word-drag', { phase: 'move' })
+    },
+    /** a command the plugin registered, to run with other editor services */
+    command: (id: string) => commands.get(id),
     /** the text of every cell of the first table, by "row.col" */
     cells: () => {
       const read = plugin.readTable(1)
@@ -305,6 +325,73 @@ describe('filling cells', () => {
     expect(props.bold).toBe(true)
   })
 
+  it('writes an answer black and upright, keeping the font and bold of the cell', () => {
+    const { plugin, doc } = openForm((d) => {
+      // a guide left blue and italic, the way a form template prints its examples
+      d.insertTextInCellByPath(0, 1, cellPath(1), 0, 'x')
+      d.applyCharFormatInCellByPath(
+        0,
+        1,
+        cellPath(1),
+        0,
+        1,
+        JSON.stringify({ textColor: '#0000ff', italic: true, bold: true }),
+      )
+      d.deleteTextInCellByPath(0, 1, cellPath(1), 0, 1)
+    })
+    plugin.fillCells(1, [{ row: 1, col: 2, text: '홍길동' }], false)
+    const props = JSON.parse(doc().getCellCharPropertiesAtByPath(0, 1, cellPath(1), 1)) as {
+      bold: boolean
+      italic: boolean
+      textColor: string
+    }
+    expect(props).toMatchObject({ italic: false, textColor: '#000000', bold: true })
+  })
+
+  it('keeps the black upright answer after saving and reopening', () => {
+    const { plugin, doc } = openForm((d) => {
+      d.insertTextInCellByPath(0, 1, cellPath(1), 0, 'x')
+      d.applyCharFormatInCellByPath(
+        0,
+        1,
+        cellPath(1),
+        0,
+        1,
+        JSON.stringify({ textColor: '#0000ff', italic: true }),
+      )
+      d.deleteTextInCellByPath(0, 1, cellPath(1), 0, 1)
+    })
+    plugin.fillCells(1, [{ row: 1, col: 2, text: '홍길동' }], false)
+    for (const saved of [doc().exportHwp(), doc().exportHwpx()]) {
+      const again = new HwpDocument(saved)
+      const props = JSON.parse(again.getCellCharPropertiesAtByPath(0, 1, cellPath(1), 1)) as {
+        italic: boolean
+        textColor: string
+      }
+      expect(props).toMatchObject({ italic: false, textColor: '#000000' })
+    }
+  })
+
+  it('leaves white text white, since it sits on a dark fill', () => {
+    const { plugin, doc } = openForm((d) => {
+      d.insertTextInCellByPath(0, 1, cellPath(1), 0, 'x')
+      d.applyCharFormatInCellByPath(
+        0,
+        1,
+        cellPath(1),
+        0,
+        1,
+        JSON.stringify({ textColor: '#ffffff' }),
+      )
+      d.deleteTextInCellByPath(0, 1, cellPath(1), 0, 1)
+    })
+    plugin.fillCells(1, [{ row: 1, col: 2, text: '홍길동' }], false)
+    const props = JSON.parse(doc().getCellCharPropertiesAtByPath(0, 1, cellPath(1), 1)) as {
+      textColor: string
+    }
+    expect(props.textColor).toBe('#ffffff')
+  })
+
   it('leaves a cell that holds text alone, and with it every other cell of the call', () => {
     const { plugin, steps, cells } = openForm()
     const result = plugin.fillCells(
@@ -396,6 +483,136 @@ describe('filling cells', () => {
   })
 })
 
+describe('ticking choice boxes', () => {
+  it("ticks a box that is the cell's bullet, in place, and says the cell has one", () => {
+    const { plugin, doc, steps } = openForm((d) => {
+      const id = d.ensureDefaultBullet('□')
+      for (const [cell, text] of [
+        [1, '창업기업'],
+        [3, '예비창업자'],
+      ] as const) {
+        d.applyParaFormatInCell(
+          0,
+          1,
+          0,
+          cell,
+          0,
+          JSON.stringify({ headType: 'Bullet', numberingId: id }),
+        )
+        d.insertTextInCellByPath(0, 1, cellPath(cell), 0, text)
+      }
+    })
+    const read = plugin.readTable(1)
+    if (!read.ok) throw new Error('expected a table')
+    expect(read.cells.find((cell) => cell.row === 1 && cell.col === 2)).toMatchObject({
+      text: '창업기업',
+      box: '□',
+    })
+    expect(plugin.checkBoxes(1, [{ row: 1, col: 2 }])).toMatchObject({ ok: true, count: 1 })
+    expect(steps()).toBe(1)
+    const props = JSON.parse(doc().getCellParaPropertiesAt(0, 1, 0, 1, 0)) as {
+      headType: string
+      numberingId: number
+    }
+    const bullet = (JSON.parse(doc().getBulletList()) as { id: number; char: string }[]).find(
+      (entry) => entry.id === props.numberingId,
+    )
+    expect(bullet?.char).toBe('☑')
+    // the words beside the box are untouched: no second mark was added
+    const after = plugin.readTable(1)
+    if (!after.ok) throw new Error('expected a table')
+    expect(after.cells.find((cell) => cell.row === 1 && cell.col === 2)?.text).toBe('창업기업')
+  })
+
+  it('ticks the box typed in the text before its choice', () => {
+    const { plugin } = openForm((d) => {
+      d.insertTextInCellByPath(0, 1, cellPath(1), 0, '□ 창업기업')
+      d.insertTextInCellByPath(0, 1, cellPath(3), 0, '□ 예비창업자')
+    })
+    expect(plugin.checkBoxes(1, [{ row: 1, col: 2, choice: '창업기업' }])).toMatchObject({
+      ok: true,
+      count: 1,
+    })
+    const read = plugin.readTable(1)
+    if (!read.ok) throw new Error('expected a table')
+    expect(read.cells.find((cell) => cell.row === 1 && cell.col === 2)?.text).toBe('☑ 창업기업')
+    expect(read.cells.find((cell) => cell.row === 1 && cell.col === 4)?.text).toBe('□ 예비창업자')
+  })
+
+  it('asks for the words when a cell has several boxes, and changes nothing', () => {
+    const { plugin, steps } = openForm((d) => {
+      d.insertTextInCellByPath(0, 1, cellPath(1), 0, '□ 남  □ 여')
+    })
+    expect(plugin.checkBoxes(1, [{ row: 1, col: 2 }])).toMatchObject({
+      ok: false,
+      reason: 'ambiguous_box',
+      cells: [{ row: 1, col: 2, choices: ['남', '여'] }],
+    })
+    expect(steps()).toBe(0)
+    expect(plugin.checkBoxes(1, [{ row: 1, col: 2, choice: '여' }])).toMatchObject({ ok: true })
+    const read = plugin.readTable(1)
+    if (!read.ok) throw new Error('expected a table')
+    expect(read.cells.find((cell) => cell.row === 1 && cell.col === 2)?.text).toBe('□ 남  ☑ 여')
+  })
+
+  it('changes nothing when any named cell has no box', () => {
+    const { plugin, steps } = openForm((d) => {
+      d.insertTextInCellByPath(0, 1, cellPath(1), 0, '□ 창업기업')
+    })
+    expect(
+      plugin.checkBoxes(1, [
+        { row: 1, col: 2 },
+        { row: 3, col: 3 },
+      ]),
+    ).toMatchObject({
+      ok: false,
+      reason: 'no_box',
+      cells: [{ row: 3, col: 3 }],
+    })
+    expect(steps()).toBe(0)
+  })
+
+  it('is taken back by one undo', () => {
+    const { plugin } = openForm((d) => {
+      d.insertTextInCellByPath(0, 1, cellPath(1), 0, '□ 창업기업')
+    })
+    const foreign = plugin.foreignChanges()
+    plugin.checkBoxes(1, [{ row: 1, col: 2 }])
+    expect(plugin.undo(1, foreign)).toMatchObject({ ok: true })
+    const read = plugin.readTable(1)
+    if (!read.ok) throw new Error('expected a table')
+    expect(read.cells.find((cell) => cell.row === 1 && cell.col === 2)?.text).toBe('□ 창업기업')
+  })
+
+  it('keeps the tick in a bullet after saving and reopening', () => {
+    const { plugin, doc } = openForm((d) => {
+      const id = d.ensureDefaultBullet('□')
+      d.applyParaFormatInCell(
+        0,
+        1,
+        0,
+        1,
+        0,
+        JSON.stringify({ headType: 'Bullet', numberingId: id }),
+      )
+      d.insertTextInCellByPath(0, 1, cellPath(1), 0, '창업기업')
+    })
+    plugin.checkBoxes(1, [{ row: 1, col: 2 }])
+    for (const saved of [doc().exportHwp(), doc().exportHwpx()]) {
+      const again = new HwpDocument(saved)
+      const props = JSON.parse(again.getCellParaPropertiesAt(0, 1, 0, 1, 0)) as {
+        headType: string
+        numberingId: number
+      }
+      const bullet = (JSON.parse(again.getBulletList()) as { id: number; char: string }[]).find(
+        (entry) => entry.id === props.numberingId,
+      )
+      expect(props.headType).toBe('Bullet')
+      expect(bullet?.char).toBe('☑')
+    }
+  })
+})
+
 describe('cells that hold a form field', () => {
   const withField = () =>
     openForm((doc) => {
@@ -437,6 +654,26 @@ describe('cells that hold a form field', () => {
       ok: true,
     })
     expect(plugin.listFields()[0]!.value).toBe('김철수')
+  })
+
+  it("shows a filled field value black and upright, not in the guide's blue italics", () => {
+    const { plugin, doc } = openForm((d) => {
+      d.insertClickHereFieldByPath(0, 1, cellPath(1), 0, GUIDE, '', '', true)
+      d.applyCharFormatInCellByPath(
+        0,
+        1,
+        cellPath(1),
+        0,
+        GUIDE.length,
+        JSON.stringify({ textColor: '#0000ff', italic: true }),
+      )
+    })
+    plugin.fillCells(1, [{ row: 1, col: 2, text: '홍길동' }], false)
+    const props = JSON.parse(doc().getCellCharPropertiesAtByPath(0, 1, cellPath(1), 1)) as {
+      italic: boolean
+      textColor: string
+    }
+    expect(props).toMatchObject({ italic: false, textColor: '#000000' })
   })
 })
 
@@ -814,6 +1051,48 @@ describe('what the user selected', () => {
     })
   })
 
+  // the engine's offsets count characters: 😀 and 𠀀 are one each there, two units in a string
+  const ASTRAL = '웃음😀😀😀 끝𠀀말'
+  const withAstral = () =>
+    openForm((doc) => {
+      doc.insertText(0, 2, 0, ASTRAL)
+      doc.insertTextInCell(0, 1, 0, 7, 0, 0, '𠀀😀')
+    })
+
+  it('hands out the text of a run with emoji and astral Han characters as it is', () => {
+    const { plugin, select, doc } = withAstral()
+    expect(doc().getParagraphLength(0, 2)).toBe([...ASTRAL].length + 2)
+    // 😀😀😀 끝 in the body: characters 2 to 7
+    select(inBody(2, 2), inBody(2, 7))
+    expect(plugin.selection()).toMatchObject({
+      ok: true,
+      segments: [{ sec: 0, para: 2, offset: 2, length: 5, text: '😀😀😀 끝' }],
+    })
+    // the whole paragraph, and 𠀀😀기존 in the cell
+    select(inBody(2, 0), inBody(2, doc().getParagraphLength(0, 2)))
+    expect(texts(plugin.selection())).toEqual([`${ASTRAL}끝.`])
+    select(inCell(7, 0), inCell(7, 4))
+    expect(texts(plugin.selection())).toEqual(['𠀀😀기존'])
+  })
+
+  it('replaces a run with emoji and astral Han characters where it was read', () => {
+    const { plugin, select, doc, cells } = withAstral()
+    select(inBody(2, 2), inBody(2, 6))
+    const body = plugin.selection()
+    if (!body.ok) throw new Error('expected a selection')
+    expect(body.segments[0].text).toBe('😀😀😀 ')
+    // it stands as read, so it is replaced, and only those characters go
+    expect(plugin.replaceSelection(body.segments, ['X'])).toMatchObject({ ok: true })
+    const length = doc().getParagraphLength(0, 2)
+    expect(doc().getTextRange(0, 2, 0, length)).toBe('웃음X끝𠀀말끝.')
+    select(inCell(7, 1), inCell(7, 2))
+    const cell = plugin.selection()
+    if (!cell.ok) throw new Error('expected a selection')
+    expect(cell.segments[0].text).toBe('😀')
+    expect(plugin.replaceSelection(cell.segments, ['웃음'])).toMatchObject({ ok: true })
+    expect(cells()['2.4']).toBe('𠀀웃음기존 내용')
+  })
+
   it('takes a table whole when the selection runs over the paragraph it sits in', () => {
     const { plugin, select } = openForm()
     // from inside the title, over the table, into the last line
@@ -909,6 +1188,121 @@ describe('a double click on a word', () => {
     expect(plugin.selection()).toMatchObject({ ok: true, segments: [{ text: '기존' }] })
     doubleClick(inCell(1, 0))
     expect(plugin.selection()).toEqual({ ok: false, reason: 'none' })
+  })
+
+  // the engine's offsets count characters: 😀 and 𠀀 are one each there, two units in a string
+  const withAstral = () =>
+    openForm((doc) => {
+      doc.insertText(0, 2, 0, '웃음😀😀😀 끝𠀀말')
+      doc.insertTextInCell(0, 1, 0, 7, 0, 0, '😀가나')
+    })
+
+  it('selects the word under the click where emoji and 𠀀 come before it or in it', () => {
+    const { plugin, doubleClick, selected } = withAstral()
+    // 말 in 웃음😀😀😀 끝𠀀말끝.: the word 끝𠀀말끝 is characters 6 to 10
+    doubleClick(inBody(2, 8))
+    expect(selected()).toMatchObject({ start: { charOffset: 6 }, end: { charOffset: 10 } })
+    expect(plugin.selection()).toMatchObject({
+      ok: true,
+      segments: [{ para: 2, offset: 6, length: 4, text: '끝𠀀말끝' }],
+    })
+    // 나 in the cell's 😀가나기존 내용: 가나기존 is characters 1 to 5
+    doubleClick(inCell(7, 2))
+    expect(selected()).toMatchObject({ start: { charOffset: 1 }, end: { charOffset: 5 } })
+    expect(plugin.selection()).toMatchObject({ ok: true, segments: [{ text: '가나기존' }] })
+    // an emoji is no letter: a click on it selects nothing
+    doubleClick(inBody(2, 3))
+    expect(plugin.selection()).toEqual({ ok: false, reason: 'none' })
+  })
+
+  it('selects a paragraph with emoji and 𠀀 to its end on a triple click', () => {
+    const { plugin, tripleClick, selected, doc } = withAstral()
+    tripleClick(inBody(2, 1))
+    expect(selected()).toMatchObject({
+      start: { charOffset: 0 },
+      end: { charOffset: doc().getParagraphLength(0, 2) },
+    })
+    expect(plugin.selection()).toMatchObject({
+      ok: true,
+      segments: [{ para: 2, text: '웃음😀😀😀 끝𠀀말끝.' }],
+    })
+  })
+
+  it('selects the paragraph on a triple click, in the body and in a cell', () => {
+    const { plugin, tripleClick } = openForm()
+    tripleClick(inCell(7, 1))
+    expect(plugin.selection()).toMatchObject({ ok: true, segments: [{ text: '기존 내용' }] })
+    tripleClick(inBody(2, 1))
+    expect(plugin.selection()).toMatchObject({ ok: true, segments: [{ para: 2, text: '끝.' }] })
+  })
+
+  it('widens a drag begun with a double click to whole words, both ways', () => {
+    const { plugin, dragWords, selected } = openForm()
+    dragWords(inCell(7, 1), inCell(7, 4))
+    expect(plugin.selection()).toMatchObject({ ok: true, segments: [{ text: '기존 내용' }] })
+    expect(selected()?.start.charOffset).toBe(0)
+    // backwards: the anchor goes to the end of the first word
+    dragWords(inCell(7, 4), inCell(7, 1))
+    expect(selected()).toMatchObject({ start: { charOffset: 5 }, end: { charOffset: 0 } })
+    // still inside the first word: just that word
+    dragWords(inCell(7, 3), inCell(7, 4))
+    expect(plugin.selection()).toMatchObject({ ok: true, segments: [{ text: '내용' }] })
+  })
+
+  it('selects a word in a header or footnote being edited', () => {
+    const { command } = openForm()
+    const word = command('ext:ieum-select-word')!
+    const selectHeaderFooterRange = vi.fn(() => true)
+    word.execute({
+      getInputHandler: () => ({
+        cursor: {
+          getPosition: () => ({ sectionIndex: 0, paragraphIndex: 0, charOffset: 0 }),
+          isInHeaderFooter: () => true,
+          headerFooterMode: 'header',
+          hfSectionIdx: 0,
+          hfApplyTo: 0,
+          hfParaIdx: 0,
+          hfCharOffset: 5,
+          hfPreviewPage: 0,
+          selectHeaderFooterRange,
+        },
+        updateCaret: () => {},
+      }),
+      wasm: { getHeaderFooterParaInfo: () => JSON.stringify({ ok: true, text: '머리말 낱말 둘' }) },
+    })
+    const target = { sectionIdx: 0, isHeader: true, applyTo: 0, paraIdx: 0 }
+    expect(selectHeaderFooterRange).toHaveBeenCalledWith(
+      { ...target, charOffset: 4 },
+      { ...target, charOffset: 6 },
+      0,
+    )
+
+    const setFnCursorPosition = vi.fn()
+    const setFnAnchor = vi.fn()
+    word.execute({
+      getInputHandler: () => ({
+        cursor: {
+          getPosition: () => ({ sectionIndex: 0, paragraphIndex: 0, charOffset: 0 }),
+          isInFootnote: () => true,
+          fnSectionIdx: 0,
+          fnParaIdx: 0,
+          fnControlIdx: 2,
+          fnInnerParaIdx: 0,
+          fnCharOffset: 6,
+          clearSelection: () => {},
+          setFnCursorPosition,
+          setFnAnchor,
+        },
+        updateCaret: () => {},
+      }),
+      // the engine's footnote text starts with the number's two placeholder blanks
+      wasm: { getFootnoteInfo: () => ({ ok: true, texts: ['  각주 낱말 셋'] }) },
+    })
+    expect(setFnCursorPosition.mock.calls).toEqual([
+      [0, 5],
+      [0, 7],
+    ])
+    expect(setFnAnchor).toHaveBeenCalledTimes(1)
   })
 })
 

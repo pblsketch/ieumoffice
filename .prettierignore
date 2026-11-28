@@ -18,6 +18,10 @@ scripts/drivers/driver.*.mjs
 packages/*/src/vendor/
 vendor/rhwp-core/
 
+# Prebuilt wasm-pack output (tools/build-hwp5-wasm.mjs, tools/build-print-layout-wasm.mjs), kept verbatim.
+packages/hwp5-wasm/pkg/
+packages/print-layout/wasm/pkg/
+
 # LLM prompt text: prettier rewrites *_* markers and list indentation, changing what the model reads.
 apps/slides/src/renderer/ai/prompts/*.md
 
@@ -26,6 +30,9 @@ packages/html2docx/src/browser/
 
 # ISO/IEC 29500 schemas: keep byte-identical to the published files (one marked amendment).
 tools/ooxml-validate/schemas/
+
+# A2UI v1.0 schemas (test fixtures): keep byte-identical to upstream.
+packages/agent-core/tests/fixtures/a2ui-v1_0/*.json
 
 # Built-in skills: third-party skill files kept byte-identical to upstream (see NOTICE).
 apps/shell/resources/builtin-skills/*/

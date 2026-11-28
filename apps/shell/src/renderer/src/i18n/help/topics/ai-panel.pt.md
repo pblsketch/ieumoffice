@@ -36,9 +36,16 @@ No painel de IA dos editores Docs, Sheets, Slides, Hangul, HTML e mapa mental, v
 - Quando dois documentos têm o mesmo nome, mas estão em pastas diferentes, o nome da pasta logo acima é acrescentado, como em `@plano.docx(2º semestre)`, e esse nome de pasta também é passado à IA.
 - Os editores de PDF e Markdown ainda não têm anexos, então nenhuma das duas formas está disponível neles.
 
+## Projetos
+
+- Clique no nome do projeto, à esquerda e abaixo do campo de entrada, para escolher um projeto (uma pasta do seu PC). A IA passa a responder conhecendo os arquivos, as instruções e a memória dessa pasta, e a conversa fica guardada nela para você continuar em outro editor. Veja [Projetos](help://projects).
+- Com um projeto escolhido, o título da conversa atual aparece no topo do painel. Clique nele para ver a lista de conversas do projeto e **Nova conversa**.
+- A lista de `@` do campo de entrada mostra "Arquivos deste projeto" depois dos documentos abertos.
+- Um pedido com um projeto escolhido também envia à IA que você está usando as instruções (junto com `AGENTS.md` e `CLAUDE.md` no topo da pasta, que você pode desativar na página do projeto), a memória e a lista de nomes de arquivo desse projeto, um trecho curto de cada arquivo que a IA encontrar ao pesquisar a pasta, além do texto de qualquer arquivo que a IA ler.
+
 ## Reversão e segurança
 
-- O painel do Docs mantém uma **lista de versões**: um instantâneo por volta, pode voltar a qualquer um deles, e a própria reversão pode ser anulada com Ctrl+Z. Os instantâneos sobrevivem a fechar e reabrir o documento.
+- Uma volta em que a IA alterou o documento ganha, abaixo da resposta, um cartão **Alterações feitas no documento: N**, e os lugares alterados ficam marcados em amarelo no documento. As marcas aparecem só na tela — nunca são salvas, impressas nem exportadas — e somem quando você envia o próximo pedido ou clica em **Ocultar marcas**. **Desfazer estas alterações** desfaz a volta inteira de uma só vez. No Docs, Markdown, HTML, Slides, mapa mental e diagrama, desfazer uma volta anterior também desfaz as voltas seguintes; no Hangul, Sheets, PDF e EPUB só é possível desfazer a última volta, e apenas se o documento não tiver sido editado depois dela. Quando não for possível, use o Desfazer do próprio editor (Ctrl+Z).
 - As edições da IA passam pelo mesmo fluxo de edição das manuais (anuláveis e sujeitas a salvamento) — nada contorna a sua confirmação de salvamento.
 
 ## Ocultar uma seleção da IA

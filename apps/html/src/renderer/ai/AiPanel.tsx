@@ -1,19 +1,40 @@
 import {
   aiPanelWidthAtPointer,
+  AiAttachMenu,
+  AiAssistantBody,
+  AiPanelHeader,
   AiPanelSideButton,
+  AiQualityBadge,
+  AiQuestionCard,
+  AiQuestionReceipt,
+  isQuestionToolActivity,
   AiModelPicker,
   type AiModelPickerBridge,
   AiBlockedNotice,
   AiConnectPrompt,
   AiFirstConnectionNotice,
   AiInputTruncatedNotice,
+  AiChangesCard,
+  type AiChangeLine,
+  type AiChangesState,
   AiMark,
+  AiReplyFooter,
+  AiScrollToBottom,
+  AiToolsUnsupportedNotice,
   AiSubscriptionUsageLine,
+  AiWorkSteps,
+  IconArrowUp,
+  IconStop,
+  AiEmptyHints,
   aiSubscriptionText,
+  openGenerateForCurrentDocument,
+  useAiInlineQuestions,
   useAiSendGate,
-  DriveAttachButton,
+  useScrollToBottom,
   type DriveAttachPicked,
-  DocAttachButton,
+  McpPermissionCard,
+  McpServerButton,
+  useMcpWindow,
   NO_SKILL_USE,
   SentSkillChips,
   skillChipRefsOf,
@@ -27,16 +48,60 @@ import {
   type SkillUse,
   docMentionActions,
   type AiComposerDocs,
+  consolidateProjectMemory,
+  memoryLinesOf,
+  panelProjectSkill,
+  ProjectChatMenu,
+  ProjectFolderHintLine,
+  ProjectMemoryConsolidatedLine,
+  ProjectMemoryEventLine,
+  memoryLineGone,
+  memoryRemoveOutcome,
+  type ProjectMemoryRemoveOutcome,
+  ProjectNoticeLine,
+  ProjectNoticeList,
+  ProjectPicker,
+  ProjectToolSummaryLine,
+  ProjectProblemLine,
+  placeRemoteEntries,
+  projectAddProblem,
+  projectPrepareProblem,
+  type ProjectProblem,
+  undoProjectMemoryConsolidation,
+  useProjectChat,
+  type ProjectChatEntry,
+  type ProjectChatOpened,
+  type ProjectMemoryLine,
+  type ProjectRunPrepared,
+  useSubscriptionUsageUpdates,
 } from '@genoffice/ui'
 import { useEffect, useRef, useState } from 'react'
 import type { PointerEvent as ReactPointerEvent, ReactElement, ReactNode } from 'react'
-import { AgentLoop, composeWithDrive } from '@genoffice/agent-core'
+import {
+  AgentLoop,
+  composeWithDrive,
+  windowMcpState,
+  windowMcpUsableServers,
+  toolStepLabel,
+} from '@genoffice/agent-core'
 import type { AgentImage, IpcStreamError } from '@genoffice/agent-core'
+import type {
+  AddFolderResult,
+  ChatMessage,
+  CreateProjectResult,
+  ProjectEditor,
+  ProjectFolderApi,
+  ProjectId,
+  ProjectListItem,
+  ProjectNotice,
+  ProjectScreenSection,
+} from '@genoffice/project-store'
 import type {
   AiSettings,
   AiSubscriptionProviderId,
   AiSubscriptionUsage,
 } from '@genoffice/ai-provider'
+import { localModelCapabilities } from '@genoffice/ai-provider/browser'
 import { ATTACHMENT_IMAGE_EXTS } from '../../shared/ipc'
 import type { AttachmentAddResult, AttachmentMeta } from '../../shared/ipc'
 import {
@@ -44,20 +109,23 @@ import {
   AiQueueStrip,
   AI_QUEUE_LABELS,
   AiScopeQuote,
-  AiTypingIndicator,
+  AiReplyProgress,
   AiUsageChip,
   addTokenUsage,
   createFileNav,
-  Markdown,
   useChatRunQueue,
   type AiScopeQuoteData,
   type AiTokenUsageView,
 } from '@genoffice/ui'
 import { aiLangDirective, t as tGlobal, useI18n } from '../i18n/locale'
-import sendEnterOn from '../assets/send-enter-on.png'
-import sendEnterOff from '../assets/send-enter-off.png'
-import sendStop from '../assets/send-stop.png'
-import attachIcon from '../assets/attach-icon.png'
+import {
+  clearRunningWait,
+  markRunningWait,
+  panelWaitOf,
+  stepsWaitOf,
+  WAIT_LABEL,
+  type PanelWait,
+} from './waiting'
 import fileDocumentIcon from '../assets/file-document.png'
 import fileExcelIcon from '../assets/file-excel.png'
 import fileGeneralIcon from '../assets/file-general.png'
@@ -66,6 +134,8 @@ import filePdfIcon from '../assets/file-pdf.png'
 import filePptIcon from '../assets/file-ppt.png'
 import fileWordIcon from '../assets/file-word.png'
 import { createDocumentSkill } from './html-skill'
+import { runHtmlStaticQualityAudit } from './html-qc'
+import type { QualityFinding } from '@genoffice/agent-core'
 import { createFilesSkill } from './files-skill'
 import { createIntentSkill, type PageIntent } from './intent'
 import {
@@ -80,10 +150,9 @@ import {
   type BriefPlanSpec,
   type BriefPlanResult,
 } from './brief-writer'
-import type { BriefDecision, ClarifyQuestion, HtmlDocAccess } from './tools'
+import type { BriefDecision, HtmlDocAccess } from './tools'
 import type { Brief } from '../document/brief'
 import { isDocEmpty } from '../document/blank'
-import { ClarifyCard } from '../components/ClarifyCard'
 import { BriefCard } from '../components/BriefCard'
 import { createSearchSkill } from './search-skill'
 import { pastedBase64Image } from './base64-paste'
@@ -216,6 +285,29 @@ function AttachmentList({
   )
 }
 
+/** The project folder bridge (decision 0088), or null outside the shell or with an older preload */
+function folderApi(): ProjectFolderApi | null {
+  return window.projectFolderApi ?? null
+}
+
+/** The file name at the end of a folder-relative path */
+function baseName(path: string): string {
+  return path.split(/[\\/]/).pop() || path
+}
+
+/** Stored attachment records as chips (a record without a path is not shown) */
+function storedAttachments(list: ChatMessage['attachments']): AttachmentMeta[] | undefined {
+  const shown = list
+    ?.filter((a) => a.path)
+    .map((a) => ({
+      name: a.name,
+      path: a.path ?? '',
+      ext: a.ext ?? '',
+      sizeBytes: a.sizeBytes ?? 0,
+    }))
+  return shown && shown.length > 0 ? shown : undefined
+}
+
 const PANEL_WIDTH_KEY = 'html-ai-panel-width'
 const PANEL_WIDTH_DEFAULT = 360
 const PANEL_WIDTH_MIN = 280
@@ -243,13 +335,76 @@ interface ToolActivity {
   summary: string
   /** still executing: rendered as a spinner chip, replaced in place when the tool finishes */
   running?: boolean
+  /** the running tool holds the run on a docked card: the row and the group title say whose turn it is */
+  waiting?: PanelWait
   isError?: boolean
+  /** the call's input as JSON: kept for the question card only, so a reopened chat can draw it */
+  input?: string
   output?: string
+}
+
+/** Cap on a question card's stored input and output (the store cuts each field at the same length) */
+const QUESTION_TOOL_FIELD_MAX = 16_000
+
+/**
+ * The tool activity as this panel keeps and stores it. A question card keeps
+ * its input and its whole output (spec 5.1); any other tool keeps no input and
+ * the first TOOL_OUTPUT_MAX_CHARS of its output, as before.
+ */
+function toolActivityOf(tool: {
+  name: string
+  summary: string
+  isError?: boolean | undefined
+  input?: unknown
+  output?: string | undefined
+}): ToolActivity {
+  const question = isQuestionToolActivity(tool)
+  const input = question ? questionInputText(tool.input) : undefined
+  return {
+    name: tool.name,
+    summary: tool.summary,
+    isError: tool.isError,
+    ...(input ? { input } : {}),
+    output: tool.output
+      ? tool.output.slice(0, question ? QUESTION_TOOL_FIELD_MAX : TOOL_OUTPUT_MAX_CHARS)
+      : undefined,
+  }
+}
+
+/** A question card's input as stored JSON text (a stored one is already text) */
+function questionInputText(input: unknown): string | undefined {
+  if (typeof input === 'string') return input ? input.slice(0, QUESTION_TOOL_FIELD_MAX) : undefined
+  if (input === undefined || input === null) return undefined
+  try {
+    return JSON.stringify(input).slice(0, QUESTION_TOOL_FIELD_MAX)
+  } catch {
+    return undefined
+  }
+}
+
+type RestoredToolSegment =
+  { kind: 'steps'; steps: ToolActivity[] } | { kind: 'question'; activity: ToolActivity }
+
+/** A stored reply's tools in order: runs of ordinary steps, and each question card call on its own */
+function restoredToolSegments(tools: readonly ToolActivity[]): RestoredToolSegment[] {
+  const out: RestoredToolSegment[] = []
+  for (const tool of tools) {
+    if (isQuestionToolActivity(tool)) {
+      out.push({ kind: 'question', activity: tool })
+      continue
+    }
+    const last = out.at(-1)
+    if (last?.kind === 'steps') last.steps.push(tool)
+    else out.push({ kind: 'steps', steps: [tool] })
+  }
+  return out
 }
 
 interface ChatEntry {
   role: 'user' | 'assistant'
   text: string
+  /** shown from a stored conversation: question blocks and question tool steps are read-only cards */
+  restored?: boolean
   streaming?: boolean
   isError?: boolean
   /** the run stopped because its connection cannot go on: rendered as the blocked notice */
@@ -273,6 +428,105 @@ interface ChatEntry {
   skillText?: string
   /** tokens the provider billed for this reply, summed across its turns (absent when unreported) */
   usage?: AiTokenUsageView
+  /** a project chat's memory lines for this reply (absent: read from the live tool records) */
+  memory?: ProjectMemoryLine[]
+  /** a project chat's reply whose tools another editor ran: shown as one line */
+  otherEditorTools?: { editor: ProjectEditor; fileRef?: string; count: number }
+  /** the run this reply ends changed the document (session-only, not persisted) */
+  changes?: RunChanges
+}
+
+interface HtmlChangeLine extends AiChangeLine {
+  sid?: number
+}
+
+const MAX_HTML_CHANGE_LINES = 24
+
+function clipHtmlText(text: unknown, max = 56): string {
+  if (typeof text !== 'string') return ''
+  const compact = text.replace(/\s+/g, ' ').trim()
+  return compact.length > max ? `${compact.slice(0, max - 1)}…` : compact
+}
+
+function htmlChangeLinesFromTool(
+  name: string,
+  input: Record<string, unknown>,
+  summary: string,
+): HtmlChangeLine[] {
+  if (name === 'apply_ops' && Array.isArray(input.ops)) {
+    const out: HtmlChangeLine[] = []
+    for (const raw of input.ops) {
+      if (!raw || typeof raw !== 'object') continue
+      const op = raw as Record<string, unknown>
+      const kind = typeof op.op === 'string' ? op.op : ''
+      const sid = typeof op.sid === 'number' ? op.sid : undefined
+      if (kind === 'set_text') {
+        out.push({
+          kind: 'replace',
+          from: sid !== undefined ? `#${sid}` : undefined,
+          to: clipHtmlText(op.text),
+          showable: sid !== undefined,
+          sid,
+        })
+      } else if (kind.startsWith('insert') || kind === 'append' || kind === 'prepend') {
+        out.push({
+          kind: 'insert',
+          to: clipHtmlText(op.html ?? op.text ?? kind),
+          showable: sid !== undefined,
+          sid,
+        })
+      } else if (kind === 'remove' || kind === 'delete') {
+        out.push({
+          kind: 'delete',
+          from: sid !== undefined ? `#${sid}` : kind,
+          showable: false,
+        })
+      } else if (kind) {
+        out.push({
+          kind: 'named',
+          from: sid !== undefined ? `#${sid}` : undefined,
+          to: clipHtmlText(op.text ?? op.value ?? op.html ?? kind),
+          showable: sid !== undefined,
+          sid,
+        })
+      }
+    }
+    return out
+  }
+  return [{ kind: 'named', to: clipHtmlText(summary || name), showable: false }]
+}
+
+/**
+ * What one run changed, on its last reply. The run is taken back by restoring
+ * the source from before its first change, which also takes back every later
+ * run (and anything edited since), so those cards turn 'reverted' too.
+ */
+interface RunChanges {
+  /** the snapshot it restores (ids grow with each run) */
+  id: number
+  state: AiChangesState
+  /** page elements the run marked, when that is every place it changed */
+  count?: number
+  /** detailed per-edit lines for the diff card */
+  lines?: HtmlChangeLine[]
+}
+
+/** A project chat's message as this panel shows it */
+function chatEntryOf(entry: ProjectChatEntry & { skillProposals?: string[] }): ChatEntry {
+  const skills = entry.role === 'user' ? skillChipRefsOf(entry.skills) : []
+  const attachments = storedAttachments(entry.attachments)
+  return {
+    role: entry.role,
+    text: entry.text,
+    restored: true,
+    ...(entry.tools && entry.tools.length > 0 ? { tools: entry.tools.map(toolActivityOf) } : {}),
+    ...(attachments ? { attachments } : {}),
+    ...(entry.scope ? { scope: entry.scope } : {}),
+    ...(skills.length > 0 ? { skills } : {}),
+    ...(entry.skillProposals ? { skillProposals: entry.skillProposals } : {}),
+    ...(entry.otherEditorTools ? { otherEditorTools: entry.otherEditorTools } : {}),
+    memory: entry.memory,
+  }
 }
 
 /** the whole source text: one string is the exact rollback unit */
@@ -281,8 +535,7 @@ export interface DocSnapshot {
 }
 
 interface Snapshot {
-  label: string
-  time: string
+  id: number
   doc: DocSnapshot
 }
 
@@ -310,7 +563,10 @@ export interface HtmlAiDeps {
   onPrompt(text: string): void
   /** fired when a run with at least one mutation finishes (auto-save hook) */
   onRunDone(mutated: boolean): void
+  /** takes the marks of the AI's changes off the source pane and the preview */
   clearHighlights(): void
+  /** the page elements the marks sit on now, when they show every change since the last clear */
+  changedPlaces?(): number | undefined
   /** [label](htmlnav://sid/N) citation clicked */
   navigateTo(sid: number): void
   /** the user confirmed a brief on the card; the app pins it into the next generated document */
@@ -344,6 +600,9 @@ export function AiPanel({
   onGenerateHandoff,
   templateDocument,
   onSkillHandoff,
+  marksShown = false,
+  onOpenTweaks,
+  onAiDoneRecord,
 }: {
   deps: HtmlAiDeps
   filePath: string | null
@@ -362,10 +621,16 @@ export function AiPanel({
   templateDocument?: TemplateDocument | null
   /** this tab took a request handed over by the template flow: show the panel */
   onSkillHandoff?: () => void
+  /** the marks of the last run's changes are on the page */
+  marksShown?: boolean
+  onOpenTweaks?: () => void
+  onAiDoneRecord?: (promptSummary: string) => void
 }): ReactElement {
   const { lang, t } = useI18n()
   const [chat, setChat] = useState<ChatEntry[]>([])
   const [prompt, setPrompt] = useState('')
+  const inlineQuestions = useAiInlineQuestions()
+  const [qualityFindings, setQualityFindings] = useState<QualityFinding[]>([])
   const [busy, setBusy] = useState(false)
   /** Claude / Codex connection: live statuses and the connect-card actions */
   const subscription = useSubscriptionConnection()
@@ -417,6 +682,12 @@ export function AiPanel({
   sendGateRef.current = sendGate
   /** rate-limit windows the subscription program reported (latest per window) */
   const [subscriptionUsage, setSubscriptionUsage] = useState<AiSubscriptionUsage[]>([])
+  // usage a picture request reported reaches every window (the chat stream only its own)
+  useSubscriptionUsageUpdates(
+    () => window.htmlApi?.subscription,
+    setSubscriptionUsage,
+    mergeSubscriptionUsage,
+  )
   /** the last turn's input was cut to fit a limit; shown until dismissed */
   const [inputTruncated, setInputTruncated] = useState(false)
   /** structured cause of the last failed stream (chat turn or page/brief writer) */
@@ -432,14 +703,20 @@ export function AiPanel({
       // a queued message waits instead of being refused and dropped; in front of "not
       // connected" the queue is paused so it does not start by itself after a sign-in
       if (!sendGateRef.current.admitQueued(() => msgQueueRef.current.setPaused(true))) return false
+      // the queued message starts its own run: it gets its one card
+      inlineQuestions.supersedeOpen()
       return send(text, text, false, meta.atts, undefined, meta.skillUse)
     },
   })
   const msgQueueRef = useRef(msgQueue)
   msgQueueRef.current = msgQueue
+  /** this window's MCP servers (user MCP spec 7.5); the chips name the ones not usable now */
+  const mcpWindow = useMcpWindow()
   /** the skills called with `/` or `$`: the list, the chips and the text a request gets */
   const skills = useComposerSkills({
     lang,
+    editor: 'html',
+    usableMcpServers: mcpWindow.state?.usableServers(),
     // a chip whose skill has a template runs in a new tab (spec 5.7)
     onTemplateSkill: (request) => skillTemplatesRef.current.onTemplateSkill(request),
   })
@@ -465,30 +742,75 @@ export function AiPanel({
     cards: skillCards,
     busy,
     send: (text, use) => send(text, undefined, false, undefined, undefined, use),
+    // a template skill called in a page with content asks where to run
+    hasContent: () => !isDocEmpty(deps.access.getText()),
+    // a template copy that brought the asking document: it goes in as an attachment
+    attach: async (paths) => {
+      const added = (await window.htmlApi.addAttachmentPaths(paths)) ?? null
+      mergeAttachments(added)
+      return (added?.accepted.length ?? 0) > 0
+    },
     onTaken: onSkillHandoff,
     setComposer: setPrompt,
   })
   const skillTemplatesRef = useRef(skillTemplates)
   skillTemplatesRef.current = skillTemplates
-  const [copiedIdx, setCopiedIdx] = useState<number | null>(null)
+  /**
+   * Project folders (spec 5): the project chosen under the input, its chat and
+   * where messages are recorded. With no project chosen (or no bridge) the
+   * panel keeps its per-document chat exactly as before.
+   */
+  const projectChat = useProjectChat({
+    editor: 'html',
+    loop: () => loopRef.current,
+    onOpen: (opened) => openProjectChat(opened),
+    onRemoteMessage: (entry) => showRemoteMessage(entry),
+  })
+  const projectChatRef = useRef(projectChat)
+  projectChatRef.current = projectChat
+  /** a project (or earlier document) chat is on screen: the per-document history stays away */
+  const projectShownRef = useRef(false)
+  /** the project lists of the picker */
+  const [projects, setProjects] = useState<ProjectListItem[]>([])
+  const [defaultParentFolder, setDefaultParentFolder] = useState<string | undefined>(undefined)
+  /** the notices the last send's project context brought (spec 5.4, 5.10) */
+  const [projectNotices, setProjectNotices] = useState<ProjectNotice[]>([])
+  /** "Memory tidied up (N → M) [Undo]" after the person ran [Tidy up] */
+  const [consolidated, setConsolidated] = useState<{
+    projectId: ProjectId
+    before: number
+    after: number
+    backupName: string
+  } | null>(null)
+  const consolidatingRef = useRef(false)
+  /** memory entries the person removed with [Remove] in this panel */
+  const [forgotten, setForgotten] = useState<ReadonlySet<string>>(() => new Set())
+  /** what the person asked for that did not happen, or a send that went without the project */
+  const [projectProblem, setProjectProblem] = useState<ProjectProblem | null>(null)
+  /** a reply runs (set at once by `send`, before the state renders) */
+  const busyRef = useRef(busy)
+  busyRef.current = busy
+  /** the snapshots the change cards restore, oldest first; a card whose snapshot was pushed out is 'expired' */
   const [snapshots, setSnapshots] = useState<Snapshot[]>([])
-  /** questionnaire / brief cards docked in the composer slot while a tool waits for the user */
-  const [activeClarify, setActiveClarify] = useState<ClarifyQuestion[] | null>(null)
-  const clarifyResolverRef = useRef<((r: { answers: string; cancelled?: boolean }) => void) | null>(
-    null,
-  )
+  const nextSnapshotIdRef = useRef(1)
+  /** taken before the in-flight run's first change; becomes its card's snapshot when the run ends */
+  const runSnapshotRef = useRef<DocSnapshot | null>(null)
+  /** the brief card docked in the composer slot while plan_page waits for the user */
   const [activeBrief, setActiveBrief] = useState<Brief | null>(null)
   const briefResolverRef = useRef<((d: BriefDecision) => void) | null>(null)
   /** the page writer stopped early: keep-or-discard card for what arrived */
   const [activePartial, setActivePartial] = useState<{ lines: number } | null>(null)
   const partialResolverRef = useRef<((keep: boolean) => void) | null>(null)
-  /** answered receipts rendered after the user message they belong to (view-only, not chat data) */
-  const [receipts, setReceipts] = useState<
-    Array<{ afterIdx: number; qa?: Array<{ q: string; a: string }>; brief?: Brief }>
-  >([])
+  /** confirmed-brief receipts rendered after the user message they belong to (view-only, not chat data) */
+  const [receipts, setReceipts] = useState<Array<{ afterIdx: number; brief: Brief }>>([])
   const chatRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const stickToBottomRef = useRef(true)
+  const {
+    showButton: showScrollBottom,
+    onScroll: onScrollBottom,
+    scrollToBottom,
+  } = useScrollToBottom(chatRef)
   const [intent, setIntent] = useState<PageIntent>('design')
   const intentRef = useRef(intent)
   intentRef.current = intent
@@ -673,6 +995,29 @@ export function AiPanel({
   }, [panelWidth])
 
   const settingsRef = useRef<AiSettings | null>(null)
+  /** whether generate_image can run, as the main process answers (refreshed on mount and window focus) */
+  const imageGenAvailableRef = useRef(false)
+  useEffect(() => {
+    let alive = true
+    const refresh = () => {
+      // tests render the panel without a full preload bridge: a missing call must not take it down
+      Promise.resolve()
+        .then(() => window.htmlApi.aiToolCapabilities())
+        .then((capabilities) => {
+          if (alive)
+            imageGenAvailableRef.current = capabilities?.imageGeneration?.available === true
+        })
+        .catch(() => {
+          if (alive) imageGenAvailableRef.current = false
+        })
+    }
+    refresh()
+    window.addEventListener('focus', refresh)
+    return () => {
+      alive = false
+      window.removeEventListener('focus', refresh)
+    }
+  }, [])
   const langRef = useRef(lang)
   langRef.current = lang
   const depsRef = useRef(deps)
@@ -691,6 +1036,7 @@ export function AiPanel({
   /** the skills of the last send: a retry sends the same skill text */
   const lastSkillUseRef = useRef<SkillUse>(NO_SKILL_USE)
   const runMutatedRef = useRef(false)
+  const runChangeLinesRef = useRef<HtmlChangeLine[]>([])
   /** tool activity of the whole run, for transcript persistence */
   const runToolsRef = useRef<ToolActivity[]>([])
   /** tokens billed so far in the in-flight run (summed across turns) */
@@ -721,6 +1067,30 @@ export function AiPanel({
   }
 
   const persistMessage = (
+    role: 'user' | 'assistant',
+    text: string,
+    tools?: ToolActivity[],
+    attachments?: AttachmentMeta[],
+    scope?: AiScopeQuoteData,
+    skillChips?: SkillChipRef[],
+  ) => {
+    // a project chat records the message in the project folder (spec 5.3)
+    if (
+      projectChatRef.current.persist({
+        role,
+        text,
+        ...(tools && tools.length > 0 ? { tools } : {}),
+        ...(attachments && attachments.length > 0 ? { attachments } : {}),
+        ...(scope ? { scope } : {}),
+        ...(skillChips && skillChips.length > 0 ? { skills: skillChips } : {}),
+      })
+    )
+      return
+    persistDocumentMessage(role, text, tools, attachments, scope, skillChips)
+  }
+
+  /** the per-document chat store, as before project folders */
+  const persistDocumentMessage = (
     role: 'user' | 'assistant',
     text: string,
     tools?: ToolActivity[],
@@ -776,6 +1146,27 @@ export function AiPanel({
     blockedStopRef.current = blocked
     loopRef.current?.cancel()
   }
+
+  /** A docked card holds the running tool: its step row says what the person has to do until they do it */
+  const awaitPerson = <T,>(wait: PanelWait, summary: string, card: Promise<T>): Promise<T> => {
+    patchLast((last) => ({ tools: markRunningWait(last.tools, wait, summary) }))
+    return card.finally(() =>
+      patchLast((last) => ({ tools: clearRunningWait(last.tools, toolStepLabel) })),
+    )
+  }
+
+  /** The question card (ask_questions) holds the running tool the same way while it is open */
+  const waitingForPerson = inlineQuestions.waitingForPerson
+  const questionWaitShownRef = useRef(false)
+  useEffect(() => {
+    if (questionWaitShownRef.current === waitingForPerson) return
+    questionWaitShownRef.current = waitingForPerson
+    patchLast((last) => ({
+      tools: waitingForPerson
+        ? markRunningWait(last.tools, 'answer', tGlobal('aiWaitClarifyStep'))
+        : clearRunningWait(last.tools, toolStepLabel),
+    }))
+  }, [waitingForPerson])
 
   /**
    * Whole-page generation: one tool-less request whose reply is the HTML, streamed
@@ -839,10 +1230,17 @@ export function AiPanel({
     }
     // the draft stays visible while the user decides what to do with it
     depsRef.current.previewDraft(outcome.html)
-    const keep = await new Promise<boolean>((resolve) => {
-      partialResolverRef.current = resolve
-      setActivePartial({ lines: outcome.html.split('\n').length })
-    })
+    const keep = await awaitPerson(
+      'choice',
+      tGlobal('aiWaitPartialStep', {
+        adopt: tGlobal('aiPartialAdopt'),
+        discard: tGlobal('aiPartialDiscard'),
+      }),
+      new Promise<boolean>((resolve) => {
+        partialResolverRef.current = resolve
+        setActivePartial({ lines: outcome.html.split('\n').length })
+      }),
+    )
     done()
     // a kept partial page still lands; the next turn reports the blocked connection itself
     if (!keep) stopRunIfBlocked()
@@ -865,6 +1263,7 @@ export function AiPanel({
       spec,
       loopRef.current?.messages ?? [],
       aiLangDirective(langRef.current),
+      langRef.current,
     )
     patchLast((last) => ({
       tools: last.tools?.map((tl) =>
@@ -884,37 +1283,71 @@ export function AiPanel({
   const runBriefWriterRef = useRef(runBriefWriter)
   runBriefWriterRef.current = runBriefWriter
 
+  /**
+   * The card of the run that just ended, if it changed the document: its
+   * snapshot joins the ring (the oldest falls out past MAX_SNAPSHOTS) and the
+   * count is the elements its marks sit on, when the app can count them all.
+   */
+  const takeRunChanges = (): { changes: RunChanges } | Record<string, never> => {
+    const doc = runSnapshotRef.current
+    const lines = runChangeLinesRef.current
+    runSnapshotRef.current = null
+    runChangeLinesRef.current = []
+    if (!doc) return {}
+    const id = nextSnapshotIdRef.current++
+    setSnapshots((prev) => [...prev, { id, doc }].slice(-MAX_SNAPSHOTS))
+    const count = depsRef.current.changedPlaces?.()
+    return {
+      changes: {
+        id,
+        state: 'applied',
+        ...(count !== undefined ? { count } : {}),
+        ...(lines.length > 0 ? { lines } : {}),
+      },
+    }
+  }
+
   const loopRef = useRef<AgentLoop<DocSnapshot> | null>(null)
   if (!loopRef.current) {
     loopRef.current = new AgentLoop<DocSnapshot>({
       transport: transportRef.current,
+      // a local model that reported no tool support answers in text only
+      toolsAllowed: () =>
+        settingsRef.current ? localModelCapabilities(settingsRef.current).tools !== false : true,
       skill: composeWithDrive('html+search', '', () => loopRef.current?.messages ?? [], [
-        createDocumentSkill({
-          getText: () => depsRef.current.access.getText(),
-          getVersion: () => depsRef.current.access.getVersion(),
-          getMap: () => depsRef.current.access.getMap(),
-          getLastManualVersion: () => depsRef.current.access.getLastManualVersion(),
-          getFilePath: () => depsRef.current.access.getFilePath(),
-          getSelectedSid: () =>
-            queueRunRef.current ? null : depsRef.current.access.getSelectedSid(),
-          applyOps: (ops, label) => depsRef.current.access.applyOps(ops, label),
-          replaceAll: (html, label) => depsRef.current.access.replaceAll(html, label),
-          askClarification: (questions) =>
-            new Promise((resolve) => {
-              clarifyResolverRef.current = resolve
-              setActiveClarify(questions)
-            }),
-          confirmBrief: (brief) =>
-            new Promise((resolve) => {
-              briefResolverRef.current = resolve
-              setActiveBrief(brief)
-            }),
-          writePage: (spec, signal) => runPageWriterRef.current(spec, signal),
-          planBrief: (spec, signal) => runBriefWriterRef.current(spec, signal),
-          getInstruction: () => runInstructionRef.current,
-          resolveAttachmentSrc: (ref) => resolveAttachmentSrc(ref),
-          listAttachmentNames: () => availableAttachments().map((a) => a.name),
-        }),
+        inlineQuestions.askQuestionsSkill,
+        createDocumentSkill(
+          {
+            getText: () => depsRef.current.access.getText(),
+            getVersion: () => depsRef.current.access.getVersion(),
+            getMap: () => depsRef.current.access.getMap(),
+            getLastManualVersion: () => depsRef.current.access.getLastManualVersion(),
+            getFilePath: () => depsRef.current.access.getFilePath(),
+            getSelectedSid: () =>
+              queueRunRef.current ? null : depsRef.current.access.getSelectedSid(),
+            applyOps: (ops, label) => depsRef.current.access.applyOps(ops, label),
+            replaceAll: (html, label) => depsRef.current.access.replaceAll(html, label),
+            confirmBrief: (brief) =>
+              awaitPerson(
+                'confirm',
+                tGlobal('aiWaitBriefStep', { action: tGlobal('briefGenerate') }),
+                new Promise((resolve) => {
+                  briefResolverRef.current = resolve
+                  setActiveBrief(brief)
+                }),
+              ),
+            writePage: (spec, signal) => runPageWriterRef.current(spec, signal),
+            planBrief: (spec, signal) => runBriefWriterRef.current(spec, signal),
+            getInstruction: () => runInstructionRef.current,
+            resolveAttachmentSrc: (ref) => resolveAttachmentSrc(ref),
+            listAttachmentNames: () => availableAttachments().map((a) => a.name),
+            listImageAttachmentNames: () =>
+              availableAttachments()
+                .filter((a) => ATTACHMENT_IMAGE_EXTS.has(a.ext))
+                .map((a) => a.name),
+          },
+          () => imageGenAvailableRef.current,
+        ),
         createSearchSkill(),
         createFilesSkill(availableAttachments),
         createIntentSkill(
@@ -923,10 +1356,13 @@ export function AiPanel({
         ),
         // the person's skills: use_skill, read_skill_file, propose_skill (app-run tools)
         ...panelUserSkills({
+          editor: 'html',
           lang: () => langRef.current,
           messages: () => loopRef.current?.messages ?? [],
           // a template skill the model used offers its new document (spec 5.7)
           onUsed: (skill) => skillTemplatesRef.current.onUsed(skill),
+          // use_skill names the MCP servers it expects that are not usable now (spec 8)
+          mcpServerUsable: (name) => windowMcpUsableServers().has(name),
           onProposal: (proposal) => {
             skillCardsRef.current.add(proposal)
             patchLast((last) => ({
@@ -934,6 +1370,8 @@ export function AiPanel({
             }))
           },
         }),
+        // the chosen project: its context and the app-run project tools (adds nothing without one)
+        ...panelProjectSkill({ run: projectChat.run, lang: () => langRef.current }),
       ]),
       captureSnapshot: () => depsRef.current.getSnapshot(),
       systemSuffix: () => aiLangDirective(langRef.current),
@@ -944,28 +1382,29 @@ export function AiPanel({
           patchLast((last) => ({
             tools: [
               ...(last.tools ?? []),
-              { name: call.name, summary: call.name.replace(/[_-]+/g, ' '), running: true },
+              { name: call.name, summary: toolStepLabel(call.name), running: true },
             ],
           }))
         },
         onToolExecuted: ({ call, execution, snapshotBefore }) => {
-          if (execution.mutated) runMutatedRef.current = true
-          if (snapshotBefore !== undefined) {
-            const label = runInstructionRef.current.slice(0, 40)
-            const time = new Date().toLocaleTimeString([], {
-              hour: '2-digit',
-              minute: '2-digit',
-            })
-            setSnapshots((prev) =>
-              [...prev, { label, time, doc: snapshotBefore }].slice(-MAX_SNAPSHOTS),
-            )
+          if (execution.mutated) {
+            runMutatedRef.current = true
+            if (runChangeLinesRef.current.length < MAX_HTML_CHANGE_LINES) {
+              const nextLines = htmlChangeLinesFromTool(call.name, call.input, execution.summary)
+              runChangeLinesRef.current = [...runChangeLinesRef.current, ...nextLines].slice(
+                0,
+                MAX_HTML_CHANGE_LINES,
+              )
+            }
           }
-          const activity: ToolActivity = {
+          if (snapshotBefore !== undefined) runSnapshotRef.current = snapshotBefore
+          const activity = toolActivityOf({
             name: call.name,
             summary: execution.summary,
             isError: execution.isError,
-            output: execution.output?.slice(0, TOOL_OUTPUT_MAX_CHARS),
-          }
+            input: call.input,
+            output: execution.output,
+          })
           runToolsRef.current.push(activity)
           patchLast((last) => {
             // Swap out the running placeholder pushed by onToolStart (parse-fail calls have none)
@@ -986,6 +1425,8 @@ export function AiPanel({
         onDone: ({ text, cancelled, turnLimit, truncated }) => {
           const blocked = cancelled ? blockedStopRef.current : null
           blockedStopRef.current = null
+          // a stopped run keeps what it already changed: that gets its card too
+          const changed = takeRunChanges()
           if (blocked) {
             // a writer stopped the run on a blocked connection: show why, not "Stopped"
             msgQueueRef.current.hold()
@@ -995,9 +1436,10 @@ export function AiPanel({
               isError: true,
               blocked,
               tools: last.tools?.filter((tl) => !tl.running),
+              ...changed,
             }))
-            depsRef.current.clearHighlights()
             depsRef.current.onRunDone(runMutatedRef.current)
+            void projectChatRef.current.finishSend()
             queueRunRef.current = false
             setBusy(false)
             return
@@ -1011,14 +1453,23 @@ export function AiPanel({
           const final = truncated
             ? [base, tGlobal('aiTruncatedNote')].filter(Boolean).join('\n\n')
             : base
+          if (!cancelled && runMutatedRef.current) {
+            setQualityFindings(
+              runHtmlStaticQualityAudit(depsRef.current.access.getText(), {
+                userPrompt: runInstructionRef.current,
+              }).findings,
+            )
+            onAiDoneRecord?.(runInstructionRef.current)
+          }
           patchLast((last) => ({
             streaming: false,
             text: final || (last.tools?.length ? last.text : tGlobal('aiNoReply')),
             // A stop mid-tool can leave a running placeholder behind — drop it
             tools: last.tools?.filter((tl) => !tl.running),
+            ...changed,
           }))
           persistMessage('assistant', final, runToolsRef.current)
-          depsRef.current.clearHighlights()
+          void projectChatRef.current.finishSend()
           depsRef.current.onRunDone(runMutatedRef.current)
           queueRunRef.current = false
           setBusy(false)
@@ -1030,6 +1481,8 @@ export function AiPanel({
           if (blocked) msgQueueRef.current.hold()
           // once a tool ran the message was delivered; a later turn failing is not a send failure
           const undelivered = runToolsRef.current.length === 0
+          // a run can fail after it already changed the document: its card stays
+          const changed = takeRunChanges()
           setChat((prev) => {
             const next = [...prev]
             for (let i = undelivered ? next.length - 1 : -1; i >= 0; i--) {
@@ -1048,10 +1501,12 @@ export function AiPanel({
                 isError: true,
                 ...(blocked ? { blocked } : {}),
                 tools: last.tools?.filter((tl) => !tl.running),
+                ...changed,
               }
             }
             return next
           })
+          void projectChatRef.current.finishSend()
           queueRunRef.current = false
           setBusy(false)
         },
@@ -1063,7 +1518,6 @@ export function AiPanel({
     mountedRef.current = true
     return () => {
       mountedRef.current = false
-      clarifyResolverRef.current?.({ answers: '', cancelled: true })
       briefResolverRef.current?.({ kind: 'cancelled' })
       partialResolverRef.current?.(false)
       loopRef.current?.cancel()
@@ -1072,21 +1526,37 @@ export function AiPanel({
   }, [])
 
   // ── chat-history persistence: bind to the file, restore prior transcript ──
-  useEffect(() => {
+  /** the per-document chat: bound to the file once, then its stored messages shown */
+  const loadDocumentChat = (): void => {
     const api = window.projectApi
     if (!api) return
-    const tempChatId = `unsaved-${Date.now()}`
-    void api
-      .resolveChat({ filePath: filePathRef.current ?? null, tempChatId })
-      .then((ids) => {
-        chatIdsRef.current = ids
-        for (const msg of pendingPersistRef.current.splice(0)) {
-          persistMessage(msg.role, msg.text, msg.tools, msg.attachments, msg.scope, msg.skillChips)
-        }
-        return api.loadChat({ projectId: ids.projectId, chatId: ids.chatId, limit: 200 })
-      })
+    const known = chatIdsRef.current
+    const resolved = known
+      ? Promise.resolve(known)
+      : api
+          .resolveChat({
+            filePath: filePathRef.current ?? null,
+            tempChatId: `unsaved-${Date.now()}`,
+          })
+          .then((ids) => {
+            chatIdsRef.current = ids
+            for (const msg of pendingPersistRef.current.splice(0)) {
+              persistDocumentMessage(
+                msg.role,
+                msg.text,
+                msg.tools,
+                msg.attachments,
+                msg.scope,
+                msg.skillChips,
+              )
+            }
+            return ids
+          })
+    void resolved
+      .then((ids) => api.loadChat({ projectId: ids.projectId, chatId: ids.chatId, limit: 200 }))
       .then((stored) => {
-        if (stored.length === 0) return
+        // a project chat took the panel meanwhile: it keeps it
+        if (stored.length === 0 || projectShownRef.current) return
         // skill cards come back closed; a saved card's record is not part of the conversation
         const msgs = skillCardsRef.current.restore(stored)
         // the user may have sent a message while history was loading — never
@@ -1108,12 +1578,8 @@ export function AiPanel({
           return msgs.map((m) => ({
             role: m.role,
             text: m.text,
-            tools: m.tools?.map((tool) => ({
-              name: tool.name,
-              summary: tool.summary,
-              isError: tool.isError,
-              output: tool.output ? tool.output.slice(0, TOOL_OUTPUT_MAX_CHARS) : undefined,
-            })),
+            restored: true,
+            tools: m.tools?.map(toolActivityOf),
             attachments: restoredAtts(m),
             ...(m.scope ? { scope: m.scope } : {}),
             ...(m.role === 'user' && skillChipRefsOf(m.skills).length > 0
@@ -1129,6 +1595,8 @@ export function AiPanel({
           )
         }
         if (applied && !loopRef.current?.busy) {
+          // a reopened conversation starts with no MCP choices of another chat (user MCP spec 7.6)
+          windowMcpState()?.newConversation()
           loopRef.current?.restore(msgs.map((m) => ({ role: m.role, text: m.text })))
           // follow-up turns can keep reading the files those messages attached
           const seen = new Set(sentAttachmentsRef.current.map((a) => a.path))
@@ -1142,11 +1610,19 @@ export function AiPanel({
       .catch(() => {
         /* history load failures are silent */
       })
+  }
+  useEffect(() => {
+    loadDocumentChat()
+    // once, when the panel opens; a project chosen later swaps the chat itself
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   /** after an untitled document's first save, bind the unsaved-* history to the real path */
   useEffect(() => {
+    const previous = filePathRef.current
     filePathRef.current = filePath
+    // saved under a new path (first save, save as): a project chat goes on and notes the document (spec 5.3.6)
+    if (filePath && filePath !== previous) void projectChatRef.current.documentSaved()
     const ids = chatIdsRef.current
     if (!window.projectApi || !ids || !filePath || !ids.chatId.startsWith('unsaved-')) return
     void window.projectApi
@@ -1169,6 +1645,7 @@ export function AiPanel({
     const el = chatRef.current
     if (!el) return
     stickToBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48
+    onScrollBottom()
   }
 
   /** a new tab opened by "make" takes its request once and sends it through `send` (8.5) */
@@ -1181,6 +1658,9 @@ export function AiPanel({
     send: (text) => send(text),
     onTaken: onGenerateHandoff,
   })
+
+  /** a request made before this window's project was known: sent once it is */
+  const heldUntilReadyRef = useRef<(() => void) | null>(null)
 
   /** false when nothing was started (empty text or a run already active) */
   const send = (
@@ -1195,6 +1675,14 @@ export function AiPanel({
     const instruction = text.trim()
     const loop = loopRef.current
     if (!instruction || !loop || loop.busy) return false
+    // the window's project is not known yet (the panel just opened): the request waits for it,
+    // so it goes to the right chat with the right context (spec 5.2, 6)
+    if (projectChatRef.current.available && !projectChatRef.current.ready) {
+      heldUntilReadyRef.current = () => {
+        send(text, displayText, queueRun, attachmentsOverride, scope, skillUse)
+      }
+      return false
+    }
     // Nothing connected, or the first-connection notice not acknowledged: nothing is sent, and
     // the dock above the composer says what to do. A request made during a status check or in
     // front of the notice is held and starts by itself once the way is clear.
@@ -1231,6 +1719,10 @@ export function AiPanel({
     runDisplayRef.current = displayText ?? instruction
     lastScopeRef.current = scope
     runMutatedRef.current = false
+    runChangeLinesRef.current = []
+    runSnapshotRef.current = null
+    // the marks show what the last run changed: a new run starts with none
+    depsRef.current.clearHighlights()
     depsRef.current.onPrompt(displayText ?? instruction)
     runToolsRef.current = []
     runUsageRef.current = undefined
@@ -1252,6 +1744,7 @@ export function AiPanel({
     lastSkillUseRef.current = skillUse
     skillTemplatesRef.current.noteRequest(displayText ?? text)
     setBusy(true)
+    busyRef.current = true
     // persist what the user saw — a restored transcript must not surface the
     // internal batch protocol text behind a queue submission
     persistMessage('user', displayText ?? instruction, undefined, sentAtts, scope, skillUse.chips)
@@ -1262,9 +1755,17 @@ export function AiPanel({
         settingsRef.current = await window.htmlApi.getAiSettings()
         const images = sentAtts.length > 0 ? await collectImages(sentAtts) : []
         if (!mountedRef.current || seq !== sendSeqRef.current) return
+        // the chosen project's context is read now and holds for this request (spec 5.4)
+        const prepared = await projectChatRef.current.prepareSend()
+        if (!mountedRef.current || seq !== sendSeqRef.current) {
+          void projectChatRef.current.finishSend()
+          return
+        }
+        showPreparedNotices(prepared)
         // the skill text rides with this request only; the bubble and the record keep the chips
         await loop.run(instruction + skillUse.text, images.length > 0 ? images : undefined)
       } catch (err) {
+        void projectChatRef.current.finishSend()
         // a send cancelled during its pre-run reads must not paint its error onto a later turn's bubble
         if (!mountedRef.current || seq !== sendSeqRef.current) return
         patchLast({
@@ -1302,9 +1803,6 @@ export function AiPanel({
 
   /** finish pending cards as skipped so no promise is left dangling */
   const dismissCards = (): void => {
-    clarifyResolverRef.current?.({ answers: '', cancelled: true })
-    clarifyResolverRef.current = null
-    setActiveClarify(null)
     briefResolverRef.current?.({ kind: 'cancelled' })
     briefResolverRef.current = null
     setActiveBrief(null)
@@ -1345,12 +1843,16 @@ export function AiPanel({
     if (atts.length > 0) setAttachments([])
     msgQueue.enqueue(text, { atts, skillUse })
     setPrompt('')
+    // a message sent while a card waits closes it: the run goes on without the answer
+    // (and cannot ask again in this run)
+    inlineQuestions.closeOpenCard()
   }
 
   /** the composer's send: the typed text goes out with the chosen skills */
   const sendDraft = () => {
     const text = prompt.trim()
     if (!text) return
+    inlineQuestions.supersedeOpen()
     skills.withSkills(text, (skillUse) =>
       send(text, undefined, false, undefined, undefined, skillUse),
     )
@@ -1399,6 +1901,352 @@ export function AiPanel({
     })
   }
 
+  // ── project folders (spec 5) ──
+
+  useEffect(() => {
+    if (!projectChat.ready) return
+    const held = heldUntilReadyRef.current
+    heldUntilReadyRef.current = null
+    held?.()
+  }, [projectChat.ready])
+
+  /** the chat on screen goes: the composer's files, the queue, the loop and the cards start over */
+  const resetConversation = (): void => {
+    msgQueue.clear()
+    sendGate.reset()
+    stop()
+    loopRef.current?.reset()
+    // servers off in this chat and "always allow in this chat" go too (user MCP spec 7.6)
+    windowMcpState()?.newConversation()
+    setBusy(false)
+    busyRef.current = false
+    setChat([])
+    skills.resetConversation()
+    skillCards.reset()
+    skillTemplates.reset()
+    // question cards belong to the chat: an open one answers skip, all states go
+    inlineQuestions.resetConversation()
+    setReceipts([])
+    // the cards go with the chat, and the snapshots and marks with them
+    setSnapshots([])
+    runSnapshotRef.current = null
+    depsRef.current.clearHighlights()
+    attachmentsRef.current = []
+    setAttachments([])
+    setAttachNotice(null)
+    sentAttachmentsRef.current = []
+  }
+
+  /** "New chat": a new chat of the chosen project, or the fresh start it always was (spec 5.3.7) */
+  const newChat = (): void => {
+    resetConversation()
+    if (projectChatRef.current.projectId) void projectChatRef.current.newChat()
+  }
+
+  /** a chat was opened (or the person went back to the document's own): show it, hand it to the loop */
+  const openProjectChat = (opened: ProjectChatOpened): void => {
+    // a conversation on screen gives way; an empty panel keeps what its composer holds
+    if (busy || chat.length > 0) resetConversation()
+    else loopRef.current?.reset()
+    // another chat opens: no MCP choices of the one before (user MCP spec 7.6)
+    windowMcpState()?.newConversation()
+    setProjectNotices([])
+    setProjectProblem(null)
+    setConsolidated(null)
+    if (opened.kind === 'document') {
+      projectShownRef.current = false
+      loadDocumentChat()
+      return
+    }
+    projectShownRef.current = true
+    // skill cards come back closed; a saved card's record is not part of the conversation
+    const entries = skillCardsRef.current.restore(opened.entries)
+    const shown = entries.map(chatEntryOf)
+    setChat(shown)
+    skillsRef.current.restoreHistory(
+      entries.map((e) => (e.role === 'user' ? skillChipRefsOf(e.skills) : undefined)),
+    )
+    // the model gets each message's role and text, as with any chat opened again
+    loopRef.current?.restore(entries.map((e) => ({ role: e.role, text: e.text })))
+    const seen = new Set<string>()
+    sentAttachmentsRef.current = shown
+      .flatMap((e) => e.attachments ?? [])
+      .filter((a) => !seen.has(a.path) && !!seen.add(a.path))
+  }
+
+  /** another window recorded a message in this chat: shown now, ahead of a reply in flight (spec 5.3.3) */
+  const showRemoteMessage = (entry: ProjectChatEntry): void => {
+    const shown = chatEntryOf(entry)
+    setChat((prev) => placeRemoteEntries(prev, [shown], busyRef.current))
+  }
+
+  /** what the request's project context brought: changed rules or memory, long memory, a cut (spec 5.4, 5.10) */
+  const showPreparedNotices = (prepared: ProjectRunPrepared): void => {
+    // "cannot be written" keeps its own line for as long as it lasts
+    setProjectNotices(
+      prepared.status === 'ok' ? prepared.notices.filter((n) => n.kind !== 'unwritable') : [],
+    )
+    // a request that went without the project's context says so
+    setProjectProblem(projectPrepareProblem(prepared))
+  }
+
+  const refreshProjects = async (): Promise<void> => {
+    const api = folderApi()
+    if (!api) return
+    try {
+      const list = await api.listProjects()
+      if (mountedRef.current) setProjects(list)
+    } catch {
+      /* the picker keeps the list it showed */
+    }
+  }
+  // the chip names the chosen project: the list is read when the panel opens and the choice moves
+  useEffect(() => {
+    if (projectChat.available) void refreshProjects()
+  }, [projectChat.available, projectChat.projectId])
+
+  const openPicker = (): void => {
+    void refreshProjects()
+    void folderApi()
+      ?.getDefaultParentFolder()
+      .then((folder) => {
+        if (mountedRef.current) setDefaultParentFolder(folder)
+      })
+      .catch(() => undefined)
+  }
+
+  /** a project that was added or created becomes this panel's project */
+  const takeAddedProject = async (
+    result: AddFolderResult | CreateProjectResult | undefined,
+  ): Promise<void> => {
+    if (!result) return
+    if (result.status !== 'added' && result.status !== 'created') {
+      // refused, not made: say why (spec 5.1); a closed dialog says nothing
+      if (mountedRef.current) setProjectProblem(projectAddProblem(result))
+      return
+    }
+    setProjectProblem(null)
+    await refreshProjects()
+    await projectChatRef.current.selectProject(result.project.id)
+    // the addition's one-time notices (a sync folder) show after the switch cleared the old ones
+    if (result.status === 'added' && result.notices.length > 0) setProjectNotices(result.notices)
+  }
+  const afterAdd = (pending: Promise<AddFolderResult | CreateProjectResult> | undefined): void => {
+    void pending?.then(takeAddedProject).catch(showActionFailed)
+  }
+  /** a bridge call the person made failed: say so instead of doing nothing */
+  const showActionFailed = (): void => {
+    if (mountedRef.current) setProjectProblem({ kind: 'action-failed' })
+  }
+
+  const removeProjectFromList = (projectId: ProjectId): void => {
+    void folderApi()
+      ?.removeFromList({ projectId })
+      .then(async () => {
+        await refreshProjects()
+        if (projectChatRef.current.projectId === projectId) {
+          await projectChatRef.current.selectProject(null)
+        }
+      })
+      .catch(showActionFailed)
+  }
+
+  /** "[View]": the home project screen at that section */
+  const viewProjectSection = (section: ProjectScreenSection): void => {
+    const projectId = projectChatRef.current.projectId
+    if (projectId)
+      void folderApi()
+        ?.openProjectScreen({ projectId, section })
+        .catch(() => undefined)
+  }
+
+  /** "[Tidy up]": one request, only when pressed, through the same gate as a send (spec 5.6) */
+  const consolidateMemory = async (): Promise<void> => {
+    const projectId = projectChatRef.current.projectId
+    if (!projectId || consolidatingRef.current || busyRef.current) return
+    consolidatingRef.current = true
+    try {
+      const settings = await window.htmlApi.getAiSettings()
+      if (settings) settingsRef.current = settings
+      if (!settingsRef.current || !transportRef.current) return
+      const result = await consolidateProjectMemory({
+        projectId,
+        transport: transportRef.current,
+        gate: () => sendGateRef.current.peek(),
+      })
+      if (!mountedRef.current) return
+      if (result.status === 'ok') {
+        setProjectNotices((prev) => prev.filter((n) => n.kind !== 'memory-long'))
+        setConsolidated({
+          projectId,
+          before: result.before,
+          after: result.after,
+          backupName: result.backupName,
+        })
+      } else if (result.status === 'not-ready') {
+        // nothing went out: the connect prompt or the first-connection notice says why
+        sendGateRef.current.admitQueued(() => {})
+      } else if (result.status === 'unwritable') {
+        projectChatRef.current.markUnwritable()
+      } else if (result.status === 'failed') {
+        setProjectProblem({ kind: 'consolidate-failed' })
+      }
+    } catch {
+      // the memory stays as it was
+      if (mountedRef.current) setProjectProblem({ kind: 'consolidate-failed' })
+    } finally {
+      consolidatingRef.current = false
+    }
+  }
+
+  const undoConsolidation = (): void => {
+    const done = consolidated
+    const api = folderApi()
+    if (!done || !api) return
+    void undoProjectMemoryConsolidation(api, done.projectId, done.backupName)
+      .then((result) => {
+        if (result.status === 'ok' && mountedRef.current) setConsolidated(null)
+        else if (result.status === 'unwritable') projectChatRef.current.markUnwritable()
+      })
+      .catch(showActionFailed)
+  }
+
+  /** "[Remove]" on a memory line: the entry leaves `memory.md` */
+  const forgetMemory = (line: ProjectMemoryLine): Promise<ProjectMemoryRemoveOutcome> =>
+    projectChatRef.current
+      .forgetMemory(line)
+      .then((result) => {
+        const outcome = memoryRemoveOutcome(result)
+        // an entry no longer in the memory is as good as removed
+        if (outcome !== 'failed' && mountedRef.current) {
+          setForgotten((prev) => new Set(prev).add(line.text))
+        }
+        return outcome
+      })
+      .catch((): ProjectMemoryRemoveOutcome => 'failed')
+
+  /** the memory lines and the other editor's tool line under a project chat's reply */
+  const projectReplyLines = (entry: ChatEntry): ReactNode => {
+    const memory = entry.memory ?? memoryLinesOf(entry.tools)
+    const other = entry.otherEditorTools
+    if (!other && memory.length === 0) return null
+    return (
+      <>
+        {other && (
+          <ProjectToolSummaryLine
+            lang={lang}
+            editor={other.editor}
+            documentName={other.fileRef ? baseName(other.fileRef) : undefined}
+            count={other.count}
+          />
+        )}
+        {memory.map((line, k) => (
+          <ProjectMemoryEventLine
+            key={k}
+            lang={lang}
+            change={line.change}
+            gone={
+              projectChat.memoryEntries
+                ? memoryLineGone(line, projectChat.memoryEntries)
+                : forgotten.has(line.text)
+            }
+            onRemove={() => forgetMemory(line)}
+          />
+        ))}
+      </>
+    )
+  }
+
+  /** the project chip under the input (spec 5.1); absent without the project folder bridge */
+  const projectPicker = projectChat.available ? (
+    <ProjectPicker
+      lang={lang}
+      projects={projects}
+      selectedId={projectChat.projectId}
+      disabled={busy || !projectChat.ready}
+      defaultParentFolder={defaultParentFolder}
+      onOpen={openPicker}
+      onSelect={(projectId) => void projectChat.selectProject(projectId)}
+      onCreate={(name, { otherPlace }) =>
+        afterAdd(folderApi()?.createProject({ name, otherPlace }))
+      }
+      onAddFolder={() => afterAdd(folderApi()?.addFolder())}
+      onRelocate={(projectId) => afterAdd(folderApi()?.relocateProject({ projectId }))}
+      onSetPinned={(projectId, pinned) =>
+        void folderApi()
+          ?.setPinned({ projectId, pinned })
+          .then(refreshProjects)
+          .catch(() => undefined)
+      }
+      onOpenInFileManager={(projectId) =>
+        void folderApi()
+          ?.openInFileManager({ projectId })
+          .catch(() => undefined)
+      }
+      onRemoveFromList={removeProjectFromList}
+    />
+  ) : undefined
+
+  /** the project's lines above the input: the folder hint, "cannot be written", the context notices */
+  const projectLines = (
+    <>
+      {projectProblem && (
+        <ProjectProblemLine
+          lang={lang}
+          problem={projectProblem}
+          onDismiss={() => setProjectProblem(null)}
+        />
+      )}
+      {projectChat.hint && (
+        <ProjectFolderHintLine
+          lang={lang}
+          hint={projectChat.hint}
+          onUse={() => afterAdd(folderApi()?.adoptFolderHint())}
+        />
+      )}
+      {projectChat.projectId && projectChat.unwritable && (
+        <ProjectNoticeLine lang={lang} notice={{ kind: 'unwritable' }} />
+      )}
+      <ProjectNoticeList
+        lang={lang}
+        notices={projectNotices}
+        onView={viewProjectSection}
+        onConsolidate={busy ? undefined : () => void consolidateMemory()}
+        onDismiss={(index) => setProjectNotices((prev) => prev.filter((_, i) => i !== index))}
+      />
+      {consolidated && consolidated.projectId === projectChat.projectId && (
+        <ProjectMemoryConsolidatedLine
+          lang={lang}
+          before={consolidated.before}
+          after={consolidated.after}
+          onUndo={undoConsolidation}
+        />
+      )}
+    </>
+  )
+
+  /** the [chat ▾] menu of the panel header, while a project is chosen (spec 5.3) */
+  const activeChat = projectChat.chat
+  const projectChatMenu = projectChat.projectId ? (
+    <ProjectChatMenu
+      lang={lang}
+      chats={projectChat.chats}
+      currentChatId={activeChat?.kind === 'project' && !activeChat.isNew ? activeChat.chatId : null}
+      currentTitle={activeChat?.kind === 'project' ? activeChat.title || undefined : undefined}
+      legacy={projectChat.legacy}
+      legacyActive={activeChat?.kind === 'legacy'}
+      disabled={busy}
+      onOpen={() => void projectChat.refreshChats()}
+      onSelect={(chatId) => void projectChat.openChat(chatId)}
+      onNewChat={newChat}
+      onRename={(chatId, title) =>
+        void projectChat.renameChat(chatId, title).catch(showActionFailed)
+      }
+      onDelete={(chatId) => void projectChat.deleteChat(chatId).catch(showActionFailed)}
+      onSelectLegacy={() => void projectChat.openLegacy()}
+    />
+  ) : null
+
   /** [label](htmlnav://sid/N) links in replies select that element */
   const docNav = {
     scheme: DOC_NAV_SCHEME,
@@ -1433,17 +2281,44 @@ export function AiPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [preset])
 
-  const copyMessage = (text: string, idx: number): void => {
-    void navigator.clipboard.writeText(text)
-    setCopiedIdx(idx)
-    window.setTimeout(() => setCopiedIdx((cur) => (cur === idx ? null : cur)), 1200)
+  /**
+   * Takes a run back: the source returns to the snapshot from before the run's
+   * first change. That also drops every later run (and edits made since), so
+   * their cards turn 'reverted' and their snapshots go.
+   */
+  const revertRun = (id: number): void => {
+    if (busy) return
+    const snapshot = snapshots.find((s) => s.id === id)
+    if (!snapshot) return
+    let state: AiChangesState = 'reverted'
+    try {
+      depsRef.current.restoreSnapshot(snapshot.doc)
+    } catch {
+      state = 'refused'
+    }
+    if (state === 'reverted') {
+      depsRef.current.clearHighlights()
+      setSnapshots((prev) => prev.filter((s) => s.id < id))
+    }
+    setChat((prev) =>
+      prev.map((entry) => {
+        const changes = entry.changes
+        if (!changes || changes.state !== 'applied') return entry
+        if (changes.id === id) return { ...entry, changes: { ...changes, state } }
+        if (state === 'reverted' && changes.id > id)
+          return { ...entry, changes: { ...changes, state: 'reverted' } }
+        return entry
+      }),
+    )
   }
 
-  const rollback = (snapshot: Snapshot): void => {
-    if (busy) return
-    depsRef.current.restoreSnapshot(snapshot.doc)
-    setSnapshots((prev) => prev.filter((s) => s !== snapshot))
-  }
+  /** the card's state: an applied run whose snapshot fell out of the ring can no longer be taken back */
+  const cardState = (changes: RunChanges): AiChangesState =>
+    changes.state === 'applied' && !snapshots.some((s) => s.id === changes.id)
+      ? 'expired'
+      : changes.state
+  /** the newest reply with a changes card: only its run's changes are marked */
+  const latestChangesIdx = chat.map((entry) => entry.changes !== undefined).lastIndexOf(true)
 
   // Re-derive the display width on window resize (max is 60% of the window);
   // growing the window back restores the preferred width
@@ -1491,6 +2366,8 @@ export function AiPanel({
   }
 
   const docEmpty = chat.length === 0 && isDocEmpty(deps.access.getText())
+  /** a docked card the run is waiting on: the live reply shows it in place of the clock */
+  const panelWait = panelWaitOf(waitingForPerson, activeBrief, activePartial)
 
   return (
     <aside
@@ -1517,54 +2394,45 @@ export function AiPanel({
         aria-orientation="vertical"
         aria-label={aiSubscriptionText(lang, 'aiAssistant')}
       />
-      <header className="ai-panel-header">
-        <span className="ai-panel-title">
-          <AiMark size={22} />
-          {aiSubscriptionText(lang, 'aiAssistant')}
-        </span>
-        <div className="ai-panel-header-actions">
-          <AiPanelSideButton
-            lang={lang}
-            onMove={(side) => window.htmlApi.setAiPanelPrefs({ side })}
-          />
-          {chat.length > 0 && (
+      <AiPanelHeader
+        lang={lang}
+        chatMenu={projectChatMenu}
+        actions={
+          <>
+            <AiPanelSideButton
+              lang={lang}
+              onMove={(side) => window.htmlApi.setAiPanelPrefs({ side })}
+            />
+            {chat.length > 0 && (
+              <button
+                type="button"
+                className="ai-header-btn"
+                onClick={newChat}
+                data-tip={t('aiNewChat')}
+                aria-label={t('aiNewChat')}
+              >
+                <IconNewChat />
+              </button>
+            )}
             <button
-              className="ai-header-btn"
-              onClick={() => {
-                msgQueue.clear()
-                sendGate.reset()
-                stop()
-                loopRef.current?.reset()
-                setBusy(false)
-                setChat([])
-                skills.resetConversation()
-                skillCards.reset()
-                skillTemplates.reset()
-                setReceipts([])
-                setAttachments([])
-                setAttachNotice(null)
-                sentAttachmentsRef.current = []
-              }}
-              data-tip={t('aiNewChat')}
-              aria-label={t('aiNewChat')}
+              type="button"
+              className="ai-header-btn ai-panel-collapse"
+              onClick={onCollapse}
+              data-tip={t('aiCollapsePanel')}
+              aria-label={t('aiCollapsePanel')}
             >
-              <IconNewChat />
+              <IconCollapse />
             </button>
-          )}
-          <button
-            className="ai-header-btn ai-panel-collapse"
-            onClick={onCollapse}
-            data-tip={t('aiCollapsePanel')}
-            aria-label={t('aiCollapsePanel')}
-          >
-            <IconCollapse />
-          </button>
-        </div>
-      </header>
+          </>
+        }
+      />
 
       <div className="ai-chat" ref={chatRef} onScroll={onChatScroll}>
         {chat.length === 0 && (
           <div className="ai-chat-empty">
+            <div className="ai-chat-empty-badge">
+              <AiMark size={24} />
+            </div>
             <div className="ai-chat-empty-title">
               {t(
                 docEmpty
@@ -1602,6 +2470,7 @@ export function AiPanel({
                 </button>
               ))}
             </div>
+            <AiEmptyHints lang={lang} showSkill={Boolean(skills.composer)} showDocMention />
           </div>
         )}
         {chat.map((entry, i) => {
@@ -1617,23 +2486,12 @@ export function AiPanel({
                   </div>
                 )}
                 <span dir="auto">{entry.text}</span>
-                {own.map((r, k) =>
-                  r.qa ? (
-                    <div key={`ca${k}`} className="ai-clarify-answered">
-                      {r.qa.map((pair, m) => (
-                        <div key={m} className="ai-clarify-answered-row">
-                          <div className="ai-clarify-answered-q">{pair.q}</div>
-                          <div className="ai-clarify-answered-a">{pair.a}</div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : r.brief ? (
-                    <div key={`br${k}`} className="brief-receipt">
-                      <b>{t('briefTitle')}</b> ·{' '}
-                      {t('briefReceipt', { hook: r.brief.core_hook, n: r.brief.sections.length })}
-                    </div>
-                  ) : null,
-                )}
+                {own.map((r, k) => (
+                  <div key={`br${k}`} className="brief-receipt">
+                    <b>{t('briefTitle')}</b> ·{' '}
+                    {t('briefReceipt', { hook: r.brief.core_hook, n: r.brief.sections.length })}
+                  </div>
+                ))}
                 {entry.undelivered && (
                   <div className="ai-msg-undelivered">
                     {t('aiUndelivered')}
@@ -1660,7 +2518,15 @@ export function AiPanel({
             )
           }
           const hasTools = (entry.tools?.length ?? 0) > 0
-          if (!entry.text && !entry.streaming && !hasTools) return null
+          const projectLinesOfReply = projectReplyLines(entry)
+          if (
+            !entry.text &&
+            !entry.streaming &&
+            !hasTools &&
+            !projectLinesOfReply &&
+            !entry.changes
+          )
+            return null
           const isLast = i === chat.length - 1
           // Action row appears once per completed reply: on the turn's final segment only
           // (mid-turn segments have a following assistant entry; the live turn ends when !busy)
@@ -1672,11 +2538,27 @@ export function AiPanel({
               key={i}
               className={`ai-msg ai-msg-assistant${entry.isError ? ' ai-msg-error' : ''}${entry.streaming ? ' ai-msg-streaming' : ''}`}
             >
-              {!entry.text && entry.streaming ? (
-                <span className="ai-typing-row">
-                  <AiTypingIndicator label={hasTools ? t('aiWorking') : t('aiThinking')} />
-                </span>
-              ) : entry.blocked ? (
+              {hasTools &&
+                (entry.restored ? (
+                  // a reopened chat: each question card step becomes its read-only card, in place
+                  restoredToolSegments(entry.tools!).map((segment, k) =>
+                    segment.kind === 'question' ? (
+                      <AiQuestionReceipt key={k} lang={lang} activity={segment.activity} />
+                    ) : (
+                      <AiWorkSteps key={k} lang={lang} steps={segment.steps} />
+                    ),
+                  )
+                ) : (
+                  <AiWorkSteps
+                    lang={lang}
+                    steps={entry.tools!}
+                    summaryLabel={(() => {
+                      const wait = stepsWaitOf(entry.tools!)
+                      return wait ? t(WAIT_LABEL[wait]) : undefined
+                    })()}
+                  />
+                ))}
+              {entry.blocked ? (
                 <AiBlockedNotice
                   kind={entry.blocked.kind}
                   provider={entry.blocked.provider}
@@ -1691,119 +2573,146 @@ export function AiPanel({
               ) : (
                 entry.text && (
                   <div dir="auto">
-                    <Markdown text={entry.text} navs={[docNav, fileNav]} />
+                    <AiAssistantBody
+                      lang={lang}
+                      text={entry.text}
+                      navs={[docNav, fileNav]}
+                      streaming={entry.streaming}
+                      restored={entry.restored}
+                      questionStatus={inlineQuestions.textCardStates[`m-${i}`]?.status}
+                      questionAnswer={inlineQuestions.textCardStates[`m-${i}`]?.answer}
+                      onQuestionSubmit={(view, answer) => {
+                        inlineQuestions.markTextCard(`m-${i}`, 'submitted', answer)
+                        send(inlineQuestions.formatFollowUp(lang, view, answer))
+                      }}
+                      onQuestionSkip={(view) => {
+                        inlineQuestions.markTextCard(`m-${i}`, 'skipped')
+                        send(inlineQuestions.formatFollowUp(lang, view, { kind: 'skip' }))
+                      }}
+                    />
                   </div>
                 )
               )}
-              {hasTools && <ToolChipList tools={entry.tools!} />}
+              {projectLinesOfReply}
               <SkillUsedNotes tools={entry.tools} />
               {entry.skillProposals?.map((key) => skillCards.render(key))}
-              {entry.usage && (
-                <div className="ai-message-usage">
-                  <AiUsageChip usage={entry.usage} lang={lang} />
-                </div>
-              )}
-              {showToolbar && (
-                <div className="ai-msg-toolbar">
-                  <button
-                    className="ai-msg-tool-btn"
-                    onClick={() => copyMessage(entry.text, i)}
-                    aria-label={t('aiCopyReplyTitle')}
-                    data-tip={t('aiCopyReplyTitle')}
-                  >
-                    {copiedIdx === i ? (
-                      <svg
-                        width="14"
-                        height="14"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="1.8"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      >
-                        <polyline points="20 6 9 17 4 12" />
-                      </svg>
-                    ) : (
-                      <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                        <path
-                          d="M14.6113 5.34253C16.0608 5.3428 17.2363 6.518 17.2363 7.96753V15.5066C17.2361 16.956 16.0607 18.1313 14.6113 18.1316H7.07227C5.62267 18.1316 4.44751 16.9561 4.44727 15.5066V7.96753C4.44732 6.51783 5.62255 5.34253 7.07227 5.34253H14.6113ZM7.07227 6.59253C6.31291 6.59253 5.69732 7.20819 5.69727 7.96753V15.5066C5.69751 16.2658 6.31302 16.8816 7.07227 16.8816H14.6113C15.3703 16.8813 15.9861 16.2656 15.9863 15.5066V7.96753C15.9863 7.20835 15.3705 6.5928 14.6113 6.59253H7.07227ZM10.0176 2.8689C10.3626 2.86905 10.6426 3.14882 10.6426 3.4939C10.6425 3.83888 10.3626 4.11874 10.0176 4.1189H4.59961C3.84022 4.1189 3.22461 4.73451 3.22461 5.4939V11.324C3.22433 11.6689 2.94461 11.949 2.59961 11.949C2.25461 11.949 1.97489 11.6689 1.97461 11.324V5.4939C1.97461 4.04415 3.14987 2.8689 4.59961 2.8689H10.0176Z"
-                          fill="currentColor"
-                        />
-                      </svg>
-                    )}
-                  </button>
-                  {isLast && !busy && runInstructionRef.current && (
-                    <button
-                      className="ai-msg-tool-btn"
-                      onClick={retry}
-                      aria-label={t('aiRegenerateTitle')}
-                      data-tip={t('aiRegenerateTitle')}
-                    >
-                      <svg
-                        width="20"
-                        height="20"
-                        viewBox="0 0 16 16"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="1"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        aria-hidden
-                      >
-                        <path d="M 12.68 6.65 a 4.86 4.86 0 0 0 -9 -1.08 M 3.32 9.35 a 4.86 4.86 0 0 0 9 1.08" />
-                        <path d="M 12.95 3.05 v 2.7 h -2.7 M 3.05 12.95 v -2.7 h 2.7" />
-                      </svg>
-                    </button>
+              {entry.changes && (
+                <AiChangesCard
+                  lang={lang}
+                  state={cardState(entry.changes)}
+                  count={entry.changes.count}
+                  lines={entry.changes.lines}
+                  onShowLine={(idx) => {
+                    const sid = entry.changes?.lines?.[idx]?.sid
+                    if (sid !== undefined) depsRef.current.navigateTo(sid)
+                  }}
+                  canRevert={!busy}
+                  revertsLater={chat.some(
+                    (later) =>
+                      later.changes &&
+                      later.changes.id > entry.changes!.id &&
+                      later.changes.state === 'applied',
                   )}
-                </div>
+                  onRevert={() => revertRun(entry.changes!.id)}
+                  // the marks are of the newest run's changes
+                  onClearMarks={
+                    i === latestChangesIdx && marksShown
+                      ? () => depsRef.current.clearHighlights()
+                      : null
+                  }
+                />
+              )}
+              {entry.streaming && isLast && panelWait ? (
+                <span className="ai-typing-row">
+                  <span className="ai-wait-chip" role="status">
+                    <span className="ai-wait-chip-eyebrow">{t(WAIT_LABEL[panelWait])}</span>
+                    <span className="ai-wait-chip-arrow" aria-hidden>
+                      ↓
+                    </span>
+                  </span>
+                </span>
+              ) : (
+                <AiReplyProgress
+                  reply={entry}
+                  thinking={t('aiThinking')}
+                  working={t('aiWorking')}
+                />
+              )}
+              {isLast && !busy && qualityFindings.length > 0 && (
+                <AiQualityBadge
+                  lang={lang}
+                  findings={qualityFindings}
+                  aiVisible
+                  onFixWithAi={() => {
+                    const summary = qualityFindings
+                      .map((f) => `- [${f.severity}] ${f.message}`)
+                      .join('\n')
+                    send(
+                      `Please fix the following quality audit findings in the HTML document:\n${summary}`,
+                    )
+                  }}
+                />
+              )}
+              {(showToolbar || entry.usage) && (
+                <AiReplyFooter
+                  lang={lang}
+                  isLast={isLast}
+                  copyText={showToolbar ? entry.text : undefined}
+                  onRetry={
+                    showToolbar && isLast && !busy && runInstructionRef.current ? retry : undefined
+                  }
+                  usage={entry.usage}
+                  nextSteps={
+                    isLast
+                      ? {
+                          context: {
+                            aiVisible: true,
+                            streaming: Boolean(entry.streaming),
+                            completedNormally: !entry.isError && !entry.blocked,
+                            editorKind: 'html',
+                            editedDocument: Boolean(entry.changes),
+                            qualityIssueCount: qualityFindings.length,
+                            usedSkillName: entry.skills?.[0]?.title,
+                            canGenerateOtherDoc: true,
+                            hasSavedPath: Boolean(filePath),
+                          },
+                          onRunAi: (fixPrompt) => send(fixPrompt),
+                          onOpenTweaks,
+                          onGenerateOtherDoc: openGenerateForCurrentDocument,
+                        }
+                      : undefined
+                  }
+                />
               )}
             </div>
           )
         })}
+        {inlineQuestions.activeToolCard && (
+          <AiQuestionCard
+            key={inlineQuestions.activeToolCard.id}
+            lang={lang}
+            view={inlineQuestions.activeToolCard.view}
+            status={inlineQuestions.activeToolCard.status}
+            answer={inlineQuestions.activeToolCard.answer}
+            onSubmit={inlineQuestions.submitToolCard}
+            onSkip={inlineQuestions.skipToolCard}
+          />
+        )}
         {skillTemplates.notes}
+        {/* an MCP tool waiting for the person's yes (user MCP spec 7.4) */}
+        <McpPermissionCard lang={lang} />
       </div>
 
-      {snapshots.length > 0 && (
-        <div className="ai-versions">
-          <div className="ai-versions-title">
-            <IconClock />
-            {t('aiSnapshotsTitle')}
-          </div>
-          {snapshots.map((s, i) => (
-            <div key={i} className="ai-version-row">
-              <span className="ai-version-label" data-tip={s.label}>
-                <span className="ai-version-time">{s.time}</span>
-                {s.label}
-              </span>
-              <button className="ai-version-rollback" disabled={busy} onClick={() => rollback(s)}>
-                {t('aiRollback')}
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
+      <AiScrollToBottom
+        visible={showScrollBottom && chat.length > 0 && !activeBrief && !activePartial}
+        lang={lang}
+        onClick={() => {
+          stickToBottomRef.current = true
+          scrollToBottom()
+        }}
+      />
 
-      {activeClarify && (
-        <div className="ai-composer">
-          <ClarifyCard
-            questions={activeClarify}
-            onSubmit={(answers, qa) => {
-              const idx = chat.map((c) => c.role).lastIndexOf('user')
-              clarifyResolverRef.current?.({ answers })
-              clarifyResolverRef.current = null
-              setActiveClarify(null)
-              setReceipts((prev) => [...prev, { afterIdx: idx, qa }])
-            }}
-            onSkip={() => {
-              clarifyResolverRef.current?.({ answers: '', cancelled: true })
-              clarifyResolverRef.current = null
-              setActiveClarify(null)
-            }}
-          />
-        </div>
-      )}
-      {activeBrief && !activeClarify && (
+      {activeBrief && (
         <div className="ai-composer">
           <BriefCard
             key={activeBrief.core_hook + activeBrief.sections.length}
@@ -1821,7 +2730,7 @@ export function AiPanel({
           />
         </div>
       )}
-      {activePartial && !activeClarify && !activeBrief && (
+      {activePartial && !activeBrief && (
         <div className="ai-composer">
           <div className="brief-card ai-partial-card" role="group" aria-label={t('aiPartialTitle')}>
             <div className="ai-partial-title">{t('aiPartialTitle')}</div>
@@ -1873,7 +2782,7 @@ export function AiPanel({
       )}
       <div
         className="ai-composer"
-        style={activeClarify || activeBrief || activePartial ? { display: 'none' } : undefined}
+        style={activeBrief || activePartial ? { display: 'none' } : undefined}
       >
         {chat.length === 0 && docEmpty && (
           <div className="ai-intent-bar">
@@ -1949,6 +2858,13 @@ export function AiPanel({
         {inputTruncated && (
           <AiInputTruncatedNotice lang={lang} onDismiss={() => setInputTruncated(false)} />
         )}
+        {aiSettings !== null && localModelCapabilities(aiSettings).tools === false && (
+          <AiToolsUnsupportedNotice lang={lang} />
+        )}
+        {projectLines}
+        {/* Above the input card, not inside its footer: the reset time is long and
+            would otherwise squeeze the attach/send buttons in a narrow panel. */}
+        <AiSubscriptionUsageLine usage={subscriptionUsage} lang={lang} />
         <AiComposer
           queueStrip={
             <AiQueueStrip
@@ -1972,9 +2888,11 @@ export function AiPanel({
           sendLabel={t('aiSend')}
           stopLabel={t('aiStop')}
           iconOnly
-          sendIconEnabled={<img src={sendEnterOn} alt="" aria-hidden />}
-          sendIconDisabled={<img src={sendEnterOff} alt="" aria-hidden />}
-          stopIcon={<img src={sendStop} alt="" aria-hidden />}
+          lang={lang}
+          showSkillButton
+          sendIconEnabled={<IconArrowUp size={15} />}
+          sendIconDisabled={<IconArrowUp size={15} />}
+          stopIcon={<IconStop size={12} />}
           textareaRef={inputRef}
           onChange={setPrompt}
           onSend={sendDraft}
@@ -1983,165 +2901,30 @@ export function AiPanel({
           docs={docMention}
           onPasteFiles={(files) => void onPasteFiles(files)}
           onPasteText={onPasteText}
+          footerBelow={projectPicker}
+          footerBelowEnd={sessionUsage && <AiUsageChip usage={sessionUsage} session lang={lang} />}
           footerStart={
             <>
-              <AiModelPicker
-                bridge={MODEL_BRIDGE}
+              <AiAttachMenu
                 lang={lang}
-                subscriptionStatuses={subscription.statuses}
-                onRefreshSubscriptions={subscription.refresh}
+                onPickPc={() => void pickAttachments()}
+                onPickedDocs={attachFromDrive}
+                onPickedDrive={attachFromDrive}
               />
-              <AiSubscriptionUsageLine usage={subscriptionUsage} lang={lang} />
-              {sessionUsage && <AiUsageChip usage={sessionUsage} session lang={lang} />}
-              <button
-                type="button"
-                className="ai-attach-btn"
-                onClick={() => void pickAttachments()}
-                data-tip={t('aiAttachTitle')}
-                aria-label={t('aiAttachTitle')}
-              >
-                <img src={attachIcon} alt="" aria-hidden />
-              </button>
-              <DriveAttachButton lang={lang} onPicked={attachFromDrive} />
-              <DocAttachButton lang={lang} onPicked={attachFromDrive} />
+              <McpServerButton lang={lang} />
             </>
+          }
+          footerEnd={
+            <AiModelPicker
+              bridge={MODEL_BRIDGE}
+              lang={lang}
+              subscriptionStatuses={subscription.statuses}
+              onRefreshSubscriptions={subscription.refresh}
+            />
           }
         />
       </div>
     </aside>
-  )
-}
-
-/** Step-row status icons (timeline glyphs, unified with the other apps) */
-function StepIcon({ status }: { status: 'running' | 'done' | 'error' }) {
-  if (status === 'running') {
-    return (
-      <svg
-        viewBox="0 0 24 24"
-        width="14"
-        height="14"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        aria-hidden
-      >
-        <path d="M6.5 3.5h11M6.5 20.5h11M8 3.5v3.2c0 2.6 4 4.2 4 5.3 0 1.1 4 2.7 4 5.3v3.2M16 3.5v3.2c0 2.6-4 4.2-4 5.3 0 1.1-4 2.7-4 5.3v3.2" />
-      </svg>
-    )
-  }
-  if (status === 'error') {
-    return (
-      <svg
-        viewBox="0 0 24 24"
-        width="14"
-        height="14"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        aria-hidden
-      >
-        <circle cx="12" cy="12" r="9" />
-        <path d="m9.2 9.2 5.6 5.6M14.8 9.2l-5.6 5.6" />
-      </svg>
-    )
-  }
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      width="14"
-      height="14"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.6"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <circle cx="12" cy="12" r="9" />
-      <path d="m8.5 12.4 2.4 2.4 4.6-5" />
-    </svg>
-  )
-}
-
-/** Tool activity group (docs parity): auto-opens while tools run, auto-collapses into
- *  "Worked · N steps" when they finish; a manual toggle always wins */
-function ToolChipList({ tools }: { tools: ToolActivity[] }) {
-  const { t: tr } = useI18n()
-  const [expanded, setExpanded] = useState<Set<number>>(new Set())
-  const [userOpen, setUserOpen] = useState<boolean | null>(null)
-
-  const toggle = (j: number) => {
-    setExpanded((prev) => {
-      const next = new Set(prev)
-      if (next.has(j)) next.delete(j)
-      else next.add(j)
-      return next
-    })
-  }
-
-  const anyRunning = tools.some((tool) => tool.running)
-  const open = userOpen ?? anyRunning
-  const label = anyRunning ? tr('aiGroupWorking') : tr('aiWorkedSteps', { n: tools.length })
-
-  return (
-    <div className="ai-work-group">
-      <button
-        type="button"
-        className={`ai-work-group-summary${anyRunning ? ' running' : ''}`}
-        aria-expanded={open}
-        onClick={() => setUserOpen(!open)}
-      >
-        {anyRunning && !open && <span className="ai-tool-chip-spinner" aria-hidden />}
-        <span className="ai-work-group-label">{label}</span>
-        <span className={`ai-tool-chip-caret${open ? ' open' : ''}`} aria-hidden>
-          ›
-        </span>
-      </button>
-      <div className={`ai-work-group-body${open ? ' open' : ''}`}>
-        <div className="ai-work-group-body-inner">
-          {tools.map((tool, j) => {
-            const hasOutput = !tool.running && !!tool.output
-            const isOpen = expanded.has(j)
-            const stepStatus = tool.running ? 'running' : tool.isError ? 'error' : 'done'
-            return (
-              <div key={j} className="ai-step-row">
-                <span className={`ai-step-icon ${stepStatus}`} aria-hidden>
-                  <StepIcon status={stepStatus} />
-                </span>
-                <div className="ai-step-content">
-                  {hasOutput ? (
-                    <button
-                      type="button"
-                      className="ai-step-title clickable"
-                      data-tip={tool.name}
-                      aria-expanded={isOpen}
-                      onClick={() => toggle(j)}
-                    >
-                      {tool.summary}
-                    </button>
-                  ) : (
-                    <span className="ai-step-title" data-tip={tool.name}>
-                      {tool.summary}
-                    </span>
-                  )}
-                  {hasOutput && isOpen && (
-                    <div className="ai-step-detail">
-                      <div className="ai-tool-output">
-                        <div className="ai-tool-output-pre">{tool.output}</div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      </div>
-    </div>
   )
 }
 
@@ -2189,24 +2972,6 @@ function IconCollapse(): ReactElement {
       <rect x="1.5" y="2.5" width="13" height="11" rx="1" />
       <path d="M5.5 2.5v11" />
       <path d="M12.5 8H8.1M9.8 5.9 7.7 8l2.1 2.1" strokeWidth="1.3" strokeLinejoin="round" />
-    </svg>
-  )
-}
-
-function IconClock(): ReactElement {
-  return (
-    <svg
-      width="12"
-      height="12"
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.3"
-      strokeLinecap="round"
-      aria-hidden
-    >
-      <circle cx="8" cy="8" r="6" />
-      <path d="M8 4.8V8l2.2 1.6" />
     </svg>
   )
 }

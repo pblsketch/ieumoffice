@@ -7,7 +7,8 @@ export type ToInspector =
   | { type: 'gx:select'; sid: number | null }
   /** the rest of a multiple selection, after gx:select named its first element (a reload forgets it) */
   | { type: 'gx:selectExtra'; sids: number[] }
-  | { type: 'gx:highlight'; sids: number[] }
+  /** boxes over the elements the AI's last changes touched, in the app's mark colours */
+  | { type: 'gx:highlight'; sids: number[]; fill?: string; line?: string }
   | { type: 'gx:clearHighlight' }
   | { type: 'gx:setMode'; mode: InspectorMode }
   | { type: 'gx:beginTextEdit'; sid: number }
@@ -95,6 +96,7 @@ export interface ElementFingerprint {
 export type FromInspector = { version: number } & FromInspectorBody
 
 export type FromInspectorBody =
+  | { type: 'gx:editMath'; sid: number }
   | { type: 'gx:ready'; title: string; docHeight: number }
   /** the window scrolled (coalesced per frame); the host hands it back after a reload */
   | { type: 'gx:scroll'; y: number }
@@ -144,8 +146,9 @@ export type FromInspectorBody =
         | 'moveUp'
         | 'moveDown'
     }
-  /** ctrl/meta + wheel inside the frame (trackpad pinch); the host owns the zoom level */
-  | { type: 'gx:zoom'; delta: number }
+  /** ctrl/meta + wheel inside the frame (mouse notch or trackpad pinch); the host owns the
+   * zoom level. deltaMode (0 pixels, 1 lines, 2 pages) is absent from older frames. */
+  | { type: 'gx:zoom'; delta: number; deltaMode?: number }
   | { type: 'gx:navigateBlocked'; href: string }
   | { type: 'gx:markClick'; sid: number }
   /** a resize handle or a sideways image slide was released: the frame already shows these inline styles */
@@ -163,6 +166,7 @@ export type FromInspectorBody =
 
 /** Message tags the instrumented inspector can emit; anything else is forged. */
 const KNOWN_FROM_INSPECTOR = new Set([
+  'gx:editMath',
   'gx:ready',
   'gx:scroll',
   'gx:hover',

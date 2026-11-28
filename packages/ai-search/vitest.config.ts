@@ -23,6 +23,8 @@ export default defineConfig({
         here,
         '../electron-utils/src/generated-images.ts',
       ),
+      // Subpath before the bare name: string aliases are prefix replacements
+      '@genoffice/ai-provider/subscription': resolve(here, '../ai-provider/src/subscription.ts'),
       '@genoffice/ai-provider': resolve(here, '../ai-provider/src/index.ts'),
     },
   },

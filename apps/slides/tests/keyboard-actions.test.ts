@@ -6,6 +6,7 @@ import * as showActions from '../src/renderer/show-actions'
 import * as fileActions from '../src/renderer/file-actions'
 import * as styleActions from '../src/renderer/style-actions'
 import type { ActionCtx } from '../src/renderer/action-context'
+import { rememberRepeat } from '../src/renderer/repeat-action'
 
 vi.mock('../src/renderer/clipboard-actions', () => ({
   copySelected: vi.fn(),
@@ -1168,5 +1169,86 @@ describe('Enter / F2 on a selected text shape', () => {
     handleGlobalKeydown(field, key('Enter'))
     handleGlobalKeydown(field, key('F2'))
     expect(field.setEditing).not.toHaveBeenCalled()
+  })
+})
+
+describe('repeat and selection pane keys', () => {
+  const plain = (key: string, init: KeyboardEventInit = {}) =>
+    new KeyboardEvent('keydown', { key, cancelable: true, ...init })
+
+  it('F4 replays the remembered action on the canvas', () => {
+    ;(document.activeElement as HTMLElement | null)?.blur()
+    const fn = vi.fn()
+    rememberRepeat(fn)
+    const ctx = makeCtx({ selectedIds: ['a'] })
+    const e = plain('F4')
+    handleGlobalKeydown(ctx, e)
+    expect(fn).toHaveBeenCalledWith(ctx)
+    expect(e.defaultPrevented).toBe(true)
+  })
+
+  it('F4 leaves plain text fields alone', () => {
+    const fn = vi.fn()
+    rememberRepeat(fn)
+    const input = document.createElement('input')
+    document.body.appendChild(input)
+    input.focus()
+    handleGlobalKeydown(makeCtx(), plain('F4'))
+    expect(fn).not.toHaveBeenCalled()
+    input.remove()
+  })
+
+  it('Alt+F10 toggles the selection pane', () => {
+    const toggleSelectionPane = vi.fn()
+    const e = plain('F10', { altKey: true })
+    handleGlobalKeydown(makeCtx({ toggleSelectionPane }), e)
+    expect(toggleSelectionPane).toHaveBeenCalledTimes(1)
+    expect(e.defaultPrevented).toBe(true)
+  })
+
+  it('Escape disarms the animation painter', () => {
+    ;(document.activeElement as HTMLElement | null)?.blur()
+    const setAnimPainter = vi.fn()
+    const ctx = makeCtx({
+      animPainter: { slideIndex: 0, sourceId: 'a', items: [], mode: 'continuous' },
+      setAnimPainter,
+      setStatus: vi.fn(),
+    })
+    handleGlobalKeydown(ctx, plain('Escape'))
+    expect(setAnimPainter).toHaveBeenCalledWith(null)
+  })
+})
+
+describe('Korean and non-Latin keyboard layout shortcuts', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    document.body.innerHTML = ''
+  })
+
+  it('runs undo, redo, find, and duplicate on Korean IME layouts', () => {
+    const undo = vi.fn(async () => {})
+    const redo = vi.fn(async () => {})
+    const setFindOpen = vi.fn()
+    const ctx = makeCtx({ undo, redo, setFindOpen, selectedIds: ['shape-1'] })
+
+    const eUndo = keydown('ㅋ', { code: 'KeyZ', metaKey: false, ctrlKey: true })
+    handleGlobalKeydown(ctx, eUndo, 'Win32')
+    expect(eUndo.defaultPrevented).toBe(true)
+    expect(undo).toHaveBeenCalledOnce()
+
+    const eRedo = keydown('Process', { code: 'KeyY', metaKey: false, ctrlKey: true })
+    handleGlobalKeydown(ctx, eRedo, 'Win32')
+    expect(eRedo.defaultPrevented).toBe(true)
+    expect(redo).toHaveBeenCalledOnce()
+
+    const eFind = keydown('ㄹ', { code: 'KeyF', metaKey: false, ctrlKey: true })
+    handleGlobalKeydown(ctx, eFind, 'Win32')
+    expect(eFind.defaultPrevented).toBe(true)
+    expect(setFindOpen).toHaveBeenCalledWith(true)
+
+    const eDup = keydown('ㅇ', { code: 'KeyD', metaKey: false, ctrlKey: true })
+    handleGlobalKeydown(ctx, eDup, 'Win32')
+    expect(eDup.defaultPrevented).toBe(true)
+    expect(clipboardActions.duplicateSelected).toHaveBeenCalledWith(ctx, ['shape-1'])
   })
 })

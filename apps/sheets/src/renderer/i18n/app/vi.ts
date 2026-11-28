@@ -102,8 +102,10 @@ export const vi = {
   appChartNoRepoint: 'Biểu đồ này không hỗ trợ chỉ định lại vùng dữ liệu.',
   appKeepOneSeries: 'Giữ lại ít nhất một chuỗi.',
   appNoCategoriesToSwitch: 'Không có danh mục nào để chuyển đổi.',
-  appComboNoSelectData: 'Chưa hỗ trợ thay đổi nguồn dữ liệu của biểu đồ kết hợp.',
+  appSelectDataUnsupported: 'Chưa hỗ trợ thay đổi nguồn dữ liệu của loại biểu đồ này.',
   appSeriesName: 'Tên chuỗi',
+  appSeriesType: 'Loại chuỗi',
+  appSecondaryAxis: 'Trục phụ',
   appValuesRange: 'Vùng giá trị',
   appCategoriesRange: 'Vùng danh mục',
   appKeepUnchanged: 'Giữ nguyên',
@@ -183,6 +185,12 @@ export const vi = {
   appInvalidGroupField: 'Trường nhóm không hợp lệ.',
   appInvalidPageField: 'Trường bộ lọc báo cáo không hợp lệ.',
   appPivotPageItemMissing: 'Mục bộ lọc "{item}" không thuộc trường "{label}".',
+  appInvalidPivotBaseField:
+    'Trường cơ sở của "Hiển thị giá trị dưới dạng" phải nằm trong hàng hoặc cột.',
+  appPivotBaseFieldMissing:
+    'Chế độ "Hiển thị giá trị dưới dạng" của trường giá trị cần một trường cơ sở.',
+  appPivotBaseFieldNotAxis: 'Trường cơ sở "{label}" phải nằm trong hàng hoặc cột của bảng trục.',
+  appPivotBaseItemMissing: 'Mục cơ sở "{item}" không thuộc trường "{label}".',
   appInvalidLabelFilterField: 'Trường lọc nhãn không hợp lệ.',
   appInvalidValueFieldIndex: 'Chỉ mục trường giá trị {index} không hợp lệ.',
   appInvalidValueField: 'Trường giá trị không hợp lệ.',
@@ -316,8 +324,7 @@ export const vi = {
   appPivotSheetNoMove: 'Trang tính này chứa PivotTable — chưa hỗ trợ di chuyển vùng.',
   appMergeOverTable:
     'Vùng chọn chồng chéo với một bảng Excel — chưa hỗ trợ hợp nhất các ô bên trong bảng.',
-  appTableFilterNoEdit:
-    'Bộ lọc của trang tính này thuộc về một bảng Excel — việc chỉnh sửa nó hiện chưa thể lưu.',
+  appFilterToggleFailed: 'Bộ lọc chưa được áp dụng — hãy chọn phạm vi chứa dữ liệu trước.',
   appAutofillStreaming: 'Chưa cho phép tự động điền vào khu vực vẫn đang tải theo luồng.',
   appDvNeedsIndexed:
     'Chỉnh sửa xác thực dữ liệu yêu cầu trang tính này phải được lập chỉ mục đầy đủ trước — vui lòng thử lại sau giây lát.',
@@ -365,6 +372,9 @@ export const vi = {
   appTableNameUsed: 'Tên bảng "{name}" đã được sử dụng trong phiên này.',
   appTableNameInFile: 'Tên bảng "{name}" đã được một bảng trong tệp sử dụng.',
   appTableOverlapsSession: 'Vùng chọn chồng chéo với bảng "{name}" được tạo trong phiên này.',
+  appTableOverlapsFile: 'Vùng chọn chồng chéo với bảng "{name}" trong tệp.',
+  appTableAlreadyInTable:
+    'Vùng chọn đã nằm trong bảng "{name}" — hãy đổi kiểu trong Thiết kế bảng.',
   appTablesNeedFile: 'Trước tiên hãy mở tệp XLSX — các bảng sẽ được ghi vào tệp.',
   appTableSelectRange: 'Trước tiên hãy chọn vùng dữ liệu — hàng đầu tiên là tiêu đề.',
   appTableCreated: 'Đã tạo bảng — lưu bằng ⌘S.',
@@ -446,6 +456,7 @@ export const vi = {
   appGridlinesHidden: 'Đã ẩn đường lưới.',
   appGridlinesShown: 'Đã hiển thị đường lưới.',
   appShowingFormulas: 'Đang hiển thị công thức — chuyển đổi lại để hiển thị giá trị.',
+  appShowingFormulasActive: 'Đang hiển thị công thức',
   appShowingValues: 'Đang hiển thị giá trị đã tính toán.',
   appTraceNoFormula: 'Dò ô tiền nhiệm: ô hiện hoạt không có công thức.',
   appTraceNoRefs: 'Dò ô tiền nhiệm: công thức này không có tham chiếu ô nào.',
@@ -537,6 +548,9 @@ export const vi = {
   appCsvExportNeedsFullLoad: 'Xuất CSV cần sổ làm việc được tải đầy đủ — vui lòng đợi tải xong.',
   appCsvExportTooLarge: 'Trang tính quá lớn để xuất dưới dạng CSV.',
   appCsvExportCanceled: 'Đã hủy xuất CSV.',
+  appOdsExported: 'Đã xuất {path}.',
+  appOdsExportCanceled: 'Đã hủy xuất ODS.',
+  appOdsExportFailed: 'Xuất ODS thất bại.',
   appCsvExported: 'Đã xuất {path}.',
   appCsvExportedActiveOnly:
     'CSV chỉ chứa một trang tính đơn — đã xuất trang tính hiện hoạt "{name}" ra {path}.',
@@ -553,8 +567,6 @@ export const vi = {
   appSaveFailed: 'Không thể lưu sổ làm việc.',
   appCfRuleUnsaveable:
     'Quy tắc định dạng có điều kiện này không thể lưu vào xlsx — hãy chuyển sang loại quy tắc khác.',
-  appSaveErrX14Dv:
-    'Trang tính này có xác thực dữ liệu mở rộng (x14); chưa hỗ trợ chỉnh sửa quy tắc xác thực của nó.',
   appSaveErrMultiSelectList:
     'Xác thực danh sách đa lựa chọn không thể lưu vào xlsx — hãy xóa quy tắc trước khi lưu.',
   appSaveErrX14Cf: 'Vùng này có định dạng có điều kiện mở rộng (x14) và chưa thể sửa đổi.',
@@ -574,6 +586,10 @@ export const vi = {
     'Bảng kiểu (stylesheet) của sổ làm việc này thiếu cấu trúc cơ bản, nên các thay đổi kiểu dáng không thể lưu được.',
   appSaveErrPackageGuard:
     'Việc lưu sẽ làm thay đổi cấu trúc gói của sổ làm việc — đã hủy để bảo vệ tệp.',
+  appSaveErrSheetNotFound:
+    'Không tìm thấy trang tính mà lần lưu này tham chiếu trong sổ làm việc — đã dừng lưu và tệp vẫn giữ nguyên.',
+  appSaveErrSheetNameReused:
+    'Một trang tính mới đang dùng tên cũ của trang tính đã đổi tên, nên không thể lưu. Hãy tạm đặt tên khác cho trang tính mới, lưu, rồi đổi tên lại. Tệp vẫn giữ nguyên.',
   appSaveErrChartUnsupported:
     'Loại biểu đồ này không hỗ trợ chỉnh sửa đó; đã hủy lưu — hãy hoàn tác thay đổi biểu đồ.',
   appSaveErrMoveOverlap:
@@ -683,6 +699,12 @@ export const vi = {
   appSaveAs: 'Lưu dưới dạng',
   appUndo: 'Hoàn tác',
   appRedo: 'Làm lại',
+  appQuickAccessCustomize: 'Tùy chỉnh Thanh công cụ Truy nhập Nhanh',
+  appQuickAccessHint: 'Nhấn Alt và một phím số để chạy nút ở vị trí đó, tính từ bên trái.',
+  appQuickAccessMoveEarlier: 'Chuyển lên trước',
+  appQuickAccessMoveLater: 'Chuyển ra sau',
+  appQuickAccessReset: 'Đặt lại về mặc định',
+  appQuickAccessFull: 'Thanh công cụ chứa tối đa 10 nút.',
   appUnsavedEditOne: '● {count} chỉnh sửa chưa lưu',
   appUnsavedEditMany: '● {count} chỉnh sửa chưa lưu',
   appSavedState: 'Đã lưu',
@@ -712,7 +734,6 @@ export const vi = {
   appLinkPlaceholder: 'https://example.com hoặc Sheet1!A1',
   appRemoveLink: 'Xóa liên kết',
   appNotAvailableYet: 'Chưa khả dụng',
-  appComingSoon: 'Sắp ra mắt',
   appGroupChartLayouts: 'Bố cục biểu đồ',
   appAddChartElement: 'Thêm thành phần biểu đồ',
   appAddChartElementTitle: 'Tiêu đề, nhãn dữ liệu, chú giải',
@@ -1145,6 +1166,8 @@ export const vi = {
   appRefreshAll: 'Làm mới tất cả',
   appWorkbookNoPivot: 'Không có bảng PivotTable nào trong sổ làm việc này.',
   appRefreshAllTitle: 'Làm mới mọi bảng PivotTable',
+  appQueriesConnections: 'Truy vấn & Kết nối',
+  appQueriesConnectionsTitle: 'Liệt kê các truy vấn và kết nối dữ liệu của sổ làm việc',
   appErrorCheckingDetail: 'Quét trang tính để tìm các giá trị lỗi',
   appErrorsFound: '{count} lỗi — tại {cell}: {value}',
   appCheckingErrors: 'Đang quét toàn bộ trang tính để tìm lỗi…',
@@ -1179,6 +1202,7 @@ export const vi = {
   appGroupForecast: 'Dự báo',
   appWhatIfAnalysis: 'Phân tích What-If',
   appGoalSeek: 'Tìm kiếm mục tiêu (Goal Seek)',
+  appDataTable: 'Bảng dữ liệu',
   appWhatIfTitle: 'Giải tìm đầu vào cho một giá trị mục tiêu',
   appGoalSeekNeedsFormula: 'Ô đặt phải chứa một công thức.',
   appGoalSeekByCellNotNumber: 'Ô thay đổi phải chứa một số thuần túy hoặc để trống.',
@@ -1438,6 +1462,15 @@ export const vi = {
   appTableFileUnnamed: 'Bảng này không có tên trong tệp và không thể thay đổi ở đây.',
   appTableRowsNotLoaded: 'Các hàng của bảng vẫn đang tải — hãy thử lại sau giây lát.',
   appTableTotalLabel: 'Tổng',
+  appNotePicturesPaneTitle: 'Ảnh trong ghi chú',
+  appNotePicturesClose: 'Đóng',
+  appNotePicturesNone: 'Không có ghi chú nào trong sổ làm việc này hiển thị hình ảnh.',
+  appNotePictureUnavailable: 'Không thể hiển thị hình ảnh này.',
+  appNotePicturesToggle: 'Ảnh trong ghi chú',
+  appNoteInsertPicture: 'Chèn hình ảnh',
+  appNotePictureInserted: 'Đã thêm ảnh vào ghi chú tại {cell}. Hãy lưu để ghi vào tệp.',
+  appNotePictureRemoved: 'Đã xóa ảnh khỏi ghi chú tại {cell}.',
+  appNotePictureRemove: 'Xóa hình ảnh',
   appCommentsPaneTitle: 'Chú thích',
   appThreadReply: 'Trả lời',
   appThreadReplyPlaceholder: 'Trả lời…',
@@ -1504,4 +1537,33 @@ export const vi = {
   appVisualFlipV: 'Lật dọc',
   appVisualFlipH: 'Lật ngang',
   appCtxPasteVisual: 'Dán ảnh hoặc hình',
+
+  // ── Spelling check (F7 / Review ▸ Proofing) ──
+  appSpellTitle: 'Chính tả',
+  appSpellBtnDetail: 'Kiểm tra văn bản trang tính (F7)',
+  appSpellToggle: 'Kiểm tra chính tả',
+  appSpellToggleTip:
+    'Bật kiểm tra chính tả (F7 và nút Review); khi tắt, hộp nhận xét không còn hiện gạch chân sóng',
+  appSpellOn: 'Đã bật kiểm tra chính tả.',
+  appSpellOff: 'Kiểm tra chính tả đang tắt. Bật trong Review ▸ Kiểm tra.',
+  appSpellRecheck: 'Kiểm tra lại',
+  appSpellNone: 'Không tìm thấy lỗi chính tả đáng ngờ.',
+  appSpellFindings: '{count} lỗi đáng ngờ. Bấm một hàng để đi tới.',
+  appSpellTruncated: 'Quá nhiều ô văn bản; chỉ kiểm tra các ô đầu tiên.',
+  appSpellColWord: 'Đáng ngờ',
+  appSpellIgnore: 'Bỏ qua',
+  appSpellIgnoreAll: 'Bỏ qua tất cả',
+  appSpellLearn: 'Thêm vào từ điển',
+  appSpellNoSuggestions: 'Không có gợi ý',
+  appSpellIgnoredAll: '"{word}" sẽ không bị đánh dấu nữa trong phiên này.',
+  appSpellLearned: 'Đã thêm "{word}" vào từ điển.',
+  appSpellChanged: 'Đã sửa {address}.',
+  appSpellChangeFailed: 'Không thể sửa {address}.',
+  appSpellUnavailable: 'Kiểm tra chính tả không khả dụng trong cửa sổ này.',
+  appSpellReplaceAll: 'Thay tất cả bằng "{suggestion}"',
+  appSpellChangedAll: 'Đã sửa {count} ô chứa "{word}".',
+
+  // ── ODS import ──
+  appOdsImportNotice: 'Đã mở ODS dưới dạng bản sao xlsx. Khi lưu sẽ ghi tệp xlsx.',
+  appOdsFormulasDropped: 'Chỉ giữ lại giá trị của {count} công thức.',
 } satisfies Record<keyof typeof zh, string>

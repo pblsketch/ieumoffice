@@ -66,7 +66,7 @@ export function contactSheet(
     const col = i % cols
     const row = Math.floor(i / cols)
     const w = tileWidth
-    const h = Math.round((d.img.height * tileWidth) / d.img.width)
+    const h = Math.max(1, Math.round((d.img.height * tileWidth) / d.img.width))
     const x = GUTTER + col * (tileWidth + GUTTER)
     const y = GUTTER + row * (tileHeight + GUTTER)
     downscaleInto(d.img, sheet, x, y, w, h)

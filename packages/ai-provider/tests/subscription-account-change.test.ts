@@ -162,7 +162,11 @@ describe('an account change the app itself ran', () => {
       })) as SubscriptionMeteredResult
       expect(result.ok).toBe(true)
     }
-    expect(running.settings.meteredAccepted).toEqual({ 'claude-code': true, codex: true })
+    expect(running.settings.meteredAccepted).toEqual({
+      'claude-code': true,
+      codex: true,
+      antigravity: false,
+    })
     expect(await running.record()).toEqual({
       'claude-code': 'metered:api_key/firstParty',
       codex: 'metered:api-key',

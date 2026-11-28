@@ -66,3 +66,9 @@ Flatpak route keeps the real sandbox via Zypak instead.
 
 `docker/` builds a headless image for batch PDF conversion; see
 `docker/README.md`.
+
+## Command-line archive
+
+`cli/` builds the desktop app's command line as a standalone Linux x64 archive
+(no Electron, no GTK) plus the `install.sh` one-line installer for sandboxes and
+servers; see `cli/README.md`.

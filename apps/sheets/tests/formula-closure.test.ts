@@ -7,10 +7,19 @@ import {
   containsUnresolvedNames,
   parseFormulaReferences,
   recalcReadRanges,
+  recalculableDefinedNames,
   shiftPinnedCells,
+  usedDefinedNames,
   type ClosureSheetInput,
 } from '../src/renderer/formula-closure'
-import { formulaKeepsCache, usesLocaleDependentFunction } from '../src/renderer/univer-sync'
+import {
+  formulaKeepsCache,
+  setRecalculableNames,
+  setRecalculableTables,
+  setSupportedFunctionProbe,
+  usesLocaleDependentFunction,
+} from '../src/renderer/univer-sync'
+import { GOOGLE_ONLY_COMPAT_FUNCTIONS } from '../src/renderer/compat-functions'
 
 const sheet = (
   id: string,
@@ -86,6 +95,132 @@ describe('containsUnresolvedNames', () => {
     expect(containsUnresolvedNames("SUM('[Budget 2024.xlsx]Q1'!A1:A9)")).toBe(true)
     expect(containsUnresolvedNames('INDEX(A1:A9,MATCH("[x.xlsx]",B1:B9,0))')).toBe(false)
   })
+
+  it('treats names in the resolved set as resolved, case-insensitively', () => {
+    const resolved = new Set(['vat_rate', '세율'])
+    expect(containsUnresolvedNames('B2*VAT_RATE', resolved)).toBe(false)
+    expect(containsUnresolvedNames('B2*vat_rate+세율', resolved)).toBe(false)
+    expect(containsUnresolvedNames('B2*VAT_RATE*OTHER', resolved)).toBe(true)
+    expect(containsUnresolvedNames('[1]Data!A1*VAT_RATE', resolved)).toBe(true)
+  })
+
+  it('recognizes scoped LET and LAMBDA parameter names and _xlpm. markers', () => {
+    expect(containsUnresolvedNames('=LET(x,A1*2,y,x+B1,y*3)')).toBe(false)
+    expect(containsUnresolvedNames('=MAP(A1:A5,LAMBDA(v,v*2))')).toBe(false)
+    expect(containsUnresolvedNames('=_xlfn.LET(_xlpm.x,A1,_xlpm.x+1)')).toBe(false)
+    // Parameter used outside its LET scope is still unresolved.
+    expect(containsUnresolvedNames('=LET(x,A1,x+1)+x')).toBe(true)
+    // Unbound identifier inside LET is still unresolved.
+    expect(containsUnresolvedNames('=LET(x,UnknownName,x+1)')).toBe(true)
+  })
+
+  it('does not treat Excel error literals in cell formulas as unresolved names', () => {
+    expect(containsUnresolvedNames('=IF(A1=0,#N/A,1/A1)')).toBe(false)
+    expect(containsUnresolvedNames('=IFERROR(A1,#VALUE!)')).toBe(false)
+    expect(containsUnresolvedNames('=IF(A1>0,A1,#DIV/0!)')).toBe(false)
+  })
+
+  it('recognizes structured references for registered workbook tables only', () => {
+    const tables = new Set(['sales', '표1'])
+    expect(containsUnresolvedNames('=SUM(Sales[Amount])', undefined, tables)).toBe(false)
+    expect(containsUnresolvedNames('=SUM(표1[금액])', undefined, tables)).toBe(false)
+    expect(containsUnresolvedNames('=Sales[[#This Row],[Amount]]*2', undefined, tables)).toBe(false)
+    // Bare `[@Col]` and `@` shorthand are not evaluated by Univer's TableReferenceObject
+    // and must keep their cached values.
+    expect(containsUnresolvedNames('=[@Amount]*2', undefined, tables)).toBe(true)
+    expect(containsUnresolvedNames('=Sales[@Amount]*2', undefined, tables)).toBe(true)
+    // Stripping a structured ref preserves character offsets for LET scope checks.
+    expect(containsUnresolvedNames('=LET(x,1,x)+Sales[Amount]+x', undefined, tables)).toBe(true)
+    // Unregistered table stays unresolved.
+    expect(containsUnresolvedNames('=SUM(Nope[Amount])', undefined, tables)).toBe(true)
+    expect(containsUnresolvedNames('=SUM(Sales[Amount])')).toBe(true)
+  })
+})
+
+describe('usedDefinedNames', () => {
+  it('lists the names a formula uses, lowercased, skipping calls, references and strings', () => {
+    expect(usedDefinedNames('IFERROR(계산,0)+SUM(Data!$A$1:$A$3)*VAT_Rate')).toEqual([
+      '계산',
+      'vat_rate',
+    ])
+    expect(usedDefinedNames('CONCAT("Rate",A1)+TRUE')).toEqual([])
+  })
+})
+
+describe('recalculableDefinedNames', () => {
+  const names = (
+    list: { name: string; formula: string; sheetIndex?: number }[],
+    rejected: string[] = [],
+  ): string[] => [...recalculableDefinedNames(list, new Set(rejected)).keys()].sort()
+
+  it('maps each accepted name to its body', () => {
+    const accepted = recalculableDefinedNames(
+      [{ name: 'VAT_RATE', formula: 'Data!$B$1' }],
+      new Set(),
+    )
+    expect([...accepted]).toEqual([['vat_rate', 'Data!$B$1']])
+  })
+
+  it('accepts workbook names over absolute references, constants and formulas', () => {
+    expect(
+      names([
+        { name: 'VAT_RATE', formula: 'Data!$B$1' },
+        { name: '세율', formula: '기준정보!$G$4' },
+        { name: 'Amounts', formula: "'My Data'!$B$3:$B$5" },
+        { name: 'WholeColumn', formula: 'Data!$C:$C' },
+        { name: 'Factor', formula: '0.25' },
+        { name: 'Doubled', formula: 'Data!$B$2*2' },
+        { name: 'Dynamic', formula: 'OFFSET(Data!$B$3,0,0,COUNT(Data!$B$3:$B$5),1)' },
+      ]),
+    ).toEqual(['amounts', 'doubled', 'dynamic', 'factor', 'vat_rate', 'wholecolumn', '세율'])
+  })
+
+  it('accepts names built on other accepted names, not cycles or unknown names', () => {
+    expect(
+      names([
+        { name: 'Base', formula: 'Data!$B$1' },
+        { name: 'Tenfold', formula: 'Base*10' },
+        { name: 'Hundredfold', formula: 'Tenfold*10' },
+        { name: 'Ping', formula: 'Pong+1' },
+        { name: 'Pong', formula: 'Ping+1' },
+        { name: 'Orphan', formula: 'Missing*2' },
+      ]),
+    ).toEqual(['base', 'hundredfold', 'tenfold'])
+  })
+
+  it('leaves out relative references, scoped or duplicated names, and broken bodies', () => {
+    expect(
+      names(
+        [
+          { name: 'Right', formula: 'Data!B1' },
+          { name: 'MixedRow', formula: 'Data!$B1' },
+          { name: 'MixedColumn', formula: 'Data!C:$C' },
+          { name: 'Local', formula: 'Other!$A$1', sheetIndex: 1 },
+          { name: 'Dup', formula: 'Data!$B$3' },
+          { name: 'DUP', formula: 'Data!$B$4', sheetIndex: 0 },
+          { name: 'Broken', formula: '#REF!' },
+          { name: 'External', formula: '[1]Rates!$A$1' },
+          { name: 'Column', formula: 'Table1[Amount]' },
+          { name: 'Rejected', formula: 'Data!$A$1' },
+        ],
+        ['Rejected'],
+      ),
+    ).toEqual([])
+  })
+
+  it('leaves out INDIRECT, whose text may be relative to the using cell', () => {
+    expect(
+      names([
+        { name: 'HereRow', formula: 'ROW()-1' },
+        { name: 'HereColumn', formula: 'COLUMN( )' },
+        { name: 'HereSheet', formula: 'SHEET()' },
+        { name: '계산', formula: 'EVALUATE(INDIRECT("rc[-1]",FALSE))' },
+        { name: 'Left', formula: 'indirect("rc[-1]",FALSE)' },
+        { name: 'ByText', formula: 'INDIRECT("Data!B1")' },
+        { name: 'Label', formula: '"INDIRECT(B1)"' },
+      ]),
+    ).toEqual(['herecolumn', 'hererow', 'heresheet', 'label'])
+  })
 })
 
 describe('formulaKeepsCache', () => {
@@ -100,6 +235,53 @@ describe('formulaKeepsCache', () => {
 
   it('recalculates ordinary formulas', () => {
     expect(formulaKeepsCache('SUM(A1:A5)')).toBe(false)
+  })
+
+  it('recalculates formulas over the open workbook names the engine resolves', () => {
+    expect(formulaKeepsCache('B2*VAT_RATE')).toBe(true)
+    setRecalculableNames(new Map([['vat_rate', 'Data!$B$1']]))
+    try {
+      expect(formulaKeepsCache('B2*VAT_RATE')).toBe(false)
+      expect(formulaKeepsCache('B2*OTHER_NAME')).toBe(true)
+    } finally {
+      setRecalculableNames(new Map())
+    }
+    // The memo must not carry the previous workbook's verdict.
+    expect(formulaKeepsCache('B2*VAT_RATE')).toBe(true)
+  })
+
+  it('recalculates structured references for registered tables and LET/LAMBDA formulas', () => {
+    expect(formulaKeepsCache('=LET(x,A1*2,x+1)')).toBe(false)
+    expect(formulaKeepsCache('=IF(A1=0,#N/A,1/A1)')).toBe(false)
+    expect(formulaKeepsCache('=SUM(Sales[Amount])')).toBe(true)
+    setRecalculableTables(new Set(['sales']))
+    try {
+      expect(formulaKeepsCache('=SUM(Sales[Amount])')).toBe(false)
+      expect(formulaKeepsCache('=SUM(Other[Amount])')).toBe(true)
+    } finally {
+      setRecalculableTables(new Set())
+    }
+    expect(formulaKeepsCache('=SUM(Sales[Amount])')).toBe(true)
+  })
+
+  it('keeps cached values for Google-only compat names (VBA UDF safety) while recalculating Excel 365 ones', () => {
+    const installed = new Set(['SUM', 'JOIN', 'SPLIT', 'REGEXTEST', 'ISO.CEILING'])
+    setSupportedFunctionProbe({
+      ready: () => true,
+      supports: (name) => !GOOGLE_ONLY_COMPAT_FUNCTIONS.has(name) && installed.has(name),
+    })
+    try {
+      // Cached .xlsm VBA UDF named JOIN/SPLIT preserves its cached value on open.
+      expect(formulaKeepsCache('=JOIN("-",A1:A3)', true)).toBe(true)
+      expect(formulaKeepsCache('=SPLIT(A1,",")', true)).toBe(true)
+      // Without a cached value, the live Google compat executor still runs.
+      expect(formulaKeepsCache('=JOIN("-",A1:A3)', false)).toBe(false)
+      // Official Excel 365 functions recalculate even when cached.
+      expect(formulaKeepsCache('=REGEXTEST(A1,"\\d+")', true)).toBe(false)
+      expect(formulaKeepsCache('=ISO.CEILING(A1,2)', true)).toBe(false)
+    } finally {
+      setSupportedFunctionProbe(null)
+    }
   })
 
   it('keeps the cached value for locale-dependent functions (prod_039)', () => {

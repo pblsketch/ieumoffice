@@ -14,6 +14,7 @@
  * a batch of plain values triggers no recalculation at all, and must not hold
  * the response for a timeout that will never be met.
  */
+import type { ICellData, Nullable } from '@univerjs/core'
 import type { CellState } from '@genoffice/xlsx-gateway/domain/workbook.types'
 import { EXCEL_ERROR_LITERALS, modelCellValue } from './univer-sync'
 
@@ -112,6 +113,26 @@ export async function awaitFormulaValues(
     await new Promise((resolve) => setTimeout(resolve, VALUE_POLL_MS))
   }
   return [...resolved.values()]
+}
+
+/**
+ * Whether a sheet still holds a formula cell the engine has not given a value.
+ *
+ * Plain-arithmetic formulas install without the file's cached value so the
+ * engine recomputes them on open (univer-sync), and the engine's first cycle
+ * only lands after its debounce and the stream hold. Until then those cells
+ * have no `v` and lay out blank, so a headless PDF export waits for this to
+ * clear. A missing `v` is the only signal: '' or an error string are results.
+ */
+export function hasUncomputedFormulaCells(cells: {
+  forValue(callback: (row: number, column: number, cell: Nullable<ICellData>) => boolean): unknown
+}): boolean {
+  let pending = false
+  cells.forValue((_row, _column, cell) => {
+    if ((cell?.f || cell?.si) && (cell.v === undefined || cell.v === null)) pending = true
+    return !pending
+  })
+  return pending
 }
 
 /**

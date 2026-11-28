@@ -6,7 +6,7 @@ GenOffice nói chuyện theo Model Context Protocol, nên một tác nhân lập
 
 Việc này làm ở **Cài đặt ▸ Tích hợp**. Bảng đó có hai nửa, và bạn có thể dùng một nửa hoặc cả hai.
 
-**Kỹ năng.** Mỗi tác nhân lập trình tìm thấy trên máy này một dòng — Claude Code, Codex, Cursor, Gemini CLI, Copilot CLI, OpenCode, Windsurf —, mỗi dòng có **Cài đặt**, **Cập nhật** và **Gỡ cài đặt**, cộng thêm **Cài đặt vào một thư mục khác…**, **Tải xuống kỹ năng (zip)** và **Sao chép đường dẫn**. Nếu trợ lý của bạn không có trong danh sách, hãy chỉ cho GenOffice thư mục mà nó đọc `SKILL.md`, hoặc lưu tệp zip lại rồi bảo trợ lý tự cài đặt. Kỹ năng và MCP có thể nằm cạnh nhau: trợ lý chọn một trong hai, và chúng làm đúng những việc giống nhau.
+**Kỹ năng.** Mỗi tác nhân lập trình tìm thấy trên máy này một dòng — Claude Code, thư mục dùng chung `~/.agents` (Codex, Cursor, Gemini CLI, Copilot CLI và OpenCode đều đọc), Windsurf —, mỗi dòng có **Cài đặt**, **Cập nhật** và **Gỡ cài đặt**, cộng thêm **Cài đặt vào một thư mục khác…**, **Tải xuống kỹ năng (zip)** và **Sao chép đường dẫn**. Nếu trợ lý của bạn không có trong danh sách, hãy chỉ cho GenOffice thư mục mà nó đọc `SKILL.md`, hoặc lưu tệp zip lại rồi bảo trợ lý tự cài đặt. Kỹ năng và MCP có thể nằm cạnh nhau: trợ lý chọn một trong hai, và chúng làm đúng những việc giống nhau. Bản sao đã cài trước đây vào thư mục riêng của một trong năm công cụ đó vẫn được liệt kê dưới hàng thư mục dùng chung và vẫn được cập nhật; khi thư mục dùng chung đã có kỹ năng, bạn có thể gỡ bản sao đó.
 
 **MCP.** Có hai đường: **Được khởi động bởi trợ lý (khuyến nghị)**, ở đó bạn thêm cấu hình được hiển thị vào phía khách của mình và trợ lý tự khởi chạy máy chủ, và **Máy chủ HTTP cục bộ**, do ứng dụng chạy thay bạn. Dù chọn đường nào, trợ lý vẫn kết nối với GenOffice và bạn không phải gõ lệnh nào.
 
@@ -58,7 +58,7 @@ Mỗi lệnh là một công cụ. Những cái đáng chú ý:
 Một yêu cầu đến từ lệnh `ieumoffice` hoặc từ một ứng dụng khách MCP không phải do bạn gõ trong ứng dụng, nên GenOffice thận trọng với nó.
 
 - **Tìm kiếm** lúc nào cũng dùng được và mặc định miễn phí. Khóa của nhà cung cấp tìm kiếm chỉ được dùng nếu bạn đã chọn.
-- **Tạo một hình ảnh** cần khóa của nhà cung cấp hình ảnh. Trong phiên bản này, gói đăng ký không tạo được hình ảnh.
+- **Tạo một hình ảnh** làm theo lựa chọn tạo hình ảnh trong Cài đặt. Lựa chọn mặc định Gói ChatGPT (chương trình Codex) dùng gói ChatGPT của bạn qua chương trình Codex và **không được dùng trừ khi bạn cho phép** (xem bên dưới). Nếu không, khóa của nhà cung cấp hình ảnh đã thiết lập sẽ được dùng. Mô hình mà tác nhân nêu tên được dùng khi con đường đó cung cấp nó.
 - **Mô tả một hình ảnh** sẽ dùng nhà cung cấp dùng khóa khi có một nhà cung cấp như vậy được thiết lập. Gói đăng ký Claude hoặc Codex của bạn **không được dùng trừ khi bạn cho phép**.
 - **Video và âm thanh** cần một nhà cung cấp dùng khóa có hỗ trợ video.
 

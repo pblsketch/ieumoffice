@@ -83,6 +83,19 @@ export interface OpenDocumentsBridgeDeps {
     read: (contents: WebContents) => Promise<string>
     save: (contents: WebContents, filePath: string) => Promise<void>
   }
+  /**
+   * diagram: the read table of every page with the unsaved edits, and the
+   * editor's own save to a given path (which writes nothing for an unchanged
+   * diagram already at that path, and refuses one whose file did not open).
+   */
+  diagram?: {
+    read: (contents: WebContents) => Promise<string>
+    save: (contents: WebContents, filePath: string) => Promise<void>
+  }
+  whiteboard?: {
+    read: (contents: WebContents) => Promise<string>
+    save: (contents: WebContents, filePath: string) => Promise<void>
+  }
 }
 
 type MaybePromise<T> = T | Promise<T>
@@ -193,6 +206,16 @@ export function createOpenDocumentsControl(deps: OpenDocumentsBridgeDeps): OpenD
         await deps.epub.save(await requireContents(tab, deps), filePath)
         return
       }
+      case 'diagram': {
+        if (!deps.diagram) throw new Error('the diagram editor is unavailable in this build')
+        await deps.diagram.save(await requireContents(tab, deps), filePath)
+        return
+      }
+      case 'whiteboard': {
+        if (!deps.whiteboard) throw new Error('the whiteboard editor is unavailable in this build')
+        await deps.whiteboard.save(await requireContents(tab, deps), filePath)
+        return
+      }
       case 'pdf':
         throw new Error('a PDF cannot be saved through this tool: the pdf app is a viewer')
       case 'hwp':
@@ -234,6 +257,12 @@ export function createOpenDocumentsControl(deps: OpenDocumentsBridgeDeps): OpenD
       case 'epub':
         if (!deps.epub) throw new Error('the e-book editor is unavailable in this build')
         return deps.epub.read(await requireContents(tab, deps))
+      case 'diagram':
+        if (!deps.diagram) throw new Error('the diagram editor is unavailable in this build')
+        return deps.diagram.read(await requireContents(tab, deps))
+      case 'whiteboard':
+        if (!deps.whiteboard) throw new Error('the whiteboard editor is unavailable in this build')
+        return deps.whiteboard.read(await requireContents(tab, deps))
       default:
         throw new Error(`cannot read a ${tab.kind} tab`)
     }
@@ -242,7 +271,7 @@ export function createOpenDocumentsControl(deps: OpenDocumentsBridgeDeps): OpenD
   /**
    * What a discard leaves behind: markdown and html release staged assets and
    * drop their recovery copy (an untitled document's too), slides drops its
-   * copies, and docs / sheets / mind map / hwp drop theirs through `recoveryDiscard`.
+   * copies, and docs / sheets / mind map / hwp / diagram drop theirs through `recoveryDiscard`.
    */
   const discardLeftovers = async (tab: OpenDocumentTab): Promise<void> => {
     if (tab.kind === 'markdown' && deps.markdown) {

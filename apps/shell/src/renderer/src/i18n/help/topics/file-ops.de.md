@@ -26,9 +26,11 @@ Regeln: Die Dateiendung bleibt automatisch erhalten; unzulässige Zeichen, Punkt
 ## Speichern und Speichern unter
 
 - **⌘S / ctrl+S** speichert die aktuelle Datei; bei einer Datei ohne Namen werden zuerst Ort und Name abgefragt.
+- In den meisten Editoren bietet die Dateitypliste im Dialog „Speichern unter“ auch die Exportformate an (PDF, Bilder, andere Dokumentformate). Wählt man eines davon, wird nur eine Kopie geschrieben; das geöffnete Dokument und sein Tab bleiben bei der ursprünglichen Datei. Bilder mehrerer Seiten werden auf `Name-01.png`, `Name-02.png` … aufgeteilt.
+- **Docs**: Die Liste „Speichern unter“ bietet auch .hwp und .hwpx an (Datei ▸ Als HWP-Dokument exportieren… tut dasselbe). Lässt sich etwas nicht übernehmen, etwa Kommentare, Formeln oder Textfelder, erfahren Sie es, bevor die Datei geschrieben wird.
 - **Speichern unter** schreibt eine neue Datei und lässt das Original unberührt; weitere Änderungen gelten dann der neuen Datei.
 - Jedes Speichern erfolgt atomar (temporäre Datei plus Umbenennung); ein Abbruch mitten im Schreiben kann die Datei nicht beschädigen.
-- AutoSpeichern greift erst nach dem ersten manuellen Speichern (siehe [Schnellstart](help://getting-started)).
+- AutoSpeichern folgt dem Schalter des jeweiligen Editors; ein neues Dokument ohne eigene Datei beginnt erst nach dem ersten Speichern (siehe [Schnellstart](help://getting-started)).
 
 ## Als PDF exportieren
 
@@ -44,7 +46,17 @@ Regeln: Die Dateiendung bleibt automatisch erhalten; unzulässige Zeichen, Punkt
 
 ## Drucken
 
-Datei ▸ Drucken in jedem Editor (⌘P/ctrl+P) öffnet den Systemdialog; PDFs werden mit der aktuellen Seitenreihenfolge und den aktuellen Drehungen gedruckt.
+Datei ▸ Drucken (⌘P/Strg+P) öffnet in jedem Editor — Docs, Sheets, Slides, PDF, Markdown, Hangul, HTML, Mind Map, Diagram und Whiteboard — ein Druckfenster mit Live-Vorschau. Wenn unter Seitenlayout nichts geändert wird und der Systemdruckdialog gewählt ist, bleibt der Druckweg unverändert.
+
+- **Ausgabeziel (Drucker, PDF, Bilder)**: Wählen Sie in einer Liste einen installierten Drucker, **Als PDF speichern**, **Als Bilder speichern** oder den **Systemdruckdialog**. Der Bildexport unterstützt PNG und JPG (Hoch 90 %, Mittel 80 %, Kleine Datei 65 %) als nummerierte Einzeldateien oder als ZIP-Archiv. Bei geschützten PDFs sind PDF- und Bildspeicherung deaktiviert, Drucken bleibt möglich.
+- **Live-Druckvorschau**: Alle zehn Editoren zeigen vor der Ausgabe eine Live-Vorschau. Ändern Seitenlayout, Graustufen, Wasserzeichen oder Kopf-/Fußzeilen die Ausgabeseiten, werden die tatsächlichen Seiten bei Bedarf mit Seitenwechsel, Zoom und Seitenplan-Umschalter gerendert.
+- **Layout**: Wählen Sie Eine Seite pro Blatt, Mehrere Seiten pro Blatt (2, 4, 6, 9 oder 16, optional mit Seitenrahmen), Broschüre (links oder rechts gebunden), Poster (Spalten × Zeilen, Überlappung, Schnittmarken und Kachelkoordinaten) oder Etiketten (eine Seite je Etikett oder Wiederholung, Startzelle, A4-Vorlagen oder eigene Maße).
+- **Skalierung, Ausrichtung, Seiten und Reihenfolge**: Wählen Sie Tatsächliche Größe (100 %), An Papier anpassen, Übergroße Seiten verkleinern oder Benutzerdefiniert (10 %–400 %) sowie Automatisch, Hochformat oder Querformat. Nur ungerade/gerade Seiten und Umgekehrte Reihenfolge zählen die fertigen Ausgabeseiten.
+- **Wasserzeichen, Kopf-/Fußzeilen, Graustufen und Auflösung**: Fügen Sie reine Druck-Wasserzeichen (Text oder Bild) und 6 Kopf-/Fußzeilenfelder (Titel, Datum, Seitenzahl oder eigener Text) hinzu, ohne das Dokument zu verändern. Graustufen und Auflösung (Automatisch, 150, 300 oder 600 dpi) steuern die Rasterqualität.
+- **Seitenbereiche und Auswahl**: Docs und Markdown paginieren markierten Text ab Seite 1 neu; Slides druckt gewählte Folien; PDF gewählte Seiten; Hangul unterstützt Alle, Aktuelle Seite oder Bereich; Sheets druckt aktive Blätter, Arbeitsmappe oder Auswahl.
+- **Systemdruckdialog**: Wählen Sie für Broschüren den Duplexdruck über die kurze Kante und lassen Sie Seitenbereich sowie Seiten pro Blatt im Systemdialog unverändert.
+
+PDFs werden in der aktuellen Seitenreihenfolge und Drehung gedruckt.
 
 ## Wo Dateien ohne Namen liegen
 

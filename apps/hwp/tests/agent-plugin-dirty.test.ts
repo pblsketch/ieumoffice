@@ -2,7 +2,7 @@
  * The unsaved state the plugin passes on to the app: the editor's change, as the editor makes
  * it. The app's close prompt reads its copy, so a key typed just before closing must be in it.
  */
-import { afterAll, afterEach, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, describe, expect, it, vi } from 'vitest'
 import { DIRTY_EVENT, agentPlugin, type AgentPluginHost } from '../studio-plugin/agent-plugin.mjs'
 
 function editor() {
@@ -58,6 +58,19 @@ describe('the unsaved state the plugin passes on', () => {
     emit('document-changed')
     emit('command-state-changed')
     expect(fired).toEqual([])
+  })
+
+  it('ignores a memo probe when the host has no document yet', () => {
+    vi.useFakeTimers()
+    try {
+      const { emit } = editor()
+      emit('document-changed')
+      // the memo probe runs after typing stops; a host without a document has
+      // nothing to read, and that must stay quiet instead of failing a timer
+      expect(() => vi.advanceTimersByTime(1000)).not.toThrow()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
 

@@ -16,6 +16,7 @@ export const hi = {
   cvTargetNone: 'अभी नहीं चुना गया',
   cvTargetChoose: 'चुनें…',
   cvCover: 'पहले पृष्ठ को आवरण के रूप में उपयोग करें',
+  cvPageBreaks: 'हर मूल पृष्ठ को नई स्क्रीन पर शुरू करें',
   cvBookTitle: 'शीर्षक',
   cvBookAuthor: 'लेखक',
   cvBookLanguage: 'भाषा',
@@ -63,6 +64,9 @@ export const hi = {
   cvErrFailed: 'रूपांतरण नहीं हो सका।',
   cvPageImageAlt: 'पृष्ठ {page}',
   imgExportWholePages: 'पूरे पृष्ठ',
+  imgExportCurrentPage: 'केवल वर्तमान पृष्ठ',
+  imgExportCurrentPageTip: 'देखे जा रहे पृष्ठ को एक PNG फ़ाइल के रूप में निर्यात करें',
+  imgExportCurrentPageJpgTip: 'देखे जा रहे पृष्ठ को एक JPG फ़ाइल के रूप में निर्यात करें',
   imgExportEmbedded: 'केवल पृष्ठों के अंदर के चित्र',
   imgExportEmbeddedTip:
     'पृष्ठों में रखे चित्रों को उनके मूल रिज़ॉल्यूशन में PNG फ़ाइलों के रूप में सहेजें',

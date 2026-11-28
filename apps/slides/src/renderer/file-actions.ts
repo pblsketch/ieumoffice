@@ -9,8 +9,9 @@ import { baseName } from '../shared/base-name'
 import type { ActionCtx } from './action-context'
 import { collectExportPdfLinks } from './export-links'
 import { renderSlidesToPdfPages } from './export-pages'
-import { renderSlidesToPngBase64 } from './export-render'
-import { t } from './i18n/locale'
+import { renderSlidesToImageBase64 } from './export-render'
+import { projectPanelText } from '@genoffice/ui'
+import { getLang, t } from './i18n/locale'
 import { showToast } from './components/toast-bus'
 
 /**
@@ -47,6 +48,10 @@ export function adoptSavedSlides(ctx: ActionCtx, next: RenderSlide[]): void {
   ctx.setEditingCell((c) => {
     const id = c && remap(c.sourceId)
     return id && c ? { ...c, sourceId: id } : null
+  })
+  ctx.setTableSelection?.((sel) => {
+    const id = sel && remap(sel.sourceId)
+    return id && sel ? { ...sel, sourceId: id } : null
   })
   ctx.setSlides(next)
 }
@@ -117,15 +122,47 @@ export async function save(getCtx: () => ActionCtx, auto = false): Promise<boole
   })
 }
 
+/**
+ * Project folders (spec 6): the run a create flow handed to this untitled deck
+ * ended well, so the deck is saved into its panel's project without a dialog.
+ * The main process picks the folder and a free name; with no project nothing
+ * happens. A refused write keeps the deck untitled and says why. Same queue as
+ * save(): it must not interleave with a save the person started.
+ */
+export async function saveIntoProject(getCtx: () => ActionCtx): Promise<boolean> {
+  return runSerialized(async () => {
+    const ctx = getCtx()
+    if (ctx.path || !window.slidesApi.saveIntoProject) return false
+    await flushActiveEdit(ctx)
+    await ctx.flushNotes()
+    const r = await window.slidesApi.saveIntoProject()
+    if (r.ok) {
+      if (r.slides) adoptSavedSlides(ctx, r.slides)
+      if (r.path) ctx.setPath(r.path)
+      ctx.setDirty(false)
+      ctx.setStatus(t('appStatusSaved'))
+      return true
+    }
+    if (r.error) {
+      const failed = projectPanelText(getLang(), 'newDocumentSaveFailed', { error: r.error })
+      ctx.setStatus(failed)
+      showToast(failed, 'error')
+    }
+    return false
+  })
+}
+
 export async function saveAs(getCtx: () => ActionCtx): Promise<void> {
   // Same queue as save(): Save + Save As (or double Save As) write through
   // the same main-process pipe and would interleave without it.
-  await runSerialized(async () => {
+  const copy = await runSerialized(async () => {
     const ctx = getCtx()
     await flushActiveEdit(ctx)
     await ctx.flushNotes()
     const name = baseName(ctx.path ?? '') || 'presentation.pptx'
     const r = await window.slidesApi.saveAs(name)
+    // a copy format was picked: no deck was written, the export runs below
+    if (r.exportAs && r.path) return { kind: r.exportAs, path: r.path }
     if (r.ok) {
       if (r.slides) adoptSavedSlides(ctx, r.slides)
       ctx.setPath(r.path ?? ctx.path)
@@ -140,7 +177,13 @@ export async function saveAs(getCtx: () => ActionCtx): Promise<void> {
       ctx.setStatus(failed)
       showToast(failed, 'error')
     }
+    return null
   })
+  // Save As › PDF / PNG: the Export command's own rendering and writer, to the
+  // path picked in the Save As dialog. The deck keeps its path and dirty state.
+  // Outside the save queue: an export writes no deck file.
+  if (copy?.kind === 'pdf') await exportPdf(getCtx(), copy.path)
+  else if (copy?.kind === 'png') await exportImages(getCtx(), 'png', copy.path)
 }
 
 /** Export base name: file name without the .pptx extension */
@@ -148,22 +191,36 @@ export function exportBaseName(ctx: ActionCtx): string {
   return (baseName(ctx.path ?? '') || t('appUntitledPresentation')).replace(/\.pptx$/i, '')
 }
 
-/** Export as images: each page (skipping hidden ones) rendered offscreen to 2x PNG, written to disk by the main process */
-export async function exportImages(ctx: ActionCtx): Promise<void> {
+/**
+ * Export as images: each page (skipping hidden ones) rendered offscreen to 2x
+ * PNG or JPG, written to disk by the main process. `saveAsTarget` (Save As ›
+ * PNG) is the name the Save As dialog returned: no folder picker, and the
+ * files are that name, numbered per page when there is more than one.
+ */
+export async function exportImages(
+  ctx: ActionCtx,
+  format: 'png' | 'jpg' = 'png',
+  saveAsTarget?: string,
+): Promise<void> {
   const visible = ctx.slides.filter((s) => !s.hidden)
   if (visible.length === 0) {
     ctx.setStatus(t('appExportNoSlides'))
     return
   }
-  const dir = await window.slidesApi.pickExportDir()
-  if (!dir) return
+  const dir =
+    saveAsTarget !== undefined
+      ? saveAsTarget.slice(0, saveAsTarget.length - baseName(saveAsTarget).length - 1)
+      : await window.slidesApi.pickExportDir()
+  if (dir === null) return
   ctx.setStatus(t('appExportImagesProgress', { count: visible.length }))
   try {
-    const pngs = await renderSlidesToPngBase64(visible, ctx.images)
+    const pages = await renderSlidesToImageBase64(visible, ctx.images, { format })
     const r = await window.slidesApi.exportImages({
       dir,
       baseName: exportBaseName(ctx),
-      pngsBase64: pngs,
+      format,
+      pngsBase64: pages,
+      ...(saveAsTarget !== undefined ? { saveAsTarget } : {}),
     })
     ctx.setStatus(
       r.ok
@@ -200,8 +257,9 @@ async function collectPdfLinks(ctx: ActionCtx): Promise<ExportPdfLink[][]> {
  * stays text; a page the SVG backend cannot build falls back to its 2x PNG);
  * main process printToPDF in a hidden window.
  *
- * `outPath` skips the save dialog — the headless CLI entry already knows where
- * the file goes. Resolves true only when a PDF was written.
+ * `outPath` skips the save dialog — the headless CLI entry or the Save As
+ * dialog (Save As › PDF) already chose where the file goes. Resolves true only
+ * when a PDF was written.
  */
 export async function exportPdf(ctx: ActionCtx, outPath?: string): Promise<boolean> {
   const visible = ctx.slides.filter((s) => !s.hidden)

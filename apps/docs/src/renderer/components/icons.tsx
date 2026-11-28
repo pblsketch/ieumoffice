@@ -1418,6 +1418,18 @@ export function IconOutlineView(props: IconProps) {
   )
 }
 
+export function IconStoryView(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <rect x="3" y="3.76" width="10.01" height="8.47" rx="0.62" />
+      <path d="M 6.46 3.76 v 8.47" strokeWidth="1" />
+      <path d="M 8 5.69 h 3.85 M 8 7.62 h 3.85 M 8 9.54 h 2.31" strokeWidth="1" />
+      {/* the '#' mark in the margin */}
+      <path d="M 4.3 5.2 v 1.3 M 5.5 5.2 v 1.3 M 4.05 5.85 h 1.7" strokeWidth="1" />
+    </Svg>
+  )
+}
+
 export function IconRuler(props: IconProps) {
   return (
     <Svg {...props}>
@@ -1910,6 +1922,44 @@ export function IconSelectAll(props: IconProps) {
     <Svg {...props}>
       <rect x="2.5" y="2.5" width="11" height="11" rx="1" strokeDasharray="2 1.4" />
       <path d="M 5 8.2 7 10.2 11 6.2" />
+    </Svg>
+  )
+}
+
+/** the Mailings tab: a letter */
+export function IconMail(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <rect x="2.5" y="3.5" width="11" height="9" rx="1" />
+      <path d="M 2.9 4.4 8 8.4 13.1 4.4" />
+    </Svg>
+  )
+}
+
+/** the merge field of a mail merge template: the guillemets Word writes */
+export function IconMergeField(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M 6.4 4.2 3.6 8l2.8 3.8" />
+      <path d="M 11.2 4.2 14 8l-2.8 3.8" />
+    </Svg>
+  )
+}
+
+/** the previous record of a mail merge */
+export function IconChevronLeft(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M 10 3.5 5.5 8l4.5 4.5" />
+    </Svg>
+  )
+}
+
+/** the next record of a mail merge */
+export function IconChevronRight(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M 6 3.5 10.5 8 6 12.5" />
     </Svg>
   )
 }

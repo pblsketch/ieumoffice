@@ -21,6 +21,7 @@ import {
   type TextboxSizePatch,
   patchTextboxParas,
   generateTableModelXml,
+  nextBookmarkIdAllocator,
   symbolGlyph,
   symbolPuaChar,
   type Block,
@@ -991,6 +992,33 @@ export function tableModelToPmNode(
       return at
     })
   })
+  // The restart cells' rowspans occupy their columns in the rows below; a
+  // merged-away cell a rowspan already accounts for needs no node (the
+  // rowspan stands in for it), while any other merged-away cell is a grid
+  // hole the editor's table plugin would otherwise "repair" by appending a
+  // cell — shifting every later cell of the row. Those holes become inert
+  // placeholders instead (see the cell emission below).
+  const rowSpans = model.rows.map((row, rowIndex) =>
+    row.map((_, cellIndex) => cellRowSpan(model, rowIndex, cellIndex, positions)),
+  )
+  const rowspanCovered = model.rows.map(() => new Set<number>())
+  model.rows.forEach((row, rowIndex) => {
+    row.forEach((cell, cellIndex) => {
+      const span = rowSpans[rowIndex]![cellIndex]!
+      if (span <= 1) return
+      const start = positions[rowIndex]![cellIndex]!
+      const width = cell.colSpan ?? 1
+      for (let below = rowIndex + 1; below < rowIndex + span; below++) {
+        for (let column = start; column < start + width; column++) {
+          rowspanCovered[below]?.add(column)
+        }
+      }
+    })
+  })
+  // Every merged-away cell's own model, so pmTableToModel can rebuild it
+  // instead of inheriting the restart cell's style (which lost its rawTcPr,
+  // textDirection and hidden text)
+  const continuationRecords: Array<{ row: number; column: number; cell: TableCell }> = []
   // 1 px = 15 twips (96dpi); use real values when absolute grid widths exist, fall back to percentage approximation otherwise.
   // No px floor on real grids: form grids hold dozens of sliver columns that only sit inside spanned cells
   const widthPx = model.colWidthsTwips
@@ -1087,6 +1115,9 @@ export function tableModelToPmNode(
       tblAltEdited: false,
       originalStructure: null,
       originalFormatting: null,
+      // merged-away (vMerge continue) cells have no node of their own: their
+      // own tcPr bytes and hidden text ride here, keyed row:column
+      continuationCells: null,
     },
     content: model.rows.map((row, rowIndex) => ({
       type: 'docTableRow',
@@ -1100,9 +1131,32 @@ export function tableModelToPmNode(
         rawTrPr: model.rawTrPrs?.[rowIndex] ?? null,
         rowRevision: model.rowRevisions?.[rowIndex] ?? null,
       },
-      content: row.flatMap((cell, cellIndex) => {
-        if (cell.vMerge === 'continue') return []
+      content: row.flatMap((cell, cellIndex): PmNode[] => {
         const start = positions[rowIndex][cellIndex]
+        if (cell.vMerge === 'continue') {
+          continuationRecords.push({ row: rowIndex, column: start, cell })
+          // a rowspan already stands in for this column: no node needed
+          if (rowspanCovered[rowIndex]?.has(start)) return []
+          // the grid hole needs an inert placeholder so the editor's table
+          // plugin keeps the row's columns aligned instead of appending a
+          // cell at the row's end and regenerating the table
+          return [
+            {
+              type: hasHeaderRow && rowIndex === 0 ? 'docTableHeader' : 'docTableCell',
+              attrs: {
+                colspan: cell.colSpan ?? 1,
+                rowspan: 1,
+                // the column-resize plugin fills a missing colwidth from the
+                // rendered grid, so the build must spell it the same way or the
+                // signature never matches after load
+                colwidth: widthPx ? widthPx.slice(start, start + (cell.colSpan ?? 1)) : null,
+                mergeGap: true,
+                gridGap: true,
+              },
+              content: cellContentNodes({ ...cell, paras: [''], richParas: undefined }),
+            },
+          ]
+        }
         const colspan = cell.colSpan ?? 1
         const rowspan = cellRowSpan(model, rowIndex, cellIndex, positions)
         return [
@@ -1135,6 +1189,8 @@ export function tableModelToPmNode(
       }),
     })),
   }
+  table.attrs!.continuationCells =
+    continuationRecords.length > 0 ? JSON.stringify(continuationRecords) : null
   table.attrs!.originalStructure = tableStructureSignature(table)
   table.attrs!.originalFormatting = tableFormattingSignature(table)
   return table
@@ -1152,12 +1208,21 @@ function cellContentNodes(cell: TableCell): PmNode[] {
   ).map((paragraph) => {
     const list = 'list' in paragraph ? paragraph.list : undefined
     const styleId = ('styleId' in paragraph ? paragraph.styleId : undefined) ?? null
+    // bookmark names ride the paragraph attrs so pmTableToModel can carry them
+    // back into the save model (the regenerated cell XML re-emits the anchors)
+    const bookmarks = 'bookmarks' in paragraph ? paragraph.bookmarks : undefined
+    const hiddenBookmarks = 'hiddenBookmarks' in paragraph ? paragraph.hiddenBookmarks : undefined
+    const bookmarkAttrs = {
+      ...(bookmarks?.length ? { bookmarks } : {}),
+      ...(hiddenBookmarks?.length ? { hiddenBookmarks } : {}),
+    }
     return list
       ? {
           type: 'docListItem',
           attrs: {
             ...formatAttrs(paragraph, paragraph.runs),
             styleId,
+            ...bookmarkAttrs,
             kind: list.kind,
             numId: list.numId,
             ilvl: list.ilvl,
@@ -1166,7 +1231,7 @@ function cellContentNodes(cell: TableCell): PmNode[] {
         }
       : {
           type: 'docParagraph',
-          attrs: { ...formatAttrs(paragraph, paragraph.runs), styleId },
+          attrs: { ...formatAttrs(paragraph, paragraph.runs), styleId, ...bookmarkAttrs },
           content: runsToInline(paragraph.runs),
         }
   })
@@ -1281,6 +1346,9 @@ export function tableFormattingSignature(table: PmNode): string {
       (row.content ?? []).map((cell) =>
         (cell.content ?? []).map((paragraph) => [
           normalizedFormat(nodeFormat(paragraph)),
+          // a style-only edit must regenerate too: without this the
+          // unchanged-formatting path would freeze the paragraph's old style
+          paragraph.attrs?.styleId ?? null,
           // list toggles must force regeneration (the text patch keeps old pPr)
           paragraph.type === 'docListItem'
             ? [paragraph.attrs?.kind, paragraph.attrs?.numId, paragraph.attrs?.ilvl]
@@ -1309,18 +1377,57 @@ export function pmTableToModel(table: PmNode): TableModel {
     remaining: number
     span: number
     cell: Omit<TableModel['rows'][number][number], 'paras'>
+    // tracked-change records live on the restart cell (the merged-away cells
+    // have no node the editor could accept or reject)
+    trackedCellMerge: unknown
+    trackedTcPrChange: unknown
+    // the hoisted merge record is written once, on the first merged-away cell
+    first: boolean
   }
   let active = new Map<number, ActiveSpan>()
   const rows: TableModel['rows'] = []
   let maximumColumns = 0
 
+  // the merged-away cells the build carried (row:column -> their own model):
+  // rebuilding them from the restart cell's style lost their tcPr bytes,
+  // textDirection and hidden text
+  const continuationCells = new Map<string, TableCell>()
+  const serializedContinuations = table.attrs?.continuationCells
+  if (typeof serializedContinuations === 'string') {
+    try {
+      const records = JSON.parse(serializedContinuations) as Array<{
+        row?: unknown
+        column?: unknown
+        cell?: unknown
+      }>
+      for (const record of records) {
+        if (
+          typeof record?.row === 'number' &&
+          typeof record.column === 'number' &&
+          record.cell &&
+          typeof record.cell === 'object'
+        ) {
+          continuationCells.set(record.row + ':' + record.column, record.cell as TableCell)
+        }
+      }
+    } catch {
+      // a malformed record only costs the continuation styles, not the table
+    }
+  }
+  // A structural edit makes the row/column positions the records are keyed by
+  // stale: rebuild the merged-away cells the old way (restart-cell style) rather
+  // than injecting one into a row the edit moved it out of.
+  const layoutUntouched =
+    typeof table.attrs?.originalStructure !== 'string' ||
+    table.attrs.originalStructure === tableStructureSignature(table)
+  if (!layoutUntouched) continuationCells.clear()
   const rowHeightsTwips: Array<number | null> = []
   const rowHeightRules: NonNullable<TableModel['rowHeightRules']> = []
   const repeatHeaderRows: Array<boolean | null> = []
   const rowCantSplit: Array<boolean | null> = []
   const rawTrPrs: Array<string | null> = []
   const rowRevisions: TableModel['rowRevisions'] = []
-  for (const rowNode of table.content ?? []) {
+  for (const [rowIndex, rowNode] of (table.content ?? []).entries()) {
     rowHeightsTwips.push((rowNode.attrs?.heightTwips as number | null) ?? null)
     rowHeightRules.push(
       (rowNode.attrs?.heightRule as NonNullable<TableModel['rowHeightRules']>[number]) ?? null,
@@ -1342,11 +1449,33 @@ export function pmTableToModel(table: PmNode): TableModel {
     const entries: Array<{ column: number; cell: TableModel['rows'][number][number] }> = []
     const occupied = new Set<number>()
     for (const [column, span] of active) {
+      const original = continuationCells.get(rowIndex + ':' + column)
+      const merged = original && (original.colSpan ?? 1) === span.span ? original : undefined
+      // null = the editor accepted (strip the record), an object = still pending;
+      // only an absent attr leaves the build-time record in place
+      const tracked = (value: unknown, fallback: unknown): unknown =>
+        value === null ? null : value !== undefined ? value : fallback
       entries.push({
         column,
         cell: {
-          ...span.cell,
-          paras: [''],
+          ...(merged ?? span.cell),
+          paras: merged?.paras?.length ? merged.paras : [''],
+          ...(merged?.richParas?.length ? { richParas: merged.richParas } : {}),
+          // tracked-change records of a merged-away cell live on the restart
+          // cell (it is the only one with a node the editor can accept or
+          // reject): follow the restart cell's current state, never the
+          // build-time snapshot
+          ...(merged
+            ? {
+                cellMerge: (span.first
+                  ? tracked(span.trackedCellMerge, merged.cellMerge)
+                  : null) as TableCell['cellMerge'],
+                tcPrChange: tracked(
+                  span.trackedTcPrChange,
+                  merged.tcPrChange,
+                ) as TableCell['tcPrChange'],
+              }
+            : {}),
           colSpan: span.span > 1 ? span.span : undefined,
           vMerge: 'continue',
         },
@@ -1357,6 +1486,31 @@ export function pmTableToModel(table: PmNode): TableModel {
     const added = new Map<number, ActiveSpan>()
     let cursor = 0
     for (const cellNode of rowNode.content ?? []) {
+      if (cellNode.attrs?.mergeGap) {
+        // the inert stand-in for a merged-away cell: emit its column as a
+        // vMerge continuation so a formatting edit (which clears the positional
+        // records, see layoutUntouched) can never make the row lose a column
+        // and shift the cells after it. On an untouched layout the original
+        // record restores the orphan's own tcPr and hidden text; after an edit
+        // the empty cell keeps the grid width, as Word keeps the row.
+        while (occupied.has(cursor)) cursor++
+        const gap = Math.max(1, Number(cellNode.attrs?.colspan) || 1)
+        const record = continuationCells.get(rowIndex + ':' + cursor)
+        const merged = record && (record.colSpan ?? 1) === gap ? record : undefined
+        entries.push({
+          column: cursor,
+          cell: {
+            ...(merged ?? {}),
+            paras: merged?.paras?.length ? merged.paras : [''],
+            ...(merged?.richParas?.length ? { richParas: merged.richParas } : {}),
+            colSpan: gap > 1 ? gap : undefined,
+            vMerge: 'continue',
+          },
+        })
+        for (let i = 0; i < gap; i++) occupied.add(cursor + i)
+        cursor += gap
+        continue
+      }
       while (occupied.has(cursor)) cursor++
       const colspan = Math.max(1, Number(cellNode.attrs?.colspan) || 1)
       const rowspan = Math.max(1, Number(cellNode.attrs?.rowspan) || 1)
@@ -1407,19 +1561,30 @@ export function pmTableToModel(table: PmNode): TableModel {
         cell: {
           ...style,
           paras: cellParas.map(paragraphText),
-          richParas: cellParas.map((paragraph) => ({
-            ...nodeFormat(paragraph),
-            ...(paragraph.type === 'docListItem' && paragraph.attrs?.numId
-              ? {
-                  list: {
-                    kind: (paragraph.attrs.kind as 'bullet' | 'ordered') ?? 'bullet',
-                    numId: String(paragraph.attrs.numId),
-                    ilvl: Number(paragraph.attrs.ilvl) || 0,
-                  },
-                }
-              : {}),
-            runs: inlineToRuns(paragraph.content ?? []),
-          })),
+          richParas: cellParas.map((paragraph) => {
+            const bookmarks = nodeBookmarks(paragraph, 'bookmarks')
+            const hiddenBookmarks = nodeBookmarks(paragraph, 'hiddenBookmarks')
+            return {
+              ...nodeFormat(paragraph),
+              // the cell paragraph's w:pStyle rides along (generate.ts writes it
+              // back); without it a style-only edit is lost on regeneration
+              ...(paragraph.attrs?.styleId ? { styleId: String(paragraph.attrs.styleId) } : {}),
+              // bookmark names opening inside the cell paragraph (REF/TOC anchors
+              // would otherwise disappear when the cell rebuilds)
+              ...(bookmarks?.length ? { bookmarks } : {}),
+              ...(hiddenBookmarks?.length ? { hiddenBookmarks } : {}),
+              ...(paragraph.type === 'docListItem' && paragraph.attrs?.numId
+                ? {
+                    list: {
+                      kind: (paragraph.attrs.kind as 'bullet' | 'ordered') ?? 'bullet',
+                      numId: String(paragraph.attrs.numId),
+                      ilvl: Number(paragraph.attrs.ilvl) || 0,
+                    },
+                  }
+                : {}),
+              runs: inlineToRuns(paragraph.content ?? []),
+            }
+          }),
           ...(nestedModels.length > 0
             ? { nestedTables: nestedModels, nestedTableAnchors: nestedAnchors }
             : {}),
@@ -1430,16 +1595,49 @@ export function pmTableToModel(table: PmNode): TableModel {
           vMerge: rowspan > 1 ? 'restart' : undefined,
         },
       })
-      if (rowspan > 1) added.set(cursor, { remaining: rowspan - 1, span: colspan, cell: style })
+      if (rowspan > 1)
+        added.set(cursor, {
+          remaining: rowspan - 1,
+          span: colspan,
+          cell: style,
+          trackedCellMerge: cellNode.attrs?.cellMerge,
+          trackedTcPrChange: cellNode.attrs?.tcPrChange,
+          first: true,
+        })
       for (let i = 0; i < colspan; i++) occupied.add(cursor + i)
       cursor += colspan
+    }
+    // a merged-away cell a rowspan did not stand in for (an orphan
+    // continuation) has no node of its own: rebuild it from the record
+    for (const [key, cell] of continuationCells) {
+      const [recordRow, recordColumn] = key.split(':').map(Number)
+      if (recordRow !== rowIndex || recordColumn === undefined) continue
+      if (entries.some((entry) => entry.column === recordColumn)) continue
+      entries.push({
+        column: recordColumn,
+        cell: {
+          ...cell,
+          paras: cell.paras?.length ? cell.paras : [''],
+          ...(cell.richParas?.length ? { richParas: cell.richParas } : {}),
+          colSpan: (cell.colSpan ?? 1) > 1 ? cell.colSpan : undefined,
+          vMerge: 'continue',
+        },
+      })
+      for (let i = 0; i < (cell.colSpan ?? 1); i++) occupied.add(recordColumn + i)
     }
     maximumColumns = Math.max(maximumColumns, occupied.size)
     rows.push(entries.sort((a, b) => a.column - b.column).map((entry) => entry.cell))
 
     const next = new Map<number, ActiveSpan>()
     for (const [column, span] of active) {
-      if (span.remaining > 1) next.set(column, { ...span, remaining: span.remaining - 1 })
+      // the hoisted merge record is written once, on the first merged-away cell
+      if (span.remaining > 1)
+        next.set(column, {
+          ...span,
+          remaining: span.remaining - 1,
+          cell: { ...span.cell, cellMerge: undefined },
+          first: false,
+        })
     }
     for (const [column, span] of added) next.set(column, span)
     active = next
@@ -1518,6 +1716,9 @@ export function pmTableToModel(table: PmNode): TableModel {
     ...(tablePropsEdited('tblAutoFitEdited')
       ? { autoFit: table.attrs?.tblAutoFit as NonNullable<TableModel['autoFit']> }
       : {}),
+    ...(tablePropsEdited('tblIndentEdited') && !isNew
+      ? { indentTwips: Number(table.attrs?.indentTwips) || 0 }
+      : {}),
     ...(tablePropsEdited('cellMarEdited') && table.attrs?.cellMar
       ? { cellMarTwips: table.attrs.cellMar as NonNullable<TableModel['cellMarTwips']> }
       : {}),
@@ -1544,16 +1745,32 @@ export function runsToInline(runs: Run[]): PmNode[] {
     const marks = runMarks(run)
     const atomMarks = marks.length > 0 ? { marks } : {}
     if (run.math) {
+      // MathType OLE equations carry a negative w:position on the run only to
+      // align their WMF preview image's bottom edge with the text baseline.
+      // Native MathML already centers on the math axis, so drop positionHalfPoints
+      // from the display mark while oleRawRPr preserves it verbatim on save.
+      const mathMarks =
+        run.math.oleXml && run.positionHalfPoints
+          ? runMarks({ ...run, positionHalfPoints: undefined })
+          : marks
+      const useDisplayMathStyle =
+        !!run.math.display || Boolean(run.math.oleXml && /<m:(?:f|nary)\b/.test(run.math.omml))
       nodes.push({
         type: 'docInlineMath',
-        ...atomMarks,
+        ...(mathMarks.length > 0 ? { marks: mathMarks } : {}),
         attrs: {
           omml: run.math.omml,
-          mathml: inlineMathML(run.math.omml),
+          mathml: inlineMathML(run.math.omml, useDisplayMathStyle),
+          display: !!run.math.display,
           // recovered LaTeX makes parsed formulas re-editable; null = atom only
           latex: ommlToLatex(run.math.omml),
           text: run.text,
           sizeHalfPoints: run.sizeHalfPoints ?? null,
+          oleXml: run.math.oleXml ?? null,
+          oleRawRPr: run.math.oleRawRPr ?? null,
+          oleProgId: run.math.oleProgId ?? null,
+          olePositionHalfPoints:
+            run.math.oleXml && run.positionHalfPoints ? run.positionHalfPoints : null,
         },
       })
       continue
@@ -1597,9 +1814,11 @@ export function runsToInline(runs: Run[]): PmNode[] {
     // A run can carry both w:t text and a w:drawing; generate.ts writes the
     // text before the drawing, so emit the image after the text segments
     if (run.image) {
+      const loweredInline = !run.image.wrap && (run.positionHalfPoints ?? 0) < 0
+      const imgMarks = loweredInline ? runMarks({ ...run, positionHalfPoints: undefined }) : marks
       nodes.push({
         type: 'docInlineImage',
-        ...atomMarks,
+        ...(imgMarks.length > 0 ? { marks: imgMarks } : {}),
         attrs: {
           dataUrl: run.image.dataUrl,
           widthPx: run.image.widthPx ?? null,
@@ -1625,6 +1844,12 @@ export function runsToInline(runs: Run[]): PmNode[] {
                 ...(run.sizeHalfPoints ? { sizeHalfPoints: run.sizeHalfPoints } : {}),
               }
             : null,
+          ...(loweredInline
+            ? {
+                baselineShiftPt: run.positionHalfPoints! / 2,
+                positionHalfPoints: run.positionHalfPoints!,
+              }
+            : {}),
           rawRPr: run.rawRPr ?? null,
         },
       })
@@ -1661,6 +1886,10 @@ function runMarks(run: Run): PmMark[] {
       attrs: {
         href: run.link.href,
         rId: run.link.rId ?? null,
+        anchor: run.link.anchor ?? null,
+        history: run.link.history ?? null,
+        targetFrame: run.link.targetFrame ?? null,
+        docLocation: run.link.docLocation ?? null,
         tooltip: run.link.tooltip ?? null,
         plain: run.link.plain === true,
       },
@@ -1925,12 +2154,11 @@ export function normalizeZoteroFieldParts(doc: PmNode): PmNode {
     lostId.add(ref)
   }
   const groups = new Map<number, ZoteroTextRef[]>()
-  const idsInBlock = new Map<number, Set<number>>()
-  for (const ref of refs) {
-    const id = ref.fieldId!
-    groups.set(id, [...(groups.get(id) ?? []), ref])
-    idsInBlock.set(ref.blockIndex, new Set([...(idsInBlock.get(ref.blockIndex) ?? []), id]))
-  }
+  const order = new Map<ZoteroTextRef, number>()
+  refs.forEach((ref, index) => {
+    order.set(ref, index)
+    groups.set(ref.fieldId!, [...(groups.get(ref.fieldId!) ?? []), ref])
+  })
   const isParagraphBlock = (index: number) => {
     const type = blocks[index]?.type
     return type === 'docParagraph' || type === 'docHeading' || type === 'docListItem'
@@ -1941,10 +2169,13 @@ export function normalizeZoteroFieldParts(doc: PmNode): PmNode {
     for (let i = 1; i < members.length; i++) {
       const prev = members[i - 1]
       const cur = members[i]
-      let split = false
+      // a field pasted between two runs (into a citation's result or a
+      // bibliography paragraph) ends this field there instead of nesting
+      let split = refs
+        .slice(order.get(prev)! + 1, order.get(cur)!)
+        .some((between) => between.fieldId !== id)
       for (let b = prev.blockIndex + 1; b < cur.blockIndex && !split; b++) {
-        const others = idsInBlock.get(b)
-        split = !isParagraphBlock(b) || (others !== undefined && [...others].some((o) => o !== id))
+        split = !isParagraphBlock(b)
       }
       if (split) segments.push([cur])
       else segments[segments.length - 1].push(cur)
@@ -1995,6 +2226,18 @@ export function pmDocToSavePlan(inputDoc: PmNode, originalBlocks: Block[]): Save
   const originalByIndex = new Map<number, Block>()
   for (const block of originalBlocks) {
     if (!block.hidden && block.docxIndex !== null) originalByIndex.set(block.docxIndex, block)
+  }
+
+  // A rebuilt table's cell bookmark anchors get ids from the document's own
+  // allocator, seeded past every id the untouched blocks keep — the engine's
+  // process-level counter does not know the document, and a colliding id makes
+  // Word pair bookmarkStart / bookmarkEnd across the wrong anchors. The save's
+  // generated paragraphs seed past these too (the engine reads them off the
+  // pre-rendered blocks), so one save never mints the same id twice.
+  const tableBookmarkCtx = {
+    allocateBookmarkId: nextBookmarkIdAllocator(
+      originalBlocks.map((b) => b.originalXml ?? '').join(''),
+    ),
   }
 
   // Mixed-encoding guard: parse compresses wild producer relativeHeight values
@@ -2152,12 +2395,12 @@ export function pmDocToSavePlan(inputDoc: PmNode, originalBlocks: Block[]): Save
           changedCount++
           pushBlock({
             kind: 'xml',
-            xml: generateTableModelXml(model, original.originalXml ?? undefined),
+            xml: generateTableModelXml(model, original.originalXml ?? undefined, tableBookmarkCtx),
           })
         }
       } else {
         changedCount++
-        pushBlock({ kind: 'xml', xml: generateTableModelXml(model) })
+        pushBlock({ kind: 'xml', xml: generateTableModelXml(model, undefined, tableBookmarkCtx) })
       }
       continue
     }
@@ -2413,7 +2656,13 @@ export function pmDocToSavePlan(inputDoc: PmNode, originalBlocks: Block[]): Save
         }
         if (genBox) {
           xml = patchShapeStyles(xml, [
-            { fillHex: genBox.fill ?? null, borderHex: genBox.borderColor ?? null },
+            {
+              fillHex: genBox.fill ?? null,
+              borderHex: genBox.borderColor ?? null,
+              // undefined keeps the generated XML untouched when never edited
+              rotDeg: genBox.rotDeg ?? undefined,
+              borderWidthPx: genBox.borderWidthPx ?? undefined,
+            },
           ])
         }
         // apply wrap changes for floating textboxes/shapes
@@ -2450,8 +2699,10 @@ export function pmDocToSavePlan(inputDoc: PmNode, originalBlocks: Block[]): Save
         if (node.attrs.imageHeightPx) image.heightPx = Number(node.attrs.imageHeightPx)
         const align = node.attrs.imageAlign as NewImage['align'] | null
         if (align) image.align = align
-        const wrap = node.attrs.imageWrap as ImageWrap | null
-        if (wrap) image.wrap = wrap
+        // the attrs carry the live state (wrap/drag/position-preset edits
+        // mutate them, not the insert-time genImage payload): re-derive the
+        // floating position or the drag is silently lost on save
+        applyImageFloatAttrs(image, node.attrs)
         if (node.attrs.imageZOrder != null) image.zOrder = Number(node.attrs.imageZOrder)
         if (node.attrs.imageRotDeg) image.rotDeg = Number(node.attrs.imageRotDeg)
         if (node.attrs.imageFlipH) image.flipH = true
@@ -2625,6 +2876,49 @@ export function pmDocToSavePlan(inputDoc: PmNode, originalBlocks: Block[]): Save
   }
 }
 
+/**
+ * Floating-position payload (wrap + placement) from the live node attrs — the
+ * editor's source of truth after wrap/drag/position-preset edits, which mutate
+ * the attrs but never the insert-time genImage payload. Writes posOffsetEmu
+ * from the drag offsets, or the margin-relative align pair for Word position
+ * presets, and clears stale fields so e.g. back-to-inline drops the anchor.
+ */
+function applyImageFloatAttrs(image: NewImage, attrs: Record<string, unknown>): void {
+  const wrap = (attrs.imageWrap as ImageWrap | null) ?? null
+  if (wrap) image.wrap = wrap
+  else delete image.wrap
+  const offX = attrs.imageOffsetXEmu != null ? Number(attrs.imageOffsetXEmu) : undefined
+  const offY = attrs.imageOffsetYEmu != null ? Number(attrs.imageOffsetYEmu) : undefined
+  if (wrap && offX !== undefined && offY !== undefined) {
+    // NewImage.posOffsetEmu carries one basis for both axes: page wins over
+    // margin (relH/relV are only set for page/margin-pinned floats; plain
+    // drags keep the column/paragraph defaults applyImageWrap uses)
+    const relH = attrs.imageRelH as string | null | undefined
+    const relV = attrs.imageRelV as string | null | undefined
+    const relativeTo =
+      relH === 'page' || relV === 'page'
+        ? 'page'
+        : relH === 'margin' || relV === 'margin'
+          ? 'margin'
+          : undefined
+    image.posOffsetEmu = { x: offX, y: offY, ...(relativeTo ? { relativeTo } : {}) }
+  } else {
+    delete image.posOffsetEmu
+  }
+  const posH = attrs.imagePosH as NewImage['posH'] | null
+  const posV = attrs.imagePosV as NewImage['posV'] | null
+  if (wrap && image.posOffsetEmu === undefined && posH && posV) {
+    // margin-relative wp:align pair — the same bytes imagePatchOf produces for
+    // original images via applyImageWrap's marginAlign (numeric offsets win
+    // when both are present, matching applyImageWrap's own priority)
+    image.posH = posH
+    image.posV = posV
+  } else {
+    delete image.posH
+    delete image.posV
+  }
+}
+
 /** rebuild a pasted image copy from its preview bytes; null when not materializable */
 function imageFromProtectedAttrs(node: PmNode): NewImage | null {
   if (node.attrs?.blockType !== 'image') return null
@@ -2639,8 +2933,7 @@ function imageFromProtectedAttrs(node: PmNode): NewImage | null {
     : { base64: m![2], mime: m![1] as NewImage['mime'], widthPx, heightPx }
   const align = node.attrs?.imageAlign as NewImage['align'] | null
   if (align) image.align = align
-  const wrap = node.attrs?.imageWrap as ImageWrap | null
-  if (wrap) image.wrap = wrap
+  applyImageFloatAttrs(image, node.attrs)
   if (node.attrs?.imageZOrder != null) image.zOrder = Number(node.attrs.imageZOrder)
   if (node.attrs?.imageRotDeg) image.rotDeg = Number(node.attrs.imageRotDeg)
   if (node.attrs?.imageFlipH) image.flipH = true
@@ -2977,15 +3270,23 @@ function tableTextsPatchFromModel(
         return null
       }
       const origTexts = parsedCellParaTexts(originalCell)
-      if (cell.paras.join('\n') === origTexts.join('\n')) return null
-      changed = true
       const rich = cell.richParas
+      const origRich = originalCell.richParas
+      const hasMathChange =
+        !!rich &&
+        rich.length === origTexts.length &&
+        rich.some((p, i) => cellParaMathChanged(p.runs, origRich?.[i]?.runs))
+      if (cell.paras.join('\n') === origTexts.join('\n') && !hasMathChange) return null
+      changed = true
       // rich paragraph patches keep per-run formatting, hyperlinks and images;
-      // untouched paragraphs (per-index text match) keep their original bytes
+      // untouched paragraphs (per-index text and math match) keep their original bytes
       if (rich && rich.length === cell.paras.length) {
         if (rich.length === origTexts.length) {
           return rich.map((p, i): CellParaPatch =>
-            p.runs.map((run) => run.text).join('') === origTexts[i] ? null : { runs: p.runs },
+            p.runs.map((run) => run.text).join('') === origTexts[i] &&
+            !cellParaMathChanged(p.runs, origRich?.[i]?.runs)
+              ? null
+              : { runs: p.runs },
           )
         }
         return rich.map((p): CellParaPatch => ({ runs: p.runs }))
@@ -2994,6 +3295,14 @@ function tableTextsPatchFromModel(
     })
   })
   return changed ? texts : null
+}
+
+function cellParaMathChanged(current: Run[], original: Run[] | undefined): boolean {
+  const cur = current.filter((r) => r.math).map((r) => `${r.math!.omml}\0${r.math!.oleXml ?? ''}`)
+  const orig = (original ?? [])
+    .filter((r) => r.math)
+    .map((r) => `${r.math!.omml}\0${r.math!.oleXml ?? ''}`)
+  return cur.length !== orig.length || cur.some((m, i) => m !== orig[i])
 }
 
 /**
@@ -3034,9 +3343,19 @@ function nestedTextsDiff(
   return changed ? grid : null
 }
 
-/** rich-run signature of one textbox paragraph, for per-paragraph change detection */
+/** rich-run signature of one textbox paragraph, for per-paragraph change detection.
+ * List identity (numId/ilvl/kind) participates: toggling a list on or off must
+ * reach the byte patch even when the runs are untouched; the marker TEXT stays
+ * out — its per-box counters are recomputed on both sides and may drift. */
 export function textboxParaSignature(para: TextboxDisplay['paras'][number]): string {
-  return JSON.stringify([para.align ?? null, normalizedRuns(para.runs)])
+  const m = para.listMarker
+  const list = m ? [m.numId ?? null, m.ilvl ?? null, m.kind ?? null] : null
+  return JSON.stringify([
+    para.align ?? null,
+    para.indentLeft ?? null,
+    normalizedRuns(para.runs),
+    list,
+  ])
 }
 
 /** all-empty sub-editor content counts as "still no text" for a paras:[] box */
@@ -3071,13 +3390,32 @@ function textboxParasPatch(node: PmNode, original: Block): TextboxParasPatchSet 
         ) {
           return null
         }
-        // align is always explicit so a removed alignment also clears w:jc
-        return { runs: mergeRuns(p.runs), align: p.align ?? null }
+        // align/numPr are always explicit so a removed alignment or list
+        // membership also clears w:jc / w:numPr
+        const m = p.listMarker
+        // indentLeft may be inherited (style character units), so it is only
+        // written when the editor moved it; align/numPr stay always explicit
+        const origIndent = origParas[j]?.indentLeft ?? null
+        const indent = p.indentLeft ?? null
+        return {
+          runs: mergeRuns(p.runs),
+          align: p.align ?? null,
+          numPr: m?.numId != null ? { numId: m.numId, ilvl: m.ilvl ?? 0 } : null,
+          ...(indent !== origIndent ? { indentLeft: indent } : {}),
+        }
       })
     } else if (origBox.shapeId) {
       inject.push({
         shapeId: origBox.shapeId,
-        paras: box.paras.map((p) => ({ runs: mergeRuns(p.runs), align: p.align ?? null })),
+        paras: box.paras.map((p) => ({
+          runs: mergeRuns(p.runs),
+          align: p.align ?? null,
+          numPr:
+            p.listMarker?.numId != null
+              ? { numId: p.listMarker.numId, ilvl: p.listMarker.ilvl ?? 0 }
+              : null,
+          ...(p.indentLeft != null ? { indentLeft: p.indentLeft } : {}),
+        })),
       })
     }
   })
@@ -3117,9 +3455,23 @@ function textboxStylesPatch(node: PmNode, original: Block): (ShapeStylePatch | n
       (box.borderColor ?? null) !== (initial[index].borderColor ?? null)
         ? (box.borderColor ?? null)
         : undefined
-    if (fillHex === undefined && borderHex === undefined) return null
+    // rotation 0 is the cleared state: patch@rot is removed (null/0), so an
+    // absent attribute and rotDeg 0 compare equal
+    const rotDeg =
+      (box.rotDeg ?? 0) !== (initial[index].rotDeg ?? 0) ? (box.rotDeg ?? 0) : undefined
+    const borderWidthPx =
+      (box.borderWidthPx ?? null) !== (initial[index].borderWidthPx ?? null)
+        ? (box.borderWidthPx ?? null)
+        : undefined
+    if (
+      fillHex === undefined &&
+      borderHex === undefined &&
+      rotDeg === undefined &&
+      borderWidthPx === undefined
+    )
+      return null
     changed = true
-    return { fillHex, borderHex }
+    return { fillHex, borderHex, rotDeg, borderWidthPx }
   })
   return changed ? styles : null
 }
@@ -3468,8 +3820,38 @@ export function inlineToRuns(content: PmNode[]): Run[] {
     }
     if (node.type === 'docInlineMath') {
       const omml = String(node.attrs?.omml ?? '')
-      if (omml)
-        runs.push({ ...atomBase(node), text: String(node.attrs?.text ?? ''), math: { omml } })
+      if (omml) {
+        const oleXml =
+          typeof node.attrs?.oleXml === 'string' && node.attrs.oleXml
+            ? node.attrs.oleXml
+            : undefined
+        const oleRawRPr =
+          typeof node.attrs?.oleRawRPr === 'string' && node.attrs.oleRawRPr
+            ? node.attrs.oleRawRPr
+            : undefined
+        const oleProgId =
+          typeof node.attrs?.oleProgId === 'string' && node.attrs.oleProgId
+            ? node.attrs.oleProgId
+            : undefined
+        const olePositionHalfPoints =
+          oleXml && node.attrs?.olePositionHalfPoints != null
+            ? Number(node.attrs.olePositionHalfPoints)
+            : undefined
+        runs.push({
+          ...atomBase(node),
+          ...(olePositionHalfPoints !== undefined
+            ? { positionHalfPoints: olePositionHalfPoints }
+            : {}),
+          text: String(node.attrs?.text ?? ''),
+          math: {
+            omml,
+            ...(node.attrs?.display ? { display: true } : {}),
+            ...(oleXml ? { oleXml } : {}),
+            ...(oleRawRPr ? { oleRawRPr } : {}),
+            ...(oleProgId ? { oleProgId } : {}),
+          },
+        })
+      }
       continue
     }
     if (node.type === 'docRuby') {
@@ -3491,6 +3873,9 @@ export function inlineToRuns(content: PmNode[]): Run[] {
       if ((dataUrl || rule) && xml) {
         runs.push({
           ...atomBase(node),
+          ...(node.attrs?.positionHalfPoints != null
+            ? { positionHalfPoints: Number(node.attrs.positionHalfPoints) }
+            : {}),
           text: '',
           ...(node.attrs?.rawRPr ? { rawRPr: String(node.attrs.rawRPr) } : {}),
           image: {
@@ -3557,6 +3942,14 @@ function runFromMarks(text: string, marks: PmMark[]): Run {
       run.link = {
         href: String(mark.attrs?.href ?? ''),
         rId: (mark.attrs?.rId as string) ?? undefined,
+        ...(typeof mark.attrs?.anchor === 'string' ? { anchor: mark.attrs.anchor } : {}),
+        ...(typeof mark.attrs?.history === 'string' ? { history: mark.attrs.history } : {}),
+        ...(typeof mark.attrs?.targetFrame === 'string'
+          ? { targetFrame: mark.attrs.targetFrame }
+          : {}),
+        ...(typeof mark.attrs?.docLocation === 'string'
+          ? { docLocation: mark.attrs.docLocation }
+          : {}),
         tooltip: (mark.attrs?.tooltip as string) ?? undefined,
         ...(mark.attrs?.plain ? { plain: true } : {}),
       }
@@ -3720,6 +4113,10 @@ function runStyleKey(run: Run): string {
     run.vertAlign ?? null,
     run.link?.href ?? null,
     run.link?.rId ?? null,
+    run.link?.anchor ?? null,
+    run.link?.history ?? null,
+    run.link?.targetFrame ?? null,
+    run.link?.docLocation ?? null,
     run.commentIds?.join(' ') ?? null,
     revisionKey(run),
     run.noteRef ? [run.noteRef.kind, run.noteRef.id] : null,
@@ -3730,6 +4127,7 @@ function runStyleKey(run: Run): string {
     run.fldDirty ?? null,
     run.sdtCheckboxXml ?? null,
     run.math?.omml ?? null,
+    run.math?.oleXml ?? null,
     run.sym ? [run.sym.font, run.sym.char] : null,
     run.ruby?.xml ?? null,
   ])
@@ -3785,6 +4183,7 @@ function normalizedRuns(runs: Run[]): unknown[] {
           r.fldDirty ?? null,
           r.sdtCheckboxXml ?? null,
           r.math?.omml ?? null,
+          r.math?.oleXml ?? null,
           r.sym ? [r.sym.font, r.sym.char] : null,
           r.ruby?.xml ?? null,
           r.image?.xml ?? null,

@@ -1,4 +1,5 @@
-import type { AgentSkill } from '@genoffice/agent-core'
+import { attachedImageNote, type AgentSkill } from '@genoffice/agent-core'
+import { ATTACHMENT_IMAGE_EXTS, type AttachmentMeta } from '../../shared/desktop-api'
 import { t } from '../i18n/locale'
 
 /**
@@ -9,14 +10,20 @@ import { t } from '../i18n/locale'
  */
 
 const PLACEMENT_PROMPT = `- To place an image on a sheet, pass the URL to propose_operations {op:"add_image", sheetId, path:"<https url>", anchorCell} — field details in guide charts. The image anchors at that cell and is written into the file on save (imported xlsx only).
+- To place an image the user attached to this chat, use {op:"add_image", sheetId, attachment:"<exact file name>", anchorCell} — no path; the app reads the attached file itself. Only pictures the user attached can be named.
 - Only insert images the user asked for; data correctness always outranks decoration.`
 
 const IMAGES_SYSTEM_PROMPT = `## Images
 - image_search finds real web images (returns direct imageUrl entries); generate_image creates an illustration with AI when no suitable real image exists or the user explicitly wants generated art.
 ${PLACEMENT_PROMPT}`
 
+/** Model-facing note while no image route can run; exported so tests pin the same text */
+export const IMAGE_GEN_OFF_NOTE =
+  '- generate_image is currently unavailable (no image provider: no Codex subscription connected and no image API key in Settings). Do not call or promise it; use image_search for imagery. If the user uses a ChatGPT plan: making images needs the Codex program signed in with the same ChatGPT account (Settings > AI > Codex); the direct ChatGPT connection in the app cannot make images because OpenAI does not allow it. Tell the user this when they ask for an image.'
+
 const IMAGES_SYSTEM_PROMPT_NO_GEN = `## Images
 - image_search finds real web images (returns direct imageUrl entries).
+${IMAGE_GEN_OFF_NOTE}
 ${PLACEMENT_PROMPT}`
 
 /**
@@ -24,14 +31,28 @@ ${PLACEMENT_PROMPT}`
  * a ready Codex subscription or a media key); the loop re-reads tools and
  * systemPrompt before every request, so generate_image appears and disappears
  * without rebuilding the loop.
+ *
+ * `getAttachments` is live too: the prompt names the images the current chat
+ * carries, so the model can pass the exact name to add_image.attachment instead
+ * of guessing one.
  */
-export function createImageSkill(imageGen: () => boolean = () => true): AgentSkill {
+export function createImageSkill(
+  imageGen: () => boolean = () => true,
+  getAttachments: () => readonly AttachmentMeta[] = () => [],
+): AgentSkill {
+  const attached = (): string =>
+    attachedImageNote(
+      getAttachments()
+        .filter((attachment) => ATTACHMENT_IMAGE_EXTS.has(attachment.ext))
+        .map((attachment) => attachment.name),
+      'call add_image with attachment set to the name',
+    )
   const allTools = [
     {
       name: 'image_search',
       description:
         'Search the web for images. Returns a numbered list of direct imageUrl entries with pixel sizes; ' +
-        'pick one and insert it with propose_operations add_image (path = the URL).',
+        'pick one and insert it with propose_operations add_image (path = the URL). An image the user attached to this chat goes in with add_image.attachment (exact name) instead.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -57,6 +78,11 @@ export function createImageSkill(imageGen: () => boolean = () => true): AgentSki
             type: 'string',
             description: 'Aspect ratio like "1:1", "16:9", "4:3"; default 1:1',
           },
+          model: {
+            type: 'string',
+            description:
+              'Image model name, only when the user named a model; the app uses it if the current image route offers it, otherwise it answers with the models it can use',
+          },
         },
         required: ['prompt'],
       },
@@ -65,7 +91,8 @@ export function createImageSkill(imageGen: () => boolean = () => true): AgentSki
   return {
     id: 'images',
     get systemPrompt() {
-      return imageGen() ? IMAGES_SYSTEM_PROMPT : IMAGES_SYSTEM_PROMPT_NO_GEN
+      const base = imageGen() ? IMAGES_SYSTEM_PROMPT : IMAGES_SYSTEM_PROMPT_NO_GEN
+      return base + attached()
     },
     get tools() {
       return imageGen() ? allTools : allTools.filter((t) => t.name !== 'generate_image')
@@ -109,9 +136,11 @@ export function createImageSkill(imageGen: () => boolean = () => true): AgentSki
           return { output: 'prompt must not be empty', isError: true, summary: t('aiToolGenImage') }
         }
         const aspectRatio = String(call.input.aspectRatio ?? '').trim()
+        const model = String(call.input.model ?? '').trim()
         const result = await window.desktopApi.generateImage({
           prompt,
           ...(aspectRatio ? { aspectRatio } : {}),
+          ...(model ? { model } : {}),
         })
         if (!result.url) {
           return {
@@ -121,7 +150,9 @@ export function createImageSkill(imageGen: () => boolean = () => true): AgentSki
           }
         }
         return {
-          output: `Image generated: ${result.url}\nInsert it with propose_operations {op:"add_image", path:"${result.url}", ...}.`,
+          output:
+            `Image generated: ${result.url}\nInsert it with propose_operations {op:"add_image", path:"${result.url}", ...}.` +
+            (result.note ? `\nNote: ${result.note}` : ''),
           mutated: false,
           summary: t('aiToolGenImageDone'),
         }

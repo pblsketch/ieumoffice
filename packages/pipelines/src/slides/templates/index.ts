@@ -4,6 +4,7 @@ import { SLIDE_TEMPLATES } from './catalog'
 import type { SlideTemplate } from './contract'
 
 export * from './contract'
+export * from './deck-structures'
 
 /** Every built-in template, in display order. */
 export function listSlideTemplates(): readonly SlideTemplate[] {

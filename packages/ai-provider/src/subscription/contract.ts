@@ -2,9 +2,17 @@
  * What the renderers and the main side agree on for the subscription providers:
  * IPC channel names, the payloads that travel on them, and the few fixed values
  * the UI shows (install command, install page). Browser-safe: this file imports
- * types only, so preload and renderer bundles can use it as is.
+ * types and plain value lists only, so preload and renderer bundles can use it
+ * as is.
  */
+import { aiEffortOf, aiEffortsOf } from '../effort'
+import {
+  AI_SUBSCRIPTION_LOGIN_FAILURE_REASONS,
+  AI_SUBSCRIPTION_LOGIN_FAILURE_STEPS,
+  type AiSubscriptionLoginFailure,
+} from '../types'
 import type {
+  AiSubscriptionCliId,
   AiSubscriptionModel,
   AiSubscriptionProviderId,
   AiSubscriptionState,
@@ -29,6 +37,8 @@ export const SUBSCRIPTION_IPC_CHANNELS = {
   cancelLogin: 'ai:subscription-cancel-login',
   /** (SubscriptionMeteredRequest) → SubscriptionMeteredResult: "use anyway" for a metered login */
   metered: 'ai:subscription-metered',
+  /** (SubscriptionOffRequest) → SubscriptionOffResult: stop or resume using a CLI in this app */
+  off: 'ai:subscription-off',
   /** () → boolean: whether this build can generate images through the Codex subscription */
   codexImage: 'ai:subscription-codex-image',
   /** event, payload SubscriptionStatusMap: the statuses changed */
@@ -50,16 +60,47 @@ export interface SubscriptionProviderRequest {
   provider: AiSubscriptionProviderId
 }
 
+/**
+ * Where the CLI's own login runs. `browser` (absent): the user signs in on the
+ * vendor's page and the browser hands the sign-in back by itself; the CLI's
+ * window stays hidden. `window`: the CLI's own window is shown, for the case
+ * where the browser shows a code that has to be pasted there. Windows alone
+ * has that window; elsewhere both are the same login.
+ */
+export type SubscriptionLoginMode = 'browser' | 'window'
+
+export interface SubscriptionLoginRequest extends SubscriptionProviderRequest {
+  /** absent: the browser, with the CLI's window hidden */
+  mode?: SubscriptionLoginMode | undefined
+}
+
 export interface SubscriptionMeteredRequest {
   provider: AiSubscriptionProviderId
   accepted: boolean
 }
 
 /**
+ * Turn a vendor CLI off in this app, or back on (decision 0114). Off: the app
+ * neither checks nor runs the program; it stays signed in for the rest of the
+ * PC. ChatGPT reached directly has no entry: its own sign-out is this app's alone.
+ */
+export interface SubscriptionOffRequest {
+  provider: AiSubscriptionCliId
+  off: boolean
+}
+
+export interface SubscriptionOffResult {
+  /** false when the request was not a CLI and a boolean, or the setting could not be written */
+  ok: boolean
+  statuses: SubscriptionStatusMap
+}
+
+/**
  * Why a login, logout, install or update could not be started (a logout: or
  * did not succeed). `not-installed`: no program to sign in to. `unsupported`:
  * no vendor command for this system, or no way the app knows to update the copy
- * it found. `invalid`: the request did not name a subscription provider.
+ * it found. `invalid`: the request did not name a subscription provider, or
+ * named one turned off in this app.
  */
 export type SubscriptionLaunchFailure = 'not-installed' | 'unsupported' | 'failed' | 'invalid'
 
@@ -89,7 +130,7 @@ export interface SubscriptionIpcContract {
     response: SubscriptionStatusMap
   }
   [SUBSCRIPTION_IPC_CHANNELS.login]: {
-    request: SubscriptionProviderRequest
+    request: SubscriptionLoginRequest
     response: SubscriptionLaunchResult
   }
   [SUBSCRIPTION_IPC_CHANNELS.logout]: {
@@ -112,6 +153,10 @@ export interface SubscriptionIpcContract {
     request: SubscriptionMeteredRequest
     response: SubscriptionMeteredResult
   }
+  [SUBSCRIPTION_IPC_CHANNELS.off]: {
+    request: SubscriptionOffRequest
+    response: SubscriptionOffResult
+  }
   [SUBSCRIPTION_IPC_CHANNELS.codexImage]: { request: void; response: boolean }
   [SUBSCRIPTION_IPC_CHANNELS.changed]: { request: never; response: SubscriptionStatusMap }
 }
@@ -123,7 +168,8 @@ export interface SubscriptionIpcContract {
 export const SUBSCRIPTION_INSTALL_COMMANDS = {
   'claude-code': 'irm https://claude.ai/install.ps1 | iex',
   codex: 'winget install OpenAI.Codex',
-} as const satisfies Record<AiSubscriptionProviderId, string>
+  antigravity: 'irm https://antigravity.google/cli/install.ps1 | iex',
+} as const satisfies Record<AiSubscriptionCliId, string>
 
 /**
  * Oldest CLI version the app works with; an older one is reported as "needs
@@ -137,6 +183,10 @@ export const SUBSCRIPTION_INSTALL_COMMANDS = {
 export const SUBSCRIPTION_MIN_VERSIONS: Record<AiSubscriptionProviderId, string | null> = {
   'claude-code': '2.1.248',
   codex: null,
+  // no program
+  chatgpt: null,
+  // ACP --process-per-session, --gemini-dir and Windows sandbox require 1.5.0+
+  antigravity: '1.5.0',
 }
 
 /**
@@ -146,6 +196,13 @@ export const SUBSCRIPTION_MIN_VERSIONS: Record<AiSubscriptionProviderId, string 
 export const SUBSCRIPTION_UPDATE_COMMANDS: Record<AiSubscriptionProviderId, string | null> = {
   'claude-code': 'claude update',
   codex: null,
+  chatgpt: null,
+  antigravity: 'agy update',
+}
+
+/** The dotted version number in what a CLI printed for `--version` */
+export function subscriptionVersionOf(output: string): string | undefined {
+  return /\d+\.\d+\.\d+/.exec(output)?.[0]
 }
 
 /** Whether a dotted version number is at least `minimum` */
@@ -163,13 +220,25 @@ export function subscriptionVersionAtLeast(version: string, minimum: string): bo
 export const SUBSCRIPTION_INSTALL_URLS = {
   'claude-code': 'https://code.claude.com/docs/en/setup',
   codex: 'https://developers.openai.com/codex/cli',
-} as const satisfies Record<AiSubscriptionProviderId, string>
+  antigravity: 'https://antigravity.google/docs/install?tab=cli',
+} as const satisfies Record<AiSubscriptionCliId, string>
+
+/**
+ * Where ChatGPT shows, and lets the user limit, what an app uses of the plan.
+ * ChatGPT has nothing to install: this is the page its card links to.
+ */
+export const SUBSCRIPTION_CHATGPT_USAGE_URL = 'https://chatgpt.com/#settings/Usage'
 
 /** The status of a provider nothing is known about yet */
 export function checkingSubscriptionStatus(
   provider: AiSubscriptionProviderId,
 ): AiSubscriptionStatus {
   return { provider, state: 'checking', meteredAccepted: false }
+}
+
+/** The status of a CLI turned off in this app: nothing was asked, so nothing else is known */
+export function offSubscriptionStatus(provider: AiSubscriptionProviderId): AiSubscriptionStatus {
+  return { provider, state: 'off', meteredAccepted: false }
 }
 
 /**
@@ -198,21 +267,30 @@ export function subscriptionStatusErrorKind(status: {
   return 'failed'
 }
 
+/** Homebrew's Claude Code casks; `claude update` leaves a copy they installed as it is */
+const CLAUDE_HOMEBREW_CASK = /[\\/]Caskroom[\\/](claude-code(?:@latest)?)[\\/]/
+
 /**
  * What a "needs update" card can tell the user: the version found, the oldest
- * one the app works with, and the command that updates it. Null unless the
- * status is that error and the CLI reported a version below the floor (an old
- * Codex has no floor; it is caught by an unknown subcommand instead).
+ * one the app works with, and the command that updates it (Homebrew's, for the
+ * copy a Homebrew cask installed). Null unless the status is that error and the
+ * CLI reported a version below the floor (an old Codex has no floor; it is
+ * caught by an unknown subcommand instead).
  */
 export function subscriptionNeedsUpdate(status: {
   provider: AiSubscriptionProviderId
   state: AiSubscriptionState
   error?: string | undefined
   version?: string | undefined
+  programPath?: string | undefined
 }): { version: string; minimum: string; command: string } | null {
   if (subscriptionStatusErrorKind(status) !== 'needs-update') return null
   const minimum = SUBSCRIPTION_MIN_VERSIONS[status.provider]
-  const command = SUBSCRIPTION_UPDATE_COMMANDS[status.provider]
+  const cask =
+    status.provider === 'claude-code'
+      ? CLAUDE_HOMEBREW_CASK.exec(status.programPath ?? '')?.[1]
+      : undefined
+  const command = cask ? `brew upgrade ${cask}` : SUBSCRIPTION_UPDATE_COMMANDS[status.provider]
   const version = status.version
   if (!minimum || !command || !version) return null
   if (subscriptionVersionAtLeast(version, minimum)) return null
@@ -242,7 +320,12 @@ export function subscriptionProgramPathOf(value: unknown): string | undefined {
 // ---------------------------------------------------------------------------
 
 /** Listed here (not imported) so this file keeps importing types only */
-const SUBSCRIPTION_PROVIDER_IDS: readonly AiSubscriptionProviderId[] = ['claude-code', 'codex']
+const SUBSCRIPTION_PROVIDER_IDS: readonly AiSubscriptionProviderId[] = [
+  'claude-code',
+  'chatgpt',
+  'codex',
+  'antigravity',
+]
 
 const SUBSCRIPTION_STATES: readonly AiSubscriptionState[] = [
   'checking',
@@ -251,6 +334,7 @@ const SUBSCRIPTION_STATES: readonly AiSubscriptionState[] = [
   'ready',
   'metered',
   'error',
+  'off',
 ]
 
 const SUBSCRIPTION_LAUNCH_FAILURES: readonly SubscriptionLaunchFailure[] = [
@@ -264,11 +348,13 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
 }
 
-/** Both providers `checking`: what is shown while nothing has answered */
+/** Every provider `checking`: what is shown while nothing has answered */
 export function checkingSubscriptionStatuses(): SubscriptionStatusMap {
   return {
     'claude-code': checkingSubscriptionStatus('claude-code'),
+    chatgpt: checkingSubscriptionStatus('chatgpt'),
     codex: checkingSubscriptionStatus('codex'),
+    antigravity: checkingSubscriptionStatus('antigravity'),
   }
 }
 
@@ -331,7 +417,8 @@ function modelLabelOf(value: unknown): string {
 
 /**
  * A model list as a status carries it: the listed fields only, ids the CLI
- * could be given, names trimmed and bounded, one entry per id, at most
+ * could be given, names trimmed and bounded, effort levels from the known
+ * list only, one entry per id, at most
  * `SUBSCRIPTION_MODELS_MAX` entries. The entry with an empty id stands for the
  * CLI's own default and is kept only when it tells what that resolves to.
  * Absent when nothing usable is left.
@@ -349,18 +436,48 @@ export function subscriptionModelsOf(value: unknown): AiSubscriptionModel[] | un
     const resolved = modelIdOf(entry.resolved)
     if (isDefaultEntry && !resolved) continue
     seen.add(id)
+    // levels outside the known list are dropped; the default counts only as one the model takes
+    const efforts = aiEffortsOf(entry.efforts)
+    const defaultEffort = aiEffortOf(entry.defaultEffort)
     models.push({
       id,
       label: modelLabelOf(entry.label) || id || (resolved as string),
       ...(resolved ? { resolved } : {}),
       ...(isDefaultEntry || entry.isDefault === true ? { isDefault: true } : {}),
+      ...(efforts ? { efforts } : {}),
+      ...(efforts && defaultEffort && efforts.includes(defaultEffort) ? { defaultEffort } : {}),
     })
   }
   return models.length > 0 ? models : undefined
 }
 
 /**
- * An IPC answer as a status map with both providers present. A provider whose
+ * An OAuth error code (the token endpoint's `error`, or the one the browser
+ * came back with) is kept only with this shape: an identifier, never text.
+ */
+export const SUBSCRIPTION_LOGIN_ERROR_CODE = /^[a-z0-9_.-]{1,64}$/
+
+/** Why a sign-in failed, read back from an IPC answer: fixed names and a status number only */
+export function subscriptionLoginFailureOf(value: unknown): AiSubscriptionLoginFailure | undefined {
+  if (!isRecord(value)) return undefined
+  const reason = AI_SUBSCRIPTION_LOGIN_FAILURE_REASONS.find((known) => known === value.reason)
+  if (!reason) return undefined
+  const failure: AiSubscriptionLoginFailure = { reason }
+  const step = AI_SUBSCRIPTION_LOGIN_FAILURE_STEPS.find((known) => known === value.step)
+  if (step) failure.step = step
+  const status = value.httpStatus
+  if (typeof status === 'number' && Number.isInteger(status) && status >= 100 && status <= 599) {
+    failure.httpStatus = status
+  }
+  const code = value.oauthError
+  if (typeof code === 'string' && SUBSCRIPTION_LOGIN_ERROR_CODE.test(code)) {
+    failure.oauthError = code
+  }
+  return failure
+}
+
+/**
+ * An IPC answer as a status map with every provider present. A provider whose
  * entry is missing or malformed reads as `checking`, so a renderer never has
  * to guard against a half-filled answer. The account and the model list pass
  * only when they have their shape, and only on a state that names a login.
@@ -369,6 +486,14 @@ export function subscriptionStatusMapOf(result: unknown): SubscriptionStatusMap 
   const raw = isRecord(result) ? result : {}
   const statusOf = (provider: AiSubscriptionProviderId): AiSubscriptionStatus => {
     const status = raw[provider]
+    // a main process that answered without a newer provider has no such connection (an older app)
+    if (
+      isRecord(result) &&
+      status === undefined &&
+      (provider === 'chatgpt' || provider === 'antigravity')
+    ) {
+      return { provider, state: 'signed-out', meteredAccepted: false }
+    }
     if (!isRecord(status) || !SUBSCRIPTION_STATES.includes(status.state as AiSubscriptionState)) {
       return checkingSubscriptionStatus(provider)
     }
@@ -387,16 +512,30 @@ export function subscriptionStatusMapOf(result: unknown): SubscriptionStatusMap 
     delete read.account
     delete read.models
     delete read.signingIn
+    delete read.loginUnfinished
+    delete read.loginFailure
     delete read.programPath
     if (account) read.account = account
     if (models) read.models = models
     if (programPath) read.programPath = programPath
-    if (status.signingIn === 'browser' || status.signingIn === 'window') {
+    // a program turned off in this app has no sign-in to show
+    if ((status.signingIn === 'browser' || status.signingIn === 'window') && read.state !== 'off') {
       read.signingIn = status.signingIn
+    }
+    // a login that ended without one belongs to signed-out and nowhere else
+    if (read.state === 'signed-out' && status.loginUnfinished === true) {
+      read.loginUnfinished = true
+      const failure = subscriptionLoginFailureOf(status.loginFailure)
+      if (failure) read.loginFailure = failure
     }
     return read
   }
-  return { 'claude-code': statusOf('claude-code'), codex: statusOf('codex') }
+  return {
+    'claude-code': statusOf('claude-code'),
+    chatgpt: statusOf('chatgpt'),
+    codex: statusOf('codex'),
+    antigravity: statusOf('antigravity'),
+  }
 }
 
 /**
@@ -421,4 +560,9 @@ export function subscriptionLaunchResultOf(result: unknown): SubscriptionLaunchR
 export function subscriptionMeteredResultOf(result: unknown): SubscriptionMeteredResult {
   const raw = isRecord(result) ? result : {}
   return { ok: raw.ok === true, statuses: subscriptionStatusMapOf(raw.statuses) }
+}
+
+/** An IPC answer to turning a CLI off or on: done only on a literal `true`, the statuses always a full map */
+export function subscriptionOffResultOf(result: unknown): SubscriptionOffResult {
+  return subscriptionMeteredResultOf(result)
 }

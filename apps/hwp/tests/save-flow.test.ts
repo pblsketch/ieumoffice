@@ -1,9 +1,113 @@
-import { describe, expect, it, vi } from 'vitest'
-import { runSave, type SaveEditorPort } from '../src/renderer/save-flow'
-import type { BeginSaveResult, CommitSaveResult, TabSpot } from '../src/shared/ipc'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+type IpcHandler = (event: unknown, ...args: unknown[]) => unknown
+const ipcHandlers = new Map<string, IpcHandler>()
+const showSaveDialog = vi.fn(
+  async (..._args: unknown[]): Promise<{ canceled: boolean; filePath?: string }> => ({
+    canceled: true,
+  }),
+)
+
+interface FakeWebContents {
+  id: number
+  destroyed: boolean
+  isDestroyed(): boolean
+  setWindowOpenHandler(handler: unknown): void
+  loadURL(url: string): Promise<void>
+  send(channel: string, ...args: unknown[]): void
+  on(event: string, listener: (...args: unknown[]) => void): void
+  once(event: string, listener: (...args: unknown[]) => void): void
+}
+
+let nextWcId = 100
+function makeFakeWebContents(): FakeWebContents {
+  const listeners = new Map<string, Array<(...args: unknown[]) => void>>()
+  const wc: FakeWebContents = {
+    id: nextWcId++,
+    destroyed: false,
+    isDestroyed: () => wc.destroyed,
+    setWindowOpenHandler: () => {},
+    loadURL: async () => {},
+    send: () => {},
+    on: (event, listener) => {
+      const list = listeners.get(event) ?? []
+      list.push(listener)
+      listeners.set(event, list)
+    },
+    once: (event, listener) => {
+      const list = listeners.get(event) ?? []
+      list.push(listener)
+      listeners.set(event, list)
+    },
+  }
+  return wc
+}
+
+const mainTestUserData = { dir: '' }
+
+vi.mock('electron', () => ({
+  app: {
+    on: vi.fn(),
+    whenReady: () => new Promise(() => {}),
+    getPath: (name: string) =>
+      name === 'userData' ? mainTestUserData.dir : join(tmpdir(), `hwp-save-flow-${name}`),
+    getLocale: () => 'en-US',
+  },
+  dialog: {
+    showMessageBox: vi.fn(async () => ({ response: 1 })),
+    showSaveDialog: (...args: unknown[]) => showSaveDialog(...args),
+  },
+  shell: { openExternal: vi.fn(async () => {}), showItemInFolder: vi.fn() },
+  protocol: { handle: vi.fn(), registerSchemesAsPrivileged: vi.fn() },
+  net: {},
+  ipcRenderer: {},
+  webUtils: {},
+  BrowserWindow: { fromWebContents: () => null, getFocusedWindow: () => null },
+  WebContentsView: class {
+    webContents = makeFakeWebContents()
+  },
+  ipcMain: {
+    handle: (channel: string, fn: IpcHandler) => ipcHandlers.set(channel, fn),
+    on: (channel: string, fn: IpcHandler) => ipcHandlers.set(channel, fn),
+    removeHandler: vi.fn(),
+  },
+}))
+
+vi.mock('@genoffice/file-parse', () => ({
+  hwpToText: vi.fn(async () => ''),
+  parseFileToText: vi.fn(async () => ({ kind: 'text', text: '' })),
+  ATTACHABLE_EXTS: new Set<string>(),
+  ATTACHABLE_IMAGE_EXTS: new Set<string>(),
+  ATTACHABLE_MAX_BYTES: 25 * 1024 * 1024,
+  attachableMaxBytes: () => 25 * 1024 * 1024,
+  ATTACHABLE_IMAGE_MAX_BYTES: 5 * 1024 * 1024,
+}))
+
+import { createHwpView, hwpIsDirty, matchesOpenHwpPath } from '../src/main/hwp-main'
+import {
+  checkStalenessBeforeAction,
+  runSave,
+  runSubmissionSave,
+  type SaveEditorPort,
+  type SubmissionSaveEditorPort,
+} from '../src/renderer/save-flow'
+import { checkStalenessBeforePrint, runWithPrintStalenessCheck } from '../src/renderer/print-flow'
+import { HWP_CHANNELS } from '../src/shared/ipc'
+import type {
+  BeginSaveResult,
+  BeginSubmissionSaveResult,
+  CommitSaveResult,
+  CommitSubmissionSaveResult,
+  MemoSnapshot,
+  TabSpot,
+} from '../src/shared/ipc'
 
 const HWP = Uint8Array.from([1, 2, 3])
 const HWPX = Uint8Array.from([4, 5, 6])
+const PREVIEW = { text: '본문\r\n', image: Uint8Array.from([7, 8]) }
 
 function editor(overrides: Partial<SaveEditorPort> = {}): SaveEditorPort {
   return {
@@ -15,9 +119,12 @@ function editor(overrides: Partial<SaveEditorPort> = {}): SaveEditorPort {
       pageCountAfter: 3,
       recovered: true,
     })),
+    listMemos: vi.fn(async () => []),
+    setMemoLock: vi.fn(async () => ({ ok: true })),
     measureTabs: vi.fn(async (spots: TabSpot[]) =>
       spots.map((spot) => (spot.tab === 0 ? { width: 4000, type: 0, fill: 0 } : null)),
     ),
+    savePreview: vi.fn(async () => PREVIEW),
     notifySaved: vi.fn(async () => ({ ok: true })),
     ...overrides,
   }
@@ -41,7 +148,34 @@ const SPOTS: TabSpot[] = [
   { sec: 0, para: 1, cells: [], tab: 1, tabs: 2 },
 ]
 
+const MEMOS: MemoSnapshot[] = [
+  {
+    author: '이음',
+    date: null,
+    text: '확인 부탁드립니다.',
+    place: 'body',
+    sectionIndex: 0,
+    paraIndex: 2,
+    startCharIdx: 4,
+    endCharIdx: 12,
+    path: null,
+  },
+]
+
 describe('runSave', () => {
+  it('Save As with PDF picked exports nothing and commits nothing: the caller writes the PDF', async () => {
+    const ed = editor()
+    const host = api({ ok: true, path: 'C:/d/copy.pdf', export: 'pdf' })
+    const outcome = await runSave(ed, host, 'saveAs')
+    expect(outcome).toEqual({ kind: 'export', format: 'pdf', path: 'C:/d/copy.pdf' })
+    expect(host.beginSave).toHaveBeenCalledWith('saveAs')
+    expect(ed.exportHwp).not.toHaveBeenCalled()
+    expect(ed.exportHwpx).not.toHaveBeenCalled()
+    expect(host.commitSave).not.toHaveBeenCalled()
+    expect(host.abortSave).not.toHaveBeenCalled()
+    expect(ed.notifySaved).not.toHaveBeenCalled()
+  })
+
   it('hands the main process the widths the editor measured for the tabs it found', async () => {
     const ed = editor()
     const host = api({ ok: true, path: 'C:/d/a.hwpx', format: 'hwpx' }, undefined, SPOTS)
@@ -49,9 +183,18 @@ describe('runSave', () => {
     expect(host.newTabs).toHaveBeenCalledWith(HWPX, 'hwpx')
     expect(ed.measureTabs).toHaveBeenCalledWith(SPOTS)
     // a tab the editor could not measure is left out
-    expect(host.commitSave).toHaveBeenCalledWith(HWPX, [
-      { ...SPOTS[0], width: 4000, type: 0, fill: 0 },
-    ])
+    expect(host.commitSave).toHaveBeenCalledWith(
+      HWPX,
+      [{ ...SPOTS[0], width: 4000, type: 0, fill: 0 }],
+      { auto: false, memos: [], preview: PREVIEW },
+    )
+  })
+
+  it('marks an automatic save so a copy-pair conflict stands down quietly', async () => {
+    const ed = editor()
+    const host = api({ ok: true, path: 'C:/d/a.hwp', format: 'hwp' })
+    await runSave(ed, host, 'save', true)
+    expect(host.commitSave).toHaveBeenCalledWith(HWP, [], { auto: true, preview: PREVIEW })
   })
 
   it('treats the copy-pair deferral as a cancel, not a failure', async () => {
@@ -79,7 +222,20 @@ describe('runSave', () => {
     const host = api({ ok: true, path: 'C:/d/a.hwp', format: 'hwp' }, undefined, SPOTS)
     const outcome = await runSave(ed, host, 'save')
     expect(outcome).toEqual({ kind: 'saved', path: 'C:/d/a.hwp' })
-    expect(host.commitSave).toHaveBeenCalledWith(HWP, [])
+    expect(host.commitSave).toHaveBeenCalledWith(HWP, [], { auto: false, preview: PREVIEW })
+  })
+
+  it('sends a null preview when the editor cannot make one, and still saves', async () => {
+    // null makes the main process write a blank preview, never the opened file's (decision 0146)
+    const ed = editor({
+      savePreview: vi.fn(async () => {
+        throw new Error('the editor is not ready')
+      }),
+    })
+    const host = api({ ok: true, path: 'C:/d/a.hwp', format: 'hwp' })
+    const outcome = await runSave(ed, host, 'save')
+    expect(outcome).toEqual({ kind: 'saved', path: 'C:/d/a.hwp' })
+    expect(host.commitSave).toHaveBeenCalledWith(HWP, [], { auto: false, preview: null })
   })
 
   it('does not ask the editor when no tab lacks a width', async () => {
@@ -126,7 +282,7 @@ describe('runSave', () => {
     const outcome = await runSave(ed, host, 'save')
     expect(outcome).toEqual({ kind: 'saved', path: 'C:/d/a.hwp' })
     expect(ed.exportHwpVerify).toHaveBeenCalledOnce()
-    expect(host.commitSave).toHaveBeenCalledWith(HWP, [])
+    expect(host.commitSave).toHaveBeenCalledWith(HWP, [], { auto: false, preview: PREVIEW })
     expect(ed.notifySaved).toHaveBeenCalledWith('a.hwp')
     expect(host.abortSave).not.toHaveBeenCalled()
   })
@@ -149,16 +305,143 @@ describe('runSave', () => {
     expect(ed.notifySaved).toHaveBeenCalledWith('a.hwpx')
   })
 
-  it('writes nothing when the HWP read-back loses pages', async () => {
+  it('does not ask for memos when saving HWP', async () => {
+    const ed = editor()
+    const host = api({ ok: true, path: 'C:/d/a.hwp', format: 'hwp' })
+    await runSave(ed, host, 'save')
+    expect(ed.setMemoLock).not.toHaveBeenCalled()
+    expect(ed.listMemos).not.toHaveBeenCalled()
+    expect(host.commitSave).toHaveBeenCalledWith(HWP, [], { auto: false, preview: PREVIEW })
+  })
+
+  it('lists HWPX memos under the lock and releases it before measuring tabs', async () => {
+    const ed = editor({ listMemos: vi.fn(async () => MEMOS) })
+    const host = api({ ok: true, path: 'C:/d/a.hwpx', format: 'hwpx' })
+    await runSave(ed, host, 'save')
+    expect(ed.setMemoLock).toHaveBeenNthCalledWith(1, true)
+    expect(ed.setMemoLock).toHaveBeenNthCalledWith(2, false)
+    expect(ed.listMemos).toHaveBeenCalledOnce()
+    expect(host.commitSave).toHaveBeenCalledWith(HWPX, [], {
+      auto: false,
+      memos: MEMOS,
+      preview: PREVIEW,
+    })
+    // the document is unlocked before the host works on the bytes
+    const lock = vi.mocked(ed.setMemoLock)
+    expect(lock.mock.invocationCallOrder[1]).toBeLessThan(host.newTabs.mock.invocationCallOrder[0])
+  })
+
+  it('saves HWPX without a trusted memo list when the lock cannot be taken', async () => {
+    const ed = editor({
+      setMemoLock: vi.fn(async () => {
+        throw new Error('the editor is not ready')
+      }),
+    })
+    const host = api(
+      { ok: true, path: 'C:/d/a.hwpx', format: 'hwpx' },
+      { ok: true, path: 'C:/d/a.hwpx' },
+    )
+    expect(await runSave(ed, host, 'save')).toEqual({ kind: 'saved', path: 'C:/d/a.hwpx' })
+    expect(ed.listMemos).not.toHaveBeenCalled()
+    expect(ed.exportHwpx).toHaveBeenCalledOnce()
+    expect(host.commitSave).toHaveBeenCalledWith(HWPX, [], {
+      auto: false,
+      memos: null,
+      preview: PREVIEW,
+    })
+  })
+
+  it('saves HWPX without a memo list when the editor cannot list them', async () => {
+    const ed = editor({
+      listMemos: vi.fn(async () => {
+        throw new Error('this build has no memo API')
+      }),
+    })
+    const host = api(
+      { ok: true, path: 'C:/d/a.hwpx', format: 'hwpx' },
+      { ok: true, path: 'C:/d/a.hwpx' },
+    )
+    expect(await runSave(ed, host, 'save')).toEqual({ kind: 'saved', path: 'C:/d/a.hwpx' })
+    expect(ed.setMemoLock).toHaveBeenNthCalledWith(2, false)
+    expect(host.commitSave).toHaveBeenCalledWith(HWPX, [], {
+      auto: false,
+      memos: null,
+      preview: PREVIEW,
+    })
+  })
+
+  it('releases the memo lock when the HWPX export throws', async () => {
+    const ed = editor({
+      exportHwpx: vi.fn(async () => {
+        throw new Error('serializer failed')
+      }),
+    })
+    const host = api({ ok: true, path: 'C:/d/a.hwpx', format: 'hwpx' })
+    expect(await runSave(ed, host, 'save')).toEqual({
+      kind: 'failed',
+      reason: 'export',
+      detail: 'serializer failed',
+    })
+    expect(ed.setMemoLock).toHaveBeenNthCalledWith(1, true)
+    expect(ed.setMemoLock).toHaveBeenNthCalledWith(2, false)
+    expect(host.abortSave).toHaveBeenCalledOnce()
+    expect(host.commitSave).not.toHaveBeenCalled()
+  })
+
+  it('still saves when the lock will not be released', async () => {
+    const ed = editor({
+      setMemoLock: vi
+        .fn()
+        .mockResolvedValueOnce({ ok: true })
+        .mockRejectedValueOnce(new Error('bridge closed')),
+    })
+    const host = api(
+      { ok: true, path: 'C:/d/a.hwpx', format: 'hwpx' },
+      { ok: true, path: 'C:/d/a.hwpx' },
+    )
+    expect(await runSave(ed, host, 'save')).toEqual({ kind: 'saved', path: 'C:/d/a.hwpx' })
+    expect(host.commitSave).toHaveBeenCalledOnce()
+  })
+
+  it('stops quietly when the main process refuses because a memo editor is open', async () => {
+    const ed = editor()
+    const host = api({
+      ok: false,
+      error: 'hwp: a memo editor is open',
+      reason: 'memo',
+    })
+    expect(await runSave(ed, host, 'save')).toEqual({ kind: 'canceled' })
+    expect(ed.exportHwpx).not.toHaveBeenCalled()
+    expect(ed.exportHwp).not.toHaveBeenCalled()
+    expect(host.commitSave).not.toHaveBeenCalled()
+  })
+
+  it('reports the HWPX memos the written file lacks', async () => {
+    const host = api(
+      { ok: true, path: 'C:/d/a.hwpx', format: 'hwpx' },
+      { ok: true, path: 'C:/d/a.hwpx', memosLost: 2 },
+    )
+    expect(await runSave(editor(), host, 'save')).toEqual({
+      kind: 'saved',
+      path: 'C:/d/a.hwpx',
+      memosLost: 2,
+    })
+  })
+
+  it('writes nothing when the HWP read-back loses pages, and reports before/after counts', async () => {
     const ed = editor({
       exportHwpVerify: vi.fn(async () => ({
-        pageCountBefore: 9,
-        pageCountAfter: 8,
-        recovered: true,
+        pageCountBefore: 11,
+        pageCountAfter: 7,
+        recovered: false,
       })),
     })
     const host = api({ ok: true, path: 'C:/d/a.hwp', format: 'hwp' })
-    expect(await runSave(ed, host, 'save')).toEqual({ kind: 'failed', reason: 'verify' })
+    expect(await runSave(ed, host, 'save')).toEqual({
+      kind: 'failed',
+      reason: 'verify',
+      verify: { pageCountBefore: 11, pageCountAfter: 7, recovered: false },
+    })
     expect(host.commitSave).not.toHaveBeenCalled()
     expect(host.abortSave).toHaveBeenCalledOnce()
     expect(ed.notifySaved).not.toHaveBeenCalled()
@@ -173,8 +456,28 @@ describe('runSave', () => {
       })),
     })
     const host = api({ ok: true, path: 'C:/d/a.hwp', format: 'hwp' })
-    expect(await runSave(ed, host, 'save')).toEqual({ kind: 'failed', reason: 'verify' })
+    expect(await runSave(ed, host, 'save')).toEqual({
+      kind: 'failed',
+      reason: 'verify',
+      verify: { pageCountBefore: 9, pageCountAfter: 9, recovered: false },
+    })
     expect(host.commitSave).not.toHaveBeenCalled()
+  })
+
+  it('passes saveAsHwpx through to beginSave and writes HWPX without HWP read-back check', async () => {
+    const ed = editor()
+    const host = api(
+      { ok: true, path: '/tmp/report.hwpx', format: 'hwpx' },
+      { ok: true, path: '/tmp/report.hwpx' },
+    )
+    expect(await runSave(ed, host, 'saveAsHwpx')).toEqual({
+      kind: 'saved',
+      path: '/tmp/report.hwpx',
+    })
+    expect(host.beginSave).toHaveBeenCalledWith('saveAsHwpx')
+    expect(ed.exportHwpVerify).not.toHaveBeenCalled()
+    expect(ed.exportHwpx).toHaveBeenCalledOnce()
+    expect(ed.notifySaved).toHaveBeenCalledWith('report.hwpx')
   })
 
   it('releases the pending save when the export throws', async () => {
@@ -254,5 +557,499 @@ describe('runSave', () => {
     })
     const host = api({ ok: true, path: 'C:/d/a.hwp', format: 'hwp' })
     expect(await runSave(ed, host, 'save')).toEqual({ kind: 'saved', path: 'C:/d/a.hwp' })
+  })
+
+  it('never invokes onStaleCheck during automatic save', async () => {
+    const ed = editor()
+    const host = api({ ok: true, path: 'C:/d/a.hwp', format: 'hwp' })
+    const onStaleCheck = vi.fn(async () => 'cancel' as const)
+    const outcome = await runSave(ed, host, 'save', true, { onStaleCheck })
+    expect(outcome).toEqual({ kind: 'saved', path: 'C:/d/a.hwp' })
+    expect(onStaleCheck).not.toHaveBeenCalled()
+  })
+
+  it('invokes onStaleCheck during manual save and cancels cleanly before opening dialogs', async () => {
+    const ed = editor()
+    const host = api({ ok: true, path: 'C:/d/a.hwp', format: 'hwp' })
+    const onStaleCheck = vi.fn(async () => 'cancel' as const)
+    const outcome = await runSave(ed, host, 'saveAs', false, { onStaleCheck })
+    expect(outcome).toEqual({ kind: 'canceled' })
+    expect(onStaleCheck).toHaveBeenCalledOnce()
+    expect(host.beginSave).not.toHaveBeenCalled()
+    expect(host.commitSave).not.toHaveBeenCalled()
+    expect(host.abortSave).toHaveBeenCalledOnce()
+  })
+
+  it('fails open when onStaleCheck throws on manual save', async () => {
+    const ed = editor()
+    const host = api({ ok: true, path: 'C:/d/a.hwp', format: 'hwp' })
+    const onStaleCheck = vi.fn(async () => {
+      throw new Error('staleness check crashed')
+    })
+    const outcome = await runSave(ed, host, 'save', false, { onStaleCheck })
+    expect(outcome).toEqual({ kind: 'saved', path: 'C:/d/a.hwp' })
+    expect(onStaleCheck).toHaveBeenCalledOnce()
+    expect(host.commitSave).toHaveBeenCalledOnce()
+  })
+})
+
+describe('staleness pre-action gate', () => {
+  it('skips prompt when nothing is stale and fails open when checkStale throws', async () => {
+    const promptUser = vi.fn(async () => 'cancel' as const)
+    expect(
+      await checkStalenessBeforeAction(
+        'save',
+        async () => ({ stale: false, items: [] }),
+        promptUser,
+      ),
+    ).toBe('continue')
+    expect(promptUser).not.toHaveBeenCalled()
+
+    expect(
+      await checkStalenessBeforeAction(
+        'save',
+        async () => {
+          throw new Error('engine error')
+        },
+        promptUser,
+      ),
+    ).toBe('continue')
+    expect(promptUser).not.toHaveBeenCalled()
+  })
+
+  it('runs refreshAll before continuing when the user chooses refresh', async () => {
+    const refreshAll = vi.fn(async () => ({ ok: true, refreshed: 2 }))
+    const promptUser = vi.fn(async () => 'refresh' as const)
+    const report = {
+      stale: true,
+      items: [{ id: 'toc:body', kind: 'body', reason: 'pages_changed' }],
+    }
+    const verdict = await checkStalenessBeforeAction('pdf', async () => report, promptUser, {
+      refreshAll,
+    })
+    expect(verdict).toBe('continue')
+    expect(promptUser).toHaveBeenCalledWith(report, 'pdf')
+    expect(refreshAll).toHaveBeenCalledOnce()
+  })
+
+  it('supports print and PDF staleness checks with fail-open behavior', async () => {
+    const promptUser = vi.fn(async () => 'cancel' as const)
+    const report = {
+      stale: true,
+      items: [{ id: 'index', kind: 'index', reason: 'entries_changed' }],
+    }
+    expect(await checkStalenessBeforePrint('print', async () => report, promptUser)).toBe('cancel')
+    expect(promptUser).toHaveBeenCalledWith(report, 'print')
+
+    const run = vi.fn(async () => 'printed')
+    expect(await runWithPrintStalenessCheck(async () => 'cancel', run)).toEqual({ canceled: true })
+    expect(run).not.toHaveBeenCalled()
+
+    expect(
+      await runWithPrintStalenessCheck(async () => {
+        throw new Error('check failed')
+      }, run),
+    ).toEqual({ canceled: false, value: 'printed' })
+    expect(run).toHaveBeenCalledOnce()
+  })
+})
+
+function submissionEditor(
+  overrides: Partial<SubmissionSaveEditorPort> = {},
+): SubmissionSaveEditorPort & { notifySaved: ReturnType<typeof vi.fn> } {
+  return {
+    isPasswordProtected: vi.fn(async () => false),
+    exportSubmissionCopy: vi.fn(async (format) => ({
+      bytes: format === 'hwp' ? HWP : HWPX,
+      ...(format === 'hwp'
+        ? { verify: { pageCountBefore: 3, pageCountAfter: 3, recovered: true } }
+        : {}),
+    })),
+    measureTabs: vi.fn(async (spots: TabSpot[]) =>
+      spots.map((spot) => (spot.tab === 0 ? { width: 4000, type: 0, fill: 0 } : null)),
+    ),
+    savePreview: vi.fn(async () => PREVIEW),
+    notifySaved: vi.fn(async () => ({ ok: true })),
+    ...overrides,
+  }
+}
+
+function submissionApi(
+  begin: BeginSubmissionSaveResult,
+  commit: CommitSubmissionSaveResult = { ok: true, path: 'C:/d/a_submission.hwpx' },
+  tabs: TabSpot[] = [],
+) {
+  return {
+    beginSubmissionSave: vi.fn(async () => begin),
+    newTabs: vi.fn(async () => tabs),
+    commitSubmissionSave: vi.fn(async () => commit),
+    abortSubmissionSave: vi.fn(),
+  }
+}
+
+describe('runSubmissionSave', () => {
+  it('writes the stripped submission copy without calling notifySaved', async () => {
+    const ed = submissionEditor()
+    const host = submissionApi(
+      { ok: true, path: 'C:/d/a_submission.hwpx', format: 'hwpx' },
+      { ok: true, path: 'C:/d/a_submission.hwpx' },
+      SPOTS,
+    )
+    const onStaleCheck = vi.fn(async () => 'continue' as const)
+    const outcome = await runSubmissionSave(ed, host, { onStaleCheck })
+    expect(outcome).toEqual({ kind: 'saved', path: 'C:/d/a_submission.hwpx' })
+    expect(onStaleCheck).toHaveBeenCalledOnce()
+    expect(ed.exportSubmissionCopy).toHaveBeenCalledWith('hwpx')
+    expect(host.newTabs).toHaveBeenCalledWith(HWPX, 'hwpx')
+    expect(host.commitSubmissionSave).toHaveBeenCalledWith(
+      HWPX,
+      [{ ...SPOTS[0], width: 4000, type: 0, fill: 0 }],
+      { preview: PREVIEW },
+    )
+    // Original tab's dirty flag and file path must never be modified.
+    expect(ed.notifySaved).not.toHaveBeenCalled()
+    expect(host.abortSubmissionSave).not.toHaveBeenCalled()
+  })
+
+  it('refuses password-protected documents before staleness check or dialog', async () => {
+    const ed = submissionEditor({ isPasswordProtected: vi.fn(async () => true) })
+    const host = submissionApi({ ok: true, path: 'C:/d/a_sub.hwpx', format: 'hwpx' })
+    const onStaleCheck = vi.fn(async () => 'continue' as const)
+    expect(await runSubmissionSave(ed, host, { onStaleCheck })).toEqual({
+      kind: 'failed',
+      reason: 'protected',
+    })
+    expect(onStaleCheck).not.toHaveBeenCalled()
+    expect(host.beginSubmissionSave).not.toHaveBeenCalled()
+    expect(host.commitSubmissionSave).not.toHaveBeenCalled()
+    expect(host.abortSubmissionSave).toHaveBeenCalledOnce()
+  })
+
+  it('cancels before opening the file dialog when staleness check cancels', async () => {
+    const ed = submissionEditor()
+    const host = submissionApi({ ok: true, path: 'C:/d/a_sub.hwpx', format: 'hwpx' })
+    const outcome = await runSubmissionSave(ed, host, {
+      onStaleCheck: async () => 'cancel',
+    })
+    expect(outcome).toEqual({ kind: 'canceled' })
+    expect(host.beginSubmissionSave).not.toHaveBeenCalled()
+    expect(ed.exportSubmissionCopy).not.toHaveBeenCalled()
+    expect(host.commitSubmissionSave).not.toHaveBeenCalled()
+    expect(host.abortSubmissionSave).toHaveBeenCalledOnce()
+  })
+
+  it('writes nothing when the document has tracked changes', async () => {
+    const ed = submissionEditor()
+    const host = submissionApi({
+      ok: false,
+      error: 'hwp: the document has tracked changes',
+      reason: 'tracked',
+    })
+    expect(await runSubmissionSave(ed, host)).toEqual({ kind: 'failed', reason: 'tracked' })
+    expect(ed.exportSubmissionCopy).not.toHaveBeenCalled()
+    expect(host.commitSubmissionSave).not.toHaveBeenCalled()
+  })
+
+  it('stops quietly when a memo editor is open or the dialog is canceled', async () => {
+    const ed = submissionEditor()
+    const memoHost = submissionApi({
+      ok: false,
+      error: 'hwp: a memo editor is open',
+      reason: 'memo',
+    })
+    expect(await runSubmissionSave(ed, memoHost)).toEqual({ kind: 'canceled' })
+    expect(memoHost.commitSubmissionSave).not.toHaveBeenCalled()
+
+    const cancelHost = submissionApi({ ok: true, canceled: true })
+    expect(await runSubmissionSave(ed, cancelHost)).toEqual({ kind: 'canceled' })
+    expect(ed.exportSubmissionCopy).not.toHaveBeenCalled()
+    expect(cancelHost.commitSubmissionSave).not.toHaveBeenCalled()
+  })
+
+  it('aborts and writes nothing when HWP submission verification fails', async () => {
+    const ed = submissionEditor({
+      exportSubmissionCopy: vi.fn(async () => ({
+        bytes: HWP,
+        verify: { pageCountBefore: 5, pageCountAfter: 4, recovered: true },
+      })),
+    })
+    const host = submissionApi({ ok: true, path: 'C:/d/a_sub.hwp', format: 'hwp' })
+    expect(await runSubmissionSave(ed, host)).toEqual({
+      kind: 'failed',
+      reason: 'verify',
+      verify: { pageCountBefore: 5, pageCountAfter: 4, recovered: true },
+    })
+    expect(host.abortSubmissionSave).toHaveBeenCalledOnce()
+    expect(host.commitSubmissionSave).not.toHaveBeenCalled()
+    expect(ed.notifySaved).not.toHaveBeenCalled()
+  })
+
+  it('aborts and writes nothing when building the submission copy throws', async () => {
+    const ed = submissionEditor({
+      exportSubmissionCopy: vi.fn(async () => {
+        throw new Error('clone failed')
+      }),
+    })
+    const host = submissionApi({ ok: true, path: 'C:/d/a_sub.hwpx', format: 'hwpx' })
+    expect(await runSubmissionSave(ed, host)).toEqual({
+      kind: 'failed',
+      reason: 'export',
+      detail: 'clone failed',
+    })
+    expect(host.abortSubmissionSave).toHaveBeenCalledOnce()
+    expect(host.commitSubmissionSave).not.toHaveBeenCalled()
+  })
+
+  it('reports write failure cleanly without calling notifySaved', async () => {
+    const ed = submissionEditor()
+    const host = submissionApi(
+      { ok: true, path: 'C:/d/a_sub.hwpx', format: 'hwpx' },
+      { ok: false, error: 'ENOSPC: no space left on device' },
+    )
+    expect(await runSubmissionSave(ed, host)).toEqual({
+      kind: 'failed',
+      reason: 'write',
+      detail: 'ENOSPC: no space left on device',
+    })
+    expect(ed.notifySaved).not.toHaveBeenCalled()
+  })
+
+  it('refuses and writes nothing when beginSubmissionSave reports same_as_open', async () => {
+    const ed = submissionEditor()
+    const host = submissionApi({
+      ok: false,
+      reason: 'same_as_open',
+      error: 'hwp: submission target matches an open document',
+    })
+    expect(await runSubmissionSave(ed, host)).toEqual({
+      kind: 'failed',
+      reason: 'same_as_open',
+    })
+    expect(ed.exportSubmissionCopy).not.toHaveBeenCalled()
+    expect(host.commitSubmissionSave).not.toHaveBeenCalled()
+    expect(ed.notifySaved).not.toHaveBeenCalled()
+  })
+
+  it('refuses when commitSubmissionSave detects same_as_open mid-export', async () => {
+    const ed = submissionEditor()
+    const host = submissionApi(
+      { ok: true, path: 'C:/d/other.hwpx', format: 'hwpx' },
+      {
+        ok: false,
+        reason: 'same_as_open',
+        error: 'hwp: submission target matches an open document',
+      },
+    )
+    expect(await runSubmissionSave(ed, host)).toEqual({
+      kind: 'failed',
+      reason: 'same_as_open',
+    })
+    expect(ed.notifySaved).not.toHaveBeenCalled()
+  })
+
+  it('aborts and writes nothing when mark stripping returns strip_failed', async () => {
+    const ed = submissionEditor({
+      exportSubmissionCopy: vi.fn(async () => ({
+        ok: false,
+        reason: 'strip_failed' as const,
+        failed: [{ name: '색인:테스트:1', error: 'removeBookmark returned false' }],
+      })),
+    })
+    const host = submissionApi({ ok: true, path: 'C:/d/a_sub.hwpx', format: 'hwpx' })
+    expect(await runSubmissionSave(ed, host)).toEqual({
+      kind: 'failed',
+      reason: 'strip_failed',
+      failedMarks: ['색인:테스트:1'],
+    })
+    expect(host.abortSubmissionSave).toHaveBeenCalledOnce()
+    expect(host.commitSubmissionSave).not.toHaveBeenCalled()
+    expect(ed.notifySaved).not.toHaveBeenCalled()
+  })
+
+  it('aborts and writes nothing when failed marks are non-empty even if bytes are returned', async () => {
+    const ed = submissionEditor({
+      exportSubmissionCopy: vi.fn(async () => ({
+        bytes: HWPX,
+        failed: [{ name: '설정:차례:body', error: 'still present' }],
+      })),
+    })
+    const host = submissionApi({ ok: true, path: 'C:/d/a_sub.hwpx', format: 'hwpx' })
+    expect(await runSubmissionSave(ed, host)).toEqual({
+      kind: 'failed',
+      reason: 'strip_failed',
+      failedMarks: ['설정:차례:body'],
+    })
+    expect(host.abortSubmissionSave).toHaveBeenCalledOnce()
+    expect(host.commitSubmissionSave).not.toHaveBeenCalled()
+  })
+
+  it('forwards backupPath when commitSubmissionSave backs up an existing file', async () => {
+    const ed = submissionEditor()
+    const host = submissionApi(
+      { ok: true, path: 'C:/d/a_submission.hwpx', format: 'hwpx' },
+      {
+        ok: true,
+        path: 'C:/d/a_submission.hwpx',
+        backupPath: 'C:/d/a_submission.hwpx.bak',
+      },
+    )
+    expect(await runSubmissionSave(ed, host)).toEqual({
+      kind: 'saved',
+      path: 'C:/d/a_submission.hwpx',
+      backupPath: 'C:/d/a_submission.hwpx.bak',
+    })
+    expect(ed.notifySaved).not.toHaveBeenCalled()
+  })
+})
+
+describe('open-tab path matching and main submission save guards', () => {
+  const ZIP_BYTES = Uint8Array.from([0x50, 0x4b, 0x03, 0x04, 0x11, 0x22, 0x33])
+  let tempDir = ''
+
+  const invokeMain = <T>(channel: string, wc: FakeWebContents, ...args: unknown[]): T =>
+    ipcHandlers.get(channel)!({ sender: wc }, ...args) as T
+
+  beforeEach(() => {
+    tempDir = mkdtempSync(join(tmpdir(), 'genoffice-hwp-sub-guard-'))
+    mainTestUserData.dir = tempDir
+    showSaveDialog.mockReset()
+  })
+
+  afterEach(() => {
+    rmSync(tempDir, { recursive: true, force: true })
+  })
+
+  it('normalizes relative segments and matches case-insensitively on win32 only', () => {
+    const open = [join(tempDir, 'Thesis.hwpx')]
+    expect(matchesOpenHwpPath(join(tempDir, 'sub', '..', 'Thesis.hwpx'), open, 'win32')).toBe(true)
+    expect(matchesOpenHwpPath(join(tempDir, 'thesis.HWPX'), open, 'win32')).toBe(true)
+    expect(matchesOpenHwpPath(join(tempDir, 'thesis.HWPX'), open, 'linux')).toBe(false)
+    expect(matchesOpenHwpPath(join(tempDir, 'Thesis.hwpx'), open, 'linux')).toBe(true)
+    expect(matchesOpenHwpPath(join(tempDir, 'Thesis_submission.hwpx'), open, 'win32')).toBe(false)
+  })
+
+  it('refuses overwriting the current tab or another open tab in beginSubmissionSave', async () => {
+    const docA = join(tempDir, 'Thesis.hwpx')
+    const docB = join(tempDir, 'Appendix.hwpx')
+    writeFileSync(docA, Buffer.from('original-a'))
+    writeFileSync(docB, Buffer.from('original-b'))
+
+    const viewA = createHwpView(docA)
+    const viewB = createHwpView(docB)
+    const wcA = viewA.webContents as unknown as FakeWebContents
+    expect(viewB.webContents).toBeDefined()
+
+    // Picking the same tab's path (even with different case on Windows) is blocked.
+    const sameCaseVariant = process.platform === 'win32' ? join(tempDir, 'thesis.HWPX') : docA
+    showSaveDialog.mockResolvedValueOnce({ canceled: false, filePath: sameCaseVariant })
+    const resSelf = await invokeMain<Promise<BeginSubmissionSaveResult>>(
+      HWP_CHANNELS.beginSubmissionSave,
+      wcA,
+    )
+    expect(resSelf.ok).toBe(false)
+    if (!resSelf.ok) expect(resSelf.reason).toBe('same_as_open')
+
+    // Picking another open tab's path is also blocked.
+    showSaveDialog.mockResolvedValueOnce({ canceled: false, filePath: docB })
+    const resOther = await invokeMain<Promise<BeginSubmissionSaveResult>>(
+      HWP_CHANNELS.beginSubmissionSave,
+      wcA,
+    )
+    expect(resOther.ok).toBe(false)
+    if (!resOther.ok) expect(resOther.reason).toBe('same_as_open')
+
+    // Neither open file was touched.
+    expect(readFileSync(docA, 'utf8')).toBe('original-a')
+    expect(readFileSync(docB, 'utf8')).toBe('original-b')
+  })
+
+  it('blocks commitSubmissionSave if another tab opens the target path mid-export', async () => {
+    const docA = join(tempDir, 'Main.hwpx')
+    const raceTarget = join(tempDir, 'RaceTarget.hwpx')
+    writeFileSync(docA, Buffer.from('main-doc'))
+    writeFileSync(raceTarget, Buffer.from('race-original'))
+
+    const viewA = createHwpView(docA)
+    const wcA = viewA.webContents as unknown as FakeWebContents
+
+    showSaveDialog.mockResolvedValueOnce({ canceled: false, filePath: raceTarget })
+    const begin = await invokeMain<Promise<BeginSubmissionSaveResult>>(
+      HWP_CHANNELS.beginSubmissionSave,
+      wcA,
+    )
+    expect(begin).toEqual({ ok: true, path: raceTarget, format: 'hwpx' })
+
+    // Another tab opens the target before commit runs.
+    createHwpView(raceTarget)
+
+    const commit = await invokeMain<Promise<CommitSubmissionSaveResult>>(
+      HWP_CHANNELS.commitSubmissionSave,
+      wcA,
+      ZIP_BYTES,
+      [],
+      {},
+    )
+    expect(commit.ok).toBe(false)
+    if (!commit.ok) expect(commit.reason).toBe('same_as_open')
+    expect(readFileSync(raceTarget, 'utf8')).toBe('race-original')
+    expect(existsSync(`${raceTarget}.bak`)).toBe(false)
+  })
+
+  it('creates a .bak backup when overwriting an existing non-open file and keeps tab state untouched', async () => {
+    const openDoc = join(tempDir, 'Working.hwpx')
+    const existingSub = join(tempDir, 'Working_submission.hwpx')
+    const brandNewSub = join(tempDir, 'Working_clean.hwpx')
+    writeFileSync(openDoc, Buffer.from('working-original'))
+    writeFileSync(existingSub, Buffer.from('prior-submission'))
+
+    const view = createHwpView(openDoc)
+    const wc = view.webContents as unknown as FakeWebContents
+    invokeMain(HWP_CHANNELS.dirtyChanged, wc, true)
+    expect(hwpIsDirty(wc.id)).toBe(true)
+
+    // Overwriting an existing non-open file creates .bak and returns backupPath.
+    showSaveDialog.mockResolvedValueOnce({ canceled: false, filePath: existingSub })
+    const beginExisting = await invokeMain<Promise<BeginSubmissionSaveResult>>(
+      HWP_CHANNELS.beginSubmissionSave,
+      wc,
+    )
+    expect(beginExisting).toEqual({ ok: true, path: existingSub, format: 'hwpx' })
+
+    const commitExisting = await invokeMain<Promise<CommitSubmissionSaveResult>>(
+      HWP_CHANNELS.commitSubmissionSave,
+      wc,
+      ZIP_BYTES,
+      [],
+      {},
+    )
+    expect(commitExisting).toEqual({
+      ok: true,
+      path: existingSub,
+      backupPath: `${existingSub}.bak`,
+    })
+    expect(readFileSync(`${existingSub}.bak`, 'utf8')).toBe('prior-submission')
+    expect(Uint8Array.from(readFileSync(existingSub))).toEqual(ZIP_BYTES)
+    // Original tab remains dirty and untouched on disk.
+    expect(hwpIsDirty(wc.id)).toBe(true)
+    expect(readFileSync(openDoc, 'utf8')).toBe('working-original')
+
+    // Writing a brand-new submission target creates no .bak file.
+    showSaveDialog.mockResolvedValueOnce({ canceled: false, filePath: brandNewSub })
+    const beginNew = await invokeMain<Promise<BeginSubmissionSaveResult>>(
+      HWP_CHANNELS.beginSubmissionSave,
+      wc,
+    )
+    expect(beginNew).toEqual({ ok: true, path: brandNewSub, format: 'hwpx' })
+
+    const commitNew = await invokeMain<Promise<CommitSubmissionSaveResult>>(
+      HWP_CHANNELS.commitSubmissionSave,
+      wc,
+      ZIP_BYTES,
+      [],
+      {},
+    )
+    expect(commitNew).toEqual({ ok: true, path: brandNewSub })
+    expect(existsSync(`${brandNewSub}.bak`)).toBe(false)
+    expect(Uint8Array.from(readFileSync(brandNewSub))).toEqual(ZIP_BYTES)
   })
 })

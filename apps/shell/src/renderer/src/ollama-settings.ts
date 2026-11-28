@@ -7,7 +7,7 @@ import {
   selectCustomEndpoint,
   upsertCustomEndpoint,
 } from '@genoffice/ai-provider/browser'
-import type { AiModelEffort, AiOllamaServer, AiSettings } from '@genoffice/ai-provider/browser'
+import type { OllamaEffortPreset, AiOllamaServer, AiSettings } from '@genoffice/ai-provider/browser'
 
 export const LOCAL_OLLAMA_URL = 'http://localhost:11434/v1'
 
@@ -65,7 +65,7 @@ export function registerOllamaModel(
   settings: AiSettings,
   serverId: string,
   model: string,
-  effort?: AiModelEffort,
+  effort?: OllamaEffortPreset,
   vision?: boolean,
 ): AiSettings {
   let next = resolveCustomEndpoints(settings)

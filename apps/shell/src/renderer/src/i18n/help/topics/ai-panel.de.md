@@ -36,9 +36,16 @@ Im KI-Bereich der Editoren Docs, Sheets, Slides, Hangul, HTML und Mindmaps könn
 - Haben zwei Dokumente denselben Namen, liegen aber in verschiedenen Ordnern, wird der Name des direkt übergeordneten Ordners angefügt, etwa `@Plan.docx(2. Halbjahr)`, und auch die KI erhält diesen Ordnernamen.
 - Die Editoren für PDF und Markdown haben noch keine Anhänge, daher gibt es dort keinen der beiden Wege.
 
+## Projekte
+
+- Klicken Sie links unter dem Eingabefeld auf den Projektnamen, um ein Projekt (einen Ordner auf Ihrem PC) zu wählen. Die KI antwortet dann mit dem Wissen um die Dateien, Anweisungen und Erinnerungen dieses Ordners, und die Unterhaltung wird im Ordner gespeichert, sodass Sie sie in einem anderen Editor fortsetzen können. Siehe [Projekte](help://projects).
+- Ist ein Projekt gewählt, steht oben im Bereich der Titel der aktuellen Unterhaltung. Ein Klick darauf zeigt die Liste der Unterhaltungen dieses Projekts und **Neue Unterhaltung**.
+- Die `@`-Liste im Eingabefeld zeigt nach den geöffneten Dokumenten „Dateien in diesem Projekt“.
+- Eine Anfrage mit gewähltem Projekt sendet zusätzlich die Anweisungen (samt `AGENTS.md` und `CLAUDE.md` oben im Ordner, die Sie auf der Projektseite abschalten können), Erinnerungen und die Liste der Dateinamen dieses Projekts, einen kurzen Auszug aus jeder Datei, die die KI bei einer Suche im Ordner findet, sowie den Text jeder Datei, die die KI liest, an die KI, die Sie verwenden.
+
 ## Zurückrollen und Sicherheit
 
-- Der Docs-Bereich führt eine **Versionsliste**: einen Snapshot pro Durchgang, Sie können zu jedem davon zurückrollen, und auch das Zurückrollen selbst lässt sich mit Strg+Z rückgängig machen. Snapshots überstehen das erneute Öffnen des Dokuments.
+- Ein Durchgang, in dem die KI das Dokument geändert hat, bekommt unter seiner Antwort die Karte **Änderungen am Dokument: N**, und die geänderten Stellen werden im Dokument gelb markiert. Die Markierungen gibt es nur auf dem Bildschirm – sie werden nie gespeichert, gedruckt oder exportiert – und sie verschwinden, sobald Sie die nächste Anfrage senden oder **Markierungen ausblenden** drücken. **Diese Änderungen zurücknehmen** nimmt den ganzen Durchgang auf einmal zurück. In Docs, Markdown, HTML, Slides, Mindmap und Diagramm werden beim Zurücknehmen eines früheren Durchgangs auch die späteren mit zurückgenommen; in Hangul, Sheets, PDF und EPUB lässt sich nur der letzte Durchgang zurücknehmen, und nur, wenn das Dokument danach nicht mehr bearbeitet wurde. Geht das nicht, verwenden Sie das Rückgängig des Editors selbst (Strg+Z).
 - KI-Änderungen laufen durch dieselbe Bearbeitungspipeline wie manuelle Änderungen (rückgängig machbar, speichern erforderlich) — nichts umgeht Ihre Speicherbestätigung.
 
 ## Eine Auswahl vor der KI verbergen

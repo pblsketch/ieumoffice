@@ -1,16 +1,22 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Lang } from '@genoffice/i18n'
 import {
+  ollamaEffortPresetOf,
   prettyModelName,
-  type AiModelEffort,
+  type AiEffort,
   type AiSettings,
+  type OllamaEffortPreset,
   type AiSubscriptionStatuses,
 } from '@genoffice/ai-provider/browser'
 import {
+  aiEffortChoice,
   aiProviderPickerGroups,
   aiProviderPickerSelection,
   aiSubscriptionModelName,
+  withAiEffort,
+  withAiEffortFitted,
   withAiProviderSelection,
+  type AiEffortChoice,
   type AiProviderPickerGroup,
   type AiProviderPickerSelection,
 } from './ai-model-picker-options'
@@ -19,7 +25,7 @@ import { AiCodexNotice } from './AiSubscriptionNotices'
 import { changeStoredAiSettings } from './ai-send-gate'
 import { ProviderLogo } from './provider-logos'
 import { useDismissablePopover } from './popover-dismiss'
-import { AI_MODEL_PICKER_STRINGS } from './strings-ai-model-picker'
+import { AI_EFFORT_STRINGS, AI_MODEL_PICKER_STRINGS } from './strings-ai-model-picker'
 import { aiSubscriptionText } from './strings-ai-subscription'
 
 /** Each app's preload exposes these under its own namespace; the panel adapts them. */
@@ -72,7 +78,7 @@ function PickerMark({ group }: { readonly group: Pick<AiProviderPickerGroup, 'ki
 }
 
 interface OllamaEffortOption {
-  readonly effort: AiModelEffort
+  readonly effort: OllamaEffortPreset
   readonly endpointId: string
 }
 
@@ -80,7 +86,7 @@ interface OllamaModelItem {
   readonly rawModel: string
   readonly prettyName: string
   readonly efforts: readonly OllamaEffortOption[]
-  readonly currentEffort?: AiModelEffort | undefined
+  readonly currentEffort?: OllamaEffortPreset | undefined
   readonly activeEndpointId: string
   readonly isSelected: boolean
 }
@@ -91,7 +97,7 @@ interface OllamaServerDisplayGroup {
   readonly items: readonly OllamaModelItem[]
 }
 
-function effortLabel(effort: AiModelEffort | string): string {
+function effortLabel(effort: OllamaEffortPreset | string): string {
   switch (effort) {
     case 'low':
       return 'Low'
@@ -136,8 +142,9 @@ function getOllamaServerGroups(
       const prettyName = prettyModelName(rawModel)
       const efforts: OllamaEffortOption[] = []
       for (const ep of eps) {
-        if (ep.effort) {
-          efforts.push({ effort: ep.effort, endpointId: ep.id })
+        const preset = ollamaEffortPresetOf(ep.effort)
+        if (preset) {
+          efforts.push({ effort: preset, endpointId: ep.id })
         }
       }
       efforts.sort((a, b) => (EFFORT_ORDER[a.effort] ?? 99) - (EFFORT_ORDER[b.effort] ?? 99))
@@ -147,7 +154,7 @@ function getOllamaServerGroups(
       )
       const isSelected = Boolean(selectedEp)
 
-      let currentEffort: AiModelEffort | undefined = selectedEp?.effort
+      let currentEffort: OllamaEffortPreset | undefined = ollamaEffortPresetOf(selectedEp?.effort)
       if (!currentEffort && efforts.length > 0) {
         currentEffort = efforts.some((e) => e.effort === 'medium') ? 'medium' : efforts[0]?.effort
       }
@@ -212,6 +219,7 @@ export function AiModelPicker({
   readonly onRefreshSubscriptions?: (() => void) | undefined
 }): React.JSX.Element | null {
   const strings = AI_MODEL_PICKER_STRINGS[lang] ?? AI_MODEL_PICKER_STRINGS.en
+  const effortStrings = AI_EFFORT_STRINGS[lang] ?? AI_EFFORT_STRINGS.en
   const [settings, setSettings] = useState<AiSettings | null>(null)
   const [open, setOpen] = useState(false)
   const [popStyle, setPopStyle] = useState<React.CSSProperties>({})
@@ -307,20 +315,28 @@ export function AiModelPicker({
     })
   }
 
-  const pick = (sel: AiProviderPickerSelection) => {
-    setOpen(false)
-    setActiveSubmenu(null)
+  const save = (change: (latest: AiSettings) => AiSettings) => {
     if (!settings) return
     // shown at once on the copy at hand; written onto what is stored now, so a change another
     // window saved since this picker last read the settings is not written back
-    setSettings(withAiProviderSelection(settings, sel))
-    void changeStoredAiSettings(
-      bridge,
-      (latest) => withAiProviderSelection(latest, sel),
-      settings,
-    ).then((written) => {
+    setSettings(change(settings))
+    void changeStoredAiSettings(bridge, change, settings).then((written) => {
       if (written) setSettings(written)
     })
+  }
+
+  const pick = (sel: AiProviderPickerSelection) => {
+    setOpen(false)
+    setActiveSubmenu(null)
+    // a level the newly picked model does not take is dropped, so the chip does not show it
+    save((latest) =>
+      withAiEffortFitted(withAiProviderSelection(latest, sel), subscriptionStatuses ?? {}),
+    )
+  }
+
+  // the list stays open: the level is picked after the model, and the row shows what is set
+  const pickEffort = (choice: AiEffortChoice, effort: AiEffort | undefined) => {
+    save((latest) => withAiEffort(latest, choice.provider, effort, choice.endpoint))
   }
 
   const manage = () => {
@@ -414,8 +430,11 @@ export function AiModelPicker({
     usable && currentGroup?.kind === 'auto' && modelName
       ? aiSubscriptionText(lang, 'pickerAutoUsing', { provider: modelName })
       : fullText
+  const effortChoice = usable ? aiEffortChoice(settings, subscriptionStatuses ?? {}) : undefined
+  const effortName = effortChoice?.current ? effortStrings.levels[effortChoice.current] : undefined
+  const withEffort = (text: string) => (effortName ? `${text} · ${effortName}` : text)
   const chipTip = modelName
-    ? `${strings.title}: ${fullText}${modelId ? ` (${modelId})` : ''}`
+    ? `${strings.title}: ${withEffort(fullText)}${modelId ? ` (${modelId})` : ''}`
     : strings.title
 
   const subscriptionAndAutoGroups = groups.filter(
@@ -613,10 +632,10 @@ export function AiModelPicker({
         aria-haspopup="listbox"
         aria-expanded={open}
         data-tip={chipTip}
-        aria-label={`${strings.title}: ${fullText}`}
+        aria-label={`${strings.title}: ${withEffort(fullText)}`}
       >
         {currentUsable && currentGroup && <PickerMark group={currentGroup} />}
-        <span className="ai-model-chip-text">{chipText}</span>
+        <span className="ai-model-chip-text">{withEffort(chipText)}</span>
         {currentUsable && picked?.metered && (
           <span className="ai-model-cost" title={paidTitle}>
             {paid}
@@ -690,6 +709,37 @@ export function AiModelPicker({
                   </button>
                 )
               })}
+            </div>
+          )}
+          {effortChoice && (
+            <div className="ai-effort" role="group" aria-label={effortStrings.title}>
+              <div className="ai-effort-head" data-tip={effortStrings.hint}>
+                {effortStrings.title}
+              </div>
+              <div className="ai-effort-options">
+                {[undefined, ...effortChoice.efforts].map((level) => {
+                  const selected = level === effortChoice.current
+                  const label = level
+                    ? effortStrings.levels[level]
+                    : effortChoice.defaultEffort
+                      ? effortStrings.autoNamed.replace(
+                          '{level}',
+                          effortStrings.levels[effortChoice.defaultEffort],
+                        )
+                      : effortStrings.auto
+                  return (
+                    <button
+                      key={level ?? ''}
+                      type="button"
+                      className={`ai-effort-option${selected ? ' selected' : ''}`}
+                      aria-pressed={selected}
+                      onClick={() => pickEffort(effortChoice, level)}
+                    >
+                      {label}
+                    </button>
+                  )
+                })}
+              </div>
             </div>
           )}
           {bridge.openModelSettings && (

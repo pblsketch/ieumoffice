@@ -235,7 +235,10 @@ const textOf = (node: JsonNode): string =>
       ? '\n'
       : node.type === 'inlineMath'
         ? `$${String(node.attrs?.latex)}$`
-        : (node.content ?? []).map(textOf).join('')
+        : // the editor reads `[^1]` as a footnote reference node since it learned footnotes
+          node.type === 'footnoteReference'
+          ? `[^${String(node.attrs?.label)}]`
+          : (node.content ?? []).map(textOf).join('')
 const marksOf = (doc: JsonNode, text: string): string[] =>
   (find(doc, 'text').find((n) => n.text === text)?.marks ?? []).map((m) => m.type)
 

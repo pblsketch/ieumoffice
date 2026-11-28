@@ -1,4 +1,6 @@
 import { ScriptFonts } from './script-fonts'
+import { CrossCellDrag } from './cross-cell-drag'
+import { pictureFilterCss } from './picture-effects'
 import { Editor, Extension, Node } from '@tiptap/core'
 import { SHAPE_INLINE_WRAP } from './floating-z-order'
 import { StreamingTailGuardExtension } from './streaming-tail-guard'
@@ -13,6 +15,7 @@ import {
   NodeSelection,
   Plugin,
   PluginKey,
+  Selection,
   TextSelection,
   type EditorState,
   type Transaction,
@@ -242,6 +245,8 @@ import { InactiveSelectionExtension } from './inactive-selection'
 import { FieldCodesExtension } from './field-codes'
 import { AiQueueAnchorsExtension } from './ai-queue-anchors'
 import { CheckboxToggleExtension } from './checkbox-toggle'
+import { OutlineViewExtension } from './outline-view'
+import { StoryViewExtension } from './story-view'
 import { PageGapNavExtension } from './page-gap-nav'
 import { TrailingTableExitExtension } from './trailing-table-exit'
 import { moveBlocks } from './move-block'
@@ -1270,6 +1275,10 @@ export const DocInlineImage = Node.create({
       rotDeg: { default: null as number | null },
       flipH: { default: false },
       flipV: { default: false },
+      /** lowered inline image/OLE baseline shift (pt, negative = lowered) so line box expands instead of overlapping */
+      baselineShiftPt: { default: null as number | null },
+      /** original w:position (half-points) stripped from docTextStyle for lowered inline images */
+      positionHalfPoints: { default: null as number | null, rendered: false },
       /** the run's raw <w:rPr> slice, re-emitted before the fragment on save (not rendered) */
       rawRPr: { default: null as string | null, rendered: false },
       /** VML horizontal rule (alone or sharing the paragraph): {colorHex?, thicknessPx?, sizeHalfPoints?, widthPx?, align?}; drawn as a rule on its own line */
@@ -1307,6 +1316,10 @@ export const DocInlineImage = Node.create({
     const h = Number(node.attrs.heightPx)
     const styles: string[] = []
     if (w > 0) styles.push(`width:${w}px`, h > 0 ? `height:${h}px` : 'height:auto')
+    const shiftPt = node.attrs.baselineShiftPt as number | null
+    if (shiftPt && shiftPt < 0 && !node.attrs.wrap) {
+      styles.push(`vertical-align:${shiftPt}pt`)
+    }
     const ib = node.attrs.border as { color: string; widthPt: number } | null
     if (ib) {
       // picture outline (document data, not chrome)
@@ -1465,6 +1478,16 @@ export const DocInlineMath = Node.create({
       /** flat token strip (word count / AI read fallback) */
       text: { default: '' },
       sizeHalfPoints: { default: null as number | null },
+      /** original <w:object> XML when decoded from a MathType OLE embed (null for native OMML) */
+      oleXml: { default: null as string | null, rendered: false },
+      /** original <w:rPr> XML of the MathType OLE run */
+      oleRawRPr: { default: null as string | null, rendered: false },
+      /** original o:OLEObject ProgID (e.g. "Equation.DSMT4") */
+      oleProgId: { default: null as string | null, rendered: false },
+      /** original w:position (half-points) stripped from docTextStyle for MathType OLE display */
+      olePositionHalfPoints: { default: null as number | null, rendered: false },
+      /** came from an m:oMathPara (display equation in a table cell) */
+      display: { default: false },
     }
   },
   parseHTML() {
@@ -1490,13 +1513,21 @@ export const DocInlineMath = Node.create({
       }
       render()
       dom.addEventListener('dblclick', () => {
-        // only editor-created formulas carry LaTeX and can be re-edited
+        // formulas with recovered LaTeX can be re-edited; MathType OLE formulas
+        // can also be converted to native OMML even when outside the LaTeX subset
         const latex = currentNode.attrs.latex
+        const isMathType = Boolean(currentNode.attrs.oleXml)
+        const omml = String(currentNode.attrs.omml ?? '')
         const pos = (getPos as () => number | undefined)()
-        if (latex && typeof pos === 'number') {
+        if (typeof pos === 'number' && (latex || (isMathType && omml))) {
           window.dispatchEvent(
             new CustomEvent('ai-docs-edit-inline-math', {
-              detail: { pos, latex: String(latex), kind: 'inline' },
+              detail: {
+                pos,
+                latex: latex ? String(latex) : '',
+                kind: 'inline',
+                ...(isMathType ? { isMathType: true, omml } : {}),
+              },
             }),
           )
         }
@@ -1516,13 +1547,16 @@ export const DocInlineMath = Node.create({
 
 function inlineMathDomAttrs(node: { attrs: Record<string, unknown> }): Record<string, string> {
   const size = node.attrs.sizeHalfPoints as number | null
+  const isMathType = Boolean(node.attrs.oleXml)
   return {
     'data-inline-math': '1',
     class: 'doc-inline-math',
     ...(size ? { style: `font-size:${size / 2}pt` } : {}),
-    title: node.attrs.latex
-      ? t('editorEquationEditHint', { latex: String(node.attrs.latex) })
-      : t('editorEquation'),
+    title: isMathType
+      ? t('appMathTypeEditHint')
+      : node.attrs.latex
+        ? t('editorEquationEditHint', { latex: String(node.attrs.latex) })
+        : t('editorEquation'),
   }
 }
 
@@ -3047,6 +3081,9 @@ const tableCellAttrs = {
   clipHeightTwips: { default: null as number | null },
   /** display placeholder for the row's w:gridBefore/w:gridAfter columns (borderless, not saved as w:tc) */
   gridGap: { default: false },
+  /** inert grid space standing in for a merged-away cell no rowspan covers;
+   *  its real cell is rebuilt from the table's continuationCells record */
+  mergeGap: { default: false },
   colspan: { default: 1 },
   rowspan: { default: 1 },
   colwidth: { default: null as number[] | null },
@@ -3425,6 +3462,82 @@ export function rtlStartMarginCss(widthExpr: string | null, indentPx: number): s
   return [`margin-left:calc(var(--doc-content-w,100%) - ${widthExpr} ${shift})`]
 }
 
+/**
+ * Keep a character selection inside a single table cell.
+ *
+ * ProseMirror's tableEditing upgrades a drag that crosses a cell boundary into
+ * a CellSelection. A tall row that carries an in-row page-gap widget can hit
+ * such a boundary after only a few lines, so dragging a short passage suddenly
+ * selects the whole cell: the browser shows a small highlight while the status
+ * bar and the AI panel report hundreds of selected characters.
+ *
+ * Only a live mouse gesture that started and stayed in one cell is protected.
+ * Real multi-cell drags, single clicks on a cell edge and commands that select
+ * a row/column keep their CellSelection.
+ */
+export function shouldBlockCellSelection(
+  activeCell: Element | null,
+  startCell: Element | null,
+  endCell: Element | null,
+  hasDomSelection: boolean,
+): boolean {
+  if (!activeCell || !hasDomSelection) return false
+  if (startCell !== activeCell) return false
+  // Crossing into another cell is a genuine table selection. A null endCell
+  // means the range ended on a page-gap widget or a bare text node inside the
+  // starting cell, NOT that the drag left the table: prosemirror-tables already
+  // returns early when cellUnderMouse is null, so that case is harmless here.
+  if (endCell && endCell !== activeCell) return false
+  return true
+}
+
+export function tableTextDragPlugin(): Plugin {
+  let activeCell: Element | null = null
+  // `Node` in this module is Tiptap's extension class, so use the DOM
+  // constructors rather than the shadowed global type.
+  const cellOf = (node: EventTarget | null): Element | null => {
+    const el = node instanceof HTMLElement ? node : node instanceof Text ? node.parentElement : null
+    return el?.closest?.('td, th') ?? null
+  }
+  return new Plugin({
+    view() {
+      const clear = () => {
+        activeCell = null
+      }
+      document.addEventListener('mouseup', clear, true)
+      document.addEventListener('dragstart', clear, true)
+      return {
+        destroy() {
+          document.removeEventListener('mouseup', clear, true)
+          document.removeEventListener('dragstart', clear, true)
+        },
+      }
+    },
+    props: {
+      handleDOMEvents: {
+        mousedown: (_view, event) => {
+          const target = event.target as HTMLElement | null
+          activeCell = event.button === 0 ? cellOf(target) : null
+          return false
+        },
+      },
+    },
+    filterTransaction: (tr) => {
+      if (tr.docChanged || !(tr.selection instanceof CellSelection)) return true
+      const sel = typeof window === 'undefined' ? null : window.getSelection()
+      const has = !!sel && sel.rangeCount > 0 && !sel.isCollapsed
+      const range = has ? sel!.getRangeAt(0) : null
+      const block = shouldBlockCellSelection(
+        activeCell,
+        range ? cellOf(range.startContainer) : null,
+        range ? cellOf(range.endContainer) : null,
+        has,
+      )
+      return !block
+    },
+  })
+}
+
 export const DocTable = Node.create({
   name: 'docTable',
   group: 'block',
@@ -3466,6 +3579,8 @@ export const DocTable = Node.create({
       /** explicit dxa w:tblW: a left-aligned table holds its declared width like a fixed layout */
       tblDxaWidth: { default: false },
       indentTwips: { default: null as number | null },
+      /** w:tblInd was edited (AutoFit Window resets it): the save writes indentTwips */
+      tblIndentEdited: { default: false },
       tblStyleId: { default: null as string | null },
       tblLook: { default: null as Record<string, boolean> | null },
       tblLookEdited: { default: false },
@@ -3479,6 +3594,9 @@ export const DocTable = Node.create({
       tblAltEdited: { default: false },
       originalStructure: { default: null as string | null },
       originalFormatting: { default: null as string | null },
+      /** JSON of the merged-away (vMerge continue) cells: their own tcPr bytes
+       *  and hidden text, keyed row:column (they have no node of their own) */
+      continuationCells: { default: null as string | null },
       blockRevision: { default: null as Record<string, string> | null },
     }
   },
@@ -4109,6 +4227,7 @@ export const NativeTableSupport = Extension.create({
       tableColumnDrag(),
       columnResizing({ View: null, cellMinWidth: 40, lastColumnResizable: true }),
       tableEditing({ allowTableNodeSelection: true }),
+      tableTextDragPlugin(),
       // Word never ends a body with a table: without a paragraph below it the
       // caret can never leave the table (public issue #266)
       new Plugin({
@@ -4152,37 +4271,7 @@ const persistableImage = (src: string): boolean =>
   PERSISTABLE_IMAGE_URL.test(src) || isLazyImage(src)
 
 /** display attrs a copied picture needs to round-trip through clipboard HTML */
-/**
- * CSS filter pair for the affine map y = slope * (x + offset - 0.5) + 0.5.
- * contrast() pivots at 0.5 and brightness() at 0, so the two compose to any
- * such line; the order is chosen so the intermediate value never clips.
- */
-function affineFilterCss(slope: number, offset: number): string[] {
-  if (offset >= 0) {
-    const m = 1 + 2 * slope * offset
-    return [`contrast(${(slope / m).toFixed(4)})`, `brightness(${m.toFixed(4)})`]
-  }
-  const k = slope * (1 - 2 * offset)
-  return [`brightness(${(1 / (1 - 2 * offset)).toFixed(4)})`, `contrast(${k.toFixed(4)})`]
-}
-
-/** a:lum / a:grayscl / a:biLevel → `filter:` declaration ('' when none) */
-export function pictureFilterCss(fx: ImageEffects | null | undefined): string {
-  if (!fx) return ''
-  const fns: string[] = []
-  if (fx.grayscale || fx.biLevelThresh !== undefined) fns.push('grayscale(1)')
-  if (fx.bright || fx.contrast) {
-    // Word: contrast scales about mid-grey by (1 + c), brightness then adds b
-    // (measured against Word's rendering of bright/contrast +40%)
-    const slope = Math.max(0.01, 1 + Math.max(-1, Math.min(1, fx.contrast ?? 0)))
-    const bright = Math.max(-1, Math.min(1, fx.bright ?? 0))
-    fns.push(...affineFilterCss(slope, bright / slope))
-  }
-  if (fx.biLevelThresh !== undefined) {
-    fns.push(...affineFilterCss(1000, 0.5 - Math.max(0, Math.min(1, fx.biLevelThresh))))
-  }
-  return fns.length ? `filter:${fns.join(' ')}` : ''
-}
+export { pictureFilterCss }
 
 /** w:framePr box: the paragraph lays out at the frame size, floating beside the text when it wraps */
 function frameBoxCss(json: string): string[] {
@@ -4539,9 +4628,20 @@ export const DocProtected = Node.create({
             return false
           }
           const contentTarget = target?.closest?.(EDITABLE_PROTECTED_SELECTOR)
-          return (
+          if (
             !!contentTarget &&
             (event.type === 'mousedown' || dom.classList.contains('doc-content-editing'))
+          ) {
+            return true
+          }
+          // A press on the object's read-only text belongs to the browser: let
+          // the drag paint a character selection instead of ProseMirror turning
+          // the atom into a NodeSelection. A click with no drag is resolved on
+          // mouseup (wireProtectedInteractionMode).
+          return (
+            event.type === 'mousedown' &&
+            !!target?.closest?.(TEXT_SELECTABLE_SELECTOR) &&
+            !dom.classList.contains('doc-content-editing')
           )
         },
         destroy: () => cleanups.forEach((c) => c?.()),
@@ -4549,7 +4649,7 @@ export const DocProtected = Node.create({
     }
   },
   addProseMirrorPlugins() {
-    return [imageResizePlugin(), floatingObjectDragPlugin()]
+    return [imageResizePlugin(), shapeRotatePlugin(), floatingObjectDragPlugin()]
   },
 })
 
@@ -4904,9 +5004,11 @@ function protectedDomSpec(node: PmNode): DomSpec {
       } else children.unshift(['div', { class: 'doc-anchor-strut' }, ['br']])
     }
     if (diagram?.shapes?.length) children.push(diagramSpecOf(diagram))
-    // corner resize handle; multi-box nodes keep per-box autogrow semantics only
+    // corner resize + round rotation handles; multi-box nodes keep per-box
+    // autogrow semantics only
     if (boxes.length === 1 && !diagram) {
       children.push(['span', { class: 'box-resize-handle', contenteditable: 'false' }])
+      children.push(['span', { class: 'box-rotate-handle', contenteditable: 'false' }])
     }
     // page-type w:br the anchor paragraph carries next to the boxes: Word keeps
     // the anchor's flow line, so render the break chip as a stray line (nonzero
@@ -5091,26 +5193,56 @@ function protectedDomSpec(node: PmNode): DomSpec {
       const zi = imageWrap === 'behind' ? Math.min(-1, -1000 + z) : Math.max(1, 2 + z)
       const imgZIndexCss = `;z-index:${Math.round(zi)}`
       const posH = node.attrs.imagePosH
+      const posV = node.attrs.imagePosV
       const tx =
         node.attrs.imageOffsetXEmu != null ? Number(node.attrs.imageOffsetXEmu) / EMU_PER_PX : 0
       const ty =
         node.attrs.imageOffsetYEmu != null ? Number(node.attrs.imageOffsetYEmu) / EMU_PER_PX : 0
-      const topCss =
-        relV === 'page'
-          ? `calc(${ty.toFixed(1)}px - var(--doc-margin-top,0px))`
-          : `${ty.toFixed(1)}px`
-      if (pageRelV) {
+      const usePosV = posV === 'top' || posV === 'center' || posV === 'bottom'
+      let topCss: string
+      let translateY = ''
+      if (posV === 'center') {
+        topCss =
+          relV === 'page'
+            ? 'calc(var(--page-h,1056px) / 2 - var(--doc-margin-top,0px))'
+            : 'calc((var(--page-h,1056px) - var(--doc-margin-top,0px) - var(--doc-margin-bottom,0px)) / 2)'
+        translateY = 'translateY(-50%)'
+      } else if (posV === 'bottom') {
+        topCss =
+          relV === 'page'
+            ? 'calc(var(--page-h,1056px) - var(--doc-margin-top,0px))'
+            : 'calc(var(--page-h,1056px) - var(--doc-margin-top,0px) - var(--doc-margin-bottom,0px))'
+        translateY = 'translateY(-100%)'
+      } else if (posV === 'top') {
+        topCss = relV === 'page' ? 'calc(0px - var(--doc-margin-top,0px))' : '0px'
+      } else {
+        topCss =
+          relV === 'page'
+            ? `calc(${ty.toFixed(1)}px - var(--doc-margin-top,0px))`
+            : `${ty.toFixed(1)}px`
+      }
+      if (pageRelV || usePosV) {
         imgWrapData['data-page-rel-v'] = '1'
         if (relV === 'page') imgWrapData['data-page-rel-from'] = 'page'
       }
+      let translateX = ''
       if (posH === 'center') {
-        imgFloatPos = `left:50%;top:${topCss}${imgZIndexCss}`
-        imgWrapTransform = 'transform:translateX(-50%)'
+        const leftCss = pageRelH
+          ? 'calc(var(--page-w,816px) / 2 - var(--doc-margin-left,0px))'
+          : '50%'
+        imgFloatPos = `left:${leftCss};top:${topCss}${imgZIndexCss}`
+        translateX = 'translateX(-50%)'
       } else if (posH === 'right') {
-        imgFloatPos = `right:0;top:${topCss}${imgZIndexCss}`
+        const rightCss = pageRelH ? 'calc(-1 * var(--doc-margin-right,0px))' : '0'
+        imgFloatPos = `right:${rightCss};top:${topCss}${imgZIndexCss}`
       } else {
-        imgFloatPos = `left:${tx.toFixed(1)}px;top:${topCss}${imgZIndexCss}`
+        const leftCss = pageRelH
+          ? `calc(${tx.toFixed(1)}px - var(--doc-margin-left,0px))`
+          : `${tx.toFixed(1)}px`
+        imgFloatPos = `left:${leftCss};top:${topCss}${imgZIndexCss}`
       }
+      const translates = [translateX, translateY].filter(Boolean)
+      if (translates.length) imgWrapTransform = `transform:${translates.join(' ')}`
     } else if (banded) {
       const tx = Number(node.attrs.imageOffsetXEmu) / EMU_PER_PX
       const ty = Number(node.attrs.imageOffsetYEmu ?? 0) / EMU_PER_PX
@@ -5546,7 +5678,19 @@ const EDITABLE_PROTECTED_SELECTOR =
   'td, .doc-textbox, .doc-toc-title, .doc-toc-page, .doc-field-text, .doc-formula-token, ' +
   '.doc-formula-math, .doc-chart-title, .doc-chart-cell'
 
-/** Object mode (single click/drag) and text mode (double click). */
+/** Text a reader may select inside a protected object for copying, even when
+ *  the object is not in text-edit mode. Extends the editable islands with the
+ *  read-only captions and previews of embedded objects (OLE/Excel frames). */
+export const TEXT_SELECTABLE_SELECTOR =
+  EDITABLE_PROTECTED_SELECTOR + ', .doc-protected-label, .doc-protected-preview'
+
+/** Did the browser build a real, non-collapsed text selection during the drag? */
+export function hasTextSelection(): boolean {
+  const sel = typeof window === 'undefined' ? null : window.getSelection()
+  return !!sel && !sel.isCollapsed && sel.toString().trim().length > 0
+}
+
+/** Object mode (single click) and text mode (drag selection / double click). */
 function wireProtectedInteractionMode(
   dom: HTMLElement,
   getPos: () => number | undefined,
@@ -5554,42 +5698,156 @@ function wireProtectedInteractionMode(
   contentEditor: ProtectedContentEditor | null,
 ): (() => void) | null {
   const handle = dom.querySelector('.doc-move-handle') as HTMLElement | null
-  if (!handle && !contentEditor) return null
+  // Read-only objects (an OLE/Excel preview and its caption) have no editing
+  // island and no move handle, but their text still has to be selectable.
+  if (!handle && !contentEditor && !dom.querySelector(TEXT_SELECTABLE_SELECTOR)) return null
 
+  /** Objects with an editing island are dragged by their move handle only;
+   *  pure read-only objects keep ProseMirror's whole-object drag. */
+  const draggableFor = (editing: boolean) => (contentEditor ? !!handle && !editing : true)
   const selectObject = () => {
     const pos = getPos()
     if (typeof pos !== 'number') return
     view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, pos)))
   }
+  const restoreDraggable = () => {
+    dom.draggable = draggableFor(dom.classList.contains('doc-content-editing'))
+  }
+  /** The node view ignores DOM mutations, so a text drag inside the atom leaves
+   *  ProseMirror holding the selection from before the gesture — commonly a
+   *  NodeSelection of the whole object. Its copy handler would serialise the
+   *  object and Delete would remove it, even though the reader highlighted only
+   *  a few characters. Park a collapsed selection just past the atom instead. */
+  const clearSelectionForTextDrag = () => {
+    // A collapsed editor selection already lets the browser's own copy/delete
+    // act on the highlighted characters; no dispatch (and no DOM rewrite) then.
+    if (view.state.selection.empty) return
+    const pos = getPos()
+    if (typeof pos !== 'number') return
+    const { state } = view
+    const after = Math.min(pos + (state.doc.nodeAt(pos)?.nodeSize ?? 1), state.doc.content.size)
+    // findFrom(..., true) only returns a text selection; near() would fall back
+    // to a NodeSelection when the atom is the last block in the document.
+    const $after = state.doc.resolve(after)
+    const caret = Selection.findFrom($after, 1, true) ?? Selection.findFrom($after, -1, true)
+    if (!caret?.empty) return
+    // The dispatch runs selectionToDOM, which would overwrite the visible
+    // character range. Save it and put it back once ProseMirror has updated.
+    const sel = typeof window === 'undefined' ? null : window.getSelection()
+    const range = sel && sel.rangeCount > 0 ? sel.getRangeAt(0).cloneRange() : null
+    view.dispatch(state.tr.setSelection(caret))
+    if (range && sel) {
+      sel.removeAllRanges()
+      sel.addRange(range)
+    }
+  }
   const setEditing = (editing: boolean) => {
     if (!contentEditor) editing = false
     if (editing === dom.classList.contains('doc-content-editing')) {
       contentEditor?.setEditable(editing)
-      dom.draggable = !!handle && !editing
+      dom.draggable = draggableFor(editing)
       return
     }
     if (!editing) contentEditor?.commit()
     contentEditor?.setEditable(editing)
     dom.classList.toggle('doc-content-editing', editing)
-    dom.draggable = !!handle && !editing
+    dom.draggable = draggableFor(editing)
+  }
+  /** A press that started on the object's text. The browser owns that gesture
+   *  until mouseup: selecting the object immediately on mousedown used to
+   *  swallow every drag into a whole-object NodeSelection, so copying a few
+   *  characters out of an embedded frame was impossible. */
+  let textPress = false
+  /** A live browser character selection inside this read-only atom. The caret
+   *  parked beside the atom would let Backspace/Delete remove the whole object
+   *  and printable keys type into the document, so editing keys are swallowed
+   *  until the reader starts a new gesture or the selection leaves the atom. */
+  let textDragActive = false
+  const selectionInsideDom = (): boolean => {
+    const sel = typeof window === 'undefined' ? null : window.getSelection()
+    if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return false
+    const range = sel.getRangeAt(0)
+    return dom.contains(range.startContainer) && dom.contains(range.endContainer)
+  }
+  const onSelectionChange = () => {
+    if (textDragActive && !selectionInsideDom()) textDragActive = false
+  }
+  const onViewKeyDown = (event: KeyboardEvent) => {
+    if (!textDragActive || event.isComposing) return
+    if (!selectionInsideDom()) {
+      textDragActive = false
+      return
+    }
+    const editingKey =
+      event.key === 'Backspace' ||
+      event.key === 'Delete' ||
+      event.key === 'Enter' ||
+      (event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey)
+    if (!editingKey) return
+    // The highlighted content is read-only: let the browser copy it, but do
+    // not let ProseMirror turn the key into a document edit. No transaction is
+    // dispatched here, so the visible DOM range needs no re-application.
+    event.preventDefault()
+    event.stopPropagation()
+    event.stopImmediatePropagation()
+  }
+  // `view.dom` is not reachable while the node view is constructed, so attach
+  // the guard lazily on the first text drag (by then the view is mounted).
+  let keyGuardRoot: HTMLElement | null = null
+  const attachKeyDownGuard = () => {
+    if (keyGuardRoot) return
+    keyGuardRoot = view.dom
+    keyGuardRoot.addEventListener('keydown', onViewKeyDown, true)
   }
   const onMouseDown = (event: MouseEvent) => {
     if (event.button !== 0) return
     const target = event.target as HTMLElement | null
     if (!target) return
     if (target.closest('.doc-move-handle')) {
+      textPress = false
       setEditing(false)
       selectObject()
       return
     }
     const content = target.closest(EDITABLE_PROTECTED_SELECTOR)
     if (content && dom.contains(content)) {
-      if (!dom.classList.contains('doc-content-editing')) selectObject()
-      dom.draggable = !!handle && !dom.classList.contains('doc-content-editing')
+      if (dom.classList.contains('doc-content-editing')) {
+        dom.draggable = false
+        return
+      }
+      textPress = true
+      dom.draggable = false
       return
     }
+    if (target.closest(TEXT_SELECTABLE_SELECTOR) && dom.contains(target)) {
+      textPress = true
+      dom.draggable = false
+      return
+    }
+    textPress = false
     if (dom.classList.contains('doc-content-editing')) setEditing(false)
     selectObject()
+    restoreDraggable()
+  }
+  const onMouseUp = () => {
+    if (!textPress) return
+    textPress = false
+    restoreDraggable()
+    // A plain click (no characters selected) still selects the whole object.
+    // A drag keeps the reader's character selection, but the editor state must
+    // be told about it or copy/delete would still act on the whole object.
+    if (!hasTextSelection()) {
+      selectObject()
+      return
+    }
+    clearSelectionForTextDrag()
+    // The read-only character selection is live. Keep editing keys away from
+    // the editor until the next press or a selection change leaves the atom.
+    textDragActive = true
+    attachKeyDownGuard()
+  }
+  const onDragStart = (event: DragEvent) => {
+    if (textPress) event.preventDefault()
   }
   const onDoubleClick = (event: MouseEvent) => {
     if (!contentEditor) return
@@ -5599,6 +5857,8 @@ function wireProtectedInteractionMode(
     setEditing(true)
   }
   const onDocumentMouseDown = (event: MouseEvent) => {
+    // Any new gesture ends the previous read-only character selection.
+    textDragActive = false
     const target = event.target
     if (
       target instanceof HTMLElement &&
@@ -5617,14 +5877,21 @@ function wireProtectedInteractionMode(
 
   setEditing(false)
   dom.addEventListener('mousedown', onMouseDown, true)
+  document.addEventListener('mouseup', onMouseUp, true)
+  dom.addEventListener('dragstart', onDragStart, true)
   dom.addEventListener('dblclick', onDoubleClick, true)
   document.addEventListener('mousedown', onDocumentMouseDown, true)
   dom.addEventListener('keydown', onKeyDown, true)
+  document.addEventListener('selectionchange', onSelectionChange)
   return () => {
     dom.removeEventListener('mousedown', onMouseDown, true)
+    document.removeEventListener('mouseup', onMouseUp, true)
+    dom.removeEventListener('dragstart', onDragStart, true)
     dom.removeEventListener('dblclick', onDoubleClick, true)
     document.removeEventListener('mousedown', onDocumentMouseDown, true)
     dom.removeEventListener('keydown', onKeyDown, true)
+    keyGuardRoot?.removeEventListener('keydown', onViewKeyDown, true)
+    document.removeEventListener('selectionchange', onSelectionChange)
   }
 }
 
@@ -5786,39 +6053,51 @@ function wireFieldEditing(
   }
 }
 
-/** hover button on display formulas whose LaTeX was recovered: full re-edit */
+/** hover button on display formulas whose LaTeX was recovered (or MathType OLE formulas): full re-edit / convert */
 function wireFormulaLatexEdit(
   dom: HTMLElement,
   getNode: () => PmNode,
   getPos: () => number | undefined,
 ): (() => void) | null {
   const formula = getNode().attrs.formulaDisplay as FormulaDisplay | null
-  if (!formula?.latex) return null
+  const isMathType = Boolean(formula?.oleMathType)
+  if (!formula?.latex && !(isMathType && formula?.omml)) return null
   const host = dom.querySelector('.doc-formula-wrap') ?? dom
+  const openModal = (e: Event) => {
+    e.preventDefault()
+    e.stopPropagation()
+    const pos = getPos()
+    const current = getNode().attrs.formulaDisplay as FormulaDisplay | null
+    const currentMathType = Boolean(current?.oleMathType)
+    if (typeof pos === 'number' && (current?.latex || (currentMathType && current?.omml))) {
+      window.dispatchEvent(
+        new CustomEvent('ai-docs-edit-inline-math', {
+          detail: {
+            pos,
+            latex: current?.latex ?? '',
+            kind: 'block',
+            ...(currentMathType ? { isMathType: true, omml: current?.omml ?? '' } : {}),
+          },
+        }),
+      )
+    }
+  }
   const button = document.createElement('button')
   button.className = 'doc-formula-edit'
-  button.title = t('editorEditFormulaLatex')
+  button.title = isMathType ? t('appMathTypeEditHint') : t('editorEditFormulaLatex')
   button.textContent = t('editorEdit')
   button.setAttribute('contenteditable', 'false')
   button.addEventListener('mousedown', (e) => {
     e.preventDefault()
     e.stopPropagation()
   })
-  button.addEventListener('click', (e) => {
-    e.preventDefault()
-    e.stopPropagation()
-    const pos = getPos()
-    const latex = (getNode().attrs.formulaDisplay as FormulaDisplay | null)?.latex
-    if (typeof pos === 'number' && latex) {
-      window.dispatchEvent(
-        new CustomEvent('ai-docs-edit-inline-math', {
-          detail: { pos, latex, kind: 'block' },
-        }),
-      )
-    }
-  })
+  button.addEventListener('click', openModal)
+  if (isMathType) host.addEventListener('dblclick', openModal)
   host.appendChild(button)
-  return () => button.remove()
+  return () => {
+    if (isMathType) host.removeEventListener('dblclick', openModal)
+    button.remove()
+  }
 }
 
 /** Edit OMML leaf tokens while keeping formula structure outside the editor. */
@@ -5829,7 +6108,9 @@ function wireFormulaEditing(
   view: EditorView,
 ): (ProtectedContentEditor & { cleanup(): void }) | null {
   const formula = getNode().attrs.formulaDisplay as FormulaDisplay | null
-  if (!formula?.tokens.length) return null
+  // MathType OLE blocks have <w:object> in originalXml, not <m:t> tokens;
+  // editing goes through the convert-to-native-equation modal instead.
+  if (!formula?.tokens.length || formula.oleMathType) return null
   const targets = Array.from(dom.querySelectorAll<HTMLElement>('.doc-formula-token'))
   if (targets.length !== formula.tokens.length) return null
 
@@ -6182,8 +6463,9 @@ function imageResizePlugin(): Plugin {
             const lockH = !isChart && isStraightLineKind(boxes![0].prst)
             const minW = isChart ? 120 : 24
             const minH = isChart ? 80 : 8
-            // charts never draw wider than the render cap, so don't let the model exceed it
-            const maxW = isChart ? CHART_MAX_WIDTH_PX : Infinity
+            // the resize UI caps at the render cap, but a chart authored wider
+            // than it (its extent is honored now) must not snap down mid-drag
+            const maxW = isChart ? Math.max(CHART_MAX_WIDTH_PX, chart?.widthPx ?? 0) : Infinity
             const sizeAt = (e: MouseEvent) => ({
               w: Math.min(maxW, Math.max(minW, startW + (e.clientX - startX) / zoom)),
               h: lockH ? startH : Math.max(minH, startH + (e.clientY - startY) / zoom),
@@ -6376,6 +6658,93 @@ function imageResizePlugin(): Plugin {
                 Number(node.attrs.imageOffsetYEmu) + Math.round((startH - h) * EMU_PER_PX)
             }
             view.dispatch(view.state.tr.setNodeMarkup(pos, undefined, attrs))
+          }
+          window.addEventListener('mousemove', onMove)
+          window.addEventListener('mouseup', onUp)
+          return true
+        },
+      },
+    },
+  })
+}
+
+/**
+ * Round rotation grip of a selected shape: drag around the box centre to turn
+ * it (PowerPoint parity). Shift snaps the angle to 15° steps. The live preview
+ * rewrites the visual box transform; the commit stores the angle as the box's
+ * model rotDeg (a:xfrm@rot), so saving and the node view's own textbox style
+ * keep the shape turned.
+ */
+function shapeRotatePlugin(): Plugin {
+  return new Plugin({
+    props: {
+      handleDOMEvents: {
+        mousedown: (view, event) => {
+          if (event.button !== 0) return false
+          const target = event.target as HTMLElement
+          if (!target.classList?.contains('box-rotate-handle')) return false
+          // read-only docs offer no rotation: swallow the press on the grip so
+          // it cannot fall through to the move/resize handlers
+          if (!view.editable) return true
+          const wrapper = target.closest('.doc-protected') as HTMLElement | null
+          const boxEl = wrapper?.querySelector('.doc-textbox') as HTMLElement | null
+          if (!wrapper || !boxEl) return false
+          // the node view's document position (same walk as the resize handle)
+          let pos = -1
+          view.state.doc.descendants((node, p) => {
+            if (pos !== -1) return false
+            if (node.type.name === 'docProtected' && view.nodeDOM(p) === wrapper) pos = p
+            return pos === -1
+          })
+          if (pos === -1) return false
+          const node = view.state.doc.nodeAt(pos)
+          const boxes = node?.attrs.textboxes as TextboxDisplay[] | null
+          if (!Array.isArray(boxes) || boxes.length !== 1) return false
+          event.preventDefault()
+          view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, pos)))
+
+          // client coordinates make the gesture zoom-independent (CSS zoom scales
+          // the rect and the pointer alike); the box centre stays the pivot even
+          // when the box is already turned (a centred-origin rotation keeps it)
+          const rect = boxEl.getBoundingClientRect()
+          const centreX = rect.left + rect.width / 2
+          const centreY = rect.top + rect.height / 2
+          const startRot = Number(boxes[0].rotDeg ?? 0)
+          const pointerAngle = (e: MouseEvent): number =>
+            (Math.atan2(e.clientY - centreY, e.clientX - centreX) * 180) / Math.PI
+          const startAngle = pointerAngle(event)
+          const angleAt = (e: MouseEvent): number => {
+            const raw = Math.round(startRot + pointerAngle(e) - startAngle)
+            const deg = ((raw % 360) + 360) % 360
+            // Shift snaps to the 15° grid, like Word/PowerPoint
+            return e.shiftKey ? (Math.round(deg / 15) * 15) % 360 : deg
+          }
+          const baseTransform = boxEl.style.transform
+          let deg = startRot
+          const onMove = (e: MouseEvent) => {
+            deg = angleAt(e)
+            boxEl.style.transform = `rotate(${deg}deg)`
+          }
+          const onUp = (e: MouseEvent) => {
+            window.removeEventListener('mousemove', onMove)
+            window.removeEventListener('mouseup', onUp)
+            deg = angleAt(e)
+            // drop the drag preview; a real turn is re-rendered from the model
+            // attrs by the node view, a click without a turn restores the box
+            boxEl.style.transform = baseTransform
+            if (deg === startRot) return
+            const currentNode = view.state.doc.nodeAt(pos)
+            const currentBoxes = currentNode?.attrs.textboxes as TextboxDisplay[] | null
+            if (!currentNode || !Array.isArray(currentBoxes) || currentBoxes.length !== 1) return
+            const [box, ...rest] = currentBoxes
+            // 0 is the cleared state: drop rotDeg so save strips a:xfrm@rot
+            const turned = deg === 0 ? { ...box, rotDeg: undefined } : { ...box, rotDeg: deg }
+            const tr = view.state.tr.setNodeMarkup(pos, undefined, {
+              ...currentNode.attrs,
+              textboxes: [turned, ...rest],
+            })
+            // keep the shape selected so the handles stay reachable
+            view.dispatch(tr.setSelection(NodeSelection.create(tr.doc, pos)))
           }
           window.addEventListener('mousemove', onMove)
           window.addEventListener('mouseup', onUp)
@@ -6870,6 +7239,70 @@ export const TextboxParagraph = Node.create({
   },
 })
 
+/**
+ * Ordered-list renumbering inside a textbox sub-editor. Counters run per box
+ * (the parse side computes them per box too — the document-wide sequence is out
+ * of reach from here), restarting at each level-0 item of the same numId. The
+ * pass runs on every doc change but only dispatches when a marker text actually
+ * moved, and its own dispatches carry a meta guard so it never loops.
+ */
+/** Per-box ordered marker texts in document order (null = not an ordered
+ * item). Any item restarts the levels below its own, as Word does. */
+export function textboxOrderedMarkerTexts(
+  markers: ReadonlyArray<TextboxListMarker | null | undefined>,
+): Array<string | null> {
+  const counters = new Map<string, number>()
+  return markers.map((marker) => {
+    if (!marker || marker.kind !== 'ordered' || marker.numId == null) return null
+    const ilvl = marker.ilvl ?? 0
+    for (const k of Array.from(counters.keys())) {
+      if (k.startsWith(`${marker.numId}:`) && Number(k.split(':')[1]) > ilvl) counters.delete(k)
+    }
+    const key = `${marker.numId}:${ilvl}`
+    const next = (counters.get(key) ?? 0) + 1
+    counters.set(key, next)
+    return `${next}.`
+  })
+}
+
+export const TextboxListRenumber = Extension.create({
+  name: 'textboxListRenumber',
+  addProseMirrorPlugins() {
+    return [
+      new Plugin({
+        key: new PluginKey('textboxListRenumber'),
+        appendTransaction: (transactions, _oldState, newState) => {
+          const ours = transactions.some((tr) => tr.getMeta('textboxListRenumber'))
+          const structural = transactions.some((tr) => tr.docChanged)
+          if (!structural || ours) return null
+          const markers: Array<TextboxListMarker | null> = []
+          const positions: number[] = []
+          newState.doc.forEach((node, pos) => {
+            markers.push(node.attrs.listMarker as TextboxListMarker | null)
+            positions.push(pos)
+          })
+          const fixes: Array<{ pos: number; text: string }> = []
+          textboxOrderedMarkerTexts(markers).forEach((text, i) => {
+            if (text !== null && markers[i]?.text !== text) fixes.push({ pos: positions[i], text })
+          })
+          if (fixes.length === 0) return null
+          const tr = newState.tr
+          tr.setMeta('textboxListRenumber', true)
+          for (const fix of fixes) {
+            const node = newState.doc.nodeAt(fix.pos)
+            if (!node) continue
+            tr.setNodeMarkup(fix.pos, undefined, {
+              ...node.attrs,
+              listMarker: { ...(node.attrs.listMarker as TextboxListMarker), text: fix.text },
+            })
+          }
+          return tr
+        },
+      }),
+    ]
+  },
+})
+
 /** shared with the main editor: same mark names, so ribbon commands route 1:1 */
 export const textboxSubExtensions = [
   Node.create({ name: 'doc', topNode: true, content: 'block+' }),
@@ -6896,6 +7329,7 @@ export const textboxSubExtensions = [
   TextStyleMark,
   FormatOffClearExtension,
   CommentMark,
+  TextboxListRenumber,
   UndoRedo,
 ]
 
@@ -6998,6 +7432,10 @@ export const editorExtensions = [
   ResolvedCommentsExtension,
   FieldCodesExtension,
   NativeTableSupport,
+  // after NativeTableSupport on purpose: its border drags (column resize,
+  // row height) preventDefault on their mousedown, so the chain stops before
+  // the cross-cell drag can arm over them (genoffice#2329)
+  CrossCellDrag,
   TableHandle,
   TrackChangesExtension,
   LineFactorExtension,
@@ -7010,6 +7448,7 @@ export const editorExtensions = [
   InactiveSelectionExtension,
   AiQueueAnchorsExtension,
   CheckboxToggleExtension,
+  OutlineViewExtension,
   PageGapNavExtension,
   TrailingTableExitExtension,
   Gapcursor,
@@ -7035,4 +7474,5 @@ export const editorExtensions = [
   ParaMarkDelExtension,
   RevisionOriginalExtension,
   AutoDirectionExtension,
+  StoryViewExtension,
 ]

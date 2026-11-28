@@ -6,7 +6,7 @@ GenOffice bercakap dengan Model Context Protocol, jadi ejen penulisan kod boleh 
 
 Tempatnya ialah **Tetapan ▸ Integrasi**. Panel itu mempunyai dua bahagian, dan anda boleh menggunakan satu sahaja atau kedua-duanya.
 
-**Skill.** Satu baris bagi setiap ejen penulisan kod yang ditemui pada mesin ini — Claude Code, Codex, Cursor, Gemini CLI, Copilot CLI, OpenCode, Windsurf —, setiap satu dengan **Pasang**, **Kemas kini** dan **Nyahpasang**, tambahan lagi **Pasang ke folder lain…**, **Muat turun skill (zip)** dan **Salin laluan**. Jika pembantu anda tidak tersenarai, tunjukkan GenOffice folder tempat ia membaca `SKILL.md`, atau simpan fail zip itu dan biarkan pembantu memasangnya. Skill dan MCP boleh bersebelahan: pembantu akan memilih salah satu, dan keduanya melakukan perkara yang sama sekali.
+**Skill.** Satu baris bagi setiap ejen penulisan kod yang ditemui pada mesin ini — Claude Code, folder kongsi `~/.agents` (dibaca oleh Codex, Cursor, Gemini CLI, Copilot CLI dan OpenCode), Windsurf —, setiap satu dengan **Pasang**, **Kemas kini** dan **Nyahpasang**, tambahan lagi **Pasang ke folder lain…**, **Muat turun skill (zip)** dan **Salin laluan**. Jika pembantu anda tidak tersenarai, tunjukkan GenOffice folder tempat ia membaca `SKILL.md`, atau simpan fail zip itu dan biarkan pembantu memasangnya. Skill dan MCP boleh bersebelahan: pembantu akan memilih salah satu, dan keduanya melakukan perkara yang sama sekali. Salinan yang dipasang dahulu dalam folder sendiri salah satu daripada lima alat itu kekal tersenarai di bawah baris folder kongsi dan terus dikemas kini; selepas folder kongsi mempunyai skill itu, anda boleh membuang salinan tersebut.
 
 **MCP.** Dua laluan ditawarkan: **Dimulakan oleh pembantu (disyorkan)**, di mana anda menambah konfigurasi yang dipaparkan pada klien anda dan pembantu memulakan pelayan itu sendiri, serta **Pelayan HTTP tempatan**, yang dijalankan aplikasi untuk anda. Bagaimanapun, pembantu akhirnya bercakap dengan GenOffice dan anda tidak sekali pun perlu menaip arahan.
 
@@ -58,7 +58,7 @@ Setiap perintah ialah sebuah alat. Yang menarik:
 Permintaan daripada perintah `ieumoffice` atau daripada klien MCP tidak ditaip oleh anda dalam aplikasi, jadi GenOffice berhati-hati dengannya.
 
 - **Carian** sentiasa berfungsi dan percuma secara lalai. Kunci penyedia carian digunakan hanya jika anda memilihnya.
-- **Menjana gambar** memerlukan kunci penyedia imej. Dalam versi ini, langganan tidak menjana imej.
+- **Menjana gambar** mengikut pilihan penjanaan imej dalam Tetapan. Pilihan lalai, Pelan ChatGPT (program Codex), menggunakan pelan ChatGPT anda melalui program Codex dan **tidak digunakan melainkan anda membenarkannya** (lihat di bawah). Jika tidak, kunci penyedia imej yang disediakan digunakan. Model yang disebut oleh ejen digunakan apabila laluan itu menawarkannya.
 - **Menghuraikan gambar** menggunakan penyedia berasaskan kunci apabila ada yang disediakan. Langganan Claude atau Codex anda **tidak digunakan melainkan anda membenarkannya**.
 - **Video dan audio** memerlukan penyedia berasaskan kunci yang menyokong video.
 

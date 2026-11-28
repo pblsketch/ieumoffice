@@ -1,0 +1,32 @@
+{
+  "name": "@genoffice/mobile-bridge",
+  "version": "0.1.0",
+  "license": "Apache-2.0",
+  "private": true,
+  "type": "module",
+  "description": "Mobile platform bridge for IeumOffice (Tauri transport, session state, HWP and Markdown adapters, AI projection)",
+  "exports": {
+    ".": "./src/index.ts",
+    "./transport": "./src/transport.ts",
+    "./session-state": "./src/session-state.ts",
+    "./view-edit-gate": "./src/view-edit-gate.ts",
+    "./ai-bridge": "./src/ai-bridge.ts",
+    "./markdown": "./src/markdown/index.ts",
+    "./hwp": "./src/hwp/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@genoffice/agent-core": "*",
+    "@genoffice/ai-provider": "*",
+    "@genoffice/i18n": "*",
+    "@genoffice/ui": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.11"
+  }
+}

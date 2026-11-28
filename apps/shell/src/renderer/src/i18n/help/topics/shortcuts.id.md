@@ -12,10 +12,12 @@ Setiap editor punya pengikatan tombol sendiri, dan hanya sebagian yang berlaku d
 | Ciutkan / perluas pita — setiap editor                           | ⌥⌘R   | Ctrl+F1         |
 | Pita kompak — hanya Docs                                         | ⌥⌘K   | Ctrl+Alt+K      |
 | Buka lembar Pintasan Papan Ketik — hanya Word                    | ⌘/    | Ctrl+/          |
+| Buka Pengaturan — semua tab kecuali Word                         | ⌘,    | Ctrl+,          |
 
 - **F1 membuka manual ini**, bukan lembar pintasan. Tombol itu milik menu aplikasi, jadi ia berlaku dari Word, Sheets, Slides, PDF, maupun tab Beranda.
 - **Tombol pita adalah `Ctrl+F1`, atau `⌥⌘R` di macOS.** Menekan `F1` polos tidak melakukan apa pun — F1 adalah manualnya, dan tombol pita sengaja tidak berbagi kunci dengan F1. `Ctrl+F1` juga diterima di macOS, meski `⌥⌘R` adalah tombol yang dipakai Office for Mac.
 - **Lembar Pintasan Papan Ketik hanya milik Word** (`⌘/`). Isinya persis tabel Word di bawah ini. Tidak ada editor lain yang memilikinya.
+- **`⌘,` membuka Pengaturan** (`Ctrl+,` di Windows dan Linux), seperti di kebanyakan aplikasi Mac. Di tab Word kombinasi ini tetap subskrip, jadi buka Pengaturan dari menu aplikasi di Mac, atau dari Menu (☰) ▸ Pengaturan… di Windows dan Linux.
 
 ![Lembar Pintasan Papan Ketik milik Word sendiri: tindakan di sebelah kiri, kombinasi tombol di sebelah kanan, dikelompokkan menurut Berkas, Edit, Format Teks, Format Paragraf, Sisipkan, Tinjau & Alat, dan Tampilan](img/word-shortcuts.png)
 
@@ -24,7 +26,7 @@ Setiap editor punya pengikatan tombol sendiri, dan hanya sebagian yang berlaku d
 
 ## Mode presentasi
 
-- **Mulai**: F5 di Word, PDF, Mindmap, HTML, dan Markdown. Di spreadsheet, Ctrl+F5 (dari A1) atau Shift+F5 (dari sel aktif).
+- **Mulai**: F5 di Word, PDF, Mindmap, HTML, dan Markdown. Di spreadsheet, Ctrl+F5 (dari A1) atau Shift+F5 (dari sel aktif). Di dokumen HWP, Ctrl+F5 (di sana F5 memilih sel tabel).
 - **Pintu lain**: di Word, Ctrl+F5 dan Shift+F5 membuka tampilan baca tanpa layar penuh; di PDF mulai dari halaman aktif; di HTML presentasi di dalam tab.
 - **Selesai**: Esc atau F5. F11 adalah layar penuh jendela dan tidak mengubah tampilan dokumen.
 
@@ -278,18 +280,19 @@ Pintasan filter milik Excel, Ctrl+Shift+L, tidak melakukan apa pun di Windows ma
 
 ### Jendela
 
-| Tindakan                                                          | macOS            | Windows / Linux     |
-| ----------------------------------------------------------------- | ---------------- | ------------------- |
-| Simpan buku kerja                                                 | ⌘S               | Ctrl+S              |
-| Simpan Sebagai                                                    | ⇧⌘S              | Ctrl+Shift+S        |
-| Buka buku kerja                                                   | ⌘O               | Ctrl+O              |
-| Cetak                                                             | ⌘P               | Ctrl+P              |
-| Tutup buku kerja (macOS) / Keluar dari aplikasi (Windows & Linux) | ⌘W               | Ctrl+Q              |
-| Buka Panduan Pengguna                                             | F1               | F1                  |
-| Perbesar                                                          | ⌘=               | Ctrl+=              |
-| Perbesar dengan roda tetikus                                      | ⌘ + roda tetikus | Ctrl + roda tetikus |
-| Tampilkan atau sembunyikan rumus di dalam sel                     | ⌘`               | Ctrl+`              |
-| Perluas atau ciutkan Bilah Rumus                                  | ⌘⇧U              | Ctrl+Shift+U        |
+| Tindakan                                                                     | macOS            | Windows / Linux     |
+| ---------------------------------------------------------------------------- | ---------------- | ------------------- |
+| Simpan buku kerja                                                            | ⌘S               | Ctrl+S              |
+| Simpan Sebagai                                                               | ⇧⌘S              | Ctrl+Shift+S        |
+| Buka buku kerja                                                              | ⌘O               | Ctrl+O              |
+| Cetak                                                                        | ⌘P               | Ctrl+P              |
+| Tutup buku kerja (macOS) / Keluar dari aplikasi (Windows & Linux)            | ⌘W               | Ctrl+Q              |
+| Buka Panduan Pengguna                                                        | F1               | F1                  |
+| Perbesar                                                                     | ⌘=               | Ctrl+=              |
+| Perbesar dengan roda tetikus                                                 | ⌘ + roda tetikus | Ctrl + roda tetikus |
+| Tampilkan atau sembunyikan rumus di dalam sel                                | ⌘`               | Ctrl+`              |
+| Perluas atau ciutkan Bilah Rumus                                             | ⌘⇧U              | Ctrl+Shift+U        |
+| Jalankan tombol Bilah Alat Akses Cepat menurut posisinya (ke-1 sampai ke-10) |                  | Alt+1 … Alt+0       |
 
 ## Slides
 
@@ -312,20 +315,24 @@ Menutup tab adalah satu-satunya tempat kedua platform benar-benar terpisah: ⌘W
 
 ### Penyuntingan
 
-| Tindakan                                           | macOS  | Windows / Linux |
-| -------------------------------------------------- | ------ | --------------- |
-| Slide baru                                         | ⇧⌘N    | Ctrl+M          |
-| Temukan (bukan saat menyunting teks dalam bentuk)  | ⌘F     | Ctrl+F          |
-| Anotasi seleksi dengan AI (dengan bentuk terpilih) | ⌘K     | Ctrl+K          |
-| Perbesar                                           | ⌘=     | Ctrl+=          |
-| Perkecil                                           | ⌘-     | Ctrl+-          |
-| Ukuran asli (100%)                                 | ⌘0     | Ctrl+0          |
-| Pilih semua                                        | ⌘A     | Ctrl+A          |
-| Berganti seleksi bentuk maju / mundur              | ⇥ / ⇧⇥ | Tab / Shift+Tab |
+| Tindakan                                                             | macOS  | Windows / Linux |
+| -------------------------------------------------------------------- | ------ | --------------- |
+| Slide baru                                                           | ⇧⌘N    | Ctrl+M          |
+| Temukan (bukan saat menyunting teks dalam bentuk)                    | ⌘F     | Ctrl+F          |
+| Anotasi seleksi dengan AI (dengan bentuk terpilih)                   | ⌘K     | Ctrl+K          |
+| Perbesar                                                             | ⌘=     | Ctrl+=          |
+| Perkecil                                                             | ⌘-     | Ctrl+-          |
+| Ukuran asli (100%)                                                   | ⌘0     | Ctrl+0          |
+| Pilih semua                                                          | ⌘A     | Ctrl+A          |
+| Berganti seleksi bentuk maju / mundur                                | ⇥ / ⇧⇥ | Tab / Shift+Tab |
+| Ulangi tindakan terakhir (format, isian, garis, perataan, duplikat…) | F4     | F4              |
+| Tampilkan/sembunyikan Panel Pilihan                                  | ⌥F10   | Alt+F10         |
 
 Slide baru adalah pembagian platform yang lain. Tiap platform punya tombolnya sendiri dan tombol platform lain tidak melakukan apa pun: ⇧⌘N di macOS, Ctrl+M di Windows dan Linux. `⌘M` tidak bisa mengerjakan itu di macOS karena itulah tombol Perkecil milik sistem.
 
 Pilih semua mengikuti fokus: dengan rel thumbnail, kerangka garis besar, atau penyusun slide yang fokus, ia memilih setiap slide, dan di tempat lain ia memilih setiap elemen pada slide sekarang. Tab berganti antarbentuk di slide itu, dan hanya ketika kanvas slide itu sendiri yang fokus.
+
+F4 juga berfungsi di dalam kotak teks, menerapkan format terakhir ke teks yang dipilih.
 
 ### Format teks
 
@@ -445,12 +452,12 @@ Urungkan dan Ulangi melangkah melalui riwayat dokumen; ketika kursor berada di k
 
 ### Tampilan
 
-| Tindakan            | macOS            | Windows / Linux     |
-| ------------------- | ---------------- | ------------------- |
-| Perbesar            | ⌘=               | Ctrl+=              |
-| Perkecil            | ⌘-               | Ctrl+-              |
-| Sesuaikan lebar     | ⌘0               | Ctrl+0              |
-| Perbesar (bertahap) | ⌘ + roda tetikus | Ctrl + roda tetikus |
+| Tindakan          | macOS            | Windows / Linux     |
+| ----------------- | ---------------- | ------------------- |
+| Perbesar          | ⌘=               | Ctrl+=              |
+| Perkecil          | ⌘-               | Ctrl+-              |
+| Sesuaikan lebar   | ⌘0               | Ctrl+0              |
+| Perbesar (per 5%) | ⌘ + roda tetikus | Ctrl + roda tetikus |
 
 Perbesar juga menerima ⌘+ dan Ctrl++.
 
@@ -627,6 +634,8 @@ Tombol ini berlaku saat tab HWP/HWPX berada di depan dan dokumen memiliki fokus.
 | Temukan berikutnya | ⌃L          | Ctrl+L                       |
 | Temukan mundur     | ⌃Q, L       | Ctrl+Q, L                    |
 | Ke                 | ⌥G          | Alt+G                        |
+| Ke awal dokumen    | ⌃⇞          | Ctrl+PageUp                  |
+| Ke akhir dokumen   | ⌃⇟          | Ctrl+PageDown                |
 | Bandingkan dokumen | ⌥⇧V         | Alt+Shift+V                  |
 
 ### Karakter
@@ -690,21 +699,29 @@ Tombol ini berlaku saat tab HWP/HWPX berada di depan dan dokumen memiliki fokus.
 | Teks tanggal/waktu                   | ⌃K, D       | Ctrl+K, D          |
 | Sunting objek, field, atau tabel/sel | ⌃N, K       | Ctrl+N, K          |
 | Simbol                               | ⌃F10 / ⌥F10 | Ctrl+F10 / Alt+F10 |
+| Ubah ke Hanja                        | F9          | Tombol Hanja / F9  |
 
 ### Tabel
 
-| Tindakan           | macOS        | Windows / Linux        |
-| ------------------ | ------------ | ---------------------- |
-| Tambah baris/kolom | ⌥⏎ / ⌥Insert | Alt+Enter / Alt+Insert |
-| Hapus baris/kolom  | ⌥⌫           | Alt+Delete             |
-| Pisahkan sel       | F5 → S       | F5 → S                 |
-| Gabungkan sel      | F5 → M       | F5 → M                 |
-| Jumlah blok        | F5 → ⇧⌘S     | F5 → Ctrl+Shift+S      |
-| Rata-rata blok     | F5 → ⌃⇧A     | F5 → Ctrl+Shift+A      |
-| Produk blok        | F5 → ⌃⇧P     | F5 → Ctrl+Shift+P      |
-| Pisahkan tabel     | ⌃N, A        | Ctrl+N, A              |
-| Gabungkan tabel    | ⌃N, Z        | Ctrl+N, Z              |
-| Rumus perhitungan  | ⌃N, F        | Ctrl+N, F              |
+| Tindakan                           | macOS        | Windows / Linux        |
+| ---------------------------------- | ------------ | ---------------------- |
+| Tambah baris/kolom                 | ⌥⏎ / ⌥Insert | Alt+Enter / Alt+Insert |
+| Hapus baris/kolom                  | ⌥⌫           | Alt+Delete             |
+| Pisahkan sel                       | F5 → S       | F5 → S                 |
+| Gabungkan sel                      | F5 → M       | F5 → M                 |
+| Properti tabel/sel                 | F5 → P       | F5 → P                 |
+| Batas / bayangan, tiap sel         | F5 → L / C   | F5 → L / C             |
+| Batas / bayangan, sel sebagai satu | F5 → B / F   | F5 → B / F             |
+| Samakan tinggi baris / lebar kolom | F5 → H / W   | F5 → H / W             |
+| Isi otomatis tabel                 | F5 → A       | F5 → A                 |
+| Kembali menyunting sel             | F5 → ⏎       | F5 → Enter             |
+| Indentasi gantung cepat (di sel)   | ⌃⇧⇥          | Ctrl+Shift+Tab         |
+| Jumlah blok                        | F5 → ⇧⌘S     | F5 → Ctrl+Shift+S      |
+| Rata-rata blok                     | F5 → ⌃⇧A     | F5 → Ctrl+Shift+A      |
+| Produk blok                        | F5 → ⌃⇧P     | F5 → Ctrl+Shift+P      |
+| Pisahkan tabel                     | ⌃N, A        | Ctrl+N, A              |
+| Gabungkan tabel                    | ⌃N, Z        | Ctrl+N, Z              |
+| Rumus perhitungan                  | ⌃N, F        | Ctrl+N, F              |
 
 ### Perhitungan tabel
 
@@ -745,3 +762,5 @@ Hanya berlaku saat kursor berada di sel tabel yang kosong. Ada tombol terpisah u
 | Ke tab Beranda (di luar tabel)            | ⇧⌘H   | Ctrl+Shift+H    |
 
 Tombol yang ditulis `Ctrl+N,T` berarti tekan Ctrl+N, lepaskan, lalu tekan T. `F5 → S` berarti pilih blok sel dengan F5 lalu tekan S. `Ctrl+1 … Ctrl+0` adalah gaya pertama hingga kesepuluh dokumen; `Ctrl+Alt+1 … Ctrl+Alt+0` menerapkan gaya yang sama. Saat blok sel dipilih, `Ctrl+Shift+S` (di macOS `⇧⌘S`) adalah jumlah blok; di luar itu tombol ini menyimpan sebagai.
+
+Dengan mouse, seperti di Hangul, klik dua kali memilih satu kata, klik tiga kali seluruh paragraf, dan klik dua kali lalu tahan dan seret memperluas pilihan kata demi kata. Ini juga berlaku saat mengedit header, footer, atau catatan kaki. Menyalin blok sel (`Ctrl+C`) menyalin teks sel sekaligus tabelnya, sehingga jika ditempel di badan teks, tabel yang sama dibuat lagi. Menempel dengan kursor saja di sel tabel lain membuka dialog Paste Cells: timpa mulai dari sel itu (sel yang keluar dari tabel dibuang) atau sisipkan sel di atas, di bawah, di kiri, atau di kanan. Menyeret gagang sudut gambar mempertahankan proporsinya; bentuk atau kotak teks mempertahankannya jika Anda menahan `Shift` saat menyeret sudut. Tekan `Shift` saat memindahkan objek agar hanya bergerak mendatar atau tegak, dan tekan `Esc` saat memindahkan atau mengubah ukuran untuk mengembalikan objek ke tempatnya. Saat sebuah objek dipilih, tombol panah memindahkannya 0,2 mm dan `Shift`+panah mengubah ukurannya 1 mm. `Tab` dan `Shift+Tab` memilih objek berikutnya dan sebelumnya di halaman, `Shift+PageUp` dan `Shift+PageDown` membawa objek ke paling depan atau paling belakang, dan `Shift+Home` serta `Shift+End` menaruh objek di depan atau di belakang teks. `G` dan `U` mengelompokkan dan memisahkan kelompok, `L` dan `C` membuka tab Garis dan Isian pada properti objek, dan `Ctrl+E` menghapus objek. Untuk memilih objek yang tertutup objek lain, tahan `Alt` lalu klik; setiap klik berikutnya memilih objek di bawahnya. Menyeret sudut gambar sambil menahan `Shift` memangkas gambar pada skalanya, dan menyeret objek sambil menahan `Ctrl` membiarkan objek di tempatnya dan menaruh salinannya di tempat Anda melepas.

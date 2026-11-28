@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest'
  * under a running Electron — so the wiring is pinned by reading the source, the
  * same way main-locale-tables.test.ts and subscription-lifetime.test.ts do.
  * These checks cover what the sibling tasks rely on the shell to provide: the
- * menu entries and their 21 languages, the drag zones and intents (T1/T2), the
+ * menu entries and their 22 languages, the drag zones and intents (T1/T2), the
  * launch restore (T3), the pane-role channels (T1/T6/T8-T10) and the
  * same-document save probe (T4/T11-T13).
  */
@@ -45,6 +45,7 @@ const LOCALES = [
   'ms',
   'he',
   'hi',
+  'tr',
   "'zh-TW'",
 ]
 
@@ -168,9 +169,12 @@ describe('the tear-off split drop', () => {
   })
 
   it('hints the b pane in the pane-layout coordinates the renderer shares', () => {
-    // panes live below the strip: the content rect carries TAB_STRIP_HEIGHT,
-    // the orientation is the drop zone and the ratio is the live one (or half)
-    expect(source).toMatch(/paneRects\(\s*\{\s*x: 0,\s*y: TAB_STRIP_HEIGHT,/)
+    // panes live below the strip and right of an open files panel: the content
+    // rect carries TAB_STRIP_HEIGHT and the panel inset, the orientation is the
+    // drop zone and the ratio is the live one (or half)
+    expect(source).toMatch(/const inset = currentFilePanelInset\(bounds\.width\)/)
+    expect(source).toMatch(/paneRects\(\s*\{\s*x: inset,\s*y: TAB_STRIP_HEIGHT,/)
+    expect(source).toMatch(/width: Math\.max\(0, bounds\.width - inset\),/)
     expect(source).toMatch(/height: Math\.max\(0, bounds\.height - TAB_STRIP_HEIGHT\),/)
     expect(source).toMatch(/},\s*zone,\s*split\?\.ratio \?\? SPLIT_EVEN_RATIO,/)
     expect(source).toMatch(/left: rects\.b\.x,\s*top: rects\.b\.y,/)

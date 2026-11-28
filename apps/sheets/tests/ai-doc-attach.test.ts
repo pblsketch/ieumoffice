@@ -105,7 +105,8 @@ describe('sheets AI panel: attach from a document', () => {
           onSendQueued: () => true,
           onStop: () => undefined,
           onNewChat: () => undefined,
-          onUndo: () => undefined,
+          onRevertChanges: async () => undefined,
+          onClearMarks: () => undefined,
           scopeRange: null,
           scopeColumns: null,
           scopeLocked: false,
@@ -120,7 +121,12 @@ describe('sheets AI panel: attach from a document', () => {
     await settle()
     await settle()
 
-    const button = host.querySelector<HTMLButtonElement>('.ai-doc-attach-btn')
+    const menuBtn = host.querySelector<HTMLButtonElement>('.ai-attach-menu-btn')
+    expect(menuBtn).not.toBeNull()
+    act(() => {
+      menuBtn!.click()
+    })
+    const button = host.querySelector<HTMLButtonElement>('.ai-attach-menu-item[data-source="docs"]')
     expect(button).not.toBeNull()
     await act(async () => {
       button!.click()

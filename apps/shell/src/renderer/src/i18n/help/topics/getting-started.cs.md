@@ -1,6 +1,6 @@
 # Rychlý start: rozhraní a základy
 
-GenOffice je kancelářský balík, který běží na vašem počítači: jedno okno, jeden řádek karet a v něm osm editorů — Docs (textový editor), Sheets (tabulky), Slides (prezentace), PDF, Markdown a prostý text, HTML, HWP/HWPX (dokumenty Hangul) a myšlenkové mapy (.xmind). Každý editor otevírá a ukládá soubory ve svém formátu: .docx, .xlsx, .pptx, .pdf, .md, .html, .hwp/.hwpx a .xmind. Úpravy síť nepotřebují, funkce AI ano.
+GenOffice je kancelářský balík, který běží na vašem počítači: jedno okno, jeden řádek karet a v něm osm editorů — Docs (textový editor), Sheets (tabulky), Slides (prezentace), PDF, Markdown a prostý text, HTML, HWP/HWPX (dokumenty Hangul) a myšlenkové mapy (.xmind). Každý editor otevírá a ukládá soubory ve svém formátu: .docx, .xlsx, .pptx, .pdf, .md, .html, .hwp/.hwpx a .xmind. Úpravy síť nepotřebují, funkce AI ano. Editor myšlenkových map také importuje soubory FreeMind a Freeplane (.mm) jako nové mapy, které se ukládají jako .xmind.
 
 ## Přehled rozhraní
 
@@ -38,7 +38,7 @@ Soubory .odt (text OpenDocument, formát, který ukládají Hancom Office, Libre
 ## Model ukládání
 
 - **Ruční uložení**: ⌘S/ctrl+S, případně Soubor ▸ Uložit / Uložit jako… Při prvním uložení se zeptá na umístění a název.
-- **Automatické ukládání** se zapne teprve poté, co soubor uložíte ručně alespoň jednou — PDF, které jste si jen přečetli, se nikdy tiše nepřepíše. Automatické ukládání se spustí krátce po změně obsahu.
+- **Automatické ukládání** se řídí přepínačem v každém editoru (a výchozím nastavením aplikace). PDF, které jen čtete, se nikdy tiše nepřepíše a nový dokument bez vlastního souboru se začne automaticky ukládat až po prvním uložení.
 - Zavřete-li kartu s neuloženými změnami, nejdřív se zeptá, zda uložit, zahodit, nebo zrušit.
 - Každý zápis je atomický (dočasný soubor + přejmenování), takže výpadek napájení nenechá napůl zapsaný soubor.
 

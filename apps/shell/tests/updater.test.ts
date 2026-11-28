@@ -1,4 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { HttpError } from 'builder-util-runtime'
 // deep import on purpose: 'electron-updater' itself is mocked below, the
 // provider that talks to GitHub is the dependency's real code
@@ -22,7 +25,12 @@ import type { UpdateUiState } from '../src/shared/update-api'
  * the errors and the release it picks are the dependency's own.
  */
 
-const appState = { isPackaged: true }
+const appState = { isPackaged: true, dataDir: '', version: '0.1.0' }
+const appListeners = new Map<string, () => void>()
+const appQuit = vi.hoisted(() => vi.fn())
+// whether this user may write into the install folder (an "all users" install
+// under Program Files may not)
+const installDir = { writable: true }
 
 const openExternal = vi.hoisted(() => vi.fn())
 const showMessageBox = vi.hoisted(() =>
@@ -33,7 +41,12 @@ vi.mock('electron', () => ({
     get isPackaged() {
       return appState.isPackaged
     },
-    getVersion: () => '0.1.0',
+    getVersion: () => appState.version,
+    getPath: () => appState.dataDir,
+    on: (event: string, listener: () => void) => {
+      appListeners.set(event, listener)
+    },
+    quit: () => appQuit(),
   },
   shell: {
     openExternal: (url: string) => openExternal(url),
@@ -54,7 +67,11 @@ const updaterState = {
   channel: null as string | null,
   allowDowngrade: false,
   allowPrerelease: null as boolean | null,
+  // MacUpdater's hand-over of a downloaded zip to Squirrel.Mac, which the Mac
+  // install replaces (mac-update.ts installMacStaging)
+  updateDownloaded: undefined as unknown,
 }
+const squirrelServe = vi.fn(() => Promise.resolve([]))
 const checkForUpdates = vi.fn(() => Promise.resolve(null))
 const downloadUpdate = vi.fn<(token?: FakeCancellationToken) => Promise<unknown>>(() =>
   Promise.resolve([]),
@@ -66,6 +83,7 @@ class FakeCancellationToken {
   }
 }
 const quitAndInstall = vi.fn()
+const install = vi.fn<(isSilent: boolean, isForceRunAfter: boolean) => boolean>(() => true)
 
 vi.mock('electron-updater', () => ({
   CancellationToken: FakeCancellationToken,
@@ -76,6 +94,17 @@ vi.mock('electron-updater', () => ({
     checkForUpdates: () => checkForUpdates(),
     downloadUpdate: (token?: FakeCancellationToken) => downloadUpdate(token),
     quitAndInstall: (...args: unknown[]) => quitAndInstall(...(args as [boolean, boolean])),
+    install: (isSilent: boolean, isForceRunAfter: boolean) => install(isSilent, isForceRunAfter),
+    get updateDownloaded() {
+      return updaterState.updateDownloaded
+    },
+    set updateDownloaded(v: unknown) {
+      updaterState.updateDownloaded = v
+    },
+    dispatchUpdateDownloaded(event: unknown) {
+      updaterState.listeners.get('update-downloaded')?.(event)
+    },
+    logger: null as unknown,
     set autoDownload(v: boolean) {
       updaterState.autoDownload = v
     },
@@ -122,16 +151,49 @@ interface UpdateActions {
   onOpenDownload: () => void
 }
 
-const showUpdateWindow =
-  vi.fn<(parent: unknown, state: UpdateUiState, actions: UpdateActions) => void>()
+type ShowOptions = { inactive?: boolean }
+// whether the (mocked) update window is on screen: shown until closed
+const updateWindow = { open: false }
+const showUpdateWindow = vi.fn<
+  (parent: unknown, state: UpdateUiState, actions: UpdateActions, options?: ShowOptions) => void
+>(() => {
+  updateWindow.open = true
+})
 const pushUpdateState = vi.fn<(patch: Partial<UpdateUiState>) => void>()
-const closeUpdateWindow = vi.fn()
+const closeUpdateWindow = vi.fn(() => {
+  updateWindow.open = false
+})
+
+vi.mock('../src/main/update-attempt', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../src/main/update-attempt')>()),
+  installDirWritable: () => installDir.writable,
+}))
+
+// the Mac install: where its bundle is, whether it may replace itself, and the
+// macOS programs behind staging and the swap
+const macInstall = vi.hoisted(() => ({
+  bundle: '/Applications/IeumOffice.app' as string | null,
+  block: null as string | null,
+  stage: vi.fn<(options: { zip: string; bundle: string; version: string }) => Promise<string>>(),
+  swap: vi.fn<(options: unknown) => boolean>(() => true),
+  leftovers: vi.fn<(bundle: string) => void>(),
+}))
+vi.mock('../src/main/mac-update', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../src/main/mac-update')>()),
+  macAppBundle: () => macInstall.bundle,
+  macSelfUpdateBlock: () => macInstall.block,
+  stageMacUpdate: (options: { zip: string; bundle: string; version: string }) =>
+    macInstall.stage(options),
+  startMacSwap: (options: unknown) => macInstall.swap(options),
+  removeMacLeftovers: (bundle: string) => macInstall.leftovers(bundle),
+}))
 
 vi.mock('../src/main/update-window', () => ({
-  showUpdateWindow: (...args: [unknown, UpdateUiState, UpdateActions]) => showUpdateWindow(...args),
+  showUpdateWindow: (...args: [unknown, UpdateUiState, UpdateActions, ShowOptions?]) =>
+    showUpdateWindow(...args),
   pushUpdateState: (patch: Partial<UpdateUiState>) => pushUpdateState(patch),
   closeUpdateWindow: () => closeUpdateWindow(),
-  isUpdateWindowOpen: () => false,
+  isUpdateWindowOpen: () => updateWindow.open,
   setUpdateParentWindow: () => {},
   clearUpdateState: () => closeUpdateWindow(),
 }))
@@ -178,10 +240,10 @@ const RELEASES_PATH = `/${GITHUB_REPO_OWNER}/${GITHUB_REPO_NAME}/releases`
  */
 const EMPTY_RELEASES_ATOM = `<?xml version="1.0" encoding="UTF-8"?>
 <feed xmlns="http://www.w3.org/2005/Atom" xmlns:media="http://search.yahoo.com/mrss/" xml:lang="en-US">
-  <id>tag:github.com,2008:https://github.com/pblsketch/openoffice/releases</id>
-  <link type="text/html" rel="alternate" href="https://github.com/pblsketch/openoffice/releases"/>
-  <link type="application/atom+xml" rel="self" href="https://github.com/pblsketch/openoffice/releases.atom"/>
-  <title>Release notes from openoffice</title>
+  <id>tag:github.com,2008:https://github.com/pblsketch/ieumoffice/releases</id>
+  <link type="text/html" rel="alternate" href="https://github.com/pblsketch/ieumoffice/releases"/>
+  <link type="application/atom+xml" rel="self" href="https://github.com/pblsketch/ieumoffice/releases.atom"/>
+  <title>Release notes from ieumoffice</title>
   <updated>2026-10-13T06:34:27Z</updated>
 </feed>
 `
@@ -312,6 +374,12 @@ beforeEach(() => {
   vi.resetModules()
   vi.useFakeTimers()
   appState.isPackaged = true
+  appState.dataDir = mkdtempSync(join(tmpdir(), 'ieum-updater-'))
+  appState.version = CURRENT_VERSION
+  appListeners.clear()
+  appQuit.mockClear()
+  install.mockClear()
+  installDir.writable = true
   delete process.env.GENOFFICE_FAKE_UPDATE
   updaterState.listeners.clear()
   updaterState.autoDownload = true
@@ -321,6 +389,17 @@ beforeEach(() => {
   updaterState.channel = null
   updaterState.allowDowngrade = false
   updaterState.allowPrerelease = null
+  updaterState.updateDownloaded = squirrelServe
+  squirrelServe.mockClear()
+  macInstall.bundle = '/Applications/IeumOffice.app'
+  macInstall.block = null
+  macInstall.stage.mockReset()
+  macInstall.stage.mockImplementation((options) =>
+    Promise.resolve(`/Applications/.IeumOffice.app.update/IeumOffice-${options.version}.app`),
+  )
+  macInstall.swap.mockReset()
+  macInstall.swap.mockImplementation(() => true)
+  macInstall.leftovers.mockClear()
   checkForUpdates.mockReset()
   checkForUpdates.mockImplementation(() => Promise.resolve(null))
   downloadUpdate.mockReset()
@@ -329,6 +408,7 @@ beforeEach(() => {
   showUpdateWindow.mockClear()
   pushUpdateState.mockClear()
   closeUpdateWindow.mockClear()
+  updateWindow.open = false
   openExternal.mockClear()
   showMessageBox.mockReset()
   showMessageBox.mockImplementation(() => Promise.resolve({ response: 0 }))
@@ -341,7 +421,13 @@ afterEach(() => {
   platformSpy?.restore()
   platformSpy = null
   delete process.env.GENOFFICE_FAKE_UPDATE
+  rmSync(appState.dataDir, { recursive: true, force: true })
 })
+
+/** the app reaches will-quit: every window closed, no prompt cancelled */
+function quitCompletes(): void {
+  appListeners.get('will-quit')?.()
+}
 
 describe('initAutoUpdater', () => {
   it('does nothing in unpacked (dev) runs without the fake-update env', async () => {
@@ -364,12 +450,14 @@ describe('initAutoUpdater', () => {
     expect(checkForUpdates).not.toHaveBeenCalled()
   })
 
-  it('configures manual full-package download and checks after the initial delay', async () => {
+  it('configures manual download and checks after the initial delay', async () => {
     const { initAutoUpdater } = await loadUpdater()
     initAutoUpdater(() => null)
     expect(updaterState.autoDownload).toBe(false)
-    expect(updaterState.autoInstallOnAppQuit).toBe(true)
-    expect(updaterState.disableDifferentialDownload).toBe(true)
+    // the installer is started at will-quit by the updater itself
+    expect(updaterState.autoInstallOnAppQuit).toBe(false)
+    // Windows downloads only the changed blocks of the installer (decision 0166)
+    expect(updaterState.disableDifferentialDownload).toBe(false)
     // full changelog: the window shows the bodies of every skipped release
     expect(updaterState.fullChangelog).toBe(true)
     expect(checkForUpdates).not.toHaveBeenCalled()
@@ -382,6 +470,24 @@ describe('initAutoUpdater', () => {
     initAutoUpdater(() => null)
     vi.advanceTimersByTime(FIRST_CHECK_DELAY_MS)
     expect(checkForUpdates).toHaveBeenCalledTimes(1)
+    vi.advanceTimersByTime(RECHECK_INTERVAL_MS)
+    expect(checkForUpdates).toHaveBeenCalledTimes(2)
+  })
+
+  it('skips background checks while automatic checking is off, and resumes when it is back on', async () => {
+    let auto = false
+    const { initAutoUpdater, checkForUpdatesNow } = await loadUpdater()
+    initAutoUpdater(
+      () => null,
+      'stable',
+      () => auto,
+    )
+    vi.advanceTimersByTime(FIRST_CHECK_DELAY_MS + RECHECK_INTERVAL_MS)
+    expect(checkForUpdates).not.toHaveBeenCalled()
+    // an explicit Help › Check for Updates… still asks the feed
+    void checkForUpdatesNow()
+    expect(checkForUpdates).toHaveBeenCalledTimes(1)
+    auto = true
     vi.advanceTimersByTime(RECHECK_INTERVAL_MS)
     expect(checkForUpdates).toHaveBeenCalledTimes(2)
   })
@@ -421,7 +527,11 @@ describe('initAutoUpdater', () => {
     expect(pushUpdateState).toHaveBeenCalledWith({ phase: 'downloading', percent: 42 })
 
     updaterState.listeners.get('update-downloaded')!({ version: '0.2.0' })
-    expect(pushUpdateState).toHaveBeenCalledWith({ phase: 'downloaded', percent: 100 })
+    expect(pushUpdateState).toHaveBeenCalledWith({
+      phase: 'downloaded',
+      percent: 100,
+      visibleInstall: false,
+    })
   })
 
   it('surfaces a failed download as the error phase', async () => {
@@ -434,16 +544,167 @@ describe('initAutoUpdater', () => {
     expect(pushUpdateState).toHaveBeenCalledWith({ phase: 'error' })
   })
 
-  it('closes the window and installs on restart when the user confirms', async () => {
+  it('closes the window, quits, and starts the installer only once the quit is certain', async () => {
+    const { initAutoUpdater } = await loadUpdater()
+    initAutoUpdater(() => null)
+    updaterState.listeners.get('update-available')!({ version: '0.2.0' })
+    lastShownActions().onDownload()
+    updaterState.listeners.get('update-downloaded')!({ version: '0.2.0' })
+    lastShownActions().onInstall()
+    expect(closeUpdateWindow).toHaveBeenCalledTimes(1)
+    // the quit is deferred so the window can finish closing first
+    expect(appQuit).not.toHaveBeenCalled()
+    vi.advanceTimersByTime(0)
+    expect(appQuit).toHaveBeenCalledTimes(1)
+    // save prompts may still be open: the installer must not close the app under them
+    expect(install).not.toHaveBeenCalled()
+    quitCompletes()
+    // Windows: the installer's own window (progress only), which reopens the app
+    expect(install).toHaveBeenCalledWith(false, true)
+    expect(quitAndInstall).not.toHaveBeenCalled()
+  })
+
+  it('says before the restart that the installer window shows and the app comes back', async () => {
+    const { initAutoUpdater } = await loadUpdater()
+    initAutoUpdater(() => null)
+    updaterState.listeners.get('update-available')!({ version: '0.2.0' })
+    expect(lastShownState().strings.restartDesc.length).toBeGreaterThan(0)
+  })
+
+  it('keeps the full download on Linux AppImage and macOS (decision 0166)', async () => {
+    for (const platform of ['linux', 'darwin']) {
+      platformSpy?.restore()
+      setPlatform(platform)
+      if (platform === 'linux') process.env.APPIMAGE = '/tmp/IeumOffice.AppImage'
+      try {
+        updaterState.disableDifferentialDownload = false
+        vi.resetModules()
+        const { initAutoUpdater } = await loadUpdater()
+        initAutoUpdater(() => null)
+        expect(updaterState.disableDifferentialDownload).toBe(true)
+      } finally {
+        delete process.env.APPIMAGE
+      }
+    }
+  })
+
+  it('keeps the installer silent where no installer window exists (Linux AppImage)', async () => {
+    setPlatform('linux')
+    process.env.APPIMAGE = '/tmp/IeumOffice.AppImage'
+    try {
+      const { initAutoUpdater } = await loadUpdater()
+      initAutoUpdater(() => null)
+      updaterState.listeners.get('update-available')!({ version: '0.2.0' })
+      expect(lastShownState().strings.restartDesc).toBe('')
+      lastShownActions().onDownload()
+      updaterState.listeners.get('update-downloaded')!({ version: '0.2.0' })
+      lastShownActions().onInstall()
+      vi.advanceTimersByTime(0)
+      quitCompletes()
+      expect(install).toHaveBeenCalledWith(true, true)
+    } finally {
+      delete process.env.APPIMAGE
+    }
+  })
+
+  it('records the installer start for the next launch to check', async () => {
+    const { initAutoUpdater } = await loadUpdater()
+    initAutoUpdater(() => null)
+    updaterState.listeners.get('update-available')!({ version: '0.2.0' })
+    lastShownActions().onDownload()
+    updaterState.listeners.get('update-downloaded')!({ version: '0.2.0' })
+    lastShownActions().onInstall()
+    vi.advanceTimersByTime(0)
+    quitCompletes()
+    const recorded = JSON.parse(
+      readFileSync(join(appState.dataDir, 'update-install-attempt.json'), 'utf8'),
+    )
+    expect(recorded).toEqual({ version: '0.2.0', fromVersion: '0.1.0', visible: true, tries: 1 })
+  })
+
+  it('writes what it did to the update record in the data folder', async () => {
+    const { initAutoUpdater } = await loadUpdater()
+    initAutoUpdater(() => null)
+    expect(updaterState.logger).not.toBeNull()
+    updaterState.listeners.get('update-available')!({ version: '0.2.0' })
+    const record = readFileSync(join(appState.dataDir, 'update-log.txt'), 'utf8')
+    expect(record).toContain('running 0.1.0')
+    expect(record).toContain('update available: 0.2.0')
+  })
+
+  it('a cancelled save prompt calls the restart off', async () => {
+    const { initAutoUpdater } = await loadUpdater()
+    const { cancelUpdateRestart } = await import('../src/main/update-restart')
+    initAutoUpdater(() => null)
+    updaterState.listeners.get('update-available')!({ version: '0.2.0' })
+    lastShownActions().onDownload()
+    updaterState.listeners.get('update-downloaded')!({ version: '0.2.0' })
+    lastShownActions().onInstall()
+    vi.advanceTimersByTime(0)
+    // a dirty tab's prompt was answered Cancel: the app stays
+    cancelUpdateRestart()
+    expect(install).not.toHaveBeenCalled()
+    // a later ordinary quit installs nothing
+    quitCompletes()
+    expect(install).not.toHaveBeenCalled()
+  })
+
+  it('never installs on an ordinary quit, where nobody would see it run', async () => {
+    const { initAutoUpdater } = await loadUpdater()
+    initAutoUpdater(() => null)
+    updaterState.listeners.get('update-available')!({ version: '0.2.0' })
+    lastShownActions().onDownload()
+    updaterState.listeners.get('update-downloaded')!({ version: '0.2.0' })
+    lastShownActions().onLater()
+    quitCompletes()
+    expect(install).not.toHaveBeenCalled()
+    expect(existsSync(join(appState.dataDir, 'update-install-attempt.json'))).toBe(false)
+  })
+
+  it('brings Restart & Install back, unfocused, when a minimized download finishes', async () => {
+    const { initAutoUpdater } = await loadUpdater()
+    initAutoUpdater(() => null)
+    updaterState.listeners.get('update-available')!({ version: '0.2.0' })
+    lastShownActions().onDownload()
+    lastShownActions().onLater()
+    expect(showUpdateWindow).toHaveBeenCalledTimes(1)
+    updaterState.listeners.get('update-downloaded')!({ version: '0.2.0' })
+    expect(showUpdateWindow).toHaveBeenCalledTimes(2)
+    expect(lastShownState().phase).toBe('downloaded')
+    expect(showUpdateWindow.mock.calls.at(-1)![3]).toEqual({ inactive: true })
+  })
+
+  it('leaves an open window to show the finished download itself', async () => {
+    const { initAutoUpdater } = await loadUpdater()
+    initAutoUpdater(() => null)
+    updaterState.listeners.get('update-available')!({ version: '0.2.0' })
+    lastShownActions().onDownload()
+    updaterState.listeners.get('update-downloaded')!({ version: '0.2.0' })
+    expect(showUpdateWindow).toHaveBeenCalledTimes(1)
+  })
+
+  it('notes in the update record when the installer reopened the app', async () => {
+    const argv = process.argv
+    process.argv = [...argv, '--updated']
+    try {
+      const { initAutoUpdater } = await loadUpdater()
+      initAutoUpdater(() => null)
+    } finally {
+      process.argv = argv
+    }
+    const record = readFileSync(join(appState.dataDir, 'update-log.txt'), 'utf8')
+    expect(record).toContain('running 0.1.0 on the stable channel, reopened by the installer')
+  })
+
+  it('starts no installer on quit while nothing is downloaded', async () => {
     const { initAutoUpdater } = await loadUpdater()
     initAutoUpdater(() => null)
     updaterState.listeners.get('update-available')!({ version: '0.2.0' })
     lastShownActions().onInstall()
-    expect(closeUpdateWindow).toHaveBeenCalledTimes(1)
-    // quitAndInstall is deferred so the window can finish closing first
-    expect(quitAndInstall).not.toHaveBeenCalled()
     vi.advanceTimersByTime(0)
-    expect(quitAndInstall).toHaveBeenCalledWith(true, true)
+    expect(appQuit).not.toHaveBeenCalled()
+    quitCompletes()
+    expect(install).not.toHaveBeenCalled()
   })
 
   it('does not re-prompt for a version the user dismissed this session', async () => {
@@ -518,15 +779,15 @@ describe('initAutoUpdater', () => {
     available({ version: '0.2.0' })
     lastShownActions().onDownload()
     updaterState.listeners.get('update-downloaded')!({ version: '0.2.0' })
-    expect(updaterState.autoInstallOnAppQuit).toBe(true)
     lastShownActions().onLater()
 
     applyUpdateChannel('beta')
     // the stale package must not install on quit or via a stale window action
-    expect(updaterState.autoInstallOnAppQuit).toBe(false)
     lastShownActions().onInstall()
     vi.advanceTimersByTime(0)
-    expect(quitAndInstall).not.toHaveBeenCalled()
+    expect(appQuit).not.toHaveBeenCalled()
+    quitCompletes()
+    expect(install).not.toHaveBeenCalled()
 
     // the new channel's version is offered from scratch, not swallowed
     available({ version: '0.3.0-beta.1' })
@@ -537,13 +798,19 @@ describe('initAutoUpdater', () => {
     expect(downloadUpdate).toHaveBeenCalledTimes(2)
     // a late completion of the old channel's download is ignored
     updaterState.listeners.get('update-downloaded')!({ version: '0.2.0' })
-    expect(pushUpdateState).not.toHaveBeenLastCalledWith({ phase: 'downloaded', percent: 100 })
+    expect(pushUpdateState).not.toHaveBeenLastCalledWith(
+      expect.objectContaining({ phase: 'downloaded' }),
+    )
     updaterState.listeners.get('update-downloaded')!({ version: '0.3.0-beta.1' })
-    expect(pushUpdateState).toHaveBeenLastCalledWith({ phase: 'downloaded', percent: 100 })
-    expect(updaterState.autoInstallOnAppQuit).toBe(true)
+    expect(pushUpdateState).toHaveBeenLastCalledWith({
+      phase: 'downloaded',
+      percent: 100,
+      visibleInstall: false,
+    })
     lastShownActions().onInstall()
     vi.advanceTimersByTime(0)
-    expect(quitAndInstall).toHaveBeenCalledWith(true, true)
+    quitCompletes()
+    expect(install).toHaveBeenCalledWith(false, true)
   })
 
   it('applyUpdateChannel cancels an in-flight download and shields the new one from its leftovers', async () => {
@@ -591,6 +858,158 @@ describe('initAutoUpdater', () => {
   })
 })
 
+describe('an installer that did not update the app', () => {
+  function previousAttempt(visible: boolean, version = '0.2.0', tries?: number): void {
+    writeFileSync(
+      join(appState.dataDir, 'update-install-attempt.json'),
+      JSON.stringify({ version, fromVersion: CURRENT_VERSION, visible, tries }),
+    )
+  }
+
+  async function downloaded(version = '0.2.0'): Promise<void> {
+    const { initAutoUpdater } = await loadUpdater()
+    initAutoUpdater(() => null)
+    updaterState.listeners.get('update-available')!({ version })
+    lastShownActions().onDownload()
+    updaterState.listeners.get('update-downloaded')!({ version })
+  }
+
+  it('says so on the next launch and retries in the installer window', async () => {
+    previousAttempt(false)
+    const { initAutoUpdater } = await loadUpdater()
+    initAutoUpdater(() => null)
+    updaterState.listeners.get('update-available')!({ version: '0.2.0' })
+    expect(lastShownState().phase).toBe('install-failed')
+    expect(lastShownState().strings.installFailedDesc.length).toBeGreaterThan(0)
+
+    lastShownActions().onDownload()
+    expect(downloadUpdate).toHaveBeenCalledTimes(1)
+    updaterState.listeners.get('update-downloaded')!({ version: '0.2.0' })
+    expect(pushUpdateState).toHaveBeenLastCalledWith({
+      phase: 'downloaded',
+      percent: 100,
+      visibleInstall: false,
+    })
+    lastShownActions().onInstall()
+    vi.advanceTimersByTime(0)
+    quitCompletes()
+    // not silent: the installer shows its own window, prompts included
+    expect(install).toHaveBeenCalledWith(false, true)
+    const recorded = JSON.parse(
+      readFileSync(join(appState.dataDir, 'update-install-attempt.json'), 'utf8'),
+    )
+    // the second start for this version: one more failure goes to the download page
+    expect(recorded).toMatchObject({ visible: true, tries: 2 })
+  })
+
+  it('gives a failed installer window one more try', async () => {
+    previousAttempt(true, '0.2.0', 1)
+    const { initAutoUpdater } = await loadUpdater()
+    initAutoUpdater(() => null)
+    updaterState.listeners.get('update-available')!({ version: '0.2.0' })
+    expect(lastShownState().phase).toBe('install-failed')
+  })
+
+  it('offers a newer release the same way', async () => {
+    previousAttempt(false, '0.2.0')
+    const { initAutoUpdater } = await loadUpdater()
+    initAutoUpdater(() => null)
+    updaterState.listeners.get('update-available')!({ version: '0.3.0' })
+    expect(lastShownState().phase).toBe('install-failed')
+  })
+
+  it('does not retry silently on an ordinary quit', async () => {
+    previousAttempt(false)
+    await downloaded()
+    lastShownActions().onLater()
+    quitCompletes()
+    expect(install).not.toHaveBeenCalled()
+    // the record stays, so the next launch still knows
+    expect(existsSync(join(appState.dataDir, 'update-install-attempt.json'))).toBe(true)
+  })
+
+  it('points at the download page once the installer window failed too', async () => {
+    previousAttempt(true, '0.2.0', 2)
+    const { initAutoUpdater } = await loadUpdater()
+    initAutoUpdater(() => null)
+    updaterState.listeners.get('update-available')!({ version: '0.2.0' })
+    expect(lastShownState().phase).toBe('manual')
+    lastShownActions().onOpenDownload()
+    expect(openExternal).toHaveBeenCalledWith(GITHUB_LATEST_RELEASE_URL)
+  })
+
+  it('forgets an attempt that did update the app', async () => {
+    previousAttempt(false, '0.2.0')
+    appState.version = '0.2.0'
+    const { initAutoUpdater } = await loadUpdater()
+    initAutoUpdater(() => null)
+    expect(existsSync(join(appState.dataDir, 'update-install-attempt.json'))).toBe(false)
+    updaterState.listeners.get('update-available')!({ version: '0.3.0' })
+    expect(lastShownState().phase).toBe('available')
+  })
+
+  it('forgets an attempt from a version the app no longer runs', async () => {
+    writeFileSync(
+      join(appState.dataDir, 'update-install-attempt.json'),
+      JSON.stringify({ version: '0.0.9', fromVersion: '0.0.8', visible: false }),
+    )
+    const { initAutoUpdater } = await loadUpdater()
+    initAutoUpdater(() => null)
+    expect(existsSync(join(appState.dataDir, 'update-install-attempt.json'))).toBe(false)
+    updaterState.listeners.get('update-available')!({ version: '0.2.0' })
+    expect(lastShownState().phase).toBe('available')
+  })
+
+  it('ignores a record it cannot read', async () => {
+    writeFileSync(join(appState.dataDir, 'update-install-attempt.json'), '{not json')
+    const { initAutoUpdater } = await loadUpdater()
+    initAutoUpdater(() => null)
+    updaterState.listeners.get('update-available')!({ version: '0.2.0' })
+    expect(lastShownState().phase).toBe('available')
+  })
+})
+
+describe('an install folder only an administrator can write', () => {
+  beforeEach(() => {
+    installDir.writable = false
+  })
+
+  it('restarts into the installer window, where the administrator prompt belongs', async () => {
+    const { initAutoUpdater } = await loadUpdater()
+    initAutoUpdater(() => null)
+    updaterState.listeners.get('update-available')!({ version: '0.2.0' })
+    expect(lastShownState().phase).toBe('available')
+    lastShownActions().onDownload()
+    updaterState.listeners.get('update-downloaded')!({ version: '0.2.0' })
+    expect(pushUpdateState).toHaveBeenLastCalledWith({
+      phase: 'downloaded',
+      percent: 100,
+      visibleInstall: true,
+    })
+    lastShownActions().onInstall()
+    vi.advanceTimersByTime(0)
+    quitCompletes()
+    expect(install).toHaveBeenCalledWith(false, true)
+  })
+
+  it('reopens a downloaded update with the installer-window wording', async () => {
+    const { initAutoUpdater, checkForUpdatesNow } = await loadUpdater()
+    initAutoUpdater(() => null)
+    const available = updaterState.listeners.get('update-available')!
+    available({ version: '0.2.0' })
+    lastShownActions().onDownload()
+    updaterState.listeners.get('update-downloaded')!({ version: '0.2.0' })
+    lastShownActions().onLater()
+    checkForUpdates.mockImplementation(() => {
+      available({ version: '0.2.0' })
+      return Promise.resolve({ isUpdateAvailable: true } as never)
+    })
+    await checkForUpdatesNow()
+    expect(lastShownState().phase).toBe('downloaded')
+    expect(lastShownState().visibleInstall).toBe(true)
+  })
+})
+
 describe('manual download fallback', () => {
   async function failTwiceIntoManual(info: {
     version: string
@@ -616,7 +1035,7 @@ describe('manual download fallback', () => {
     expect(openExternal).toHaveBeenCalledTimes(1)
     expect(openExternal).toHaveBeenCalledWith(GITHUB_LATEST_RELEASE_URL)
     expect(GITHUB_LATEST_RELEASE_URL).toBe(
-      'https://github.com/pblsketch/openoffice/releases/latest',
+      'https://github.com/pblsketch/ieumoffice/releases/latest',
     )
   })
 
@@ -637,40 +1056,162 @@ describe('manual download fallback', () => {
     actions.onOpenDownload()
     expect(openExternal).toHaveBeenCalledWith(githubReleaseTagUrl('0.3.0-beta.1'))
     expect(githubReleaseTagUrl('0.3.0-beta.1')).toBe(
-      'https://github.com/pblsketch/openoffice/releases/tag/v0.3.0-beta.1',
+      'https://github.com/pblsketch/ieumoffice/releases/tag/v0.3.0-beta.1',
     )
   })
 })
 
-describe('macOS: no self-update for an ad hoc signed app', () => {
+describe('macOS: the app installs its own update (decision 0097)', () => {
+  const zip = '/Users/me/Library/Caches/ieumoffice-updater/pending/IeumOffice-0.2.0-arm64-mac.zip'
+
   beforeEach(() => {
     platformSpy?.restore()
     setPlatform('darwin')
+    // electron-updater downloads, checks the sha512, then hands the zip to its
+    // own updateDownloaded: which the Mac install has replaced
+    downloadUpdate.mockImplementation(() =>
+      (updaterState.updateDownloaded as (fileInfo: unknown, event: unknown) => Promise<unknown>)(
+        {},
+        { version: '0.2.0', downloadedFile: zip },
+      ),
+    )
   })
 
-  it('still checks the feed, but never installs on quit', async () => {
+  async function downloadedOnMac(): Promise<UpdateActions> {
+    const { initAutoUpdater } = await loadUpdater()
+    initAutoUpdater(() => null)
+    updaterState.listeners.get('update-available')!({ version: '0.2.0' })
+    const actions = lastShownActions()
+    actions.onDownload()
+    await flushAsync()
+    return actions
+  }
+
+  function attemptRecord(): unknown {
+    return JSON.parse(readFileSync(join(appState.dataDir, 'update-install-attempt.json'), 'utf8'))
+  }
+
+  it('still never lets electron-updater install on quit', async () => {
     const { initAutoUpdater } = await loadUpdater()
     initAutoUpdater(() => null)
     expect(updaterState.autoDownload).toBe(false)
     expect(updaterState.autoInstallOnAppQuit).toBe(false)
     vi.advanceTimersByTime(FIRST_CHECK_DELAY_MS)
     expect(checkForUpdates).toHaveBeenCalledTimes(1)
+    quitCompletes()
+    expect(install).not.toHaveBeenCalled()
+    expect(macInstall.swap).not.toHaveBeenCalled()
   })
 
-  it('opens a found update straight in the manual phase, with the Mac wording', async () => {
+  it('offers a found update like Windows does, with the Mac restart wording', async () => {
+    const { initAutoUpdater } = await loadUpdater()
+    initAutoUpdater(() => null)
+    updaterState.listeners.get('update-available')!({ version: '0.2.0' })
+    const state = lastShownState()
+    expect(state.phase).toBe('available')
+    // the UI language of these tests is zh: "replaced with the new version",
+    // not the Windows "an installer window shows the progress"
+    expect(state.strings.restartDesc).toContain('替换为新版本')
+    expect(state.strings.restartDesc).not.toContain('安装进度')
+  })
+
+  it('clears what an interrupted update left beside the app', async () => {
+    const { initAutoUpdater } = await loadUpdater()
+    initAutoUpdater(() => null)
+    expect(macInstall.leftovers).toHaveBeenCalledWith('/Applications/IeumOffice.app')
+  })
+
+  it('unpacks the download beside the app, never through Squirrel.Mac', async () => {
+    await downloadedOnMac()
+    expect(downloadUpdate).toHaveBeenCalledTimes(1)
+    expect(macInstall.stage).toHaveBeenCalledWith({
+      zip,
+      bundle: '/Applications/IeumOffice.app',
+      version: '0.2.0',
+    })
+    expect(squirrelServe).not.toHaveBeenCalled()
+    expect(pushUpdateState).toHaveBeenLastCalledWith({
+      phase: 'downloaded',
+      percent: 100,
+      visibleInstall: false,
+    })
+  })
+
+  it('swaps the new version in once the app has quit', async () => {
+    const actions = await downloadedOnMac()
+    actions.onInstall()
+    expect(macInstall.swap).not.toHaveBeenCalled()
+    vi.advanceTimersByTime(0)
+    expect(appQuit).toHaveBeenCalledTimes(1)
+    quitCompletes()
+    expect(macInstall.swap).toHaveBeenCalledWith({
+      pid: process.pid,
+      bundle: '/Applications/IeumOffice.app',
+      staged: '/Applications/.IeumOffice.app.update/IeumOffice-0.2.0.app',
+      logFile: join(appState.dataDir, 'update-log.txt'),
+    })
+    expect(install).not.toHaveBeenCalled()
+    // the next launch checks the version against this record
+    expect(attemptRecord()).toEqual({
+      version: '0.2.0',
+      fromVersion: CURRENT_VERSION,
+      visible: false,
+      tries: 1,
+    })
+  })
+
+  it('does not swap on an ordinary quit', async () => {
+    const actions = await downloadedOnMac()
+    actions.onLater()
+    quitCompletes()
+    expect(macInstall.swap).not.toHaveBeenCalled()
+    expect(existsSync(join(appState.dataDir, 'update-install-attempt.json'))).toBe(false)
+  })
+
+  it('counts an update that does not check out as a failed download', async () => {
+    macInstall.stage.mockImplementation(() =>
+      Promise.reject(new Error('a sealed resource is missing')),
+    )
+    const actions = await downloadedOnMac()
+    expect(pushUpdateState).toHaveBeenLastCalledWith({ phase: 'error' })
+    actions.onDownload()
+    await flushAsync()
+    expect(pushUpdateState).toHaveBeenLastCalledWith({ phase: 'manual' })
+    actions.onInstall()
+    vi.advanceTimersByTime(0)
+    quitCompletes()
+    expect(macInstall.swap).not.toHaveBeenCalled()
+  })
+
+  it('sends a swap that did not take to the download page', async () => {
+    writeFileSync(
+      join(appState.dataDir, 'update-install-attempt.json'),
+      JSON.stringify({ version: '0.2.0', fromVersion: CURRENT_VERSION, visible: false, tries: 1 }),
+    )
     const { initAutoUpdater } = await loadUpdater()
     initAutoUpdater(() => null)
     updaterState.listeners.get('update-available')!({ version: '0.2.0' })
     const state = lastShownState()
     expect(state.phase).toBe('manual')
-    expect(state.version).toBe('0.2.0')
     expect(state.strings.manualDesc).toContain('Mac')
   })
 
-  it('sends the user to the release page instead of downloading', async () => {
+  const cannotReplaceItself: [string, () => void][] = [
+    ['from a folder it cannot write', () => (macInstall.block = 'read-only')],
+    ['from the disk image or a translocated copy', () => (macInstall.block = 'translocated')],
+    ['outside an app bundle', () => (macInstall.bundle = null)],
+    // electron-updater without the method the hook replaces
+    ['with an electron-updater it cannot hook', () => (updaterState.updateDownloaded = undefined)],
+  ]
+
+  it.each(cannotReplaceItself)('keeps the download page for an app run %s', async (_name, set) => {
+    set()
     const { initAutoUpdater } = await loadUpdater()
     initAutoUpdater(() => null)
     updaterState.listeners.get('update-available')!({ version: '0.3.0-beta.1' })
+    const state = lastShownState()
+    expect(state.phase).toBe('manual')
+    expect(state.strings.manualDesc).toContain('Mac')
     const actions = lastShownActions()
     actions.onOpenDownload()
     // Settings → About re-opens the window through onDownload
@@ -680,9 +1221,12 @@ describe('macOS: no self-update for an ad hoc signed app', () => {
     expect(openExternal).toHaveBeenCalledTimes(2)
     expect(openExternal).toHaveBeenNthCalledWith(1, githubReleaseTagUrl('0.3.0-beta.1'))
     expect(openExternal).toHaveBeenNthCalledWith(2, githubReleaseTagUrl('0.3.0-beta.1'))
+    quitCompletes()
+    expect(macInstall.swap).not.toHaveBeenCalled()
   })
 
   it('keeps the manual phase when a periodic recheck finds the same version', async () => {
+    macInstall.block = 'read-only'
     const { initAutoUpdater } = await loadUpdater()
     initAutoUpdater(() => null)
     updaterState.listeners.get('update-available')!({ version: '0.2.0' })
@@ -801,10 +1345,15 @@ describe('GitHub Releases feed', () => {
     updaterState.listeners.get('download-progress')!({ percent: 64 })
     expect(pushUpdateState).toHaveBeenLastCalledWith({ phase: 'downloading', percent: 64 })
     updaterState.listeners.get('update-downloaded')!({ version: '0.2.0' })
-    expect(pushUpdateState).toHaveBeenLastCalledWith({ phase: 'downloaded', percent: 100 })
+    expect(pushUpdateState).toHaveBeenLastCalledWith({
+      phase: 'downloaded',
+      percent: 100,
+      visibleInstall: false,
+    })
     lastShownActions().onInstall()
     vi.advanceTimersByTime(0)
-    expect(quitAndInstall).toHaveBeenCalledWith(true, true)
+    quitCompletes()
+    expect(install).toHaveBeenCalledWith(false, true)
   })
 
   it('converts the release body into notes on the shown state', async () => {

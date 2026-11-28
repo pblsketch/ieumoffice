@@ -14,12 +14,12 @@ interface Cell {
 function fakeEditor(
   body: string[],
   cells: Cell[] = [],
-  fields: [name: string, value: string][] = [],
+  fields: [name: string, value: string, fieldType?: string][] = [],
 ) {
   let state = {
     body: [...body],
     cells: cells.map((cell) => ({ ...cell })),
-    fields: fields.map(([name, value]) => ({ name, value })),
+    fields: fields.map(([name, value, fieldType = 'clickhere']) => ({ name, value, fieldType })),
   }
   const history: (typeof state)[] = []
   const listeners: (() => void)[] = []
@@ -75,6 +75,7 @@ function fakeEditor(
     getSectionCount: () => 1,
     getParagraphCount: () => state.body.length,
     getControlTextPositions: () => '[]',
+    textToLogicalOffset: (_sec: number, _para: number, offset: number) => offset,
     getParagraphLength: (_sec: number, para: number) => state.body[para]!.length,
     getTextRange: (_sec: number, para: number, start: number, count: number) =>
       state.body[para]!.slice(start, start + count),
@@ -275,6 +276,29 @@ describe('form fields', () => {
     }
     expect(editor.fieldValues()).toEqual([''])
     expect(editor.steps()).toBe(0)
+  })
+
+  it('leaves formula and hyperlink fields out of the list and alone', () => {
+    // a score table's =SUM total and a link in the notes, around one click-here field
+    const editor = fakeEditor(
+      [''],
+      [],
+      [
+        ['', '50', 'formula'],
+        ['성명', '', 'clickhere'],
+        ['', 'www.example.go.kr', 'hyperlink'],
+      ],
+    )
+    expect(editor.plugin.listFields()).toEqual([
+      { field: 1, name: '성명', guide: '', value: '', inCell: false },
+    ])
+    expect(editor.plugin.fillField(1, '홍길동')).toMatchObject({ ok: true, name: '성명' })
+    expect(editor.plugin.fillField(2, 'x')).toEqual({
+      ok: false,
+      reason: 'no_such_field',
+      count: 1,
+    })
+    expect(editor.fieldValues()).toEqual(['50', '홍길동', 'www.example.go.kr'])
   })
 
   it('refuses a value that would break the paragraph', () => {

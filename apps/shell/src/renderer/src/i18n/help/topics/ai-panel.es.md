@@ -36,9 +36,16 @@ En el panel de IA de los editores Docs, Sheets, Slides, Hangul, HTML y mapas men
 - Si dos documentos se llaman igual pero están en carpetas distintas, se añade el nombre de la carpeta inmediatamente superior, como en `@plan.docx(2.º trimestre)`, y ese nombre de carpeta también se le pasa a la IA.
 - Los editores de PDF y Markdown todavía no tienen adjuntos, así que ninguna de las dos formas está disponible allí.
 
+## Proyectos
+
+- Haz clic en el nombre del proyecto, a la izquierda y debajo del campo de entrada, para elegir un proyecto (una carpeta de tu PC). Así la IA responde conociendo los archivos, las instrucciones y la memoria de esa carpeta, y el chat se guarda en ella para que puedas seguir en otro editor. Consulta [Proyectos](help://projects).
+- Con un proyecto elegido, el título del chat actual aparece arriba del panel. Haz clic en él para ver la lista de chats del proyecto y **Nuevo chat**.
+- En la lista de `@` del campo de entrada aparece «Archivos de este proyecto» después de los documentos abiertos.
+- Una petición con un proyecto elegido también envía a la IA que estés usando las instrucciones (junto con `AGENTS.md` y `CLAUDE.md` de la raíz de la carpeta, que puedes desactivar en la página del proyecto), la memoria y la lista de nombres de archivo de ese proyecto, un breve fragmento de cada archivo que la IA encuentre al buscar en la carpeta, además del texto de cualquier archivo que la IA lea.
+
 ## Retroceso y seguridad
 
-- El panel de Docs conserva una **lista de versiones**: una instantánea por vuelta, puede volver a cualquiera de ellas y ese propio retroceso se puede deshacer con Ctrl+Z. Las instantáneas sobreviven a reabrir el documento.
+- Una vuelta en la que la IA cambió el documento lleva, bajo su respuesta, una tarjeta **Cambios hechos en el documento: N**, y los lugares cambiados se marcan en amarillo sobre el documento. Las marcas solo se ven en pantalla —nunca se guardan, imprimen ni exportan— y desaparecen cuando envía la siguiente petición o pulsa **Ocultar marcas**. **Deshacer estos cambios** revierte la vuelta entera de una vez. En Docs, Markdown, HTML, Slides, mapa mental y diagrama, deshacer una vuelta anterior deshace también las que vinieron después; en Hangul, Sheets, PDF y EPUB solo se puede deshacer la última vuelta, y solo si el documento no se editó después. Cuando no se pueda deshacer, use el Deshacer propio del editor (Ctrl+Z).
 - Las ediciones de la IA pasan por la misma canalización de edición que las manuales (se pueden deshacer y requieren guardar): nada omite su confirmación de guardado.
 
 ## Ocultar una selección a la IA

@@ -9,6 +9,8 @@
  * File menu uses, so GUI and CLI output cannot drift.
  */
 import { existsSync, realpathSync, statSync } from 'node:fs'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 
 import {
@@ -16,18 +18,30 @@ import {
   HEADLESS_SUPPORTED_EXTENSIONS,
   HEADLESS_TARGETS,
   headlessModuleFor,
+  isDiagramFileTarget,
   type HeadlessExportFormat,
   type HeadlessExportModule,
   type HeadlessExportOutcome,
+  type HeadlessExportProduct,
   type HeadlessExportRequest,
 } from '@genoffice/electron-utils'
+import { convertLegacyFile, legacyEditorFor, type LegacyConvertResult } from './legacy-open'
 
 type HeadlessFailure = Extract<HeadlessExportOutcome, { ok: false }>
 
-/** Per-module hidden-window exporters, injected so this file stays testable. */
+/**
+ * Per-module hidden-window exporters, injected so this file stays testable. An
+ * exporter that writes something other than the one file at `outPath` (several
+ * pages, or nothing) reports the files it wrote.
+ */
 export type HeadlessExporters = Record<
   HeadlessExportModule,
-  (input: string, outPath: string, format: HeadlessExportFormat) => Promise<void>
+  (
+    input: string,
+    outPath: string,
+    format: HeadlessExportFormat,
+    request: HeadlessExportRequest,
+  ) => Promise<void | HeadlessExportProduct>
 >
 
 /** Disk probes, injected so the host is testable without touching the filesystem. */
@@ -89,6 +103,8 @@ export function validateHeadlessPaths(
       message: `cannot export ${input} to ${request.targetFormat} (this input supports: ${HEADLESS_TARGETS[module].join(', ')})`,
     }
   }
+  const switches = diagramSwitchProblem(request, module)
+  if (switches) return { ok: false, code: HEADLESS_EXIT.badArgs, message: switches }
   const outPath = resolve(request.outPath)
   if (!fs.exists(dirname(outPath))) {
     return {
@@ -114,6 +130,28 @@ export function validateHeadlessPaths(
   return { ok: true, input, outPath, module }
 }
 
+/** `--page`, `--ops` and `--batch` belong to diagrams (and `--page` to whiteboards). */
+function diagramSwitchProblem(
+  request: HeadlessExportRequest,
+  module: HeadlessExportModule,
+): string | null {
+  const given = (['page', 'ops', 'batch'] as const).filter((key) => request[key] !== undefined)
+  if (given.length === 0) return null
+  if (module === 'whiteboard') {
+    const wrong = given.find((key) => key !== 'page')
+    return wrong ? `--${wrong} is for diagram inputs only` : null
+  }
+  if (module !== 'diagram') return `--${given[0]} is for diagram inputs only`
+  if (isDiagramFileTarget(request.targetFormat)) {
+    if (!request.outPath.toLowerCase().endsWith(`.${request.targetFormat}`)) {
+      return `--out must end in .${request.targetFormat} for --to ${request.targetFormat}`
+    }
+    return null
+  }
+  const wrong = given.find((key) => key !== 'page')
+  return wrong ? `--${wrong} goes with --to drawio, dio, drawio.svg or drawio.png` : null
+}
+
 /**
  * Runs one export end to end. Returns the outcome instead of throwing so the
  * caller can render the envelope and pick the exit code in one place.
@@ -126,8 +164,14 @@ export async function runHeadlessExport(
   const checked = validateHeadlessPaths(request, fs)
   if (!checked.ok) return checked
   const startedAt = Date.now()
+  let product: void | HeadlessExportProduct
   try {
-    await exporters[checked.module](checked.input, checked.outPath, request.targetFormat)
+    product = await exporters[checked.module](
+      checked.input,
+      checked.outPath,
+      request.targetFormat,
+      request,
+    )
   } catch (err) {
     return {
       ok: false,
@@ -135,19 +179,66 @@ export async function runHeadlessExport(
       message: err instanceof Error ? err.message : String(err),
     }
   }
-  if (!fs.exists(checked.outPath) || !fs.isFile(checked.outPath)) {
-    return {
-      ok: false,
-      code: HEADLESS_EXIT.conversionFailure,
-      message: `export reported success but wrote no file at ${checked.outPath}`,
+  const written = product ? product.paths.map((path) => resolve(path)) : [checked.outPath]
+  for (const path of written) {
+    if (!fs.exists(path) || !fs.isFile(path)) {
+      return {
+        ok: false,
+        code: HEADLESS_EXIT.conversionFailure,
+        message: `export reported success but wrote no file at ${path}`,
+      }
+    }
+    if (fs.mtimeMs && fs.mtimeMs(path) < startedAt - MTIME_SLACK_MS) {
+      return {
+        ok: false,
+        code: HEADLESS_EXIT.conversionFailure,
+        message: `export reported success but left a stale file at ${path}`,
+      }
     }
   }
-  if (fs.mtimeMs && fs.mtimeMs(checked.outPath) < startedAt - MTIME_SLACK_MS) {
-    return {
-      ok: false,
-      code: HEADLESS_EXIT.conversionFailure,
-      message: `export reported success but left a stale file at ${checked.outPath}`,
-    }
+  if (!product) return { ok: true, input: checked.input, outPath: checked.outPath }
+  return {
+    ok: true,
+    input: checked.input,
+    outPath: checked.outPath,
+    outPaths: written,
+    ...(product.detail ? { detail: product.detail } : {}),
   }
-  return { ok: true, input: checked.input, outPath: checked.outPath }
+}
+
+/**
+ * Wraps a docs/slides headless exporter so legacy Office binaries (.doc, .dot, .ppt)
+ * are converted to a temporary .docx/.pptx before handing off to the normal exporter,
+ * always deleting the temp folder on exit.
+ */
+export async function runExporterWithLegacyConversion(
+  input: string,
+  outPath: string,
+  format: HeadlessExportFormat,
+  request: HeadlessExportRequest,
+  exporter: HeadlessExporters['docs'],
+  convert: (filePath: string) => Promise<LegacyConvertResult | null> = convertLegacyFile,
+): Promise<void | HeadlessExportProduct> {
+  if (!legacyEditorFor(input)) {
+    return exporter(input, outPath, format, request)
+  }
+  const converted = await convert(input)
+  if (!converted) {
+    return exporter(input, outPath, format, request)
+  }
+  if (!converted.ok) {
+    throw new Error(
+      converted.reason === 'encrypted'
+        ? 'password-protected legacy file cannot be converted headlessly'
+        : converted.error,
+    )
+  }
+  const workDir = await mkdtemp(join(tmpdir(), 'genoffice-legacy-headless-'))
+  try {
+    const tempPath = join(workDir, converted.copy.fileName)
+    await writeFile(tempPath, converted.copy.bytes)
+    return await exporter(tempPath, outPath, format, { ...request, input: tempPath })
+  } finally {
+    await rm(workDir, { recursive: true, force: true })
+  }
 }

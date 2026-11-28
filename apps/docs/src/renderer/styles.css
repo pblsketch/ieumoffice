@@ -69,7 +69,7 @@
   --docs-shadow-modal-gs: 0 12px 40px rgb(0 0 0 / 16%);
   --docs-shadow-chip: 0 2px 8px rgb(0 0 0 / 12%);
   --docs-shadow-tooltip: 0 4px 6px rgb(0 0 0 / 10%);
-  --docs-shadow-composer: 0 6px 30px rgb(0 0 0 / 8%);
+  --docs-shadow-composer: 0 1px 3px rgb(0 0 0 / 8%);
   --docs-shadow-toast: 0 4px 16px rgb(0 0 0 / 18%);
 
   /* brand-fixed chrome: identical in both themes */
@@ -77,6 +77,8 @@
   --docs-on-accent-dim: rgb(255 255 255 / 75%);
   --docs-comment-accent: #e8a33d;
   --docs-badge-gradient: linear-gradient(135deg, #6a5cff 0%, #2b88f8 55%, #29c3a6 120%);
+  /* the badge gradient is the same in both themes, so its ink is too */
+  --docs-on-gradient: #fff;
   --docs-shadow-badge: 0 2px 6px rgb(74 92 255 / 25%);
   --docs-shadow-badge-strong: 0 2px 6px rgb(74 92 255 / 35%);
   --docs-chip-remove-bg: #000;
@@ -102,8 +104,6 @@
  * values (the box is a light island; see the .page-dark block). */
 :root,
 .page-dark .doc-textbox-filled {
-  --ai-highlight: #fff3c4;
-  --ai-highlight-border: #f2b900;
   --docs-paper: #ffffff;
   --docs-paper-ink: #000;
   --docs-paper-ink-dim: #333;
@@ -175,6 +175,8 @@
 [data-theme='dark'] {
   --word-blue: #4a9eff;
   --word-blue-dark: #3a8eef;
+  /* the dark accent is light: white on it fell to 2.8:1 */
+  --docs-on-accent: #141414;
   --word-heading: #6cabf0;
   --accent-soft: #1e3a5f;
 
@@ -238,7 +240,7 @@
   --docs-shadow-modal-gs: 0 20px 50px rgb(0 0 0 / 65%);
   --docs-shadow-chip: 0 2px 8px rgb(0 0 0 / 40%);
   --docs-shadow-tooltip: 0 4px 6px rgb(0 0 0 / 30%);
-  --docs-shadow-composer: 0 6px 30px rgb(0 0 0 / 30%);
+  --docs-shadow-composer: 0 1px 3px rgb(0 0 0 / 30%);
   --docs-shadow-toast: 0 4px 16px rgb(0 0 0 / 45%);
 }
 
@@ -246,6 +248,7 @@
   :root:not([data-theme='light']):not([data-theme='dark']) {
     --word-blue: #4a9eff;
     --word-blue-dark: #3a8eef;
+    --docs-on-accent: #141414;
     --word-heading: #6cabf0;
     --accent-soft: #1e3a5f;
 
@@ -309,7 +312,7 @@
     --docs-shadow-modal-gs: 0 20px 50px rgb(0 0 0 / 65%);
     --docs-shadow-chip: 0 2px 8px rgb(0 0 0 / 40%);
     --docs-shadow-tooltip: 0 4px 6px rgb(0 0 0 / 30%);
-    --docs-shadow-composer: 0 6px 30px rgb(0 0 0 / 30%);
+    --docs-shadow-composer: 0 1px 3px rgb(0 0 0 / 30%);
     --docs-shadow-toast: 0 4px 16px rgb(0 0 0 / 45%);
   }
 }
@@ -329,7 +332,7 @@
 }
 
 :root:lang(ko) {
-  --ui-cjk: 'Apple SD Gothic Neo', 'Malgun Gothic';
+  --ui-cjk: 'UI Pretendard', 'Apple SD Gothic Neo', 'Malgun Gothic';
 }
 
 :root:lang(zh-TW) {
@@ -786,10 +789,34 @@ html.genoffice-popover-open .ribbon-tabs {
  * in the compact band they came out at 62-64px starting at top:-13 — taller
  * than the 38px band, so `overflow-y: hidden` sliced the font and size pickers
  * in half and cut the top off every style card. The band was never too short;
- * these were never made shorter. */
-.ribbon-compact .style-card {
-  width: 46px;
+ * these were never made shorter.
+ *
+ * Scoped to `.style-gallery .style-card` (the inline row): the overflow menu
+ * reuses the same card, and the unscoped rule crushed its 74×62 cards to
+ * 46×30 there too — the one place the full preview was still meant to show. */
+.ribbon-compact .style-gallery .style-card {
+  /* Label-only at 30px: the card is a column of the style's own preview (up
+   * to 20px type) over the 10.5px name, which is ~34px into a 28px box — both
+   * halves clipped, neither readable. The name is what identifies the command
+   * on a band of textless icons, so it stays and the preview goes (the full
+   * preview lives on in the overflow menu and the styles pane). Width follows
+   * the name instead of a fixed 46px, which ellipsized "No Spacing" even
+   * though showing the name is now the card's whole job. */
+  width: auto;
+  min-width: 46px;
   height: 30px;
+  padding: 0 7px;
+}
+
+/* The preview leaves the flow entirely. The rb-big label treatment (absolute
+ * + clip-path) also works visually, but an absolutely-positioned box's
+ * containing block is the wrap (the nearest positioned ancestor), and on CI
+ * Linux the wrap's scrollable overflow then grew by the stacked rows' worth
+ * of previews, inflating ribbon-body's scrollHeight past the band. display:
+ * none has no containing block at all; the button's accessible name comes
+ * from the label either way. */
+.ribbon-compact .style-gallery .style-card-preview {
+  display: none;
 }
 
 /* Every control the compact band has to hold was measured, not guessed: with
@@ -904,7 +931,7 @@ html.genoffice-popover-open .ribbon-tabs {
   width: 22px;
   height: 22px;
   border-radius: 7px;
-  color: var(--docs-on-accent);
+  color: var(--docs-on-gradient);
   background: var(--docs-badge-gradient);
   box-shadow: var(--docs-shadow-badge-strong);
 }
@@ -1974,6 +2001,17 @@ html.genoffice-popover-open .ribbon-tabs {
   min-width: 460px;
 }
 
+.equation-mathtype-note {
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--surface-subtle);
+  color: var(--text-dim);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 .equation-preview {
   min-height: 64px;
   display: flex;
@@ -2312,6 +2350,7 @@ th.cell-rev-del {
   /* one card row tall: wrapped cards land on the hidden second row */
   height: 62px;
   overflow: hidden;
+  contain: layout style;
 }
 
 .style-gallery-more {
@@ -2389,7 +2428,7 @@ th.cell-rev-del {
 .style-card-label {
   max-width: 100%;
   padding: 0 3px;
-  font-size: 10.5px;
+  font-size: 11px;
   color: var(--text-dim);
   white-space: nowrap;
   overflow: hidden;
@@ -2568,6 +2607,9 @@ th.cell-rev-del {
   direction: ltr;
   flex: 1;
   overflow-y: auto;
+  /* pagination passes collapse/rebuild inline page-gap widgets during measurement;
+     disable browser scroll anchoring so layout measurement never pulls the viewport */
+  overflow-anchor: none;
   /* classic (non-overlay) scrollbars change clientWidth as they come and go,
      which would make the zoom auto-refit oscillate — reserve the gutter */
   scrollbar-gutter: stable;
@@ -2834,6 +2876,17 @@ th.cell-rev-del {
    instead of by arithmetic. */
 .editor-scroll .doc-page.measuring-natural .page-gap-inline {
   display: none !important;
+}
+
+/* phantom table rows (gap rows, repeated header clones) must keep their grid
+   slot while hidden: syncPhantomRowspans grew the vMerge rowspans crossing
+   them, so a display:none row makes those spans overrun by one row and shifts
+   every later row a column right (cells collapse to 0 width, text wraps per
+   character, the ballooned heights get stamped as split-row fills). Collapse
+   removes the height but keeps the row in the grid. */
+.editor-scroll .doc-page.measuring-natural tr.page-gap-inline {
+  display: table-row !important;
+  visibility: collapse;
 }
 
 /* page border (w:pgBorders): per-page overlay boxes (see syncPageBorders);
@@ -3388,6 +3441,12 @@ th.cell-rev-del {
   padding: 6px 0;
 }
 
+/* Pages tab: keep the scrollbar lane even when nothing scrolls, so thumbnails
+   sized to the width beside it never slide under a scrollbar that appears */
+.nav-body-pages {
+  scrollbar-gutter: stable;
+}
+
 .nav-tree {
   min-height: 100%;
 }
@@ -3411,7 +3470,6 @@ th.cell-rev-del {
 .nav-row.on {
   background: var(--accent-soft);
   color: var(--accent);
-  box-shadow: inset 3px 0 0 var(--accent);
 }
 
 .nav-row.dim {
@@ -3549,6 +3607,8 @@ th.cell-rev-del {
 .nav-thumb {
   position: relative;
   flex: none;
+  /* the inline size is the scaled page; the border sits outside it */
+  box-sizing: content-box;
   padding: 0;
   border: 1px solid var(--border);
   background: var(--page-bg, var(--docs-paper));
@@ -4365,8 +4425,6 @@ th.cell-rev-del {
    constants are darkPageColor() of their light values — keep the two in step. */
 @media screen {
   .page-dark {
-    --ai-highlight: #483d1e;
-    --ai-highlight-border: #d9a71e;
     --docs-paper: #1e1e1e;
     --docs-paper-ink: #ffffff;
     --docs-paper-ink-dim: #d2d2d2;
@@ -5335,6 +5393,29 @@ th.cell-rev-del {
   user-select: none;
 }
 
+/* A reader must be able to copy a short passage out of an embedded object
+   (an OLE/Excel frame, a protected table, a text box) without double-clicking
+   into edit mode. The frame itself stays unselectable so dragging the object
+   never paints a selection, but the object's text content is selectable.
+   Word: a click selects the object, a drag across its text selects characters. */
+.doc-protected
+  :is(
+    td,
+    .doc-textbox,
+    .doc-protected-label,
+    .doc-protected-preview,
+    .doc-chart-title,
+    .doc-chart-cell,
+    .doc-toc-title,
+    .doc-toc-page,
+    .doc-field-text,
+    .doc-formula-token,
+    .doc-formula-math
+  ) {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
 .doc-move-handle {
   position: absolute;
   z-index: 4;
@@ -5419,6 +5500,37 @@ body.docs-crop-active .doc-protected[data-doc-protected='image'] .doc-img-wrap {
   pointer-events: none;
 }
 
+/* round rotation handle of a selected shape (PowerPoint's turn grip above the
+   box): dragging it turns the shape about its centre; Shift snaps to 15° */
+.box-rotate-handle {
+  position: absolute;
+  z-index: 4;
+  top: -22px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 11px;
+  height: 11px;
+  border: 1px solid var(--word-blue);
+  border-radius: 50%;
+  background: var(--docs-paper);
+  cursor: grab;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.doc-protected-textboxes:hover > .box-rotate-handle,
+.ProseMirror-focused .doc-protected-textboxes.ProseMirror-selectednode > .box-rotate-handle,
+.doc-protected-chart:hover > .box-rotate-handle,
+.ProseMirror-focused .doc-protected-chart.ProseMirror-selectednode > .box-rotate-handle {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.doc-content-editing > .box-rotate-handle {
+  opacity: 0;
+  pointer-events: none;
+}
+
 /* Native ProseMirror tables: no vertical gap of their own (Word) */
 .doc-page > .doc-table {
   margin: 0;
@@ -5475,6 +5587,18 @@ body.docs-crop-active .doc-protected[data-doc-protected='image'] .doc-img-wrap {
      w:compat carries w:adjustLineHeightInTable — then docStyleCss restores the
      pitch in cells and they snap like body lines (Word probe 2026-09-02) */
   --doc-grid-pitch: 0.0001px;
+}
+
+/* a row split over pages and filled to its declared height (setRowFills): Word
+   aligns a cell within each fragment, and the fill is the last fragment's own
+   minimum. Centered or bottom-aligned across the whole tr, the fill's extra
+   would push every fragment's content down (a center-aligned form cell
+   spanning four pages started 29px low on each, and a page lost two
+   references). The fill goes below the content instead. Inline vAlign styles,
+   hence the override. */
+.doc-table tr[data-row-fill] > td,
+.doc-table tr[data-row-fill] > th {
+  vertical-align: top !important;
 }
 
 /* empty paragraph in a cell: LO sizes it near the Latin single line, so it must
@@ -6161,9 +6285,7 @@ body.docs-crop-active .doc-protected[data-doc-protected='image'] .doc-img-wrap {
 
 .doc-protected-textboxes:not(.doc-content-editing) .doc-textbox,
 .doc-protected[data-doc-protected='table']:not(.doc-content-editing) td {
-  cursor: move;
-  user-select: none;
-  -webkit-user-select: none;
+  cursor: text;
 }
 
 .doc-content-editing > .doc-move-handle {
@@ -6543,10 +6665,11 @@ body.docs-crop-active .doc-protected[data-doc-protected='image'] .doc-img-wrap {
   clear: both;
 }
 
-/* a column break ending a paragraph is one line in Word (the mark opens the
-   next column); the trailing-break phantom after it would add a second */
+/* Keep the trailing break as the browser's caret anchor: hiding it sends
+   native typing before the column break. It must not add another line. */
 .doc-page br.doc-col-br + br.ProseMirror-trailingBreak {
-  display: none;
+  font-size: 0;
+  line-height: 0;
 }
 
 /* a column break leading a paragraph with text (.doc-lead-col-br) has no
@@ -7484,10 +7607,14 @@ body.docs-crop-active
   pointer-events: none !important;
 }
 
-/* AI diff highlight */
-.doc-page .ai-changed {
-  background: var(--ai-highlight);
-  box-shadow: -3px 0 0 var(--ai-highlight-border);
+/* what the last AI run changed, in the mark every editor draws (@genoffice/ui ai-changes.css):
+   screen only, so printToPDF (print, PDF export) leaves it out, and the HTML export lifts .ai-marks */
+@media screen {
+  .ai-marks .doc-page .ai-changed {
+    border-radius: 2px;
+    background: var(--color-ai-changed-bg);
+    box-shadow: inset 0 -2px 0 var(--color-ai-changed-line);
+  }
 }
 
 /* ================= start screen ================= */
@@ -8517,46 +8644,6 @@ body.docs-crop-active
   cursor: default;
 }
 
-/* Hairline before the roll-back action; hidden unless an icon action precedes it */
-.ai-rollback-sep {
-  display: none;
-  width: 1px;
-  height: 14px;
-  align-self: center;
-  background: var(--border);
-}
-
-.ai-msg-tool-btn ~ .ai-rollback-sep {
-  display: block;
-}
-
-/* Quiet roll-back in the message toolbar (after copy/regenerate): dim at rest, solid on hover */
-.ai-rollback-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  flex-shrink: 0;
-  height: 30px;
-  border: none;
-  background: none;
-  color: var(--text-dim);
-  font-size: 12px;
-  font-family: inherit;
-  padding: 0 8px;
-  border-radius: 6px;
-  cursor: pointer;
-}
-
-.ai-rollback-btn:hover:not(:disabled) {
-  color: var(--text);
-  background: var(--hover);
-}
-
-.ai-rollback-btn:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
 .ai-msg-tool-btn:focus-visible {
   outline: none;
   box-shadow: 0 0 0 3px var(--docs-focus-ring-blue);
@@ -8591,8 +8678,14 @@ body.docs-crop-active
 
 .ai-msg-error {
   margin-top: 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--danger-border);
+  border-radius: var(--radius-8);
+  background: var(--danger-bg);
   color: var(--docs-ai-error);
   font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
 }
 
 .ai-msg-actions {
@@ -9549,7 +9642,6 @@ body.docs-crop-active
 }
 
 .status-msg {
-  opacity: 0.85;
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -10231,13 +10323,13 @@ body.docs-crop-active
 /* ---- print dialog (Word-style: page preview + range options) ---- */
 
 .modal.print-dialog {
-  width: min(880px, calc(100vw - 64px));
+  width: min(1020px, calc(100vw - 48px));
 }
 
 .print-dialog-body {
   display: flex;
   gap: 18px;
-  height: min(600px, calc(100vh - 220px));
+  height: min(640px, calc(100vh - 200px));
 }
 
 /* while the dialog is open the pagination preview is only its (hidden) print source */
@@ -10304,6 +10396,16 @@ body.docs-crop-active
   cursor: default;
 }
 
+/* the shared layout diagram or live preview in place of the page clone */
+.print-preview-schematic {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+  padding: 10px;
+}
+
 .print-preview-empty {
   flex: 1;
   display: flex;
@@ -10314,7 +10416,7 @@ body.docs-crop-active
 }
 
 .print-options {
-  width: 240px;
+  width: 330px;
   flex-shrink: 0;
   overflow-y: auto;
   display: flex;
@@ -10323,6 +10425,7 @@ body.docs-crop-active
 }
 
 .print-options fieldset {
+  min-width: 0;
   margin: 0;
   padding: 8px 10px 6px;
   border: 1px solid var(--border);
@@ -10394,6 +10497,7 @@ body.docs-crop-active
 
 .print-options .print-field {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   margin: 0 0 8px;
@@ -10406,7 +10510,8 @@ body.docs-crop-active
 }
 
 .print-options .print-field .print-select {
-  flex: 1.6;
+  flex: 1.6 1 auto;
+  min-width: 0;
   width: auto;
   margin: 0;
 }
@@ -10811,12 +10916,22 @@ body.docs-crop-active
 /* ---- print / export PDF: only the document itself ---- */
 
 @media print {
+  /* paper-white behind the page boxes, and the light scheme: an A4 sheet is
+   * 841.92pt tall, so its last device row is only partly covered by the page
+   * box, and `none` let the canvas behind it show through — Chromium's
+   * dark-scheme color when the app theme was dark (#2837) */
+  html {
+    /* !important: the theme rules ([data-theme='dark'] and the system-mode
+     * :root fallback) are more specific than this @media print selector and
+     * would keep the scheme dark in print; the pin must beat them (#2837) */
+    color-scheme: light !important;
+  }
   html,
   body,
   #root {
     height: auto !important;
     overflow: visible !important;
-    background: none !important;
+    background: var(--docs-paper) !important;
   }
 
   .ribbon,
@@ -11063,7 +11178,7 @@ body.docs-crop-active
 }
 
 .read-mode .editor-scroll {
-  background: var(--docs-pv-canvas);
+  background: var(--canvas);
   padding-top: 44px;
 }
 
@@ -11149,19 +11264,217 @@ body.docs-crop-active
   margin-left: 130px;
 }
 
-/* Word outline view marks each heading with a ⊕ handle */
-.view-outline .doc-page h1::before,
-.view-outline .doc-page h2::before,
-.view-outline .doc-page h3::before,
-.view-outline .doc-page h4::before,
-.view-outline .doc-page h5::before,
-.view-outline .doc-page h6::before {
-  content: '⊕';
+/* Structural headings: a document without heading styles still shows its
+   sections through bold or all-caps lines and section numbers. The outline
+   view keeps those paragraphs visible and at their inferred depth, faded so
+   they read as a guess rather than a style in the file. */
+.view-outline .doc-page > .inferred-heading {
+  display: block;
+}
+
+.view-outline .doc-page .inferred-heading {
+  position: relative;
+  padding-left: 22px;
+  opacity: 0.62;
+}
+
+.view-outline .doc-page .inferred-heading.inferred-h1 {
+  margin-left: 0;
+}
+.view-outline .doc-page .inferred-heading.inferred-h2 {
+  margin-left: 26px;
+}
+.view-outline .doc-page .inferred-heading.inferred-h3 {
+  margin-left: 52px;
+}
+.view-outline .doc-page .inferred-heading.inferred-h4 {
+  margin-left: 78px;
+}
+.view-outline .doc-page .inferred-heading.inferred-h5 {
+  margin-left: 104px;
+}
+.view-outline .doc-page .inferred-heading.inferred-h6 {
+  margin-left: 130px;
+}
+
+/* Word outline view marks each heading with a collapse handle. The glyph is a
+   real DOM widget (editor/outline-view.ts) — the old ::before had no click
+   target — positioned into the indent gutter the heading padding reserves. */
+.view-outline .doc-page .outline-handle {
   position: absolute;
   left: 0;
+  top: 0.25em;
   color: var(--docs-paper-ink-faint);
   font-size: 0.8em;
-  top: 0.25em;
+  cursor: pointer;
+  user-select: none;
+}
+
+/* a heading with nothing under it cannot fold: keep the mark, drop the affordance */
+.view-outline .doc-page .outline-handle.is-leaf {
+  cursor: default;
+  opacity: 0.55;
+}
+
+/* folding hides the deeper heading rows of the folded heading; body blocks are
+   already hidden by the :not(h1…) rule above */
+.view-outline .doc-page .outline-collapsed {
+  display: none;
+}
+
+/* ---- Story view: one column of text, the document's formatting hidden ----
+   The way InDesign's story editor and iA Writer show it: the words in one
+   column, the document's own look gone. It is a pure view — nothing in the
+   document changes. The run formatting rides the docTextStyle mark and the
+   paragraph formatting rides the block's own style, so hiding it is CSS over
+   the view class; the margin markers (editor/story-view.ts) carry the
+   structure the hidden formatting used to show. */
+
+.view-story {
+  --story-gutter: 3.25rem;
+  --story-marker-ink: var(--docs-paper-ink-faint);
+  --story-face: system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  --story-size: 16px;
+  --story-leading: 1.7;
+}
+
+/* the canvas shrinks to the column: no page, no margins, no header/footer */
+.view-story .doc-zoom {
+  width: auto;
+}
+
+.view-story .doc-page {
+  width: auto;
+  max-width: 46rem;
+  margin: 0 auto;
+  min-height: 0;
+  /* the gutter on the left holds the markers, the right one balances it */
+  padding: 2.5rem 3.25rem 6rem;
+  background: none;
+  box-shadow: none;
+  font-family: var(--story-face);
+  font-size: var(--story-size);
+  line-height: var(--story-leading);
+  color: var(--docs-paper-ink);
+}
+
+.view-story .page-hf,
+.view-story .page-margin-annotations {
+  display: none;
+}
+
+/* the document's own paragraph formatting: the style's face, the indent, the
+   spacing. The view brings one gap of its own (padding), so the document's
+   margins never fight it. */
+.view-story .doc-page :is(p, h1, h2, h3, h4, h5, h6, .doc-li) {
+  margin: 0 !important;
+  padding-bottom: 0.8em;
+  padding-inline-start: 0 !important;
+  text-indent: 0 !important;
+  font-family: inherit !important;
+  font-size: inherit !important;
+  font-weight: inherit !important;
+  font-style: inherit !important;
+  color: inherit !important;
+  background-color: transparent !important;
+  letter-spacing: normal !important;
+  word-spacing: normal !important;
+  text-transform: none !important;
+  font-variant-caps: normal !important;
+  text-shadow: none !important;
+}
+
+/* all headings share one look; the level shows in the margin marker. A heading
+   that is a styled paragraph (Word's numbered headings) gets the same look
+   through the class story-view.ts puts on it. */
+.view-story .doc-page :is(h1, h2, h3, h4, h5, h6),
+.view-story .doc-page .story-heading {
+  padding-top: 1em;
+  padding-bottom: 0.35em;
+  font-size: 1.2em !important;
+  font-weight: 600 !important;
+  font-style: inherit !important;
+}
+
+/* an inferred heading is a guess read from the paragraph's shape, not a style
+   in the file: it takes the same look, faded so the guess stays
+   distinguishable from a real style */
+.view-story .doc-page .story-heading-inferred {
+  opacity: 0.62;
+}
+
+/* the run's own formatting: the docTextStyle mark carries the font, the size,
+   the colour, the highlight and the spacing. The bold, italic, underline and
+   strike marks are separate elements, so they stay. */
+.view-story .doc-page [data-doc-style] {
+  font-family: inherit !important;
+  font-size: inherit !important;
+  font-weight: inherit !important;
+  font-style: inherit !important;
+  color: inherit !important;
+  background-color: transparent !important;
+  letter-spacing: normal !important;
+  word-spacing: normal !important;
+  text-transform: none !important;
+  font-variant-caps: normal !important;
+  text-shadow: none !important;
+}
+
+/* a raised run keeps its raised, smaller self */
+.view-story .doc-page [data-doc-style][style*='vertical-align'] {
+  font-size: 0.75em !important;
+}
+
+/* a table stays a table; only its text goes plain */
+.view-story .doc-page .doc-table {
+  max-width: 100%;
+  font-family: inherit !important;
+  font-size: inherit !important;
+  color: inherit !important;
+}
+
+/* the margin markers: a faded '#' per heading level, a '>' for a quote */
+.view-story .doc-page :is(p, h1, h2, h3, h4, h5, h6, .doc-li) {
+  position: relative;
+}
+
+.view-story .story-marker {
+  position: absolute;
+  right: 100%;
+  width: var(--story-gutter);
+  margin-right: 0.9rem;
+  text-align: right;
+  color: var(--story-marker-ink);
+  font-family: var(--story-face);
+  font-size: 0.85em;
+  line-height: 1;
+  white-space: pre;
+  user-select: none;
+  pointer-events: none;
+}
+
+.view-story .story-marker-inferred {
+  opacity: 0.62;
+}
+
+/* the list's own marker moves into the gutter, unchanged: a numbered list
+   keeps its numbers, a bullet list keeps its bullet */
+.view-story .doc-li {
+  padding-inline-start: 0 !important;
+}
+
+.view-story .doc-li::before {
+  position: absolute;
+  right: 100%;
+  min-width: 0;
+  margin-inline-start: 0;
+  margin-right: 0.9rem;
+  text-align: right;
+  color: var(--story-marker-ink);
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+  font-style: inherit;
 }
 
 /* ---- Gridlines: alignment grid inside the text area (content-box = inside margins) ---- */
@@ -11301,6 +11614,9 @@ ruby.doc-ruby rt {
 
 .doc-inline-math {
   display: inline-block;
+  /* The atom must not restart its paragraph's first-line indent or alignment. */
+  text-indent: 0;
+  text-align: left;
   vertical-align: baseline;
   padding: 0 1px;
   border-radius: 2px;
@@ -12073,10 +12389,11 @@ tr > .page-gap-cut {
   pointer-events: auto;
   cursor: pointer;
   background: var(--surface);
-  border: 1px solid var(--border-strong);
-  border-left: 3px solid var(--docs-paper-comment-line);
+  /* the whole edge in the leader line's colour ties the bubble to its anchor
+     without a thick stripe down one side */
+  border: 1px solid var(--docs-paper-comment-line);
   border-radius: 4px;
-  padding: 5px 8px;
+  padding: 5px 10px;
   font-size: 10px;
   line-height: 1.35;
   color: var(--text);
@@ -12909,8 +13226,7 @@ tr > .page-gap-cut {
 .comment-reply {
   margin: 4px 8px 4px 26px;
   padding: 6px 8px;
-  border-left: 2px solid var(--border);
-  background: var(--surface);
+  background: var(--surface-subtle);
   border-radius: 4px;
   font-size: 12px;
 }
@@ -13316,6 +13632,33 @@ tr > .page-gap-cut {
   width: auto;
 }
 
+/* `.modal label` and `.modal input` are meant for text fields and outrank the
+   rules above, which drew these check boxes and radios as 34px-tall boxes with
+   their names pushed below. Same reset as the mail merge radios. */
+.modal .table-dialog-check,
+.modal .table-dialog-radios label {
+  display: flex;
+  margin-bottom: 0;
+  font-size: 13px;
+}
+
+.modal .equation-inline-toggle {
+  display: flex;
+  margin-bottom: 0;
+}
+
+.modal .table-dialog-check input,
+.modal .table-dialog-radios input,
+.modal .equation-inline-toggle input {
+  display: inline-block;
+  flex: none;
+  width: auto;
+  height: auto;
+  margin: 0;
+  padding: 0;
+  outline: revert;
+}
+
 .table-properties-inline {
   display: flex;
   flex-wrap: wrap;
@@ -13447,4 +13790,149 @@ tr > .page-gap-cut {
   padding: 4px 6px;
   margin-bottom: 14px;
   word-break: break-all;
+}
+
+/* ---- Mailings: the mail merge panel and the field list ---- */
+
+.modal-mailmerge {
+  width: 560px;
+  max-height: 84vh;
+  overflow-y: auto;
+}
+
+.mailmerge-section {
+  margin-bottom: 14px;
+}
+
+.mailmerge-label {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-bottom: 6px;
+}
+
+.mailmerge-source-name {
+  flex: 1;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mailmerge-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-height: 140px;
+  overflow-y: auto;
+}
+
+.mailmerge-field {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--color-bg-page);
+  color: var(--color-text-primary);
+  font-size: 12px;
+  padding: 3px 10px;
+  cursor: pointer;
+}
+
+.mailmerge-field:hover {
+  background: var(--color-bg-subtle);
+}
+
+.mailmerge-empty {
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+.mailmerge-counter {
+  font-size: 12px;
+  color: var(--text-dim);
+  align-self: center;
+}
+
+.mailmerge-preview {
+  margin: 0;
+  padding: 10px 12px;
+  max-height: 180px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--color-bg-page);
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.mailmerge-radio {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+
+/* `.modal label` and `.modal input` are for text fields: without this the
+   output radios became full-width 34px boxes with their names pushed below. */
+.modal-mailmerge .mailmerge-radio {
+  display: inline-flex;
+  margin: 0;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.modal-mailmerge .mailmerge-radio input {
+  display: inline-block;
+  flex: none;
+  width: auto;
+  height: auto;
+  margin: 0;
+  padding: 0;
+  outline: revert;
+}
+
+.mailmerge-pattern {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.mailmerge-pattern input {
+  display: block;
+  width: 100%;
+  margin-top: 4px;
+}
+
+.mailmerge-done {
+  font-size: 13px;
+  color: var(--color-text-primary);
+}
+
+.mailmerge-note {
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-dim);
+}
+
+.rb-field-list {
+  width: 220px;
+  max-height: 320px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.rb-field-item {
+  border: none;
+  background: none;
+  text-align: left;
+  padding: 5px 8px;
+  font-size: 13px;
+  color: var(--color-text-primary);
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.rb-field-item:hover {
+  background: var(--color-bg-subtle);
 }

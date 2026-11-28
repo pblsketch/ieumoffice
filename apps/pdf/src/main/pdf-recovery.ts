@@ -385,7 +385,10 @@ export function createPdfRecovery(deps: PdfRecoveryDeps) {
         try {
           const identity = state.untitled.identity
           const ticket = recoveryStore.beginWrite(identity)
-          const result = await recoveryStore.writeCopy(identity, asBuffer(await written()), {
+          const bytes = await written()
+          // the save wrote a password-protected file: no copy of it is kept
+          if (pdfLooksEncrypted(bytes)) return
+          const result = await recoveryStore.writeCopy(identity, asBuffer(bytes), {
             title: state.untitled.title,
             ticket,
           })
@@ -447,6 +450,24 @@ export function createPdfRecovery(deps: PdfRecoveryDeps) {
       if (state.restored?.path === oldPath) state.restored = null
       state.unsavedFromCopy = false
       state.resolvedPath = target
+    },
+
+    /**
+     * The person reloads `path` from disk after another program changed it,
+     * giving up the view's unsaved edits: a restored copy no longer stands in
+     * for the file, and the copy of the dropped edits goes like a clean close.
+     * Untitled documents are not watched and keep their copy.
+     */
+    discardedForDisk(id: number, path: string): void {
+      const state = views.get(id)
+      if (!state || state.untitled?.path === path) return
+      if (state.restored?.path === path) state.restored = null
+      state.unsavedFromCopy = false
+      const owned = state.ownedCopy
+      if (owned && !isUntitledIdentity(owned) && owned.filePath === path) {
+        deleteCopy(owned, 'closedClean')
+        state.ownedCopy = null
+      }
     },
 
     /** "Save As" default for an untitled document whose original went missing */

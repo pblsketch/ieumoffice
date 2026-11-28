@@ -58,3 +58,11 @@ Meta viewport sengaja tidak disertakan: ini dipaparkan dalam panel desktop tanpa
 `lang` mengikut bahasa antara muka aplikasi, jadi kerangka yang anda sisip ialah kerangka yang alat anda sudah pun disediakan untuknya. Anda boleh menyuntingnya dengan bebas selepas itu.
 
 Baris item itu hanya muncul dalam mod suntingan, dan hanya semasa dokumen itu kosong — tiada apa-apa untuk disisipkan kerangka _ke dalam_ sebaik sahaja ada kandungan.
+
+## Sunting persamaan
+
+Taip secara visual atau sunting LaTeX. HTML menyimpan sumber untuk disunting semula.
+
+Pilih Sisip persamaan pada bar alat, gunakan medan visual, templat atau LaTeX, kemudian gunakan. Klik persamaan tersimpan dalam pratonton untuk menyuntingnya. Untuk sisipan dalam teks, pilih perenggan dan matikan baris berasingan; persamaan ditambah di hujung perenggan.
+
+Ungkapan yang tidak dapat dizahirkan oleh penetap huruf tidak hilang: persamaan mengekalkan sumber LaTeX dan memaparkan teks mentah pada halaman, jadi ia boleh dibuka semula dan dibetulkan.

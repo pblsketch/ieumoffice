@@ -18,6 +18,8 @@ export const de = {
   cardErrNeedsUpdatePath: 'Von dieser App ausgeführte Datei:',
   cardErrNeedsUpdateWindows:
     'Wenn Sie {provider} in WSL (Ubuntu) oder in einem anderen Ordner aktualisieren, ändert sich diese Datei nicht. Führen Sie {command} in Windows PowerShell aus.',
+  claudeDesktopNote:
+    'Die Claude-Desktop-App ist nicht Claude Code, das diese App ausführt. Claude Code ist ein eigenes Programm für das Terminal, daher ändert die Installation oder Aktualisierung der Desktop-App nichts daran.',
   cardErrTimeout:
     'Das Programm {provider} hat nicht rechtzeitig geantwortet. Prüfen Sie es gleich noch einmal.',
   cardErrFailed:
@@ -25,6 +27,8 @@ export const de = {
   actionInstall: 'Installieren',
   actionLogin: 'Anmelden',
   actionLoginWindow: 'Browser nicht geöffnet?',
+  actionLoginWithCode: 'Zeigt der Browser einen Code?',
+  actionLoginBrowser: 'Stattdessen im Browser anmelden',
   actionRecheck: 'Erneut prüfen',
   actionAcceptMetered: 'Trotzdem verwenden',
   actionInstallHelp: 'Offizielle Installationsanleitung',
@@ -44,18 +48,20 @@ export const de = {
     'Diese Anmeldung nutzt einen API-Schlüssel oder ein Konto mit nutzungsbasierter Abrechnung, oder ihre Art ließ sich nicht feststellen. Mit „Trotzdem verwenden“ läuft die KI über diese Verbindung, und jede Anfrage wird diesem Konto berechnet.',
   connectTitle: 'KI verbinden, um loszulegen',
   connectBody:
-    'Die KI läuft über Ihr vorhandenes Claude- oder Codex-Abonnement. Ein API-Schlüssel ist nicht nötig.',
+    'Die KI läuft über Ihr bestehendes Claude-, ChatGPT- oder Google-Antigravity-Abonnement. Ein API-Schlüssel ist nicht erforderlich.',
   connectProviderTitle: 'Die Verbindung {provider} ist derzeit nicht nutzbar',
   connectKeyBody:
     'Die Einrichtung von {provider} ist noch nicht abgeschlossen. Schließen Sie sie in den Einstellungen ab oder wählen Sie eine andere KI.',
   errNotConnected:
-    'Es ist keine KI verbunden. Verbinden Sie zuerst ein Claude- oder Codex-Abonnement oder eine kostenlose KI.',
+    'Es ist keine KI verbunden. Verbinden Sie zuerst ein Claude-, ChatGPT-, Codex- oder Antigravity-Abonnement oder eine kostenlose KI.',
   errNotInstalled: 'Das Programm {provider} wurde auf diesem PC nicht gefunden.',
   errSignedOut:
     'Die Anmeldung bei {provider} ist abgelaufen. Melden Sie sich erneut an, um fortzufahren.',
   errRateLimit: 'Das Limit des Abonnements {provider} ist aufgebraucht.',
   errRateLimitReset:
     'Das Limit des Abonnements {provider} ist aufgebraucht. Es wird um {time} zurückgesetzt.',
+  errChatGptAppLimit:
+    'Diese App hat die ChatGPT-Nutzung aufgebraucht, auf die sie zugreifen kann. Das kann das Limit des ganzen Tarifs sein oder ein Limit, das für diese App festgelegt wurde. Prüfen Sie es in ChatGPT unter Einstellungen → Nutzung.',
   errUnsafeTools:
     'Das Programm {provider} wurde mit eigenen aktivierten Tools gestartet; der Lauf wurde aus Sicherheitsgründen gestoppt.',
   errMeteredNotAccepted:
@@ -72,6 +78,8 @@ export const de = {
     'Das kostenlose Kontingent für heute ist aufgebraucht. Versuchen Sie es morgen erneut oder wählen Sie in den Einstellungen eine andere KI.',
   errFreeLimitReset:
     'Das kostenlose Kontingent für heute ist aufgebraucht. Ab {time} können Sie es wieder nutzen.',
+  errFreeTierModel:
+    'Für dieses Modell gibt es keine kostenlose Stufe, ein kostenloser Schlüssel kann es nicht nutzen. Wählen Sie ein Modell der kostenlosen Stufe (etwa ein Flash-Modell) oder aktivieren Sie die Abrechnung in der Konsole des Anbieters.',
   continueWith: 'Mit {provider} fortfahren',
   continueMeteredNote:
     'Die Verbindung {provider} ist kein Abonnement: Beim Fortfahren wird nach Verbrauch abgerechnet.',
@@ -80,7 +88,7 @@ export const de = {
   usageWindowSevenDay: '7-Tage-Limit',
   noticeTitle: 'Bevor Sie die KI mit Ihrem Abonnement nutzen',
   noticeSend:
-    'Dokumentinhalte und Ihre Unterhaltung werden über Ihr eigenes Konto an Anthropic oder OpenAI gesendet. Jede Anfrage enthält außerdem Name, Titel und Beschreibung jedes Skills mit der Einstellung „KI entscheidet“; verwendete Skills und Skill-Dateien, die die KI liest, werden mitgesendet.',
+    'Dokumentinhalte und Ihre Unterhaltung werden über Ihr eigenes Konto an Anthropic, OpenAI oder Google gesendet. Jede Anfrage enthält außerdem Name, Titel und Beschreibung jedes Skills mit der Einstellung „KI entscheidet“; verwendete Skills und Skill-Dateien, die die KI liest, werden mitgesendet.',
   noticeTraining:
     'Ob diese Inhalte zum Training von KI verwendet werden, bestimmen die Einstellungen Ihres eigenen Kontos bei dem jeweiligen Unternehmen.',
   noticeCodexHistory:
@@ -107,7 +115,7 @@ export const de = {
   guidePathCodexTitle: 'Ich nutze ChatGPT',
   guidePathCodexBody:
     'Melden Sie sich mit Ihrem ChatGPT-Konto beim Codex-Programm von OpenAI an. Der kostenlose Tarif erlaubt nur wenig Nutzung.',
-  guidePathFreeTitle: 'Noch keins von beiden',
+  guidePathFreeTitle: 'Noch keins davon',
   guidePathFreeBody:
     'Verbinden Sie in etwa einer Minute eine kostenlose KI. Solange Sie sie kostenlos nutzen, kann das Gesendete zur Verbesserung der KI dieses Unternehmens verwendet werden.',
   guideBack: 'Anderen Weg wählen',
@@ -119,12 +127,14 @@ export const de = {
   stepLogin: 'Anmelden',
   stepReady: 'Verbunden',
   installReturnNote:
-    'Wenn die Installation in diesem Fenster abgeschlossen ist, kehren Sie hierher zurück. Die App prüft dann von selbst erneut.',
+    'Während des Downloads zeigt das Fenster einige Minuten lang möglicherweise nichts an. Lassen Sie es geöffnet. Wenn die Installation abgeschlossen ist, kehren Sie hierher zurück. Die App prüft dann von selbst erneut.',
   loginHowNote:
     'Beim Klicken öffnet sich ein Browser. Melden Sie sich mit Ihrem {vendor}-Konto an und klicken Sie auf Zulassen; die Verbindung wird dann von selbst hergestellt.',
   signingInStalledNote:
     'Hat sich im Browser keine Anmeldeseite geöffnet, öffnen Sie mit der Schaltfläche unten das Anmeldefenster. Sind Sie im Browser noch bei der Anmeldung, schließen Sie sie besser dort ab: Die Schaltfläche bricht diese Anmeldung ab und beginnt von vorn.',
   actionLoginWindowOpen: 'Anmeldefenster öffnen',
+  loginUnfinishedNote:
+    'Die Anmeldung wurde nicht abgeschlossen. Wenn der Browser einen Code zeigt, muss er in das Anmeldefenster eingefügt werden: Öffnen Sie das Fenster und melden Sie sich dort erneut an. Ein zuvor angezeigter Code gilt nicht mehr.',
   loginWindowTitle: 'Anmeldung bei {provider}',
   loginWindowIntro:
     'Dies ist das Anmeldefenster des Programms {provider}. Der englische Text darunter stammt vom Programm {provider}.',
@@ -147,4 +157,50 @@ export const de = {
   actionCopyInfo: 'Infos für Hilfe kopieren',
   copyInfoDone: 'Kopiert',
   actionConnectHelp: 'Jeden Schritt am Bildschirm ansehen (Seite auf Koreanisch)',
+  guidePathChatGptBody:
+    'Melden Sie sich mit Ihrem ChatGPT-Konto an und nutzen Sie Ihren Tarif. Keine Installation nötig. Der kostenlose Tarif erlaubt nur wenig Nutzung.',
+  guideUseCodex: 'Nutzen Sie das Codex-Programm bereits auf diesem PC? Über Codex verbinden',
+  guideUseDirect: 'Direkt in der App verbinden, ohne Codex',
+  chatgptLoginNote:
+    'Im Browser öffnet sich eine ChatGPT-Anmeldeseite. Melden Sie sich an und erlauben Sie dieser App, Ihren ChatGPT-Tarif zu nutzen; die Verbindung wird dann von selbst hergestellt.',
+  chatgptLoginUnfinishedNote:
+    'Die Anmeldung wurde nicht abgeschlossen. Drücken Sie erneut, um von vorn zu beginnen. Für die Verbindung müssen Sie die Nutzung Ihres ChatGPT-Tarifs erlauben.',
+  chatgptLoginNoPlanNote:
+    'Sie sind bei ChatGPT angemeldet, aber diese App hat keine Erlaubnis erhalten, Ihren Tarif zu nutzen. Drücken Sie erneut und erlauben Sie auf der Freigabeseite die Nutzung des Tarifs. Wenn Sie das bereits getan haben, bietet OpenAI diese Nutzung für Ihr Konto (zum Beispiel eines, das ein Unternehmen oder eine Schule verwaltet) oder Ihren Tarif möglicherweise nicht an. Sie können sich dann mit dem Programm Codex verbinden.',
+  chatgptLoginDeniedNote:
+    'Sie haben sich im Browser angemeldet, aber OpenAI hat diese Verbindung nicht angenommen, oder seine Antwort ließ sich nicht prüfen. Prüfen Sie, ob Datum und Uhrzeit dieses PCs stimmen, und drücken Sie dann erneut, um von vorn zu beginnen.',
+  chatgptLoginNetworkNote:
+    'Die Anmeldung konnte nicht abgeschlossen werden: OpenAI war nicht erreichbar, oder es hat sich kein Browser geöffnet. Prüfen Sie die Internetverbindung (auch Firmennetz, VPN oder Proxy) und drücken Sie dann erneut.',
+  chatgptLoginWorkspacePolicyNote:
+    'Dieses ChatGPT-Konto gehört zu einem Arbeitsbereich, den ein Unternehmen oder eine Schule verwaltet, und OpenAI erlaubt Apps nicht, den ChatGPT-Tarif eines Arbeitsbereichs zu nutzen. Der Administrator des Arbeitsbereichs hat keine Einstellung, mit der er diese App zulassen könnte; eine erneute Anmeldung hilft also nicht. Melden Sie sich mit einem persönlichen ChatGPT-Konto (Go, Plus oder Pro) an oder verbinden Sie sich über die Codex-Karte.',
+  chatgptLoginNotAllowedNote:
+    'Sie haben dieser App die Nutzung Ihres ChatGPT-Tarifs nicht erlaubt, oder der Browser kam mit einem Fehler von der Anmeldung zurück. Drücken Sie erneut, melden Sie sich an und erlauben Sie es auf der Freigabeseite.',
+  chatgptSigningInNote:
+    'Melden Sie sich im geöffneten Browser mit Ihrem ChatGPT-Konto an und erlauben Sie dieser App, Ihren Tarif zu nutzen. Die Verbindung wird von selbst hergestellt.',
+  chatgptPlanNote:
+    'Die KI in dieser App läuft über Ihren ChatGPT-Tarif. Wenn Sie die Verbindung trennen, gilt das nur für diese App; andere Programme auf diesem PC bleiben angemeldet.',
+  actionContinueWithChatGpt: 'Mit ChatGPT fortfahren',
+  actionManageUsage: 'Nutzung verwalten',
+  browserPageDoneBody: 'Sie können diesen Tab schließen und zur App zurückkehren.',
+  browserPageFailedTitle: 'Die Verbindung wurde nicht hergestellt',
+  browserPageFailedBody: 'Kehren Sie zur App zurück und versuchen Sie es erneut.',
+  cardOff: 'In dieser App aus',
+  offNote:
+    'Diese App startet das Programm {provider} nicht und fragt auch seinen Status nicht ab. Die Anmeldung von {provider} auf diesem PC und die Nutzung im Terminal bleiben unverändert.',
+  offElsewhereNote: 'Unter Einstellungen → KI können Sie es wieder verwenden.',
+  offSwitchNote:
+    '„In dieser App nicht verwenden“ lässt die Anmeldung von {provider} auf diesem PC bestehen und stoppt nur diese App. Abmelden gilt für den ganzen PC.',
+  actionTurnOff: 'In dieser App nicht verwenden',
+  actionTurnOn: 'Wieder verwenden',
+  connectOffTitle: '{provider} ist in dieser App ausgeschaltet',
+  connectOffBody:
+    'Wählen Sie auf der Karte {provider} unter Einstellungen → KI „Wieder verwenden“ oder eine andere KI.',
+  errOffInApp:
+    '{provider} ist in dieser App ausgeschaltet, daher wurde nichts ausgeführt. Unter Einstellungen → KI können Sie es wieder verwenden.',
+  guideBadgeOff: 'Aus',
+  guidePathAntigravityTitle: 'Ich nutze Google Antigravity',
+  guidePathAntigravityBody:
+    'Melden Sie sich mit Ihrem Google-Konto im Antigravity-Programm von Google an, um Ihren Google-AI-Tarif zu nutzen.',
+  antigravityCardNote:
+    'Läuft im AI-Bereich und im Agentenmodus über das offizielle Antigravity-CLI-ACP-Protokoll. Verfügbare Modelle, Datennutzung und Guthaben für Mehrverbrauch folgen Ihren Antigravity-Einstellungen.',
 } satisfies Record<keyof typeof zh, string>

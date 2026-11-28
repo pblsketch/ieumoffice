@@ -1,9 +1,13 @@
-import { useEffect, useRef, useState } from 'react'
+import { Suspense, lazy, useEffect, useRef, useState } from 'react'
 import type { PointerEvent as ReactPointerEvent } from 'react'
 import type { SplitViewState } from '../../shared/split-view-api'
+import { filePanelInset, type FilePanelState } from '../../shared/file-panel-api'
+import { tabStripHeight } from '../../shared/tab-drag-geometry'
+import type { TabSummary } from '../../shared/tabs-api'
+import { FilePanel } from './file-panel/FilePanel'
 import { useFirstConnectionNotice } from './FirstConnectionNotice'
 import { Home } from './Home'
-import { Onboarding } from './Onboarding'
+import { subscribeProjectScreen, type ProjectScreenRequest } from './project-screen-events'
 import {
   SPLIT_EVEN_RATIO,
   dividerRect,
@@ -12,6 +16,8 @@ import {
 } from './split-view-geometry'
 import { TabBar } from './TabBar'
 import { useSubscriptionConnection } from './subscription-client'
+
+const Onboarding = lazy(() => import('./Onboarding').then((m) => ({ default: m.Onboarding })))
 
 interface AppFrameProps {
   /** resolved before first paint (main.tsx) so home never flashes under the overlay */
@@ -53,6 +59,26 @@ function useSplitView(): SplitViewState | null {
   return split
 }
 
+/** Read the files panel state once, then follow the main process' change notices. */
+function useFilePanelState(): FilePanelState | null {
+  const [state, setState] = useState<FilePanelState | null>(null)
+  useEffect(() => {
+    let alive = true
+    void window.aiOfficeFilePanel?.get().then(
+      (next) => {
+        if (alive) setState(next)
+      },
+      () => undefined,
+    )
+    const off = window.aiOfficeFilePanel?.onChanged(setState)
+    return () => {
+      alive = false
+      off?.()
+    }
+  }, [])
+  return state
+}
+
 interface DividerDrag {
   pointerId: number
   /** pointer position minus the divider's leading edge at pointer-down */
@@ -66,13 +92,28 @@ interface DividerDrag {
  * chrome the divider can live in is the gap the main process leaves between
  * them. Its rectangle is recomputed from the viewport and the split ratio.
  */
-function SplitDivider({ split, viewport }: { split: SplitViewState; viewport: ViewportSize }) {
+function SplitDivider({
+  split,
+  viewport: windowViewport,
+  originX,
+}: {
+  split: SplitViewState
+  viewport: ViewportSize
+  /** where the pane space begins: right of the open files panel */
+  originX: number
+}) {
   const dragRef = useRef<DividerDrag | null>(null)
   // during a drag the divider follows the pointer here so it never lags the
   // main process re-laying the views out; the answered state takes over after
   const [dragRatio, setDragRatio] = useState<number | null>(null)
   const ratio = dragRatio ?? split.ratio
-  const rect = dividerRect(viewport, split.orientation, ratio)
+  // the geometry works in pane space; the files panel shifts it right
+  const viewport = {
+    width: Math.max(0, windowViewport.width - originX),
+    height: windowViewport.height,
+  }
+  const paneRect = dividerRect(viewport, split.orientation, ratio)
+  const rect = { ...paneRect, left: paneRect.left + originX }
 
   // a queued frame must never fire into an unmounted divider (e.g. the split
   // closed mid-drag)
@@ -85,7 +126,7 @@ function SplitDivider({ split, viewport }: { split: SplitViewState; viewport: Vi
   }, [])
 
   const pointerAlongAxis = (event: ReactPointerEvent<HTMLDivElement>): number =>
-    split.orientation === 'side' ? event.clientX : event.clientY
+    split.orientation === 'side' ? event.clientX - originX : event.clientY
 
   const send = (value: number): void => window.aiOfficeTabs.setSplitRatio(value)
 
@@ -99,7 +140,7 @@ function SplitDivider({ split, viewport }: { split: SplitViewState; viewport: Vi
   const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>): void => {
     if (event.button !== 0) return
     const current = dividerRect(viewport, split.orientation, split.ratio)
-    const leading = split.orientation === 'side' ? current.left : current.top
+    const leading = split.orientation === 'side' ? current.left + originX : current.top
     dragRef.current = {
       pointerId: event.pointerId,
       grabOffset: pointerAlongAxis(event) - leading,
@@ -165,23 +206,52 @@ function SplitDivider({ split, viewport }: { split: SplitViewState; viewport: Vi
 }
 
 export function AppFrame({ initialOnboardingSeen }: AppFrameProps) {
-  const [homeActive, setHomeActive] = useState(true)
+  // null until the initial tabs:list response arrives (~0.1 ms), so a direct
+  // file-launch does not mount Home and fire its IPCs behind the editor view.
+  const [homeActive, setHomeActive] = useState<boolean | null>(initialOnboardingSeen ? null : true)
+  const [homeMounted, setHomeMounted] = useState(!initialOnboardingSeen)
   const [showOnboarding, setShowOnboarding] = useState(!initialOnboardingSeen)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [pendingProjectRequest, setPendingProjectRequest] = useState<ProjectScreenRequest | null>(
+    null,
+  )
   const split = useSplitView()
   const viewport = useViewportSize()
+  const filePanel = useFilePanelState()
+  const [tabs, setTabs] = useState<TabSummary[]>([])
+  // the panel mounts the first time it opens and then keeps its tree while closed
+  const [filePanelMounted, setFilePanelMounted] = useState(false)
+  useEffect(() => {
+    if (filePanel?.open) setFilePanelMounted(true)
+  }, [filePanel?.open])
   // one live view of the subscription connection for the home screen, the
-  // onboarding and the first-connection notice
-  const connection = useSubscriptionConnection()
+  // onboarding and the first-connection notice; defer the initial CLI probes
+  // slightly on returning launches so Home finishes painting first
+  const connection = useSubscriptionConnection({ initialDelayMs: showOnboarding ? 0 : 600 })
   const notice = useFirstConnectionNotice(connection.statuses)
 
   useEffect(() => {
     const applyTabs = (tabs: Awaited<ReturnType<typeof window.aiOfficeTabs.list>>) => {
+      setTabs(tabs)
       const active = tabs.find((tab) => tab.active)
-      setHomeActive(!active || active.kind === 'home')
+      const isHome = !active || active.kind === 'home'
+      setHomeActive(isHome)
+      if (isHome) setHomeMounted(true)
     }
     void window.aiOfficeTabs.list().then(applyTabs)
     return window.aiOfficeTabs.onChanged(applyTabs)
   }, [])
+
+  // Buffer "open project screen" from an editor AI panel's "[view]" even before
+  // Home has mounted on a direct file launch so the request is never lost.
+  useEffect(
+    () =>
+      subscribeProjectScreen(window.projectFolderApi, (request) => {
+        setPendingProjectRequest(request)
+        setHomeMounted(true)
+      }),
+    [],
+  )
 
   const finishOnboarding = async (): Promise<boolean> => {
     try {
@@ -194,34 +264,76 @@ export function AppFrame({ initialOnboardingSeen }: AppFrameProps) {
     }
   }
 
+  const isHomeVisible = homeActive === true
+  const activeTab = tabs.find((tab) => tab.active)
+  // Home has its own sidebar, so the panel only stands beside editor tabs
+  const filePanelShown = !!filePanel?.open && homeActive === false
+  const panelInset = filePanel && filePanelShown ? filePanelInset(filePanel, viewport.width) : 0
+  const openPaths = tabs.flatMap((tab) => (tab.filePath ? [tab.filePath] : []))
+
   return (
     <div className="app-frame">
-      <TabBar split={split} />
+      <TabBar
+        split={split}
+        filePanel={
+          homeActive === false && filePanel
+            ? {
+                open: filePanel.open,
+                toggle: () => window.aiOfficeFilePanel.setOpen(!filePanel.open),
+              }
+            : null
+        }
+      />
       {/* divider sits in the gap between the two pane views — the one slice of
        * the content area they do not cover. Home paints this document instead
        * (the panes are only hidden there, not closed), so no seam over it. */}
-      {split && !homeActive && <SplitDivider split={split} viewport={viewport} />}
+      {split && !isHomeVisible && (
+        <SplitDivider split={split} viewport={viewport} originX={panelInset} />
+      )}
+      {filePanel && filePanelMounted && (
+        <FilePanel
+          state={filePanel}
+          inset={panelInset}
+          top={tabStripHeight(filePanel.scale)}
+          viewportHeight={viewport.height}
+          activeFilePath={activeTab?.filePath}
+          openPaths={openPaths}
+          hidden={!filePanelShown}
+        />
+      )}
       {/* docs/sheets tabs render as WebContentsView children of this window, positioned
        * by the main process to cover this area — only Home paints its own content here. */}
-      <div className="app-frame-content" style={{ visibility: homeActive ? 'visible' : 'hidden' }}>
-        <Home
-          connection={connection}
-          aiSettings={notice.settings}
-          // during the onboarding its connect step shows the notice instead
-          noticeDue={notice.due && !showOnboarding}
-          onNoticeAcknowledge={notice.acknowledge}
-        />
+      <div
+        className="app-frame-content"
+        style={{ visibility: isHomeVisible ? 'visible' : 'hidden' }}
+      >
+        {(homeMounted || showOnboarding) && (
+          <Home
+            connection={connection}
+            aiSettings={notice.settings}
+            // during the onboarding its connect step shows the notice instead
+            noticeDue={notice.due && !showOnboarding}
+            onNoticeAcknowledge={notice.acknowledge}
+            welcomeOpen={showOnboarding}
+            onSettingsOpenChange={setSettingsOpen}
+            initialProjectRequest={pendingProjectRequest}
+            active={isHomeVisible}
+          />
+        )}
       </div>
       {/* editor WebContentsViews paint above ALL shell DOM, so the overlay only
        * renders while the home tab is active — it comes back when home does */}
-      {showOnboarding && homeActive && (
-        <Onboarding
-          onDone={finishOnboarding}
-          onOpenOllamaSettings={() => window.aiOffice.openOllamaSettings()}
-          connection={connection}
-          noticeDue={notice.due}
-          onNoticeAcknowledge={notice.acknowledge}
-        />
+      {showOnboarding && isHomeVisible && (
+        <Suspense fallback={null}>
+          <Onboarding
+            onDone={finishOnboarding}
+            onOpenOllamaSettings={() => window.aiOffice.openOllamaSettings()}
+            connection={connection}
+            noticeDue={notice.due}
+            onNoticeAcknowledge={notice.acknowledge}
+            covered={settingsOpen}
+          />
+        </Suspense>
       )}
     </div>
   )

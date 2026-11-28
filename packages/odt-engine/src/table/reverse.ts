@@ -1120,12 +1120,17 @@ function rebuildTable(
   const xml = xmlOf(rctx)
   const R = rec.rows.length
   const C = rec.columns.length
+  // Blank columns must not break row matching when rows also changed. Column
+  // alignment below still uses the complete grid over those matched rows.
+  const bothAxesChanged = grid.rows !== R && grid.cols !== C
+  const rowSignature = (texts: string[]) =>
+    (bothAxesChanged ? texts.filter((text) => text !== '') : texts).join('\u0001')
   // rows by content
   const origRowSig = rec.cells.map((row) =>
-    row.map((cell) => originalCellText(rctx, cell)).join('\u0001'),
+    rowSignature(row.map((cell) => originalCellText(rctx, cell))),
   )
   const editRowSig = grid.at.map((row, r) =>
-    row.map((a, c) => (a && a.row === r && a.col === c ? editedCellText(a) : '')).join('\u0001'),
+    rowSignature(row.map((a, c) => (a && a.row === r && a.col === c ? editedCellText(a) : ''))),
   )
   const rowMap =
     grid.rows === R ? Array.from({ length: R }, (_, k) => k) : mapSequence(origRowSig, editRowSig)

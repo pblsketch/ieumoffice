@@ -5,6 +5,8 @@ import { beforeAll, describe, expect, it } from 'vitest'
 import init, { HwpDocument } from '@rhwp/core'
 import { run, tempDir } from './helpers'
 
+const env = { ...process.env, GENOFFICE_AUDIT_LOG: 'off' }
+
 /** The documents are built with the engine the reader uses; there is no other writer here. */
 beforeAll(async () => {
   const wasm = createRequire(import.meta.url).resolve('@rhwp/core/rhwp_bg.wasm')
@@ -70,6 +72,68 @@ describe('ieumoffice hwp read', () => {
     expect(rest.detail.text.startsWith('7월 1일부터')).toBe(true)
     expect(rest.detail.truncated).toBeUndefined()
     expect(first.detail.text + rest.detail.text).toHaveLength(first.detail.chars)
+  })
+
+  it('does not split an emoji between two parts of a paged read', async () => {
+    const doc = HwpDocument.createEmpty()
+    doc.createBlankDocument()
+    doc.insertText(0, 0, 0, '가나😀다라마')
+    const path = write('emoji.hwp', doc.exportHwp())
+    const first = (await run(['hwp', 'read', path, '--max-chars', '3', '--json'])).json().detail
+    expect(first.text.isWellFormed()).toBe(true)
+    const rest = (
+      await run(['hwp', 'read', path, '--offset', String(first.next_offset), '--full', '--json'])
+    ).json().detail
+    expect(rest.text.isWellFormed()).toBe(true)
+    expect(first.text + rest.text).toBe('가나😀다라마')
+  })
+
+  it.each([
+    { ext: 'hwp', character: '😀' },
+    { ext: 'hwpx', character: '😀' },
+    { ext: 'hwp', character: '𠀀' },
+    { ext: 'hwpx', character: '𠀀' },
+  ])('rejects a starting offset inside $character in $ext', async ({ ext, character }) => {
+    const doc = HwpDocument.createEmpty()
+    doc.createBlankDocument()
+    doc.insertText(0, 0, 0, `가${character}나`)
+    const path = write(`unicode.${ext}`, ext === 'hwp' ? doc.exportHwp() : doc.exportHwpx())
+    const before = readFileSync(path)
+    const r = await run(['hwp', 'read', path, '--offset', '2', '--full', '--json'], { env })
+    expect(r.code).toBe(1)
+    expect(r.json().error).toBe('invalid_argument')
+    expect(r.json().suggestion).toContain('--offset 1')
+    expect(r.json().suggestion).toContain('--offset 3')
+    expect(readFileSync(path)).toEqual(before)
+  })
+
+  it.each(['hwp', 'hwpx'])('keeps aligned offsets and paged reads in %s', async (ext) => {
+    const doc = HwpDocument.createEmpty()
+    doc.createBlankDocument()
+    const text = '가😀나'
+    doc.insertText(0, 0, 0, text)
+    const path = write(`unicode.${ext}`, ext === 'hwp' ? doc.exportHwp() : doc.exportHwpx())
+    const before = readFileSync(path)
+    for (const offset of [0, 1, 3, 4]) {
+      const r = await run(['hwp', 'read', path, '--offset', String(offset), '--full', '--json'], {
+        env,
+      })
+      expect(r.code).toBe(0)
+      expect(r.json().detail.offset).toBe(offset)
+      expect(r.json().detail.text).toBe(text.slice(offset))
+      expect(r.json().detail.text.isWellFormed()).toBe(true)
+    }
+    const first = (await run(['hwp', 'read', path, '--max-chars', '2', '--json'], { env })).json()
+      .detail
+    const rest = (
+      await run(['hwp', 'read', path, '--offset', String(first.next_offset), '--full', '--json'], {
+        env,
+      })
+    ).json().detail
+    expect(first.text.isWellFormed()).toBe(true)
+    expect(rest.text.isWellFormed()).toBe(true)
+    expect(first.text + rest.text).toBe(text)
+    expect(readFileSync(path)).toEqual(before)
   })
 
   it('refuses an offset past the end and a file of another kind', async () => {

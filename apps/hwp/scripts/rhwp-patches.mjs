@@ -34,35 +34,243 @@
  *   deletes the table a selection or a caret points at, in the body or in a
  *   cell, and the three paths call it: the inner table goes, the outer stays.
  *
+ * studio-nested-table-dispatch, studio-nested-table-path-calls, studio-nested-table-keys,
+ * studio-textbox-table-cell-block, studio-textbox-table-context-menu, studio-nested-table-move-drag
+ *   The other table commands name their table by the outer table's numbers (the caret's
+ *   parentParaIndex/controlIndex/cellIndex, a cell block's or a selected table's sec/ppi/ci),
+ *   so in a table inside a cell or a text box they changed the outer table: a row went into
+ *   the form, M merged its cells. The dispatcher asks studio-plugin/hancom-keys.mjs
+ *   (nestedTableCommand) before an enabled command runs. There the editing commands run with
+ *   services whose bridge sends a flat table call named with those numbers to the path call
+ *   for the inner table (vendor/rhwp-core patch 0055; the bridge gains those calls) and whose
+ *   edits are one snapshot on it. (The studio's list of document-changing bridge calls,
+ *   core/mutation-method-registry.ts, is read only by its own tests, which the build does not
+ *   compile; it is left as it is.) The others (split, captions, formulas, transposing, order,
+ *   wrap) leave the document alone and say why. Tab in the last cell of an inner table adds a row to it, as in a body
+ *   table and as Hangul does. A table in a text box is a table to the keys too: Tab moves
+ *   between its cells, F5 opens a cell block and a right click gives the table cell menu (the
+ *   studio had them for tables in cells only). A selected inner table is not dragged or moved
+ *   by the arrow keys (the move takes the outer table's numbers).
+ *
  * studio-hancom-shortcuts, studio-hancom-labels, studio-hancom-commands,
- * studio-hancom-chords
+ * studio-hancom-equal-cells, studio-hancom-chords
  *   A Hangul tab takes Hancom Hangul's keys (decision 0060). The table of them and
  *   the commands rhwp lacks live in studio-plugin/hancom-keys.mjs; these patches
  *   only hook it in. The studio's shortcut table is adapted in place, its command
  *   registry shows the new keys next to the menu items, the new commands are
- *   registered (with the studio parts they build on) and put into the menus, and
- *   its key handler hands the Ctrl+N/K/Q/M/G sequences and the keys that depend on
- *   the caret (the easy table formulas) to the module, on the IME path too.
+ *   registered (with the studio parts they build on) and put into the menus, its
+ *   two stub "equal cell size" commands hand over to the app's own equalizer, and
+ *   its key handler hands the Ctrl+N/K/Q/M/G sequences, the keys that depend on
+ *   the caret (the easy table formulas, Ctrl+Enter/Ctrl+Backspace in a cell, a cell
+ *   block's letters, Enter and F3, and the format keys that act on the whole block)
+ *   and the table-object keys (P/T/L/C/Ctrl+E) to the module, on the IME path too.
+ *
+ * studio-hancom-cell-props-block
+ *   The studio's 표/셀 속성 writes its cell tab into the cell the caret is in, even when
+ *   it was opened on a cell block. Hangul writes it into every selected cell. The
+ *   dialog's apply hands what it wrote to studio-plugin/hancom-keys.mjs
+ *   (hancomBlockCellProps), which writes what the user changed into the other cells
+ *   of the block, in the same undo step.
+ *
+ * studio-hancom-row-drag
+ *   Hangul's plain drag of a horizontal table border sizes the row above it and the table
+ *   (help: 표 크기 조절); Alt+drag lets the row below give way. The studio did the latter on a
+ *   plain drag and capped it by the row below's stored height, about 1 mm in any table. The
+ *   drag end asks studio-plugin/hancom-keys.mjs (hancomRowDragUpdates) first, and the drag may
+ *   go below the next line.
+ *
+ * studio-hancom-block-format-dialogs
+ *   On a cell block the studio's 글자 모양 (Alt+L) wanted a text selection and did
+ *   nothing, and its 문단 모양 (Alt+T) formatted the caret's paragraph alone. Hangul
+ *   formats every selected cell. Opened on a block, each dialog now applies through the
+ *   editor's own block path (the format-char event, applyParaPropsAtCursor).
  *
  * studio-hancom-page-number
  *   The bridge gains the two engine calls of vendor/rhwp-core patch 0014, setting and
  *   reading a section's page number (Hangul's 쪽 번호 매기기).
  *
- * studio-font-memo-state, studio-font-memo-use
- *   The studio replaces the Canvas2D `font` setter so that every font string
- *   the engine sets passes its font substitution, which builds the family
- *   chain anew each time. Drawing a page sets the same few strings thousands
- *   of times, and that rebuilding was most of the cost of a keystroke. The
- *   setter keeps each string's answer until the next microtask checkpoint:
- *   one synchronous draw reuses it, and what the answer depends on (the fonts
- *   found on the PC, the open document's substitutions) changes only when an
- *   asynchronous step ends, so every later draw asks again.
+ * studio-quick-correct
+ *   Hangul's 빠른 교정 turns a straight quote typed into the document into a curly one,
+ *   opening after a blank (도구 → 빠른 교정 → 빠른 교정 내용 → 입력 자동 서식). The typed text
+ *   goes through studio-plugin/hancom-keys.mjs (quickCorrectTyped) before the editor puts it
+ *   in the document, so what is pasted, dropped or still composing is left alone.
+ *
+ * studio-format-copy-safety, studio-format-copy, studio-format-copy-state
+ *   The studio's format copy takes the cell's field name and form-edit flag with
+ *   the cell's look; copying a plain cell over a named cell in a cell block
+ *   therefore removes the cell field. The safety patch drops those two keys.
+ *   The other two patches hand the two format commands to the app's own module
+ *   (studio-plugin/format-copy.mjs) — a Hancom-style dialog, one undo step for
+ *   one apply, and a copied format that lasts until it is overwritten — and make
+ *   the editor's "has copied format" answer come from that module.
+ *
+ * studio-single-cell-resize
+ *   The bridge gains the one-cell resize call of vendor/rhwp-core patch 0016, which
+ *   moves one cell's right or bottom boundary and its next cell's opposite boundary
+ *   (Hangul's Shift+arrow). The engine keeps the resulting irregular grid as spans.
+ *   It also gains setTableCellExtents of patch 0027, which places cells at given starts
+ *   and ends along one axis: Hangul's H/W and Shift+↑/↓ (studio-plugin/table-sizes.mjs).
+ *
+ * studio-merged-row-below
+ *   "Insert row below" in a merged cell takes the cell's last row, so the new row lands
+ *   below the merge instead of growing it. A caret in a plain cell inside another merge
+ *   keeps that cell's row, because Hangul grows the merge there.
+ *
+ * studio-table-props-border-bg, studio-table-props-menu-label
+ *   The studio's 표/셀 속성 dialog shows the table's border and fill tabs only with the
+ *   table object selected, so from a cell (where the menu opens it) a table's own fill,
+ *   such as a black one, could not be changed. Like Hangul, the dialog has them from a cell
+ *   too, and the cell menu names it 표/셀 속성. The dialog used to send the border and fill
+ *   it showed on every OK, and the engine gives those to the table and to every cell: an
+ *   untouched OK wiped each cell's own lines and fill. It now sends only what changed
+ *   (vendor/rhwp-core patch 0021 then keeps the rest of each cell's look).
+ *
+ * studio-memo-command, studio-memo-label-ko, studio-memo-label-en
+ *   The studio's Insert > Comment item is a stub. It becomes the app's memo: with a
+ *   document open outside form mode it sends `ieum:memo-insert` to the window the app
+ *   listens on, and the menu names it 메모 (Memo) in the studio's two languages.
+ *
+ * studio-memo-context-menu
+ *   The right-click menus of body text and of a table cell gain the same 메모 command,
+ *   so a selection can take a memo without going to the Insert menu. The menu keeps the
+ *   selection, and the memo editor reads it when it opens.
+ *
+ * studio-easy-words-context-menu
+ *   The same two right-click menus gain 쉬운 말로 풀기 next to 메모: it asks the AI panel to
+ *   explain the selected text in plain words, in the app's language, and changes nothing in
+ *   the document. The item is the command the app's plugin registers (EASY_WORDS_COMMAND),
+ *   so its name is the label the app gives it, and it is off while nothing is selected.
+ *   Before the plugin registers it the menus leave it out.
+ *
+ * studio-toc-index-context-menu
+ *   Adds context-menu entries for TOC Refresh (`ext:ieum-toc-refresh`), Mark Index Entry
+ *   (`ext:ieum-index-mark`), and Index Refresh (`ext:ieum-index-refresh`). The two refresh
+ *   entries appear only when the caret sits inside a marked TOC or Index range (checked via
+ *   the plugin's context probes), in both body and table-cell menus (for table-layout TOC/Index),
+ *   while Mark Index Entry is available on body text. Before the plugin registers them,
+ *   the menus leave all three out.
+ *
+ * studio-pc-fonts
+ *   The studio lists the PC's fonts only after the 찾기 button of its options dialog,
+ *   so its font lists held the base fonts and the document's own until then. At start-up
+ *   it now asks the PC for its font list and detects anew when that differs from the
+ *   kept one (studio-plugin/pc-fonts.mjs), then tells the font lists as the button does.
+ *   It also hands that module what the studio knows of the PC's fonts, for the marks below.
+ *
+ * studio-font-file-reads
+ *   The studio's detection reads the name, OS/2 and head tables of every installed font in
+ *   one go through FontData.blob() inside the renderer. That exhausts open files on Linux
+ *   (#488) and pulls gigabytes of 100MB+ CJK .ttc collections through renderer Blobs on
+ *   macOS, crashing the renderer (#591). Inside the app, collectLocalFontRecords asks
+ *   studio-plugin/pc-fonts.mjs (readHostFontNames) for per-face SFNT metadata read from disk
+ *   by the main process (@genoffice/font-metrics), skipping FontData.blob() completely. When
+ *   no host reader is present (standalone browser), fontFilesToRead keeps the Linux cap.
+ *
+ * studio-missing-font-marks
+ *   A font that is not on the PC is drawn with another one, while the font menu and the
+ *   font box showed its name as if it were there. The menu marks such an entry and the box
+ *   underlines such a name, with a tooltip saying the file keeps the font's name
+ *   (studio-plugin/pc-fonts.mjs, in the words the app gives).
+ *
+ * studio-equation-fonts, studio-equation-fonts-subst
+ *   Hancom's equation fonts are written in private code points, which mean nothing in the
+ *   font the substitution would put in their place while the PC's fonts are not known yet
+ *   or the font is not there. The app's own layer (equation-fonts.mjs) installs on
+ *   CanvasRenderingContext2D under the studio's substitution (wasm-bridge.ts) and lets
+ *   equation glyph runs pass through substituteCssFontFamily untouched (font-substitution.ts).
+ *
+ * studio-hancom-object-drag, studio-hancom-object-drag-cancel
+ *   The studio sized a picture or drawing object freely from every handle and had no keys
+ *   while dragging one. Hangul keeps a picture's width to height on a corner handle, and a
+ *   drawing object's with Shift; Shift while moving keeps the object on its row or column;
+ *   Esc while dragging puts the object back (help: 개체 크기 조절, 개체 이동하기). The size
+ *   drag asks studio-plugin/object-drag.mjs (dragKeepsRatio) whether to keep the ratio: a
+ *   single object goes through the studio's own diagonal sizing for a turned picture, a
+ *   multiple selection through ratioResizedBox. The move drag holds the pointer on one axis
+ *   (axisLockedPoint), and the key handler hands Esc to cancelObjectDrag before anything else.
+ *
+ * studio-hancom-object-step
+ *   With a picture or drawing object selected, studio-hancom-chords hands the key to
+ *   hancomPictureObjectKey, which takes Hangul's object keys (arrows 0.2 mm, Shift+arrows 1 mm,
+ *   Tab, Shift+PageUp/Down/Home/End, G/U/L/C, Ctrl+E, Ctrl+Insert, Shift+Delete). The studio
+ *   moves objects by its 격자 설정 step (3 mm unless set); once the user sets that step it stays
+ *   theirs, so the studio's setter marks that it was set.
+ *
+ * studio-hancom-object-mouse, studio-object-duplicate
+ *   Hangul's Alt+click selects the object under the pointer even when another lies over it or
+ *   it lies behind the text, and the next one down on each further click (help: 개체 선택). The
+ *   studio's mousedown hands an Alt+click to hancomAltClickObject before its own picture
+ *   handling, which would start dragging the selected object or open a text box for typing.
+ *   A move drag that ends with Ctrl held goes to copyObjectDrag first: the object goes back and
+ *   a copy lands where the drag ended, through the engine call of vendor/rhwp-core patch 0054,
+ *   which the bridge gains (studio-object-duplicate). A picture's Shift+corner crops it
+ *   (cropDragBox, cropChange, in studio-hancom-object-drag; the engine keeps the crop in the
+ *   resize undo since patch 0052).
+ *
+ * studio-note-text, studio-note-typing, studio-submode-symbols
+ *   While a footnote or endnote is open the studio keeps the body caret where it was and
+ *   tracks the note's place apart. Its paste, copy and cut ignored that: a paste went into the
+ *   body at the note's mark, and Ctrl+C and Ctrl+X in the note copied nothing. Its 문자표
+ *   dialog put the symbol at the body caret too, and the note's keys let only undo, redo,
+ *   go-to and select-all through, so Ctrl+F10 did nothing there (2026-11-17 feedback). The
+ *   paste, copy and cut events ask studio-plugin/note-text.mjs first, the note's keys let
+ *   문자표 through, and the dialog hands its character to the module when a note, a header
+ *   or a footer is being edited. A click in a note leaves a selection anchor that nothing
+ *   cleared, so text typed after it read as selected; typing, composing and the note's keys
+ *   now ask the module first, which takes a real selection out (as typing over a selection
+ *   does) and drops an empty one.
+ *
+ * studio-ruler-para-kinds, studio-ruler-para-marks
+ *   The studio's horizontal ruler had one paragraph mark (▽, the first line, only right of
+ *   the left margin) and two △ for the page margins, and named none of them. A hanging
+ *   paragraph, whose later lines start under the words after its mark, could be neither seen
+ *   nor set there. The ruler now draws Hancom Hangul's four paragraph marks (▽ first line
+ *   start, △ other lines start, □ paragraph left margin, △ paragraph right margin), the page
+ *   margins are dragged at the edges of the white band, and each one shows its name when the
+ *   mouse rests on it (decision 0169). The marks, their hit test, the drop and the name box
+ *   live in studio-plugin/ruler-marks.mjs; these patches only hook it in.
+ *
+ * studio-wheel-zoom
+ *   The studio scales its zoom by the wheel's pixel delta, so how far one notch zoomed
+ *   followed the OS scroll setting. Ctrl/⌘+wheel now goes through the app's shared
+ *   classifier (packages/ui/src/wheel-zoom.ts), as in the other editors: five percentage
+ *   points per notch onto the 5% grid, a trackpad pinch in the same steps.
+ *
+ * studio-hyperlink-open, studio-hyperlink-preview, studio-hyperlink-bookmark
+ *   Clicking a web hyperlink in the document or the preview button in the hyperlink dialog
+ *   calls `window.open('about:blank', '_blank')` and then writes the real URL into the popup
+ *   window. In Electron `setWindowOpenHandler` routes the opened URL through `safeExternalUrl`
+ *   to `shell.openExternal` and returns `{ action: 'deny' }` (so `window.open` always returns
+ *   `null`, and `'about:blank'` is rejected). The user therefore got a "popup blocked" error
+ *   and nothing opened. Open the validated URL directly with `window.open(url, '_blank',
+ *   'noopener,noreferrer')` without expecting a window handle back; route `mailto:` the same
+ *   way so it goes through `safeExternalUrl` + `shell.openExternal` instead of navigating the
+ *   editor iframe. Internal document bookmark links (`#name`, `?name`, or `link.bookmark`)
+ *   are recognized even when `classifyHyperlinkDestination` returns null for `?name`, match
+ *   exact raw names before percent-decoded fallback, move and scroll the caret to the target
+ *   bookmark, and skip applying visited-link purple formatting so TOC lines stay clean.
  */
 
+import { CLIPBOARD_HTML_MODULE } from '../studio-plugin/clipboard-html.mjs'
+import { AGENT_PLUGIN_ID, EASY_WORDS_COMMAND } from '../studio-plugin/agent-plugin.mjs'
 import { HANCOM_KEYS_MODULE, studioCommandIds } from '../studio-plugin/hancom-keys.mjs'
+import { NOTE_TEXT_MODULE } from '../studio-plugin/note-text.mjs'
+import { PC_FONTS_MODULE } from '../studio-plugin/pc-fonts.mjs'
+import { RULER_MARKS_MODULE } from '../studio-plugin/ruler-marks.mjs'
+import { TEXTBOX_EDIT_MODULE } from '../studio-plugin/textbox-edit.mjs'
+import {
+  INDEX_MARK_COMMAND,
+  INDEX_REFRESH_COMMAND,
+  INDEX_REFRESH_CONTEXT_COMMAND,
+  TOC_REFRESH_COMMAND,
+  TOC_REFRESH_CONTEXT_COMMAND,
+} from '../studio-plugin/toc-dialogs.mjs'
 
 /** Must equal RENDERER_SCHEME in packages/electron-utils/src/renderer-scheme.ts. */
 export const APP_SCHEME = 'genoffice-app'
+
+/** Scheme used by the Tauri 2 mobile WebView (iOS WKWebView and Android local assets). */
+export const MOBILE_SCHEME = 'tauri'
 
 /** Field the studio-password-flag patch adds to the studio's command context. */
 export const PASSWORD_FLAG = 'passwordProtected'
@@ -73,16 +281,37 @@ export const AGENT_PLUGIN_MODULE = '@ieum/agent-plugin'
 /** Module specifier the studio-hancom-* patches import; build-studio.mjs aliases it. */
 export { HANCOM_KEYS_MODULE }
 
+/** Module specifier the studio-format-copy patches import; build-studio.mjs aliases it. */
+export const FORMAT_COPY_MODULE = '@ieum/format-copy'
+
+/** Module specifier the studio-clipboard-objects patch imports; build-studio.mjs aliases it. */
+export { CLIPBOARD_HTML_MODULE }
+
+/** Module specifier the studio-pc-fonts patch imports; build-studio.mjs aliases it. */
+export { PC_FONTS_MODULE }
+
+/** Module specifier the studio-note-text patches import; build-studio.mjs aliases it. */
+export { NOTE_TEXT_MODULE }
+
+/** Module specifier the studio-textbox-edit-* patches import; build-studio.mjs aliases it. */
+export { TEXTBOX_EDIT_MODULE }
+
+/** Module specifier the studio-ruler-para-marks patch imports; build-studio.mjs aliases it. */
+export { RULER_MARKS_MODULE }
+
+/** Module specifier the studio-wheel-zoom patch imports; build-studio.mjs aliases it. */
+export const WHEEL_ZOOM_MODULE = '@ieum/wheel-zoom'
+
 const PATCHES = {
   'sdk-scheme': {
     file: /[\\/]@rhwp[\\/]editor[\\/]transport\.js$/,
     find: "if (targetUrl.protocol !== 'http:' && targetUrl.protocol !== 'https:') {",
-    replace: `if (targetUrl.protocol !== 'http:' && targetUrl.protocol !== 'https:' && targetUrl.protocol !== '${APP_SCHEME}:') {`,
+    replace: `if (targetUrl.protocol !== 'http:' && targetUrl.protocol !== 'https:' && targetUrl.protocol !== '${APP_SCHEME}:' && targetUrl.protocol !== '${MOBILE_SCHEME}:') {`,
   },
   'studio-scheme': {
     file: /[\\/]rhwp-studio[\\/]src[\\/]embed[\\/]protocol\.ts$/,
     find: "return protocol === 'http:' || protocol === 'https:';",
-    replace: `return protocol === 'http:' || protocol === 'https:' || protocol === '${APP_SCHEME}:';`,
+    replace: `return protocol === 'http:' || protocol === 'https:' || protocol === '${APP_SCHEME}:' || protocol === '${MOBILE_SCHEME}:';`,
   },
   'studio-password-flag': {
     file: /[\\/]rhwp-studio[\\/]src[\\/]main\.ts$/,
@@ -148,22 +377,27 @@ const PATCHES = {
   },
   'studio-nested-table-cut': {
     file: /[\\/]rhwp-studio[\\/]src[\\/]engine[\\/]input-handler\.ts$/,
-    find: [
-      '        // 중첩 표 잘라내기는 지원하지 않는다. keydown 경로도 같은 선택 상태를 유지한다.',
-      '        if (ref.cellPath && ref.cellPath.length > 1) return;',
-      '        this.performCopy();',
-      '        this.cursor.moveOutOfSelectedTable();',
-      "        this.eventBus.emit('table-object-selection-changed', false);",
-      "        this.executeOperation({ kind: 'snapshot', operationType: 'cutTable', operation: (wasm: WasmBridge) => {",
-      '          wasm.deleteTableControl(ref.sec, ref.ppi, ref.ci);',
-    ].join('\n'),
-    replace: [
-      '        this.performCopy();',
-      '        this.cursor.moveOutOfSelectedTable();',
-      "        this.eventBus.emit('table-object-selection-changed', false);",
-      "        this.executeOperation({ kind: 'snapshot', operationType: 'cutTable', operation: (wasm: WasmBridge) => {",
-      '          wasm.deleteTableAt(ref);',
-    ].join('\n'),
+    edits: [
+      // the copy already takes a table in a cell (tableObjectClipboardTarget); only the delete did not
+      {
+        find: [
+          '    // 중첩 표 잘라내기는 지원하지 않는다. keydown 경로도 같은 선택 상태를 유지한다.',
+          '    if (table?.cellPath && table.cellPath.length > 1) return;',
+          '',
+        ].join('\n'),
+        replace: '',
+      },
+      {
+        find: [
+          "        this.executeOperation({ kind: 'snapshot', operationType: 'cutTable', operation: (wasm: WasmBridge) => {",
+          '          wasm.deleteTableControl(ref.sec, ref.ppi, ref.ci);',
+        ].join('\n'),
+        replace: [
+          "        this.executeOperation({ kind: 'snapshot', operationType: 'cutTable', operation: (wasm: WasmBridge) => {",
+          '          wasm.deleteTableAt(table!);',
+        ].join('\n'),
+      },
+    ],
   },
   'studio-nested-table-command': {
     file: /[\\/]rhwp-studio[\\/]src[\\/]command[\\/]commands[\\/]table\.ts$/,
@@ -212,6 +446,222 @@ const PATCHES = {
       "          operationType: 'deleteTable',",
     ].join('\n'),
   },
+  'studio-nested-table-dispatch': {
+    file: /[\\/]rhwp-studio[\\/]src[\\/]command[\\/]dispatcher\.ts$/,
+    edits: [
+      {
+        find: "import type { CommandResult, CommandServices, EditorContext } from './types';",
+        replace:
+          "import type { CommandResult, CommandServices, EditorContext } from './types';\n" +
+          `import { nestedTableCommand } from '${HANCOM_KEYS_MODULE}';`,
+      },
+      {
+        find: [
+          '    if (def.canExecute && !def.canExecute(ctx)) {',
+          '      // canExecute 실패 — 비활성 상태',
+          "      return { ok: false, reason: 'disabled' };",
+          '    }',
+          '',
+          '    try {',
+          '      def.execute(this.services, params);',
+        ].join('\n'),
+        replace: [
+          '    if (def.canExecute && !def.canExecute(ctx)) {',
+          '      // canExecute 실패 — 비활성 상태',
+          "      return { ok: false, reason: 'disabled' };",
+          '    }',
+          '    // ieum: a table command on a table inside a cell or a text box runs on that table by',
+          '    // its path (the outer numbers would change the outer table), or is refused with the reason',
+          '    const nested = nestedTableCommand(commandId, this.services);',
+          '    if (nested === false) {',
+          "      return { ok: false, reason: 'disabled', message: 'nested-table' };",
+          '    }',
+          '',
+          '    try {',
+          '      def.execute(nested ?? this.services, params);',
+        ].join('\n'),
+      },
+    ],
+  },
+  'studio-nested-table-path-calls': {
+    file: /[\\/]rhwp-studio[\\/]src[\\/]core[\\/]wasm-bridge\.ts$/,
+    find: '  getTableDimensionsByPath(sec: number, parentPara: number, pathJson: string): TableDimensions {',
+    replace: [
+      '  // ieum: the flat table calls for the table a cell path names, inside a cell or a text box',
+      '  // (vendor/rhwp-core patch 0055). The path ends at the table; the answers are the flat ones.',
+      '  insertTableRowByPath(sec: number, parentPara: number, pathJson: string, rowIdx: number, below: boolean): { ok: boolean; rowCount: number; colCount: number } {',
+      "    if (!this.doc) throw new Error('문서가 로드되지 않았습니다');",
+      '    return JSON.parse(this.doc.insertTableRowByPath(sec, parentPara, pathJson, rowIdx, below));',
+      '  }',
+      '',
+      '  insertTableColumnByPath(sec: number, parentPara: number, pathJson: string, colIdx: number, right: boolean): { ok: boolean; rowCount: number; colCount: number } {',
+      "    if (!this.doc) throw new Error('문서가 로드되지 않았습니다');",
+      '    return JSON.parse(this.doc.insertTableColumnByPath(sec, parentPara, pathJson, colIdx, right));',
+      '  }',
+      '',
+      '  deleteTableRowByPath(sec: number, parentPara: number, pathJson: string, rowIdx: number): { ok: boolean; rowCount: number; colCount: number } {',
+      "    if (!this.doc) throw new Error('문서가 로드되지 않았습니다');",
+      '    return JSON.parse(this.doc.deleteTableRowByPath(sec, parentPara, pathJson, rowIdx));',
+      '  }',
+      '',
+      '  deleteTableColumnByPath(sec: number, parentPara: number, pathJson: string, colIdx: number): { ok: boolean; rowCount: number; colCount: number } {',
+      "    if (!this.doc) throw new Error('문서가 로드되지 않았습니다');",
+      '    return JSON.parse(this.doc.deleteTableColumnByPath(sec, parentPara, pathJson, colIdx));',
+      '  }',
+      '',
+      '  mergeTableCellsByPath(sec: number, parentPara: number, pathJson: string, startRow: number, startCol: number, endRow: number, endCol: number): { ok: boolean; cellCount: number } {',
+      "    if (!this.doc) throw new Error('문서가 로드되지 않았습니다');",
+      '    return JSON.parse(this.doc.mergeTableCellsByPath(sec, parentPara, pathJson, startRow, startCol, endRow, endCol));',
+      '  }',
+      '',
+      '  splitTableCellByPath(sec: number, parentPara: number, pathJson: string, row: number, col: number): { ok: boolean; cellCount: number } {',
+      "    if (!this.doc) throw new Error('문서가 로드되지 않았습니다');",
+      '    return JSON.parse(this.doc.splitTableCellByPath(sec, parentPara, pathJson, row, col));',
+      '  }',
+      '',
+      '  splitTableCellIntoByPath(',
+      '    sec: number, parentPara: number, pathJson: string, row: number, col: number,',
+      '    nRows: number, mCols: number, equalRowHeight: boolean, mergeFirst: boolean,',
+      '  ): { ok: boolean; cellCount: number } {',
+      "    if (!this.doc) throw new Error('문서가 로드되지 않았습니다');",
+      '    return JSON.parse(this.doc.splitTableCellIntoByPath(sec, parentPara, pathJson, row, col, nRows, mCols, equalRowHeight, mergeFirst));',
+      '  }',
+      '',
+      '  splitTableCellsInRangeByPath(',
+      '    sec: number, parentPara: number, pathJson: string,',
+      '    startRow: number, startCol: number, endRow: number, endCol: number,',
+      '    nRows: number, mCols: number, equalRowHeight: boolean,',
+      '  ): { ok: boolean; cellCount: number } {',
+      "    if (!this.doc) throw new Error('문서가 로드되지 않았습니다');",
+      '    return JSON.parse(this.doc.splitTableCellsInRangeByPath(sec, parentPara, pathJson, startRow, startCol, endRow, endCol, nRows, mCols, equalRowHeight));',
+      '  }',
+      '',
+      '  getCellOwnPropertiesByPath(sec: number, parentPara: number, pathJson: string, cellIdx: number): CellProperties {',
+      "    if (!this.doc) throw new Error('문서가 로드되지 않았습니다');",
+      '    return JSON.parse(this.doc.getCellOwnPropertiesByPath(sec, parentPara, pathJson, cellIdx));',
+      '  }',
+      '',
+      "  setCellPropertiesByPath(sec: number, parentPara: number, pathJson: string, cellIdx: number, props: Partial<CellProperties>): ReturnType<WasmBridge['setCellProperties']> {",
+      "    if (!this.doc) throw new Error('문서가 로드되지 않았습니다');",
+      '    return JSON.parse(this.doc.setCellPropertiesByPath(sec, parentPara, pathJson, cellIdx, JSON.stringify(props)));',
+      '  }',
+      '',
+      '  setCellZonePropertiesByPath(',
+      '    sec: number, parentPara: number, pathJson: string,',
+      '    range: { startRow: number; startCol: number; endRow: number; endCol: number },',
+      '    props: Partial<CellProperties>,',
+      "  ): ReturnType<WasmBridge['setCellZoneProperties']> {",
+      "    if (!this.doc) throw new Error('문서가 로드되지 않았습니다');",
+      '    return JSON.parse(this.doc.setCellZonePropertiesByPath(',
+      '      sec, parentPara, pathJson, range.startRow, range.startCol, range.endRow, range.endCol, JSON.stringify(props),',
+      '    ));',
+      '  }',
+      '',
+      "  applyCellBorderFillIdsByPath(sec: number, parentPara: number, pathJson: string, payload: Parameters<WasmBridge['applyCellBorderFillIds']>[3]): { ok: boolean } {",
+      "    if (!this.doc) throw new Error('문서가 로드되지 않았습니다');",
+      '    return JSON.parse(this.doc.applyCellBorderFillIdsByPath(sec, parentPara, pathJson, JSON.stringify(payload)));',
+      '  }',
+      '',
+      '  getTablePropertiesByPath(sec: number, parentPara: number, pathJson: string): TableProperties {',
+      "    if (!this.doc) throw new Error('문서가 로드되지 않았습니다');",
+      '    return JSON.parse(this.doc.getTablePropertiesByPath(sec, parentPara, pathJson));',
+      '  }',
+      '',
+      '  setTablePropertiesByPath(sec: number, parentPara: number, pathJson: string, props: Partial<TableProperties>): { ok: boolean } {',
+      "    if (!this.doc) throw new Error('문서가 로드되지 않았습니다');",
+      '    return JSON.parse(this.doc.setTablePropertiesByPath(sec, parentPara, pathJson, JSON.stringify(props)));',
+      '  }',
+      '',
+      '  resizeTableCellByPath(',
+      '    sec: number, parentPara: number, pathJson: string,',
+      '    row: number, col: number, vertical: boolean, forward: boolean,',
+      '  ): { ok: boolean; moved?: boolean; reason?: string } {',
+      "    if (!this.doc) throw new Error('문서가 로드되지 않았습니다');",
+      '    return JSON.parse(this.doc.resizeTableCellByPath(sec, parentPara, pathJson, row, col, vertical, forward));',
+      '  }',
+      '',
+      '  setTableCellExtentsByPath(',
+      '    sec: number, parentPara: number, pathJson: string, vertical: boolean,',
+      '    extents: Array<{ cellIdx: number; start: number; end: number }>,',
+      '  ): { ok: boolean; reason?: string } {',
+      "    if (!this.doc) throw new Error('문서가 로드되지 않았습니다');",
+      '    return JSON.parse(this.doc.setTableCellExtentsByPath(sec, parentPara, pathJson, vertical, JSON.stringify(extents)));',
+      '  }',
+      '',
+      '  getTableDimensionsByPath(sec: number, parentPara: number, pathJson: string): TableDimensions {',
+    ].join('\n'),
+  },
+  'studio-nested-table-keys': {
+    file: /[\\/]rhwp-studio[\\/]src[\\/]engine[\\/]input-handler-keyboard\.ts$/,
+    edits: [
+      // Tab in the last cell of a table inside a cell or a text box adds a row to that table
+      {
+        find: 'function insertRowAfterLastTableCellByTab(this: any): boolean {',
+        replace: [
+          `import { innerTableTabRow } from '${HANCOM_KEYS_MODULE}';`,
+          '',
+          'function insertRowAfterLastTableCellByTab(this: any): boolean {',
+        ].join('\n'),
+      },
+      {
+        find: '  if (isNestedCellPosition(pos)) return false;',
+        replace: '  if (isNestedCellPosition(pos)) return innerTableTabRow(this);',
+      },
+      // a table in a text box takes Tab as a table does (Hangul moves to the next cell there)
+      {
+        find: [
+          '      if (this.cursor.isInCell() && !this.cursor.isInTextBox()) {',
+          '        if (e.shiftKey) {',
+          '          this.cursor.moveToCellPrev();',
+        ].join('\n'),
+        replace: [
+          '      if (this.cursor.isInCell() && (!this.cursor.isInTextBox() || this.cursor.nestingDepth() > 1)) {',
+          '        if (e.shiftKey) {',
+          '          this.cursor.moveToCellPrev();',
+        ].join('\n'),
+      },
+      // and F5 opens a cell block there
+      {
+        find: [
+          '    if (this.cursor.isInCell() && !this.cursor.isInTextBox()) {',
+          '      if (this.cursor.isInCellSelectionMode()) {',
+        ].join('\n'),
+        replace: [
+          '    if (this.cursor.isInCell() && (!this.cursor.isInTextBox() || this.cursor.nestingDepth() > 1)) {',
+          '      if (this.cursor.isInCellSelectionMode()) {',
+        ].join('\n'),
+      },
+    ],
+  },
+  'studio-textbox-table-cell-block': {
+    file: /[\\/]rhwp-studio[\\/]src[\\/]engine[\\/]cursor\.ts$/,
+    find: [
+      "  enterCellSelectionMode(reason: CellSelectionReason = 'manual'): boolean {",
+      '    if (!this.isInCell() || this.isInTextBox()) return false;',
+    ].join('\n'),
+    replace: [
+      "  enterCellSelectionMode(reason: CellSelectionReason = 'manual'): boolean {",
+      '    // ieum: a table in a text box takes a cell block as any table; the text box itself does not',
+      '    if (!this.isInCell() || (this.isInTextBox() && this.nestingDepth() < 2)) return false;',
+    ].join('\n'),
+  },
+  'studio-textbox-table-context-menu': {
+    file: /[\\/]rhwp-studio[\\/]src[\\/]engine[\\/]input-handler-mouse\.ts$/,
+    find: '    inTable = hit.parentParaIndex !== undefined && !hit.isTextBox;',
+    replace: [
+      "    // ieum: a table in a text box gets the table cell menu (Hangul's), the text box itself not",
+      '    inTable = hit.parentParaIndex !== undefined && (!hit.isTextBox || (hit.cellPath?.length ?? 0) > 1);',
+    ].join('\n'),
+  },
+  'studio-nested-table-move-drag': {
+    file: /[\\/]rhwp-studio[\\/]src[\\/]engine[\\/]input-handler-mouse\.ts$/,
+    find: '    if (ref && e.button === 0) {',
+    replace: [
+      "    // ieum: a selected table inside a cell or a text box is not dragged; its ref's numbers",
+      '    // are the outer table, which the move would take. The click places the caret instead.',
+      '    if (ref && e.button === 0 && (ref.cellPath?.length ?? 0) < 2) {',
+    ].join('\n'),
+  },
   'studio-hancom-shortcuts': {
     file: /[\\/]rhwp-studio[\\/]src[\\/]command[\\/]shortcut-map\.ts$/,
     // the table's last entry; an import may sit anywhere at the top level of a module
@@ -244,10 +694,13 @@ const PATCHES = {
         replace:
           "import { initI18n, t } from '@/i18n/index.ts';\n" +
           "import { getLocale } from '@/i18n/core.ts';\n" +
-          "import { InsertTextCommand } from '@/engine/command';\n" +
+          "import { InsertTextCommand, InsertTabCommand } from '@/engine/command';\n" +
           "import { ModalDialog } from '@/ui/dialog';\n" +
           "import { FindDialog, navigateToSearchHit } from '@/ui/find-dialog';\n" +
-          `import { hancomCommands, installHancomMainKeys, installHancomMenuItems } from '${HANCOM_KEYS_MODULE}';`,
+          "import { CellBorderBgDialog } from '@/ui/cell-border-bg-dialog';\n" +
+          "import { TableCellPropsDialog } from '@/ui/table-cell-props-dialog';\n" +
+          "import { showToast } from '@/ui/toast';\n" +
+          `import { hancomCommands, installHancomMainKeys, installHancomMenuItems, installHanjaKey } from '${HANCOM_KEYS_MODULE}';`,
       },
       // the new commands, with the studio parts they build on, and their menu items
       {
@@ -255,11 +708,14 @@ const PATCHES = {
         replace:
           'registry.registerAll(toolCommands);\n' +
           'registry.registerAll(hancomCommands(getLocale(), {\n' +
-          '  InsertTextCommand, ModalDialog, FindDialog, navigateToSearchHit,\n' +
+          '  InsertTextCommand, InsertTabCommand, ModalDialog, FindDialog, navigateToSearchHit,\n' +
+          '  CellBorderBgDialog, TableCellPropsDialog, showToast,\n' +
           '}));\n' +
           'installHancomMenuItems(document, getLocale());\n' +
           '// the keys the main process takes first and hands back for the table (decision 0060)\n' +
-          'installHancomMainKeys(window, () => inputHandler, dispatcher);',
+          'installHancomMainKeys(window, () => inputHandler, dispatcher);\n' +
+          '// the Hanja key on a word already typed (the input method only converts while composing)\n' +
+          'installHanjaKey(window, () => inputHandler, dispatcher);',
       },
     ],
   },
@@ -282,6 +738,282 @@ const PATCHES = {
       '  applyStyle(sec: number, para: number, styleId: number): { ok: boolean } {',
     ].join('\n'),
   },
+  'studio-quick-correct': {
+    file: /[\\/]rhwp-studio[\\/]src[\\/]engine[\\/]input-handler-text\.ts$/,
+    edits: [
+      {
+        find: "import { showConfirm } from '@/ui/confirm-dialog';",
+        replace:
+          "import { showConfirm } from '@/ui/confirm-dialog';\n" +
+          `import { quickCorrectTyped } from '${HANCOM_KEYS_MODULE}';`,
+      },
+      // the typed character, before the editor decides what to do with it
+      {
+        find: '  const text = normalizeTextNewlines(this.textarea.value);',
+        replace:
+          '  const text = normalizeTextNewlines(quickCorrectTyped(this, this.textarea.value, e?.inputType));',
+      },
+    ],
+  },
+  'studio-format-copy-safety': {
+    file: /[\\/]rhwp-studio[\\/]src[\\/]engine[\\/]input-handler\.ts$/,
+    // a cell's own look is not its form field: copying a plain cell over a named one in
+    // a cell block must not clear the named cell's field
+    find: ["  'cellProtect',", "  'fieldName',", "  'editableInForm',", "  'borderFillId',"].join(
+      '\n',
+    ),
+    replace: ["  'cellProtect',", "  'borderFillId',"].join('\n'),
+  },
+  'studio-format-copy': {
+    file: /[\\/]rhwp-studio[\\/]src[\\/]command[\\/]commands[\\/]edit\.ts$/,
+    edits: [
+      {
+        find: "import { canExecuteFormatPaste } from '../format-paste-availability';",
+        replace: [
+          "import { canExecuteFormatPaste } from '../format-paste-availability';",
+          "import { ApplyCharFormatCommand, ApplyParaFormatCommand } from '@/engine/command';",
+          "import { selectCellIndicesInRange, paraFormatTargetsForCellBlock, withCellPathTarget } from '@/engine/cell-block-format';",
+          "import { getLocale } from '@/i18n/core.ts';",
+          "import { ModalDialog } from '@/ui/dialog';",
+          "import { showToast } from '@/ui/toast';",
+          `import { ieumFormatCopy, ieumFormatPaste } from '${FORMAT_COPY_MODULE}';`,
+        ].join('\n'),
+      },
+      {
+        find: [
+          'let compareSessionStore: CompareSessionStore | null = null;',
+          '',
+          'export const editCommands: CommandDef[] = [',
+        ].join('\n'),
+        replace: [
+          'let compareSessionStore: CompareSessionStore | null = null;',
+          '',
+          '/** The studio parts the app format-copy module builds on. */',
+          'function formatCopyStudio() {',
+          '  return {',
+          '    ModalDialog,',
+          '    showToast,',
+          '    ApplyCharFormatCommand,',
+          '    ApplyParaFormatCommand,',
+          '    selectCellIndicesInRange,',
+          '    paraFormatTargetsForCellBlock,',
+          '    withCellPathTarget,',
+          '    locale: getLocale(),',
+          '  };',
+          '}',
+          '',
+          'export const editCommands: CommandDef[] = [',
+        ].join('\n'),
+      },
+      {
+        find: [
+          "    id: 'edit:format-copy',",
+          "    label: t('command.edit.formatCopy.label'),",
+          "    icon: 'icon-format-copy',",
+          "    shortcutLabel: 'Alt+C',",
+          '    canExecute: (ctx) => ctx.hasDocument,',
+        ].join('\n'),
+        replace: [
+          "    id: 'edit:format-copy',",
+          "    label: t('command.edit.formatCopy.label'),",
+          "    icon: 'icon-format-copy',",
+          "    shortcutLabel: 'Alt+C',",
+          '    canExecute: (ctx) => ctx.hasDocument && !ctx.isFormMode,',
+        ].join('\n'),
+      },
+      {
+        find: [
+          '    execute(services) {',
+          '      services.getInputHandler()?.performFormatCopy();',
+          '    },',
+        ].join('\n'),
+        replace: [
+          '    execute(services) {',
+          '      ieumFormatCopy(services, formatCopyStudio());',
+          '    },',
+        ].join('\n'),
+      },
+      {
+        find: [
+          '    execute(services) {',
+          '      services.getInputHandler()?.performFormatPaste();',
+          '    },',
+        ].join('\n'),
+        replace: [
+          '    execute(services) {',
+          '      ieumFormatPaste(services, formatCopyStudio());',
+          '    },',
+        ].join('\n'),
+      },
+    ],
+  },
+  'studio-format-copy-state': {
+    file: /[\\/]rhwp-studio[\\/]src[\\/]engine[\\/]input-handler\.ts$/,
+    edits: [
+      {
+        find: "import { selectCellIndicesInRange, paraFormatTargetsForCellBlock, withCellPathTarget } from './cell-block-format';",
+        replace: [
+          "import { selectCellIndicesInRange, paraFormatTargetsForCellBlock, withCellPathTarget } from './cell-block-format';",
+          `import { ieumHasCopiedFormat } from '${FORMAT_COPY_MODULE}';`,
+        ].join('\n'),
+      },
+      {
+        find: '  hasCopiedFormat(): boolean { return this.formatCopyState !== null; }',
+        replace: '  hasCopiedFormat(): boolean { return ieumHasCopiedFormat(this); }',
+      },
+    ],
+  },
+  'studio-single-cell-resize': {
+    file: /[\\/]rhwp-studio[\\/]src[\\/]core[\\/]wasm-bridge\.ts$/,
+    // the engine call of vendor/rhwp-core patch 0016, ahead of a neighbour the bridge has once
+    find: '  moveTableOffset(sec: number, parentPara: number, controlIdx: number, deltaH: number, deltaV: number): { ok: boolean; ppi: number; ci: number } {',
+    replace: [
+      '  /** One cell boundary (Hangul Shift+arrow): the target and its next cell move oppositely. */',
+      '  resizeTableCell(',
+      '    sec: number, parentPara: number, controlIdx: number,',
+      '    row: number, col: number, vertical: boolean, forward: boolean,',
+      '  ): { ok: boolean; moved?: boolean; reason?: string } {',
+      "    if (!this.doc) throw new Error('문서가 로드되지 않았습니다');",
+      '    return JSON.parse((this.doc as any).resizeTableCell(sec, parentPara, controlIdx, row, col, vertical, forward));',
+      '  }',
+      '',
+      '  /** Cells placed at given starts and ends along one axis (vendor/rhwp-core patch 0027). */',
+      '  setTableCellExtents(',
+      '    sec: number, parentPara: number, controlIdx: number, vertical: boolean,',
+      '    extents: Array<{ cellIdx: number; start: number; end: number }>,',
+      '  ): { ok: boolean; reason?: string } {',
+      "    if (!this.doc) throw new Error('문서가 로드되지 않았습니다');",
+      '    return JSON.parse((this.doc as any).setTableCellExtents(sec, parentPara, controlIdx, vertical, JSON.stringify(extents)));',
+      '  }',
+      '',
+      '  moveTableOffset(sec: number, parentPara: number, controlIdx: number, deltaH: number, deltaV: number): { ok: boolean; ppi: number; ci: number } {',
+    ].join('\n'),
+  },
+  // Hangul puts a row below a merged cell after the merge's last row, not through its
+  // first row. The engine's insertTableRow extends a merge it crosses; using the last
+  // row makes the new row sit below it. A caret in a plain cell inside another merge
+  // still uses that cell's row, as Hangul does.
+  'studio-merged-row-below': {
+    file: /[\\/]rhwp-studio[\\/]src[\\/]command[\\/]commands[\\/]table\.ts$/,
+    edits: [
+      {
+        find: "import { t } from '../../i18n/index.ts';",
+        replace:
+          "import { t } from '../../i18n/index.ts';\n" +
+          `import { insertRowBelow } from '${HANCOM_KEYS_MODULE}';`,
+      },
+      {
+        find: [
+          "          case 'row-below':",
+          '            wasm.insertTableRow(pos.sectionIndex, pos.parentParaIndex!, pos.controlIndex!, cellInfo.row, true);',
+          '            break;',
+        ].join('\n'),
+        replace: [
+          "          case 'row-below': {",
+          '            const afterRow = cellInfo.row + Math.max(1, cellInfo.rowSpan || 1) - 1 + i;',
+          '            wasm.insertTableRow(pos.sectionIndex, pos.parentParaIndex!, pos.controlIndex!, afterRow, true);',
+          '            if ((cellInfo.colSpan || 1) > 1) {',
+          '              wasm.mergeTableCells(pos.sectionIndex, pos.parentParaIndex!, pos.controlIndex!, afterRow + 1, cellInfo.col, afterRow + 1, cellInfo.col + Math.max(1, cellInfo.colSpan || 1) - 1);',
+          '            }',
+          '            break;',
+          '          }',
+        ].join('\n'),
+      },
+      {
+        find: [
+          "    id: 'table:insert-row-below',",
+          "    label: t('command.table.insertRowBelow.registryLabel'),",
+          '    canExecute: inTable,',
+          '    execute(services) {',
+          '      const ih = services.getInputHandler();',
+          '      if (!ih) return;',
+          '      const pos = ih.getCursorPosition();',
+          '      if (pos.parentParaIndex === undefined || pos.controlIndex === undefined || pos.cellIndex === undefined) return;',
+          '      const cellInfo = services.wasm.getCellInfo(pos.sectionIndex, pos.parentParaIndex, pos.controlIndex, pos.cellIndex);',
+          '      safeTableOp(() => ih.executeOperation({',
+          "        kind: 'snapshot',",
+          "        operationType: 'insertTableRow',",
+          '        operation: (wasm) => {',
+          '          wasm.insertTableRow(pos.sectionIndex, pos.parentParaIndex!, pos.controlIndex!, cellInfo.row, true);',
+          '          return pos;',
+          '        },',
+          "      }), '줄 추가');",
+          '    },',
+          '  },',
+        ].join('\n'),
+        replace: [
+          "    id: 'table:insert-row-below',",
+          "    label: t('command.table.insertRowBelow.registryLabel'),",
+          '    canExecute: inTable,',
+          '    execute(services) {',
+          '      insertRowBelow(services);',
+          '    },',
+          '  },',
+        ].join('\n'),
+      },
+    ],
+  },
+  'studio-hancom-equal-cells': {
+    file: /[\\/]rhwp-studio[\\/]src[\\/]command[\\/]commands[\\/]table\.ts$/,
+    edits: [
+      {
+        find: "import { t } from '../../i18n/index.ts';",
+        replace:
+          "import { t } from '../../i18n/index.ts';\n" +
+          "import { getLocale } from '@/i18n/core.ts';\n" +
+          `import { equalizeTableCells } from '${HANCOM_KEYS_MODULE}';`,
+      },
+      {
+        // the stub commands were disabled because a per-row/column boundary cannot be
+        // stored; equalizing the rows/columns of the selection can, through deltas
+        find: [
+          '// HWP/HWPX cannot persist independent per-row or per-column geometry. Keep',
+          '// commands that require that representation unavailable at command routing.',
+          'const localTableGeometryCanPersist = () => false;',
+          '',
+        ].join('\n'),
+        replace: '',
+      },
+      {
+        find: [
+          '  {',
+          "    id: 'table:cell-height-equal',",
+          "    label: t('command.table.cellHeightEqual.label'),",
+          "    shortcutLabel: 'H',",
+          '    canExecute: localTableGeometryCanPersist,',
+          '    execute() {},',
+          '  },',
+          '  {',
+          "    id: 'table:cell-width-equal',",
+          "    label: t('command.table.cellWidthEqual.label'),",
+          "    shortcutLabel: 'W',",
+          '    canExecute: localTableGeometryCanPersist,',
+          '    execute() {},',
+          '  },',
+        ].join('\n'),
+        replace: [
+          '  {',
+          "    id: 'table:cell-height-equal',",
+          "    label: t('command.table.cellHeightEqual.label'),",
+          "    shortcutLabel: 'H',",
+          '    canExecute: inTableOrCellSelection,',
+          '    execute(services) {',
+          "      equalizeTableCells(services, 'height', getLocale() === 'ko');",
+          '    },',
+          '  },',
+          '  {',
+          "    id: 'table:cell-width-equal',",
+          "    label: t('command.table.cellWidthEqual.label'),",
+          "    shortcutLabel: 'W',",
+          '    canExecute: inTableOrCellSelection,',
+          '    execute(services) {',
+          "      equalizeTableCells(services, 'width', getLocale() === 'ko');",
+          '    },',
+          '  },',
+        ].join('\n'),
+      },
+    ],
+  },
   'studio-hancom-chords': {
     file: /[\\/]rhwp-studio[\\/]src[\\/]engine[\\/]input-handler-keyboard\.ts$/,
     edits: [
@@ -289,13 +1021,24 @@ const PATCHES = {
         find: "import { matchShortcut, defaultShortcuts } from '@/command/shortcut-map';",
         replace:
           "import { matchShortcut, defaultShortcuts } from '@/command/shortcut-map';\n" +
-          `import { hancomChordKey, hancomChordStart, hancomContextKey, hancomCtrlKey } from '${HANCOM_KEYS_MODULE}';`,
+          `import { hancomCellBlockKey, hancomCellKey, hancomChordKey, hancomChordStart, hancomContextKey, hancomCtrlKey, hancomPictureObjectKey, hancomTableObjectKey } from '${HANCOM_KEYS_MODULE}';`,
       },
       // the second key, first of all (the studio's own Ctrl+K/M/G flags are never set again)
       {
         find: '  this._cellBlockLetterImeGuard?.reset();',
         replace:
           '  this._cellBlockLetterImeGuard?.reset();\n  if (hancomChordKey(this, e)) return;',
+      },
+      // a table-object key, and H/W in a cell block, before the studio closes the selection
+      // on an unhandled letter and lets it into the document
+      {
+        find: '  if (this.connectorDrawingMode) {',
+        replace:
+          '  if (hancomTableObjectKey(this, e)) return;\n' +
+          '  if (hancomPictureObjectKey(this, e)) return;\n' +
+          '  if (hancomCellBlockKey(this, e, (ev: KeyboardEvent) => matchShortcut(ev, defaultShortcuts))) return;\n' +
+          '  if (hancomCellKey(this, e)) return;\n' +
+          '  if (this.connectorDrawingMode) {',
       },
       // the first key, or a key that depends on the caret, while the IME composes, where the
       // studio took Ctrl+M alone
@@ -328,34 +1071,2206 @@ const PATCHES = {
       },
     ],
   },
-  'studio-font-memo-state': {
-    file: /[\\/]rhwp-studio[\\/]src[\\/]core[\\/]wasm-bridge\.ts$/,
-    find: 'let canvasFontSubstitutionInstalled = false;',
+  // a copied block's pictures and tables reach another document (studio-plugin/clipboard-html.mjs),
+  // and a picture or table copied in another editor is not taken for this one's own
+  'studio-clipboard-objects': {
+    file: /[\\/]rhwp-studio[\\/]src[\\/]engine[\\/]input-handler-keyboard\.ts$/,
+    edits: [
+      {
+        find: "import { tableObjectClipboardTarget } from './table-object-clipboard-target';",
+        replace: [
+          "import { tableObjectClipboardTarget } from './table-object-clipboard-target';",
+          `import { ieumPasteHtmlInCell, ieumPictureHtml, ieumPictureIsRendering, ieumSelectionHtml } from '${CLIPBOARD_HTML_MODULE}';`,
+        ].join('\n'),
+      },
+      {
+        find: '          html = this.wasm.exportSelectionHtml(',
+        replace: '          html = ieumSelectionHtml(this.wasm,',
+      },
+      // the engine's HTML paste into a cell drops the pictures; the app puts them in the cell
+      {
+        find: [
+          '        result = wasm.pasteHtmlInCellByPath(',
+          '          p.sectionIndex, p.parentParaIndex!, JSON.stringify(p.cellPath), p.charOffset, htmlForCore,',
+          '        );',
+        ].join('\n'),
+        replace: [
+          '        result = ieumPasteHtmlInCell(wasm, p, htmlForCore, (part: string) => wasm.pasteHtmlInCellByPath(',
+          '          p.sectionIndex, p.parentParaIndex!, JSON.stringify(p.cellPath), p.charOffset, part,',
+          '        ));',
+        ].join('\n'),
+      },
+      {
+        find: [
+          '        result = wasm.pasteHtmlInCell(',
+          '          p.sectionIndex, p.parentParaIndex, p.controlIndex!,',
+          '          p.cellIndex!, p.cellParaIndex!, p.charOffset, htmlForCore,',
+          '        );',
+        ].join('\n'),
+        replace: [
+          '        result = ieumPasteHtmlInCell(wasm, p, htmlForCore, (part: string) => wasm.pasteHtmlInCell(',
+          '          p.sectionIndex, p.parentParaIndex!, p.controlIndex!,',
+          '          p.cellIndex!, p.cellParaIndex!, p.charOffset, part,',
+          '        ));',
+        ].join('\n'),
+      },
+      // the studio pastes its own engine clipboard when the plain text is the same "[그림]"/"[표]"
+      // as its last copied object, for a browser that drops the HTML; HTML marked by another
+      // editor (another tab) is that editor's copy
+      {
+        find: '    text === internalClipboardText;',
+        replace: [
+          '    text === internalClipboardText &&',
+          '    readRhwpClipboardToken(html) === null;',
+        ].join('\n'),
+      },
+      // a picture copied in another editor also lies on the clipboard as a picture file, at its
+      // own pixel size; that editor's HTML has the size the picture had in its document. A
+      // spreadsheet copy's picture is a rendering of its table, which pastes as a table
+      {
+        find: ['  const items = clipboardData?.items;', '  if (items) {'].join('\n'),
+        replace: [
+          '  const items = clipboardData?.items;',
+          '  if (items && readRhwpClipboardToken(html) === null && !ieumPictureIsRendering(html, text)) {',
+        ].join('\n'),
+      },
+      // a picture file from the clipboard went in with insertPicture, floating at the paper's top
+      // left corner in the body and over the text in a cell; as HTML it goes in at the caret
+      {
+        find: '    // 스냅샷으로 삽입 (Undo 지원)\n',
+        replace: [
+          '    const ieumHtml = ieumPictureHtml(data, ext, wHwp, hHwp);',
+          '    if (ieumHtml) {',
+          "      pasteExternalHtml.call(this, ieumHtml, '', hasSelection);",
+          '      return;',
+          '    }',
+          '    // 스냅샷으로 삽입 (Undo 지원)',
+          '',
+        ].join('\n'),
+      },
+      // Hangul's document model is pasted in the body only; elsewhere the studio goes on to the
+      // HTML path. Its snapshot step said "skipped" with undefined, which the history takes for
+      // the caret's new place: the caret lost its cell and the HTML landed at the body's top.
+      // null is the history's "nothing changed"
+      {
+        find: '        if (p.parentParaIndex !== undefined) return undefined;',
+        replace: '        if (p.parentParaIndex !== undefined) return null;',
+      },
+      {
+        find: '        if (!parsed.ok) return undefined;',
+        replace: '        if (!parsed.ok) return hasSelection ? this.cursor.getPosition() : null;',
+      },
+    ],
+  },
+  'studio-memo-command': {
+    file: /[\\/]rhwp-studio[\\/]src[\\/]command[\\/]commands[\\/]insert\.ts$/,
+    find: "  stub('insert:comment', t('command.insert.comment.label'), 'icon-comment'),",
     replace: [
-      'let canvasFontSubstitutionInstalled = false;',
-      '',
-      '// one answer per font string until the next microtask checkpoint: a page draw sets the',
-      '// same strings thousands of times, and what the answer depends on changes between tasks',
-      'let canvasFontMemo: Map<string, string> | null = null;',
-      'function memoSubstituteCssFontFamily(cssFont: string): string {',
-      '  if (!canvasFontMemo) {',
-      '    canvasFontMemo = new Map();',
-      '    queueMicrotask(() => { canvasFontMemo = null; });',
-      '  }',
-      '  let out = canvasFontMemo.get(cssFont);',
-      '  if (out === undefined) {',
-      '    out = substituteCssFontFamily(cssFont);',
-      '    canvasFontMemo.set(cssFont, out);',
-      '  }',
-      '  return out;',
-      '}',
+      '  {',
+      "    id: 'insert:comment',",
+      "    label: t('command.insert.comment.label'),",
+      "    icon: 'icon-comment',",
+      '    canExecute: (ctx) => ctx.hasDocument && !ctx.isFormMode,',
+      '    execute() {',
+      '      // the app listens on this window and opens its memo editor',
+      "      globalThis.dispatchEvent(new CustomEvent('ieum:memo-insert'));",
+      '    },',
+      '  },',
     ].join('\n'),
   },
-  'studio-font-memo-use': {
+  'studio-memo-context-menu': {
+    file: /[\\/]rhwp-studio[\\/]src[\\/]engine[\\/]input-handler\.ts$/,
+    edits: [
+      // the menu of body text (and of a header or footer)
+      {
+        find:
+          "      { type: 'command', commandId: 'format:para-num-shape', label: '문단 번호 모양(N)...' },\n" +
+          '    ];',
+        replace:
+          "      { type: 'command', commandId: 'format:para-num-shape', label: '문단 번호 모양(N)...' },\n" +
+          "      { type: 'separator' },\n" +
+          "      { type: 'command', commandId: 'insert:comment' },\n" +
+          '    ];',
+      },
+      // the menu inside a table cell, after the cell's own commands
+      {
+        find:
+          "      { type: 'command', commandId: 'table:formula', label: '계산식(F)...' },\n" +
+          "      { type: 'separator' },",
+        replace:
+          "      { type: 'command', commandId: 'table:formula', label: '계산식(F)...' },\n" +
+          "      { type: 'separator' },\n" +
+          "      { type: 'command', commandId: 'insert:comment' },\n" +
+          "      { type: 'separator' },",
+      },
+    ],
+  },
+  'studio-easy-words-context-menu': {
+    file: /[\\/]rhwp-studio[\\/]src[\\/]engine[\\/]input-handler\.ts$/,
+    edits: [
+      // the end of the menu of body text (and of a header or footer), after 메모
+      {
+        find: [
+          '    ];',
+          '  }',
+          '',
+          '  /** 특수 키 처리 (Backspace, Enter, 화살표, Ctrl+Z/Y) */',
+        ].join('\n'),
+        replace: [
+          `      { type: 'command', commandId: '${EASY_WORDS_COMMAND}' },`,
+          '    ];',
+          '  }',
+          '',
+          '  /** 특수 키 처리 (Backspace, Enter, 화살표, Ctrl+Z/Y) */',
+        ].join('\n'),
+      },
+      // the menu inside a table cell, after 메모 and before the table's own commands
+      {
+        find: [
+          "      { type: 'separator' },",
+          "      { type: 'command', commandId: 'table:split', label: '표 나누기' },",
+        ].join('\n'),
+        replace: [
+          `      { type: 'command', commandId: '${EASY_WORDS_COMMAND}' },`,
+          "      { type: 'separator' },",
+          "      { type: 'command', commandId: 'table:split', label: '표 나누기' },",
+        ].join('\n'),
+      },
+    ],
+  },
+  'studio-toc-index-context-menu': {
+    file: /[\\/]rhwp-studio[\\/]src[\\/]engine[\\/]input-handler\.ts$/,
+    edits: [
+      // body right-click menu: conditional TOC/Index refresh when caret is inside their range, plus Mark Index Entry
+      {
+        find: [
+          '    ];',
+          '  }',
+          '',
+          '  /** 특수 키 처리 (Backspace, Enter, 화살표, Ctrl+Z/Y) */',
+        ].join('\n'),
+        replace: [
+          `      ...(this.dispatcher?.isEnabled('${TOC_REFRESH_CONTEXT_COMMAND}') ? [{ type: 'command', commandId: '${TOC_REFRESH_COMMAND}' } as ContextMenuItem] : []),`,
+          `      { type: 'command', commandId: '${INDEX_MARK_COMMAND}' },`,
+          `      ...(this.dispatcher?.isEnabled('${INDEX_REFRESH_CONTEXT_COMMAND}') ? [{ type: 'command', commandId: '${INDEX_REFRESH_COMMAND}' } as ContextMenuItem] : []),`,
+          '    ];',
+          '  }',
+          '',
+          '  /** 특수 키 처리 (Backspace, Enter, 화살표, Ctrl+Z/Y) */',
+        ].join('\n'),
+      },
+      // table cell right-click menu: conditional TOC/Index refresh for table-layout TOC/Index blocks
+      {
+        find: [
+          "      { type: 'separator' },",
+          "      { type: 'command', commandId: 'table:split', label: '표 나누기' },",
+        ].join('\n'),
+        replace: [
+          `      ...(this.dispatcher?.isEnabled('${TOC_REFRESH_CONTEXT_COMMAND}') ? [{ type: 'command', commandId: '${TOC_REFRESH_COMMAND}' } as ContextMenuItem] : []),`,
+          `      ...(this.dispatcher?.isEnabled('${INDEX_REFRESH_CONTEXT_COMMAND}') ? [{ type: 'command', commandId: '${INDEX_REFRESH_COMMAND}' } as ContextMenuItem] : []),`,
+          "      { type: 'separator' },",
+          "      { type: 'command', commandId: 'table:split', label: '표 나누기' },",
+        ].join('\n'),
+      },
+    ],
+  },
+  'studio-memo-label-ko': {
+    file: /[\\/]rhwp-studio[\\/]src[\\/]i18n[\\/]locales[\\/]ko\.ts$/,
+    find: '  "command.insert.comment.label": "주석",',
+    replace: '  "command.insert.comment.label": "메모",',
+  },
+  'studio-memo-label-en': {
+    file: /[\\/]rhwp-studio[\\/]src[\\/]i18n[\\/]locales[\\/]en\.ts$/,
+    find: '  "command.insert.comment.label": "Comments",',
+    replace: '  "command.insert.comment.label": "Memo",',
+  },
+  'studio-table-props-border-bg': {
+    file: /[\\/]rhwp-studio[\\/]src[\\/]ui[\\/]table-cell-props-dialog\.ts$/,
+    edits: [
+      {
+        find: "import { t as i18nText } from '../i18n/index.ts';",
+        replace: [
+          "import { t as i18nText } from '../i18n/index.ts';",
+          '',
+          '/**',
+          " * ieum: the table's border and fill go to the engine only when the dialog changed them.",
+          ' * The engine hands what it gets to the table and to every cell, so sending the values the',
+          " * dialog merely showed would overwrite each cell's own lines and fill. The dialog shows a",
+          ' * fill it cannot edit (gradient, picture) as none; HWP patternType is -1 for none and',
+          ' * 0..5 for hatch patterns (rhwp v0.9.1 #8978).',
+          ' */',
+          'function ieumKeepUnchangedTableLook(next: Record<string, unknown>, now: TableProperties): void {',
+          "  const sides = ['borderLeft', 'borderRight', 'borderTop', 'borderBottom'] as const;",
+          "  const color = (value: unknown) => String(value ?? '').toLowerCase();",
+          '  const pattern = (value: unknown) => {',
+          '    const n = Number(value);',
+          '    return Number.isFinite(n) && n >= 0 ? n : -1;',
+          '  };',
+          '  const sameLine = (a: any, b: any) =>',
+          '    !!a && !!b && a.type === b.type && a.width === b.width && color(a.color) === color(b.color);',
+          '  if (sides.every((side) => sameLine(next[side], (now as any)[side]))) {',
+          '    for (const side of sides) delete next[side];',
+          '  }',
+          '  if (next.fillType === undefined) return;',
+          "  const wasSolid = now.fillType === 'solid';",
+          "  const unchanged = next.fillType === 'none'",
+          '    ? !wasSolid',
+          '    : wasSolid &&',
+          '      color(next.fillColor) === color(now.fillColor) &&',
+          '      pattern(next.patternType) === pattern(now.patternType) &&',
+          '      (pattern(next.patternType) < 0 || color(next.patternColor) === color(now.patternColor));',
+          '  if (unchanged) {',
+          "    for (const key of ['fillType', 'fillColor', 'patternColor', 'patternType']) delete next[key];",
+          "  } else if (next.fillType === 'solid' && pattern(next.patternType) < 0) {",
+          '    next.patternType = -1;',
+          '  }',
+          '}',
+        ].join('\n'),
+      },
+      // Hangul's 표/셀 속성 opened from a cell has the table's border and fill tabs too
+      {
+        find:
+          '      // 표 선택 시에만 테두리·배경 탭 표시 (셀 선택 시 별도 "셀 테두리/배경" 대화상자 사용)\n' +
+          "      ...(this.mode === 'table' ? [",
+        replace:
+          "      // ieum: from a cell too, like Hangul's 표/셀 속성 (the cells' own look stays in 셀 테두리/배경)\n" +
+          '      ...(true ? [',
+      },
+      {
+        find: "    if (this.mode === 'table' && this.borderTarget === 'table' && this.borderEdits) {",
+        replace: "    if (this.borderTarget === 'table' && this.borderEdits) {",
+      },
+      {
+        find: "    if (this.mode === 'table' && this.bgTarget === 'table' && this.bgColorRadio) {",
+        replace: "    if (this.bgTarget === 'table' && this.bgColorRadio) {",
+      },
+      {
+        find:
+          '    const applyProps = () => {\n' +
+          '      this.wasm.setCellProperties(sec, ppi, ci, this.cellIdx, newCellProps as Partial<CellProperties>);',
+        replace:
+          '    ieumKeepUnchangedTableLook(newTableProps, this.tableProps);\n' +
+          '    const applyProps = () => {\n' +
+          '      this.wasm.setCellProperties(sec, ppi, ci, this.cellIdx, newCellProps as Partial<CellProperties>);',
+      },
+    ],
+  },
+  'studio-hancom-cell-props-block': {
+    file: /[\\/]rhwp-studio[\\/]src[\\/]ui[\\/]table-cell-props-dialog\.ts$/,
+    edits: [
+      {
+        find: "import { t as i18nText } from '../i18n/index.ts';",
+        replace:
+          "import { t as i18nText } from '../i18n/index.ts';\n" +
+          `import { hancomBlockCellProps } from '${HANCOM_KEYS_MODULE}';`,
+      },
+      // the other cells of a block take the cell tab too, in the same undo step
+      {
+        find: [
+          '      this.wasm.setCellProperties(sec, ppi, ci, this.cellIdx, newCellProps as Partial<CellProperties>);',
+          '      this.wasm.setTableProperties(',
+        ].join('\n'),
+        replace: [
+          '      this.wasm.setCellProperties(sec, ppi, ci, this.cellIdx, newCellProps as Partial<CellProperties>);',
+          '      hancomBlockCellProps(this, newCellProps);',
+          '      this.wasm.setTableProperties(',
+        ].join('\n'),
+      },
+    ],
+  },
+  'studio-hancom-row-drag': {
+    file: /[\\/]rhwp-studio[\\/]src[\\/]engine[\\/]input-handler-table\.ts$/,
+    edits: [
+      {
+        find: "import { showToast } from '@/ui/toast';",
+        replace:
+          "import { showToast } from '@/ui/toast';\n" +
+          `import { hancomRowDragUpdates } from '${HANCOM_KEYS_MODULE}';`,
+      },
+      // a horizontal border may go past the next line: the table grows below it
+      {
+        find: '    max: next === undefined ? Infinity : next - minSizePx,',
+        replace:
+          "    max: next === undefined || edge.type === 'row' ? Infinity : next - minSizePx,",
+      },
+      {
+        find: "  if (state.edge.type === 'col' && inCellSel && range) {",
+        replace: [
+          "  // ieum: Hangul's plain drag of a horizontal border sizes the row above and the table",
+          '  const ieumRowDrag = hancomRowDragUpdates(this, state, deltaHwpUnit, e.altKey);',
+          '  if (ieumRowDrag) {',
+          '    updates = ieumRowDrag;',
+          '    if (updates.length === 0) {',
+          '      this.cleanupResizeDrag();',
+          '      return;',
+          '    }',
+          "  } else if (state.edge.type === 'col' && inCellSel && range) {",
+        ].join('\n'),
+      },
+    ],
+  },
+  'studio-hancom-block-format-dialogs': {
+    file: /[\\/]rhwp-studio[\\/]src[\\/]command[\\/]commands[\\/]format\.ts$/,
+    edits: [
+      // 글자 모양 on a cell block: the studio wanted a text selection and did nothing
+      {
+        find: '      const savedSel = ih.getSelection();\n      if (!savedSel) return;',
+        replace: [
+          '      const savedSel = ih.getSelection();',
+          "      // ieum: on a cell block (F5) the dialog formats every selected cell, as Hangul's does",
+          '      const ieumBlock = ih.isInCellSelectionMode();',
+          '      if (!savedSel && !ieumBlock) return;',
+        ].join('\n'),
+      },
+      {
+        find: '        ih.applyCharPropsToRange(savedSel.start, savedSel.end, mods);',
+        replace: [
+          "        // the editor's own block path (format-char), one undo step for the block",
+          "        if (ieumBlock) services.eventBus.emit('format-char', mods);",
+          '        else if (savedSel) ih.applyCharPropsToRange(savedSel.start, savedSel.end, mods);',
+        ].join('\n'),
+      },
+      // 문단 모양 on a cell block: the studio formatted the caret's paragraph alone
+      {
+        find: [
+          '      dialog.onApply = (mods) => {',
+          '        ih.applyParaPropsToRange(range.start, range.end, mods);',
+          '      };',
+        ].join('\n'),
+        replace: [
+          "      // ieum: on a cell block (F5) every selected cell's paragraphs, as Hangul's does",
+          '      const ieumBlock = ih.isInCellSelectionMode();',
+          '      dialog.onApply = (mods) => {',
+          '        if (ieumBlock) ih.applyParaPropsAtCursor(mods);',
+          '        else ih.applyParaPropsToRange(range.start, range.end, mods);',
+          '      };',
+        ].join('\n'),
+      },
+    ],
+  },
+  'studio-table-props-menu-label': {
+    file: /[\\/]rhwp-studio[\\/]src[\\/]engine[\\/]input-handler\.ts$/,
+    // the cell menu opens the whole 표/셀 속성 dialog; Hangul names it so
+    find: "      { type: 'command', commandId: 'table:cell-props', label: '셀 속성...' },",
+    replace: "      { type: 'command', commandId: 'table:cell-props', label: '표/셀 속성(P)...' },",
+  },
+  'studio-pc-fonts': {
+    file: /[\\/]rhwp-studio[\\/]src[\\/]main\.ts$/,
+    edits: [
+      {
+        find: ['  resolveLocalFont,', "} from '@/core/local-fonts';"].join('\n'),
+        replace: [
+          '  resolveLocalFont,',
+          "} from '@/core/local-fonts';",
+          `import { installFontPresence, noteFontsApplying, refreshPcFonts } from '${PC_FONTS_MODULE}';`,
+          // under a name of its own: rhwp v0.9.0's main.ts no longer imports it, and a later
+          // one that does must not clash
+          "import { getLocalFontRecords as ieumLocalFontRecords } from '@/core/local-fonts';",
+        ].join('\n'),
+      },
+      {
+        find: "import { loadWebFonts, resolveCanvasKitFontPlan } from '@/core/font-loader';",
+        replace:
+          "import { getDetectedOSFonts, loadWebFonts, resolveCanvasKitFontPlan } from '@/core/font-loader';",
+      },
+      {
+        find: ['    setupEventListeners();', '    setupModalFocusRestore();'].join('\n'),
+        replace: [
+          '    setupEventListeners();',
+          '    installFontPresence({',
+          '      resolveLocalFont,',
+          '      records: () => ieumLocalFontRecords({ includeRegistered: true }),',
+          '      detected: getDetectedOSFonts,',
+          '      state: getLocalFontState,',
+          '    });',
+          '    void refreshPcFonts({',
+          '      queryLocalFonts: (globalThis as { queryLocalFonts?: () => Promise<{ family: string; fullName: string; postscriptName: string }[]> }).queryLocalFonts?.bind(globalThis),',
+          '      loadStored: loadStoredLocalFonts,',
+          '      records: () => ieumLocalFontRecords({ includeRegistered: true }),',
+          '      detect: () => detectLocalFonts({ force: true }),',
+          "      changed: () => eventBus.emit('local-fonts-changed', { source: 'pc-fonts' }),",
+          '      document,',
+          '    });',
+          '    setupModalFocusRestore();',
+        ].join('\n'),
+      },
+      // The studio works the document's fonts out again when told the PC's fonts changed,
+      // without waiting: the work is handed over, so a print waits for the substitution the
+      // screen then draws with (pc-fonts.mjs printFontsReady).
+      {
+        find: "    void wasm.prepareDeclaredFontEnvironment('canvas2d').then(changed => {",
+        replace:
+          "    noteFontsApplying(wasm.prepareDeclaredFontEnvironment('canvas2d').then(changed => {",
+      },
+      {
+        find: "    }).catch(error => console.warn('[LocalFonts] View refresh failed:', error));",
+        replace:
+          "    }).catch(error => console.warn('[LocalFonts] View refresh failed:', error)));",
+      },
+    ],
+  },
+  'studio-font-file-reads': {
+    file: /[\\/]rhwp-studio[\\/]src[\\/]core[\\/]local-fonts\.ts$/,
+    edits: [
+      {
+        find: "import { setRawCanvasFont } from './canvas-font-raw.ts';",
+        replace: [
+          "import { setRawCanvasFont } from './canvas-font-raw.ts';",
+          `import { fontFilesToRead, readHostFontNames } from '${PC_FONTS_MODULE}';`,
+        ].join('\n'),
+      },
+      {
+        find: ['  let nextIndex = 0;', '  const worker = async (): Promise<void> => {'].join('\n'),
+        replace: [
+          '  const hostNames = await readHostFontNames(fontDataList);',
+          '  if (hostNames) {',
+          '    for (let index = 0; index < fontDataList.length; index += 1) {',
+          "      records[index] = makeLocalFontRecord(fontDataList[index], (hostNames[index] as SfntFontNames | null) ?? emptySfntFontNames(), 'local-font-access');",
+          '    }',
+          '    return normalizeLocalFontRecords(records.filter((record): record is LocalFontRecord => record !== null));',
+          '  }',
+          '  let nextIndex = 0;',
+          '  const readsFile = fontFilesToRead(fontDataList);',
+          '  const worker = async (): Promise<void> => {',
+        ].join('\n'),
+      },
+      {
+        find: "      records[index] = makeLocalFontRecord(fontData, await readSfntFontNames(fontData), 'local-font-access');",
+        replace:
+          "      records[index] = makeLocalFontRecord(fontData, readsFile(index) ? await readSfntFontNames(fontData) : emptySfntFontNames(), 'local-font-access');",
+      },
+    ],
+  },
+  // Hancom's equation fonts are written in private code points, which mean nothing in the
+  // font the substitution would put in their place while the PC's fonts are not known yet
+  // or the font is not there. The app's own layer (equation-fonts.mjs) sits under the
+  // substitution: it keeps the font when the PC has it and decodes the run when it has not.
+  'studio-equation-fonts': {
     file: /[\\/]rhwp-studio[\\/]src[\\/]core[\\/]wasm-bridge\.ts$/,
-    find: 'descriptor.set!.call(this, scopedHostCanvasFont(String(value)) ?? substituteCssFontFamily(String(value)));',
+    find: "import { rememberRawCanvasFontDescriptor } from './canvas-font-raw';",
+    replace: [
+      "import { rememberRawCanvasFontDescriptor } from './canvas-font-raw';",
+      `import { installEquationFonts } from '${PC_FONTS_MODULE}';`,
+      '',
+      '// before the substitution below wraps the canvas font: it must sit on top of this',
+      'installEquationFonts();',
+    ].join('\n'),
+  },
+  'studio-equation-fonts-subst': {
+    file: /[\\/]rhwp-studio[\\/]src[\\/]core[\\/]font-substitution\.ts$/,
+    edits: [
+      {
+        find: "import { TEXT_SYMBOL_FONT_FAMILIES } from './text-symbol-font.ts';",
+        replace: [
+          "import { TEXT_SYMBOL_FONT_FAMILIES } from './text-symbol-font.ts';",
+          `import { isEquationGlyphFont } from '${PC_FONTS_MODULE}';`,
+        ].join('\n'),
+      },
+      {
+        find: ['  const primary = incoming[0];', '  if (!primary) return cssFont;'].join('\n'),
+        replace: [
+          '  const primary = incoming[0];',
+          '  if (!primary) return cssFont;',
+          '  if (isEquationGlyphFont(primary)) return cssFont;',
+        ].join('\n'),
+      },
+    ],
+  },
+  'studio-missing-font-marks': {
+    file: /[\\/]rhwp-studio[\\/]src[\\/]ui[\\/]toolbar\.ts$/,
+    edits: [
+      {
+        find: "import { getLocalFonts } from '@/core/local-fonts';",
+        replace: [
+          "import { getLocalFonts } from '@/core/local-fonts';",
+          `import { markFontOption, watchFontBox } from '${PC_FONTS_MODULE}';`,
+        ].join('\n'),
+      },
+      {
+        find: "    this.fontName = container.querySelector('#font-name')!;",
+        replace: [
+          "    this.fontName = container.querySelector('#font-name')!;",
+          '    watchFontBox(this.fontName);',
+        ].join('\n'),
+      },
+      {
+        find: '        button.title = entry.label;',
+        replace: [
+          '        button.title = entry.label;',
+          '        markFontOption(button, entry.value);',
+        ].join('\n'),
+      },
+    ],
+  },
+  'studio-wheel-zoom': {
+    file: /[\\/]rhwp-studio[\\/]src[\\/]view[\\/]viewport-manager\.ts$/,
+    edits: [
+      {
+        find: "import { ZoomInputSettle, type ZoomInputSettleHost } from './zoom-input-settle.ts';",
+        replace:
+          "import { ZoomInputSettle, type ZoomInputSettleHost } from './zoom-input-settle.ts';\n" +
+          `import { createZoomWheelClassifier, wheelZoomStep } from '${WHEEL_ZOOM_MODULE}';`,
+      },
+      {
+        find: '  private onWheelBound: (e: WheelEvent) => void;',
+        replace: [
+          '  private onWheelBound: (e: WheelEvent) => void;',
+          '  private readonly ieumZoomWheel = createZoomWheelClassifier();',
+        ].join('\n'),
+      },
+      {
+        find: '    const target = this.clampZoom(this.zoomTarget * Math.exp(-boundedDelta * WHEEL_ZOOM_SENSITIVITY));',
+        replace: [
+          '    const wheelIntent = this.ieumZoomWheel.feed(e, e.timeStamp);',
+          '    if (wheelIntent === null) return;',
+          '    const target = this.clampZoom(wheelZoomStep(',
+          '      this.zoomTarget,',
+          "      wheelIntent === 'zoom-in' ? 1 : -1,",
+          '      MIN_DOCUMENT_ZOOM,',
+          '      MAX_DOCUMENT_ZOOM,',
+          '    ));',
+        ].join('\n'),
+      },
+    ],
+  },
+  // Paste onto a cell block fills the selected cells (hancom-keys.mjs); the key handler
+  // keeps the block for Ctrl+V, and the paste event asks the module before the studio
+  // pastes at the caret. Menu "paste" comes through the same event.
+  'studio-cell-block-paste': {
+    file: /[\\/]rhwp-studio[\\/]src[\\/]engine[\\/]input-handler-keyboard\.ts$/,
+    edits: [
+      {
+        find: "import { matchShortcut, defaultShortcuts } from '@/command/shortcut-map';",
+        replace:
+          "import { matchShortcut, defaultShortcuts } from '@/command/shortcut-map';\n" +
+          `import { hancomPasteCells } from '${HANCOM_KEYS_MODULE}';`,
+      },
+      {
+        find: [
+          '  if (this.isFormMode?.()) return;',
+          '',
+          '  // 개체/표 선택 모드 해제 후 붙여넣기 진행',
+        ].join('\n'),
+        replace: [
+          '  if (this.isFormMode?.()) return;',
+          '  if (hancomPasteCells(this, e)) return;',
+          '',
+          '  // 개체/표 선택 모드 해제 후 붙여넣기 진행',
+        ].join('\n'),
+      },
+    ],
+  },
+  // Hangul's corner handle keeps a picture's ratio, and any object's with Shift; Shift while
+  // moving keeps the object on one axis (studio-plugin/object-drag.mjs)
+  'studio-hancom-object-drag': {
+    file: /[\\/]rhwp-studio[\\/]src[\\/]engine[\\/]input-handler-picture\.ts$/,
+    edits: [
+      {
+        find: "import { computeArrowResize, MIN_SIZE_HWP, type ArrowKey } from './picture-resize';",
+        replace: [
+          "import { computeArrowResize, MIN_SIZE_HWP, type ArrowKey } from './picture-resize';",
+          `import { axisLockedPoint, cropChange, cropDragBox, dragKeepsRatio, ratioResizedBox } from '${HANCOM_KEYS_MODULE}';`,
+        ].join('\n'),
+      },
+      // one object: the studio's diagonal sizing of a turned picture, for every kept ratio
+      {
+        find: '  if (isRotatedImageCornerResize(state, angleDeg)) {',
+        replace:
+          '  if (isRotatedImageCornerResize(state, angleDeg) || dragKeepsRatio(state, e.shiftKey)) {',
+      },
+      // a picture's Shift+corner crops it: the frame follows the crop (cropDragBox), live and at
+      // the end, and the crop amounts are written with the frame (cropChange)
+      {
+        find: [
+          '  const newBbox = state.multiRefs',
+          '    ? this.calcResizedBbox(e, zoom)',
+          '    : calcResizedBboxRotated(state, e, zoom);',
+        ].join('\n'),
+        replace: [
+          '  const newBbox = state.multiRefs',
+          '    ? this.calcResizedBbox(e, zoom)',
+          '    : (cropDragBox(this, state, e, zoom) ?? calcResizedBboxRotated(state, e, zoom));',
+        ].join('\n'),
+      },
+      {
+        find: '        vertOffset: beforeVertOffset + (newVertOffset - origVertOffset),\n      });',
+        replace:
+          '        vertOffset: beforeVertOffset + (newVertOffset - origVertOffset),\n        ...cropChange(state),\n      });',
+      },
+      {
+        find: [
+          '  // 단일 선택 리사이즈 (회전 반영: pivot 고정, 위치도 갱신)',
+          '  const newBbox = calcResizedBboxRotated(state, e, zoom);',
+        ].join('\n'),
+        replace: [
+          '  // 단일 선택 리사이즈 (회전 반영: pivot 고정, 위치도 갱신)',
+          '  const newBbox = cropDragBox(this, state, e, zoom) ?? calcResizedBboxRotated(state, e, zoom);',
+        ].join('\n'),
+      },
+      {
+        find: '    if (Object.keys(updated).length > 0) {',
+        replace:
+          '    Object.assign(updated, cropChange(state));\n    if (Object.keys(updated).length > 0) {',
+      },
+      // several objects: their common box
+      {
+        find: '  return { x, y, width: w, height: h };',
+        replace: [
+          '  if (dragKeepsRatio(s, e.shiftKey)) return ratioResizedBox(s.bbox, dir, dx, dy);',
+          '  return { x, y, width: w, height: h };',
+        ].join('\n'),
+      },
+      {
+        find: [
+          '  const cx = e.clientX - cr.left;',
+          '  const cy = e.clientY - cr.top;',
+          '  // 이동량은 끌기를',
+        ].join('\n'),
+        replace: [
+          '  let cx = e.clientX - cr.left;',
+          '  let cy = e.clientY - cr.top;',
+          '  if (e.shiftKey && this.pictureMoveState) {',
+          '    const ieumFrom = this.pictureMoveState;',
+          '    const ieumPoint = axisLockedPoint({',
+          '      x: this.virtualScroll.getPageLeftResolved(ieumFrom.pageIndex, sc.clientWidth) + ieumFrom.startPageX * zoom,',
+          '      y: this.virtualScroll.getPageOffset(ieumFrom.pageIndex) + ieumFrom.startPageY * zoom,',
+          '    }, { x: cx, y: cy });',
+          '    cx = ieumPoint.x;',
+          '    cy = ieumPoint.y;',
+          '  }',
+          '  // 이동량은 끌기를',
+        ].join('\n'),
+      },
+    ],
+  },
+  // a move step the user set in 격자 설정 is kept for objects; otherwise their arrows take
+  // Hangul's steps (hancomPictureObjectKey)
+  'studio-hancom-object-step': {
+    file: /[\\/]rhwp-studio[\\/]src[\\/]engine[\\/]input-handler\.ts$/,
+    find: '  setGridStep(mm: number): void { this.gridStepMm = mm; }',
     replace:
-      'descriptor.set!.call(this, scopedHostCanvasFont(String(value)) ?? memoSubstituteCssFontFamily(String(value)));',
+      '  setGridStep(mm: number): void { this.gridStepMm = mm; (this as any).ieumGridStepSet = true; }',
+  },
+  // Hangul's Alt+click selects the object under the pointer, and the next one down on the
+  // next click (hancomAltClickObject)
+  'studio-hancom-object-mouse': {
+    file: /[\\/]rhwp-studio[\\/]src[\\/]engine[\\/]input-handler-mouse\.ts$/,
+    edits: [
+      {
+        find: "import { shouldStartPersistentTableResize } from './table-resize-updates';",
+        replace: [
+          "import { shouldStartPersistentTableResize } from './table-resize-updates';",
+          `import { copyObjectDrag, hancomAltClickObject } from '${HANCOM_KEYS_MODULE}';`,
+        ].join('\n'),
+      },
+      {
+        find: [
+          '  // 그림/글상자 객체 선택 중 클릭 처리',
+          '  if (this.cursor.isInPictureObjectSelection()) {',
+        ].join('\n'),
+        replace: [
+          '  if (hancomAltClickObject(this, e)) return;',
+          '  // 그림/글상자 객체 선택 중 클릭 처리',
+          '  if (this.cursor.isInPictureObjectSelection()) {',
+        ].join('\n'),
+      },
+      // Hangul's Ctrl+drag: the object stays and a copy lands where the drag ends
+      {
+        find: '  // 그림 이동 드래그 종료\n  if (this.isPictureMoveDragging) {',
+        replace:
+          '  // 그림 이동 드래그 종료\n  if (copyObjectDrag(this, _e)) return;\n  if (this.isPictureMoveDragging) {',
+      },
+    ],
+  },
+  // the engine call of vendor/rhwp-core patch 0054 (copyObjectDrag)
+  'studio-object-duplicate': {
+    file: /[\\/]rhwp-studio[\\/]src[\\/]core[\\/]wasm-bridge\.ts$/,
+    find: '  changeShapeZOrder(\n',
+    replace: [
+      '  /** A floating picture or shape copied into its own paragraph, moved by (dx, dy) HWPUNIT. */',
+      '  duplicateFloatingControl(',
+      '    sec: number,',
+      '    para: number,',
+      '    ci: number,',
+      '    dx: number,',
+      '    dy: number,',
+      '  ): { ok: boolean; paraIdx?: number; controlIdx?: number } {',
+      "    if (!this.doc) throw new Error('문서가 로드되지 않았습니다');",
+      '    return JSON.parse((this.doc as any).duplicateFloatingControl(sec, para, ci, dx, dy));',
+      '  }',
+      '',
+      '  changeShapeZOrder(\n',
+    ].join('\n'),
+  },
+  // Esc while dragging an object puts it back, before any other use of the key
+  'studio-hancom-object-drag-cancel': {
+    file: /[\\/]rhwp-studio[\\/]src[\\/]engine[\\/]input-handler-keyboard\.ts$/,
+    edits: [
+      {
+        find: "import { scrollByPageStep, type PageScrollDirection } from '@/view/page-scroll';",
+        replace: [
+          "import { scrollByPageStep, type PageScrollDirection } from '@/view/page-scroll';",
+          `import { cancelObjectDrag } from '${HANCOM_KEYS_MODULE}';`,
+        ].join('\n'),
+      },
+      {
+        find: [
+          'export function onKeyDown(this: any, e: KeyboardEvent): void {',
+          '  if (!this.active) return;',
+        ].join('\n'),
+        replace: [
+          'export function onKeyDown(this: any, e: KeyboardEvent): void {',
+          '  if (!this.active) return;',
+          "  if (e.key === 'Escape' && cancelObjectDrag(this)) {",
+          '    e.preventDefault();',
+          '    return;',
+          '  }',
+        ].join('\n'),
+      },
+    ],
+  },
+  // Paste, copy and cut in a footnote or endnote being edited, and 문자표 from its keys
+  // (studio-plugin/note-text.mjs)
+  'studio-note-text': {
+    file: /[\\/]rhwp-studio[\\/]src[\\/]engine[\\/]input-handler-keyboard\.ts$/,
+    edits: [
+      {
+        find: "import * as _connector from './input-handler-connector';",
+        replace: [
+          "import * as _connector from './input-handler-connector';",
+          `import { ieumNoteCopy, ieumNoteCut, ieumNoteKey, ieumNotePaste } from '${NOTE_TEXT_MODULE}';`,
+        ].join('\n'),
+      },
+      // the note's keys let 문자표 (Ctrl+F10, Alt+F10) through as they do undo and redo
+      {
+        find: "  'edit:select-all',\n]);",
+        replace: "  'edit:select-all',\n  'insert:symbols',\n]);",
+      },
+      // Backspace and Delete take the note's selection out, Enter replaces it, a move leaves it
+      {
+        find: [
+          '  if (this.cursor.isInFootnote()) {',
+          '    if (dispatchSubmodeGlobalShortcut.call(this, e)) return;',
+        ].join('\n'),
+        replace: [
+          '  if (this.cursor.isInFootnote()) {',
+          '    if (dispatchSubmodeGlobalShortcut.call(this, e)) return;',
+          '    if (ieumNoteKey(this, e)) return;',
+        ].join('\n'),
+      },
+      {
+        find: [
+          'export function onCopy(this: any, e: ClipboardEvent): boolean {',
+          '  if (!this.active) return false;',
+        ].join('\n'),
+        replace: [
+          'export function onCopy(this: any, e: ClipboardEvent): boolean {',
+          '  if (!this.active) return false;',
+          '  if (ieumNoteCopy(this, e)) return true;',
+        ].join('\n'),
+      },
+      {
+        find: [
+          'export function onCut(this: any, e: ClipboardEvent): void {',
+          '  if (!this.active) return;',
+        ].join('\n'),
+        replace: [
+          'export function onCut(this: any, e: ClipboardEvent): void {',
+          '  if (!this.active) return;',
+          '  if (ieumNoteCut(this, e)) return;',
+        ].join('\n'),
+      },
+      {
+        find: '  // HF는 이번 이슈에서 rich clipboard round-trip을 만들지 않는다.',
+        replace: [
+          '  if (ieumNotePaste(this, e)) return;',
+          '  // HF는 이번 이슈에서 rich clipboard round-trip을 만들지 않는다.',
+        ].join('\n'),
+      },
+    ],
+  },
+  // typing or composing in a note replaces its selection, and drops the anchor a click left
+  'studio-note-typing': {
+    file: /[\\/]rhwp-studio[\\/]src[\\/]engine[\\/]input-handler-text\.ts$/,
+    edits: [
+      {
+        find: "import { normalizeTextNewlines } from '../core/text-newlines';",
+        replace: [
+          "import { normalizeTextNewlines } from '../core/text-newlines';",
+          `import { ieumNoteBeforeEdit } from '${NOTE_TEXT_MODULE}';`,
+        ].join('\n'),
+      },
+      {
+        find: '  // 선택 영역이 있으면 삭제 후 조합 시작',
+        replace: ['  ieumNoteBeforeEdit(this);', '  // 선택 영역이 있으면 삭제 후 조합 시작'].join(
+          '\n',
+        ),
+      },
+      {
+        find: ['  // 각주 편집 모드', '  if (this.cursor.isInFootnote()) {', '    try {'].join(
+          '\n',
+        ),
+        replace: [
+          '  // 각주 편집 모드',
+          '  if (this.cursor.isInFootnote()) {',
+          '    ieumNoteBeforeEdit(this);',
+          '    try {',
+        ].join('\n'),
+      },
+    ],
+  },
+  // 문자표 into the note, header or footer being edited instead of at the body caret
+  'studio-submode-symbols': {
+    file: /[\\/]rhwp-studio[\\/]src[\\/]ui[\\/]symbols-dialog\.ts$/,
+    edits: [
+      {
+        find: "import { InsertTextCommand } from '@/engine/command';",
+        replace: [
+          "import { InsertTextCommand } from '@/engine/command';",
+          `import { ieumInsertAtSubmodeCaret } from '${NOTE_TEXT_MODULE}';`,
+        ].join('\n'),
+      },
+      {
+        find: [
+          '    const pos = ih.getCursorPosition();',
+          '    ih.executeOperation({',
+          "      kind: 'command',",
+          '      command: new InsertTextCommand(pos, this.selectedChar),',
+          '    });',
+        ].join('\n'),
+        replace: [
+          '    if (!ieumInsertAtSubmodeCaret(ih, this.selectedChar)) {',
+          '      const pos = ih.getCursorPosition();',
+          '      ih.executeOperation({',
+          "        kind: 'command',",
+          '        command: new InsertTextCommand(pos, this.selectedChar),',
+          '      });',
+          '    }',
+        ].join('\n'),
+      },
+    ],
+  },
+  'studio-hyperlink-open': {
+    file: /[\\/]rhwp-studio[\\/]src[\\/]engine[\\/]input-handler-hyperlink\.ts$/,
+    find: [
+      '      web: uri => {',
+      '        const url = new URL(uri);',
+      "        if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) return false;",
+      "        const opened = window.open('about:blank', '_blank');",
+      "        if (!opened) { showToast({ message: '팝업이 차단되었습니다. 이 사이트의 팝업을 허용해 주세요.' }); return false; }",
+      '        opened.opener = null; opened.location.replace(url.href); return true;',
+      '      },',
+      '      mail: uri => { window.location.assign(uri); return true; },',
+    ].join('\n'),
+    replace: [
+      '      web: uri => {',
+      '        const url = new URL(uri);',
+      "        if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) return false;",
+      "        window.open(url.href, '_blank', 'noopener,noreferrer');",
+      '        return true;',
+      '      },',
+      "      mail: uri => { window.open(uri, '_blank', 'noopener,noreferrer'); return true; },",
+    ].join('\n'),
+  },
+  'studio-hyperlink-bookmark': {
+    file: /[\\/]rhwp-studio[\\/]src[\\/]engine[\\/]input-handler-hyperlink\.ts$/,
+    edits: [
+      {
+        find: '      if (!self.wasm.classifyHyperlinkDestination(link.uri)) continue;',
+        replace: [
+          "      const isBookmarkLink = Boolean(link.bookmark) || link.uri.startsWith('?');",
+          '      if (!isBookmarkLink && !self.wasm.classifyHyperlinkDestination(link.uri)) continue;',
+        ].join('\n'),
+      },
+      {
+        find: [
+          '    const destination = self.wasm.classifyHyperlinkDestination(current.link.uri);',
+          '    if (!destination) return;',
+        ].join('\n'),
+        replace: [
+          "    const bookmarkName = current.link.bookmark || (current.link.uri.startsWith('?') ? current.link.uri.slice(1) : null);",
+          '    const destination = bookmarkName',
+          "      ? { kind: 'documentAnchor' as const, uri: `#${bookmarkName}` }",
+          '      : self.wasm.classifyHyperlinkDestination(current.link.uri);',
+          '    if (!destination) return;',
+          "    if (destination.kind === 'documentAnchor') {",
+          '      const rawName = bookmarkName ?? destination.uri.slice(1);',
+          '      let decodedName = rawName;',
+          '      try { decodedName = decodeURIComponent(rawName); } catch { /* keep raw */ }',
+          '      const bookmarks = self.wasm.getBookmarks();',
+          '      const bookmark =',
+          '        bookmarks.find((item: any) => item.name === rawName)',
+          '        ?? bookmarks.find((item: any) => item.name === decodedName);',
+          '      if (!bookmark || !self.moveCursorTo({ sectionIndex: bookmark.sec, paragraphIndex: bookmark.para, charOffset: bookmark.charPos })) {',
+          "        showToast({ message: '연결된 문서 책갈피를 찾거나 이동할 수 없습니다.' });",
+          '      } else {',
+          '        self.updateCaret?.();',
+          '      }',
+          '      return;',
+          '    }',
+        ].join('\n'),
+      },
+    ],
+  },
+  'studio-hyperlink-preview': {
+    file: /[\\/]rhwp-studio[\\/]src[\\/]ui[\\/]hyperlink-dialog\.ts$/,
+    find: [
+      '        const url = webHyperlinkUrl(this.uriInput.value);',
+      "        if (!url) throw new Error('http:// 또는 https://로 시작하는 웹 주소를 입력해 주세요.');",
+      "        const opened = window.open('about:blank', '_blank');",
+      "        if (!opened) throw new Error('팝업이 차단되었습니다. 이 사이트의 팝업을 허용해 주세요.');",
+      '        opened.opener = null;',
+      '        opened.location.replace(url);',
+      "        this.error.textContent = '';",
+    ].join('\n'),
+    replace: [
+      '        const url = webHyperlinkUrl(this.uriInput.value);',
+      "        if (!url) throw new Error('http:// 또는 https://로 시작하는 웹 주소를 입력해 주세요.');",
+      "        window.open(url, '_blank', 'noopener,noreferrer');",
+      "        this.error.textContent = '';",
+    ].join('\n'),
+  },
+  'studio-textbox-edit-mouse': {
+    file: /[\\/]rhwp-studio[\\/]src[\\/]engine[\\/]input-handler-mouse\.ts$/,
+    edits: [
+      {
+        find: "import { shouldStartPersistentTableResize } from './table-resize-updates';",
+        replace: [
+          "import { shouldStartPersistentTableResize } from './table-resize-updates';",
+          `import { enterTextBoxOnDblClick, isTableCellPosition, preparePendingTextBoxEnter, selectTextBoxOnBorderClick, shapeHasTextBox } from '${TEXTBOX_EDIT_MODULE}';`,
+        ].join('\n'),
+      },
+      // Record a pending text box entry on mousedown inside a selected floating shape/group;
+      // if mouseup happens without dragging, finishPictureMoveDrag enters editing at the click.
+      {
+        find: [
+          '                    totalDeltaH: 0, totalDeltaV: 0,',
+          '                    pageIndex: pi,',
+          '                  };',
+        ].join('\n'),
+        replace: [
+          '                    totalDeltaH: 0, totalDeltaV: 0,',
+          '                    pageIndex: pi,',
+          '                    pendingEnterTextBoxHit: preparePendingTextBoxEnter(this, ref, pi, px, py),',
+          '                  };',
+        ].join('\n'),
+      },
+      // Support border clicks for both body and in-cell text boxes, with tolerance scaled for thin boxes.
+      {
+        find: [
+          '    if (hit.isTextBox && hit.parentParaIndex !== undefined && hit.controlIndex !== undefined) {',
+          '      if (this.isShapeBorderClickByRef(pageX, pageY, hit.sectionIndex, hit.parentParaIndex, hit.controlIndex)) {',
+          '        this.cursor.clearSelection();',
+          '        this.exitPictureObjectSelectionIfNeeded();',
+          '        this.cursor.enterPictureObjectSelectionDirect(',
+          "          hit.sectionIndex, hit.parentParaIndex, hit.controlIndex, 'shape',",
+          '          undefined, undefined, undefined, undefined, undefined, undefined, undefined, pageIdx,',
+          '        );',
+          '        this.active = true;',
+          '        this.caret.hide();',
+          '        this.selectionRenderer.clear();',
+          '        this.renderPictureObjectSelection();',
+          "        this.eventBus.emit('picture-object-selection-changed', true);",
+          '        this.textarea.focus();',
+          '        return;',
+          '      }',
+          '    }',
+        ].join('\n'),
+        replace: [
+          '    if (selectTextBoxOnBorderClick(this, pageIdx, pageX, pageY, hit)) {',
+          '      return;',
+          '    }',
+        ].join('\n'),
+      },
+      // Keep interior clicks on shapes with a text box from falling into object selection.
+      {
+        find: [
+          '        // 이미지/방정식/OLE → 객체 선택 (z-order 미지원)',
+          '        this.cursor.clearSelection();',
+          '        this.exitPictureObjectSelectionIfNeeded();',
+          '        this.cursor.enterPictureObjectSelectionDirect(',
+          '          picHit.sec, picHit.ppi, picHit.ci, picHit.type,',
+          '          picHit.cellIdx, picHit.cellParaIdx, (picHit as any).headerFooter,',
+          '          (picHit as any).outerTableControlIdx,',
+          '          (picHit as any).cellPath,',
+          '          (picHit as any).noteRef,',
+          '          (picHit as any).missing,',
+          '          (picHit as any).pageIndex,',
+          '        );',
+          '        this.active = true;',
+          '        this.caret.hide();',
+          '        this.selectionRenderer.clear();',
+          '        this.renderPictureObjectSelection();',
+          "        this.eventBus.emit('picture-object-selection-changed', true);",
+          '        this.textarea.focus();',
+          '        return;',
+        ].join('\n'),
+        replace: [
+          "        if (picHit.type !== 'shape' || !shapeHasTextBox(this.wasm, picHit)) {",
+          '          // 이미지/방정식/OLE → 객체 선택 (z-order 미지원)',
+          '          this.cursor.clearSelection();',
+          '          this.exitPictureObjectSelectionIfNeeded();',
+          '          this.cursor.enterPictureObjectSelectionDirect(',
+          '            picHit.sec, picHit.ppi, picHit.ci, picHit.type,',
+          '            picHit.cellIdx, picHit.cellParaIdx, (picHit as any).headerFooter,',
+          '            (picHit as any).outerTableControlIdx,',
+          '            (picHit as any).cellPath,',
+          '            (picHit as any).noteRef,',
+          '            (picHit as any).missing,',
+          '            (picHit as any).pageIndex,',
+          '          );',
+          '          this.active = true;',
+          '          this.caret.hide();',
+          '          this.selectionRenderer.clear();',
+          '          this.renderPictureObjectSelection();',
+          "          this.eventBus.emit('picture-object-selection-changed', true);",
+          '          this.textarea.focus();',
+          '          return;',
+          '        }',
+        ].join('\n'),
+      },
+      // Double-click enters editing for shapes, groups, and in-cell text boxes.
+      {
+        find: [
+          '    // 글상자 객체 → 텍스트 편집 진입',
+          "    if (ref && ref.type === 'shape') {",
+        ].join('\n'),
+        replace: [
+          '    if (enterTextBoxOnDblClick(this, ref, e)) {',
+          '      return;',
+          '    }',
+          "    if (ref && ref.type === 'shape') {",
+        ].join('\n'),
+      },
+      // Distinguish [Shape, Table] (table menu) from [Table, Shape] (text box menu).
+      {
+        find: '  } catch { /* hitTest 실패 시 표 밖으로 처리 */ }',
+        replace: [
+          '    if (inTable && hit.isTextBox) inTable = isTableCellPosition(this.wasm, hit);',
+          '  } catch { /* hitTest 실패 시 표 밖으로 처리 */ }',
+        ].join('\n'),
+      },
+    ],
+  },
+  'studio-textbox-edit-picture': {
+    file: /[\\/]rhwp-studio[\\/]src[\\/]engine[\\/]input-handler-picture\.ts$/,
+    edits: [
+      {
+        find: "import { showToast } from '@/ui/toast';",
+        replace: [
+          "import { showToast } from '@/ui/toast';",
+          `import { finishPendingTextBoxEnter } from '${TEXTBOX_EDIT_MODULE}';`,
+        ].join('\n'),
+      },
+      {
+        find: [
+          'export function finishPictureMoveDrag(this: any): void {',
+          '  if (this.pictureMoveState) {',
+        ].join('\n'),
+        replace: [
+          'export function finishPictureMoveDrag(this: any): void {',
+          '  const moveState = this.pictureMoveState;',
+          '  if (this.pictureMoveState) {',
+        ].join('\n'),
+      },
+      {
+        find: [
+          '  this.isPictureMoveDragging = false;',
+          '  this.pictureMoveState = null;',
+          "  this.container.style.cursor = '';",
+          '  if (this.dragRafId) {',
+          '    cancelAnimationFrame(this.dragRafId);',
+          '    this.dragRafId = 0;',
+          '  }',
+          '}',
+        ].join('\n'),
+        replace: [
+          '  this.isPictureMoveDragging = false;',
+          '  this.pictureMoveState = null;',
+          "  this.container.style.cursor = '';",
+          '  if (this.dragRafId) {',
+          '    cancelAnimationFrame(this.dragRafId);',
+          '    this.dragRafId = 0;',
+          '  }',
+          '  finishPendingTextBoxEnter(this, moveState);',
+          '}',
+        ].join('\n'),
+      },
+    ],
+  },
+  'studio-textbox-edit-keyboard': {
+    file: /[\\/]rhwp-studio[\\/]src[\\/]engine[\\/]input-handler-keyboard\.ts$/,
+    edits: [
+      {
+        find: "import { matchShortcut, defaultShortcuts } from '@/command/shortcut-map';",
+        replace: [
+          "import { matchShortcut, defaultShortcuts } from '@/command/shortcut-map';",
+          `import { enterTextBoxOnEnterKey, isTableCellPosition } from '${TEXTBOX_EDIT_MODULE}';`,
+        ].join('\n'),
+      },
+      // Enter on a selected shape/group enters text editing only when a text box exists,
+      // and preserves cellPath for shapes inside table cells.
+      {
+        find: [
+          '    // Enter → 글상자 내부 텍스트 편집 진입',
+          "    if (e.key === 'Enter') {",
+          '      const ref = this.cursor.getSelectedPictureRef();',
+          "      if (ref && ref.type === 'shape') {",
+          '        e.preventDefault();',
+          '        this.cursor.exitPictureObjectSelection();',
+          '        this.pictureObjectRenderer?.clear();',
+          "        this.eventBus.emit('picture-object-selection-changed', false);",
+          '        this.enterTextboxEditing(ref.sec, ref.ppi, ref.ci);',
+          '        return;',
+          '      }',
+          '    }',
+        ].join('\n'),
+        replace: [
+          "    if (e.key === 'Enter') {",
+          '      const ref = this.cursor.getSelectedPictureRef();',
+          "      if (ref && (ref.type === 'shape' || ref.type === 'group')) {",
+          '        e.preventDefault();',
+          '        enterTextBoxOnEnterKey(this, ref);',
+          '        return;',
+          '      }',
+          '    }',
+        ].join('\n'),
+      },
+      // Tab inside a text box (including a text box inside a table cell) inserts a tab
+      // instead of navigating outer table cells; [Shape, Table] keeps table Tab navigation.
+      {
+        find: [
+          '      if (this.isFormMode?.()) {',
+          '        this.moveToAdjacentFormField?.(e.shiftKey ? -1 : 1);',
+          '        return;',
+          '      }',
+        ].join('\n'),
+        replace: [
+          '      if (this.isFormMode?.()) {',
+          '        this.moveToAdjacentFormField?.(e.shiftKey ? -1 : 1);',
+          '        return;',
+          '      }',
+          '      if (this.cursor.isInTextBox() && !isTableCellPosition(this.wasm, this.cursor.getPosition())) {',
+          '        if (e.shiftKey) {',
+          '          this.applyHangingIndentAtCursor();',
+          '        } else {',
+          "          this.executeOperation({ kind: 'command', command: new InsertTabCommand(this.cursor.getPosition()) });",
+          '        }',
+          '        break;',
+          '      }',
+        ].join('\n'),
+      },
+    ],
+  },
+  'studio-textbox-edit-handler': {
+    file: /[\\/]rhwp-studio[\\/]src[\\/]engine[\\/]input-handler\.ts$/,
+    edits: [
+      {
+        find: "import { selectCellIndicesInRange, paraFormatTargetsForCellBlock, withCellPathTarget } from './cell-block-format';",
+        replace: [
+          "import { selectCellIndicesInRange, paraFormatTargetsForCellBlock, withCellPathTarget } from './cell-block-format';",
+          `import { enterCreatedTextBox, isPointNearBoxBorder } from '${TEXTBOX_EDIT_MODULE}';`,
+        ].join('\n'),
+      },
+      // Enter text editing immediately after drawing a new text box (Hancom Hangul behavior).
+      {
+        find: [
+          '      if (result.ok) {',
+          "        this.eventBus.emit('document-changed');",
+          '        // 생성된 도형을 선택 상태로 진입',
+          "        const selType = (this.shapePlacementType === 'line' || this.shapePlacementType.startsWith('connector-')) ? 'line' : 'shape';",
+          '        this.cursor.enterPictureObjectSelectionDirect(sec, result.paraIdx, result.controlIdx, selType);',
+          '        this.caret.hide();',
+          '        this.selectionRenderer.clear();',
+          '        this.renderPictureObjectSelection();',
+          "        this.eventBus.emit('picture-object-selection-changed', true);",
+          '      }',
+        ].join('\n'),
+        replace: [
+          '      if (result.ok) {',
+          "        this.eventBus.emit('document-changed');",
+          '        if (!(isTextbox && enterCreatedTextBox(this, sec, result.paraIdx, result.controlIdx))) {',
+          "          const selType = (this.shapePlacementType === 'line' || this.shapePlacementType.startsWith('connector-')) ? 'line' : 'shape';",
+          '          this.cursor.enterPictureObjectSelectionDirect(sec, result.paraIdx, result.controlIdx, selType);',
+          '          this.caret.hide();',
+          '          this.selectionRenderer.clear();',
+          '          this.renderPictureObjectSelection();',
+          "          this.eventBus.emit('picture-object-selection-changed', true);",
+          '        }',
+          '      }',
+        ].join('\n'),
+      },
+      // Scale border tolerance down for thin single-line text boxes.
+      {
+        find: [
+          '      const bbox = this.wasm.getShapeBBox(sec, ppi, ci);',
+          '      const tolerance = 5;',
+          '      const nearLeft = Math.abs(pageX - bbox.x) <= tolerance;',
+          '      const nearRight = Math.abs(pageX - (bbox.x + bbox.width)) <= tolerance;',
+          '      const nearTop = Math.abs(pageY - bbox.y) <= tolerance;',
+          '      const nearBottom = Math.abs(pageY - (bbox.y + bbox.height)) <= tolerance;',
+          '      const inVertRange = pageY >= bbox.y - tolerance && pageY <= bbox.y + bbox.height + tolerance;',
+          '      const inHorzRange = pageX >= bbox.x - tolerance && pageX <= bbox.x + bbox.width + tolerance;',
+          '      return (nearLeft && inVertRange) || (nearRight && inVertRange) ||',
+          '             (nearTop && inHorzRange) || (nearBottom && inHorzRange);',
+        ].join('\n'),
+        replace: [
+          '      const bbox = this.wasm.getShapeBBox(sec, ppi, ci);',
+          '      return isPointNearBoxBorder(pageX, pageY, bbox);',
+        ].join('\n'),
+      },
+    ],
+  },
+  'studio-textbox-edit-cursor': {
+    file: /[\\/]rhwp-studio[\\/]src[\\/]engine[\\/]cursor\.ts$/,
+    edits: [
+      {
+        find: "import { excludedCellKey } from './cell-block-format';",
+        replace: [
+          "import { excludedCellKey } from './cell-block-format';",
+          `import { isTableCellPosition, moveHorizontalInTextBox } from '${TEXTBOX_EDIT_MODULE}';`,
+        ].join('\n'),
+      },
+      {
+        find: [
+          '    // 표 셀 내부는 기존 로직 유지 (Tab 셀 이동과 연동)',
+          '    if (this.isInCell() && !this.isInTextBox()) {',
+          '      this.moveHorizontalInCell(delta);',
+          '      return;',
+          '    }',
+        ].join('\n'),
+        replace: [
+          '    if (isTableCellPosition(this.wasm, this.position)) {',
+          '      this.moveHorizontalInCell(delta);',
+          '      return;',
+          '    }',
+          '    if (moveHorizontalInTextBox(this, delta)) {',
+          '      return;',
+          '    }',
+        ].join('\n'),
+      },
+      {
+        find: [
+          '    if (this.isInCell() && !this.isInTextBox()) {',
+          '      // [#2914] 본문 분기와 동일한 한컴 표준 — 문단 중간(Ctrl+↑)이면 먼저 현재 문단 시작에서 멈춘다.',
+        ].join('\n'),
+        replace: [
+          '    if (this.isInCell()) {',
+          '      // [#2914] 본문 분기와 동일한 한컴 표준 — 문단 중간(Ctrl+↑)이면 먼저 현재 문단 시작에서 멈춘다.',
+        ].join('\n'),
+      },
+      {
+        find: [
+          '    if (this.isInCell() && !this.isInTextBox()) {',
+          '      this.moveToWordBoundaryInCell(direction);',
+          '      return;',
+          '    }',
+        ].join('\n'),
+        replace: [
+          '    if (this.isInCell()) {',
+          '      this.moveToWordBoundaryInCell(direction);',
+          '      return;',
+          '    }',
+        ].join('\n'),
+      },
+      {
+        find: '    const { sectionIndex: sec, parentParaIndex: ppi, controlIndex: ci, cellIndex: cei, cellPath } = this.position;',
+        replace: [
+          '    if (!isTableCellPosition(this.wasm, this.position)) return false;',
+          '    const { sectionIndex: sec, parentParaIndex: ppi, controlIndex: ci, cellIndex: cei, cellPath } = this.position;',
+        ].join('\n'),
+      },
+    ],
+  },
+  // The ruler's paragraph marks as Hancom Hangul has them, each named on hover
+  // (studio-plugin/ruler-marks.mjs, decision 0169).
+  'studio-ruler-para-kinds': {
+    file: /[\\/]rhwp-studio[\\/]src[\\/]view[\\/]ruler-pin-geometry\.ts$/,
+    find: "export type HPinKind = 'paraIndent' | 'pageMarginLeft' | 'pageMarginRight';",
+    replace:
+      "export type HPinKind = 'paraIndent' | 'pageMarginLeft' | 'pageMarginRight'\n" +
+      "  | 'paraFirst' | 'paraRest' | 'paraLeft' | 'paraRight';",
+  },
+  'studio-ruler-para-marks': {
+    file: /[\\/]rhwp-studio[\\/]src[\\/]view[\\/]ruler\.ts$/,
+    edits: [
+      {
+        find: "import { isRulerLabelInsidePage } from './ruler-label-geometry.ts';",
+        replace: [
+          "import { isRulerLabelInsidePage } from './ruler-label-geometry.ts';",
+          "import { getLocale } from '@/i18n/core';",
+          'import {',
+          '  createRulerTip,',
+          '  dragParaMark,',
+          '  drawParaMarks,',
+          '  hitRulerMark,',
+          '  isParaMark,',
+          '  paraMarkProps,',
+          '  paraMarkRange,',
+          '  paraMarkXs,',
+          '  paraState,',
+          '  rulerMarkLabel,',
+          `} from '${RULER_MARKS_MODULE}';`,
+        ].join('\n'),
+      },
+      {
+        find: ['  /** 문단 정보가 유효한지 여부 */', '  private hasParaInfo = false;'].join('\n'),
+        replace: [
+          '  /** 현재 커서 문단의 오른쪽 여백 (px, zoom=1 기준) */',
+          '  private paraMarginRightPx = 0;',
+          '  /** 마커에 마우스를 올리면 뜨는 이름 */',
+          '  private rulerTip = createRulerTip();',
+          '  private onHLeaveBound = (): void => this.rulerTip.hide();',
+          '  /** 문단 정보가 유효한지 여부 */',
+          '  private hasParaInfo = false;',
+        ].join('\n'),
+      },
+      {
+        find: [
+          '    const ml = props.marginLeft ?? 0;',
+          '    const ind = props.indent ?? 0;',
+          '    if (this.hasParaInfo && ml === this.paraMarginLeftPx && ind === this.paraIndentPx) return;',
+          '    this.paraMarginLeftPx = ml;',
+          '    this.paraIndentPx = ind;',
+          '    this.hasParaInfo = true;',
+          '    this.scheduleUpdate();',
+          '  }',
+        ].join('\n'),
+        replace: [
+          '    const ml = props.marginLeft ?? 0;',
+          '    const ind = props.indent ?? 0;',
+          '    const mr = props.marginRight ?? 0;',
+          '    if (',
+          '      this.hasParaInfo && ml === this.paraMarginLeftPx && ind === this.paraIndentPx',
+          '      && mr === this.paraMarginRightPx',
+          '    ) return;',
+          '    this.paraMarginLeftPx = ml;',
+          '    this.paraIndentPx = ind;',
+          '    this.paraMarginRightPx = mr;',
+          '    this.hasParaInfo = true;',
+          '    this.scheduleUpdate();',
+          '  }',
+          '',
+          '  /** 커서 문단의 여백과 들여쓰기 (px, zoom=1) */',
+          '  private paraValues(): { marginLeftPx: number; indentPx: number; marginRightPx: number } {',
+          '    return {',
+          '      marginLeftPx: this.paraMarginLeftPx,',
+          '      indentPx: this.paraIndentPx,',
+          '      marginRightPx: this.paraMarginRightPx,',
+          '    };',
+          '  }',
+          '',
+          '  /** 문단이 놓인 영역의 화면 좌표, 드래그를 시작한 x와 함께 */',
+          '  private paraArea(startX?: number): { refLeft: number; refRight: number; zoom: number; startX?: number } {',
+          '    return {',
+          '      refLeft: this.hRefLeft,',
+          '      refRight: this.hRefRight,',
+          '      zoom: this.viewportManager.getZoom(),',
+          '      startX,',
+          '    };',
+          '  }',
+        ].join('\n'),
+      },
+      {
+        find: "    this.hCanvas.addEventListener('pointermove', this.onHPinHoverBound);",
+        replace: [
+          "    this.hCanvas.addEventListener('pointermove', this.onHPinHoverBound);",
+          "    this.hCanvas.addEventListener('pointerleave', this.onHLeaveBound);",
+        ].join('\n'),
+      },
+      {
+        find: [
+          '    const hit = this.hPins.find(',
+          '      (p) => Math.abs(p.x - x) <= PIN_HIT_RADIUS && Math.abs(p.y - y) <= PIN_HIT_RADIUS,',
+          '    );',
+          '    if (!hit) return;',
+          '    this.hDrag = { kind: hit.kind, pageIdx: this.hPageIdx, x, startX: x };',
+        ].join('\n'),
+        replace: [
+          '    const hit = hitRulerMark(this.hPins, x, y, RULER_SIZE);',
+          '    if (!hit) return;',
+          '    this.rulerTip.hide();',
+          '    this.hDrag = { kind: hit.kind, pageIdx: this.hPageIdx, x, startX: x };',
+        ].join('\n'),
+      },
+      {
+        find: [
+          '    // ▽ 첫 줄은 문단이 놓인 영역 안 — 왼쪽은 문단 여백(첫 줄은 그 왼쪽으로 못 간다),',
+          '    // 오른쪽은 영역 끝에서 본문 최소 폭만큼 앞.',
+          '    return {',
+          '      min: this.hRefLeft + this.paraMarginLeftPx * this.viewportManager.getZoom(),',
+          '      max: this.hRefRight - minBody,',
+          '    };',
+        ].join('\n'),
+        replace: [
+          '    // 문단 마커는 문단이 놓인 영역 안에서, 줄 끝과 본문 최소 폭만큼 떨어진 곳까지.',
+          '    return paraMarkRange(kind, this.paraValues(), this.paraArea(this.hDrag?.startX), minBody);',
+        ].join('\n'),
+      },
+      {
+        find: [
+          '    this.hCanvas.style.cursor =',
+          '      this.hPins.some((p) => Math.abs(p.x - x) <= PIN_HIT_RADIUS && Math.abs(p.y - y) <= PIN_HIT_RADIUS)',
+          "        ? 'ew-resize' : 'default';",
+        ].join('\n'),
+        replace: [
+          '    const hit = hitRulerMark(this.hPins, x, y, RULER_SIZE);',
+          "    this.hCanvas.style.cursor = hit ? 'ew-resize' : 'default';",
+          '    if (hit) this.rulerTip.show(rulerMarkLabel(hit.kind, getLocale()), rect.left + hit.x, rect.bottom);',
+          '    else this.rulerTip.hide();',
+        ].join('\n'),
+      },
+      {
+        find: [
+          '  private commitHDrag(drag: { kind: HPinKind; pageIdx: number; x: number }): void {',
+          '    this.onCommitPin?.(',
+        ].join('\n'),
+        replace: [
+          '  private commitHDrag(drag: { kind: HPinKind; pageIdx: number; x: number; startX: number }): void {',
+          '    if (isParaMark(drag.kind)) {',
+          '      const area = this.paraArea(drag.startX);',
+          '      this.onCommitPin?.({',
+          "        kind: 'paraProps',",
+          '        props: paraMarkProps(drag.kind, dragParaMark(drag.kind, drag.x, this.paraValues(), area)),',
+          '      });',
+          '      return;',
+          '    }',
+          '    this.onCommitPin?.(',
+        ].join('\n'),
+      },
+      {
+        find: "      || (this.hDrag?.kind === 'paraIndent' && this.hDrag.pageIdx === pageIdx);",
+        replace: '      || (isParaMark(this.hDrag?.kind) && this.hDrag?.pageIdx === pageIdx);',
+      },
+      {
+        find: [
+          '    this.drawTriangleUp(ctx, pageLeftPinX, canvasH, MARKER_SIZE);',
+          '    this.drawTriangleUp(ctx, pageRightPinX, canvasH, MARKER_SIZE);',
+        ].join('\n'),
+        replace: '    // 쪽 여백은 흰 띠의 가장자리를 끌어 바꾼다. △는 한글처럼 문단 마커가 쓴다.',
+      },
+      {
+        find: [
+          '      let firstX = paraIndentPinX(refLeft, this.paraMarginLeftPx, this.paraIndentPx, zoom);',
+          "      if (this.hDrag?.kind === 'paraIndent') firstX = this.hDrag.x;",
+          '',
+          '      this.hRefLeft = refLeft;',
+          '      this.hRefRight = refRight;',
+          "      this.hPins.push({ kind: 'paraIndent', x: firstX, y: 0 });",
+          '      this.drawTriangleDown(ctx, firstX, 0, MARKER_SIZE);',
+        ].join('\n'),
+        replace: [
+          '      this.hRefLeft = refLeft;',
+          '      this.hRefRight = refRight;',
+          '      const drag = this.hDrag;',
+          '      const area = this.paraArea(drag?.startX);',
+          '      const marks = paraMarkXs(',
+          '        drag && isParaMark(drag.kind)',
+          '          ? dragParaMark(drag.kind, drag.x, this.paraValues(), area)',
+          '          : paraState(this.paraValues()),',
+          '        area,',
+          '      );',
+          '      for (const [kind, markX] of Object.entries(marks)) {',
+          '        this.hPins.push({ kind: kind as HPinKind, x: markX, y: 0 });',
+          '      }',
+          '      drawParaMarks(ctx, marks, canvasH);',
+        ].join('\n'),
+      },
+      {
+        find: "    this.hCanvas.removeEventListener('pointermove', this.onHPinHoverBound);",
+        replace: [
+          "    this.hCanvas.removeEventListener('pointermove', this.onHPinHoverBound);",
+          "    this.hCanvas.removeEventListener('pointerleave', this.onHLeaveBound);",
+          '    this.rulerTip.dispose();',
+        ].join('\n'),
+      },
+    ],
+  },
+  // Macro recorder hooks: active only while a macro recording session is running;
+  // idle calls return immediately with zero document or UI side effects.
+  'studio-macro-record-command': {
+    file: /[\\/]rhwp-studio[\\/]src[\\/]command[\\/]dispatcher\.ts$/,
+    edits: [
+      {
+        find: "import type { EventBus } from '@/core/event-bus';",
+        replace: [
+          "import type { EventBus } from '@/core/event-bus';",
+          `import { recordStudioCommand } from '${HANCOM_KEYS_MODULE}';`,
+        ].join('\n'),
+      },
+      {
+        find: [
+          '    const ctx = this.services.getContext();',
+          '    if (isBlockedInFormMode(commandId, ctx)) {',
+        ].join('\n'),
+        replace: [
+          '    const ctx = this.services.getContext();',
+          '    let macroInBody = true;',
+          '    try {',
+          '      const macroCur = (this.services.getInputHandler?.() as any)?.cursor;',
+          '      if (macroCur) {',
+          '        macroInBody = !macroCur.isInCell?.() && !macroCur.isInHeaderFooter?.() && !macroCur.isInFootnote?.() && !macroCur.isInTextBox?.();',
+          '      }',
+          '    } catch {',
+          '      // ignore read errors when document state is unavailable',
+          '    }',
+          '    if (isBlockedInFormMode(commandId, ctx)) {',
+        ].join('\n'),
+      },
+      {
+        find: [
+          '      // 커맨드 실행 후 UI 상태 갱신 알림',
+          "      this.eventBus.emit('command-state-changed');",
+          '      return { ok: true };',
+        ].join('\n'),
+        replace: [
+          '      let macroCharState: Record<string, boolean> | undefined;',
+          "      if (commandId === 'format:bold' || commandId === 'format:italic' || commandId === 'format:underline' || commandId === 'format:strikethrough') {",
+          '        try {',
+          '          const ih = this.services.getInputHandler?.() as any;',
+          '          const base = ih?.getCharProperties?.() ?? ih?.getCharPropertiesAtCursor?.();',
+          '          const pending = ih?.getPendingCharShape?.();',
+          '          if (base || pending) {',
+          '            const merged = { ...(base ?? {}), ...(pending ?? {}) };',
+          '            macroCharState = {',
+          "              ...(typeof merged.bold === 'boolean' ? { bold: merged.bold } : {}),",
+          "              ...(typeof merged.italic === 'boolean' ? { italic: merged.italic } : {}),",
+          "              ...(typeof merged.underline === 'boolean' ? { underline: merged.underline } : {}),",
+          "              ...(typeof merged.strikethrough === 'boolean' ? { strikethrough: merged.strikethrough } : {}),",
+          '            };',
+          '          }',
+          '        } catch {',
+          '          // ignore read errors when document state is unavailable',
+          '        }',
+          '      }',
+          '      recordStudioCommand(commandId, params, def.label, macroCharState, { inBody: macroInBody });',
+          '      // 커맨드 실행 후 UI 상태 갱신 알림',
+          "      this.eventBus.emit('command-state-changed');",
+          '      return { ok: true };',
+        ].join('\n'),
+      },
+    ],
+  },
+  'studio-macro-record-text': {
+    file: /[\\/]rhwp-studio[\\/]src[\\/]engine[\\/]input-handler-text\.ts$/,
+    edits: [
+      {
+        find: "import type { NavigationKeyInput } from './navigation-keymap';",
+        replace: [
+          "import type { NavigationKeyInput } from './navigation-keymap';",
+          `import { recordStudioText } from '${HANCOM_KEYS_MODULE}';`,
+        ].join('\n'),
+      },
+      {
+        find: "        this.executeOperation({ kind: 'record', command: new InsertTextInHeaderFooterCommand(target, this.cursor.hfParaIdx, anchor.charOffset, composed) });",
+        replace: [
+          "        this.executeOperation({ kind: 'record', command: new InsertTextInHeaderFooterCommand(target, this.cursor.hfParaIdx, anchor.charOffset, composed) });",
+          '        recordStudioText(composed, { inBody: false });',
+        ].join('\n'),
+      },
+      {
+        find: "        this.executeOperation({ kind: 'record', command: new InsertTextInFootnoteCommand(target, this.cursor.fnInnerParaIdx, anchor.charOffset, composed) });",
+        replace: [
+          "        this.executeOperation({ kind: 'record', command: new InsertTextInFootnoteCommand(target, this.cursor.fnInnerParaIdx, anchor.charOffset, composed) });",
+          '        recordStudioText(composed, { inBody: false });',
+        ].join('\n'),
+      },
+      {
+        find: [
+          '        this.executeOperation({',
+          "          kind: 'record',",
+          '          command: new InsertTextCommand(',
+          '            anchor, insertedText, undefined, bodyLogical ? this.getPendingCharShape?.() : undefined,',
+          '            covered, fragmentId === null ? [] : [fragmentId], bodyLogical,',
+          '          ),',
+          '        });',
+        ].join('\n'),
+        replace: [
+          '        this.executeOperation({',
+          "          kind: 'record',",
+          '          command: new InsertTextCommand(',
+          '            anchor, insertedText, undefined, bodyLogical ? this.getPendingCharShape?.() : undefined,',
+          '            covered, fragmentId === null ? [] : [fragmentId], bodyLogical,',
+          '          ),',
+          '        });',
+          '        recordStudioText(insertedText, { inBody: !this.cursor.isInCell() && !this.cursor.isInHeaderFooter() && !this.cursor.isInFootnote() && !this.cursor.isInTextBox() });',
+        ].join('\n'),
+      },
+      {
+        find: "      this.executeOperation({ kind: 'record', command: new InsertTextInHeaderFooterCommand(target, paraIdx, charOffset, text) });",
+        replace: [
+          "      this.executeOperation({ kind: 'record', command: new InsertTextInHeaderFooterCommand(target, paraIdx, charOffset, text) });",
+          '      recordStudioText(text, { inBody: false });',
+        ].join('\n'),
+      },
+      {
+        find: "      this.executeOperation({ kind: 'record', command: new InsertTextInFootnoteCommand(target, innerParaIdx, charOffset, text) });",
+        replace: [
+          "      this.executeOperation({ kind: 'record', command: new InsertTextInFootnoteCommand(target, innerParaIdx, charOffset, text) });",
+          '      recordStudioText(text, { inBody: false });',
+        ].join('\n'),
+      },
+      {
+        find: [
+          '  this.executeOperation({',
+          "    kind: 'command',",
+          '    command: new InsertTextCommand(insertPos, text, undefined, this.getPendingCharShape?.(), replaced),',
+          '  });',
+        ].join('\n'),
+        replace: [
+          '  this.executeOperation({',
+          "    kind: 'command',",
+          '    command: new InsertTextCommand(insertPos, text, undefined, this.getPendingCharShape?.(), replaced),',
+          '  });',
+          '  recordStudioText(text, { inBody: !this.cursor.isInCell() && !this.cursor.isInHeaderFooter() && !this.cursor.isInFootnote() && !this.cursor.isInTextBox() });',
+        ].join('\n'),
+      },
+    ],
+  },
+  'studio-macro-record-key': {
+    file: /[\\/]rhwp-studio[\\/]src[\\/]engine[\\/]input-handler-keyboard\.ts$/,
+    edits: [
+      {
+        find: "import { emitHeaderFooterModeChanged } from './header-footer-mode';",
+        replace: [
+          "import { emitHeaderFooterModeChanged } from './header-footer-mode';",
+          `import { hasAdjacentProtectedObject, isMacroRecordingActive, macroShortcutKey, recordStudioKey } from '${HANCOM_KEYS_MODULE}';`,
+        ].join('\n'),
+      },
+      {
+        find: '  // ─── 1. 코드 단축키 2번째 키 처리 (Ctrl+K → ? / Ctrl+M → ?) ───',
+        replace: [
+          '  if (macroShortcutKey(e)) return;',
+          '  // ─── 1. 코드 단축키 2번째 키 처리 (Ctrl+K → ? / Ctrl+M → ?) ───',
+        ].join('\n'),
+      },
+      {
+        find: [
+          '    executeNavigationAction.call(this, action, e.shiftKey);',
+          '    return true;',
+        ].join('\n'),
+        replace: [
+          '    const macroWasInBody = !this.cursor.isInCell() && !this.cursor.isInHeaderFooter() && !this.cursor.isInFootnote() && !this.cursor.isInTextBox();',
+          '    executeNavigationAction.call(this, action, e.shiftKey);',
+          '    recordStudioKey(e, { navigationAction: action, inBody: macroWasInBody && !this.cursor.isInCell() && !this.cursor.isInHeaderFooter() && !this.cursor.isInFootnote() && !this.cursor.isInTextBox() });',
+          '    return true;',
+        ].join('\n'),
+      },
+      {
+        find: [
+          "  if (e.key === 'Escape') {",
+          '    e.preventDefault();',
+          '    const inCell = this.cursor.isInCell();',
+        ].join('\n'),
+        replace: [
+          "  if (e.key === 'Escape') {",
+          '    e.preventDefault();',
+          '    recordStudioKey(e, { inBody: !this.cursor.isInCell() && !this.cursor.isInHeaderFooter() && !this.cursor.isInFootnote() && !this.cursor.isInTextBox() });',
+          '    const inCell = this.cursor.isInCell();',
+        ].join('\n'),
+      },
+      {
+        find: [
+          "    case 'Backspace':",
+          "    case 'Delete': {",
+          '      e.preventDefault();',
+          '      if (this.isFormMode?.() && e.altKey) return;',
+          '      if (this.cursor.hasSelection()) {',
+          '        this.deleteSelection();',
+          '      } else if (e.altKey) {',
+          '        // Alt/Option+Backspace/Delete: 단어 삭제 (macOS standard)',
+          '        this.cursor.setAnchor();',
+          "        this.cursor.moveToWordBoundary(e.key === 'Backspace' ? -1 : 1);",
+          '        if (this.cursor.hasSelection()) this.deleteSelection();',
+          "      } else if (e.key === 'Backspace') {",
+          '        this.handleBackspace(pos, inCell);',
+          '      } else {',
+          '        this.handleDelete(pos, inCell);',
+          '      }',
+          '      break;',
+        ].join('\n'),
+        replace: [
+          "    case 'Backspace':",
+          "    case 'Delete': {",
+          '      e.preventDefault();',
+          '      if (this.isFormMode?.() && e.altKey) return;',
+          '      const macroHadSelection = this.cursor.hasSelection();',
+          '      const macroInBody = !inCell && !this.cursor.isInHeaderFooter() && !this.cursor.isInFootnote() && !this.cursor.isInTextBox();',
+          '      const macroAdjacentObject = isMacroRecordingActive() && macroInBody && !macroHadSelection && !e.altKey',
+          '        ? hasAdjacentProtectedObject(this.wasm, pos, e.key)',
+          '        : false;',
+          '      if (macroHadSelection) {',
+          '        this.deleteSelection();',
+          '      } else if (e.altKey) {',
+          '        // Alt/Option+Backspace/Delete: 단어 삭제 (macOS standard)',
+          '        this.cursor.setAnchor();',
+          "        this.cursor.moveToWordBoundary(e.key === 'Backspace' ? -1 : 1);",
+          '        if (this.cursor.hasSelection()) this.deleteSelection();',
+          "      } else if (e.key === 'Backspace') {",
+          '        this.handleBackspace(pos, inCell);',
+          '      } else {',
+          '        this.handleDelete(pos, inCell);',
+          '      }',
+          '      recordStudioKey(e, { hadSelection: macroHadSelection, inBody: macroInBody, adjacentObject: macroAdjacentObject });',
+          '      break;',
+        ].join('\n'),
+      },
+      {
+        find: [
+          "        this.executeOperation({ kind: 'command', command: new SplitParagraphCommand(this.cursor.getPosition()) });",
+          '      }',
+          '      break;',
+        ].join('\n'),
+        replace: [
+          "        this.executeOperation({ kind: 'command', command: new SplitParagraphCommand(this.cursor.getPosition()) });",
+          '      }',
+          '      recordStudioKey(e, { inBody: !inCell && !this.cursor.isInHeaderFooter() && !this.cursor.isInFootnote() && !this.cursor.isInTextBox() });',
+          '      break;',
+        ].join('\n'),
+      },
+      {
+        find: [
+          '      if (moveH !== null) this.cursor.moveHorizontal(moveH);',
+          '      if (moveV !== null) this.cursor.moveVertical(moveV);',
+        ].join('\n'),
+        replace: [
+          '      const macroWasInBody = !this.cursor.isInCell() && !this.cursor.isInHeaderFooter() && !this.cursor.isInFootnote() && !this.cursor.isInTextBox();',
+          '      if (moveH !== null) this.cursor.moveHorizontal(moveH);',
+          '      if (moveV !== null) this.cursor.moveVertical(moveV);',
+          '      recordStudioKey(e, { inBody: macroWasInBody && !this.cursor.isInCell() && !this.cursor.isInHeaderFooter() && !this.cursor.isInFootnote() && !this.cursor.isInTextBox() });',
+        ].join('\n'),
+      },
+      {
+        find: [
+          "    case 'Home': {",
+          '      e.preventDefault();',
+          '      if (e.shiftKey) {',
+          '        this.cursor.setAnchor();',
+          '        this.cursor.moveToLineStart();',
+          '      } else {',
+          '        this.cursor.clearSelection();',
+          '        this.cursor.moveToLineStart();',
+          '      }',
+          '      this.markCurrentFieldStartOutside?.();',
+          '      this.updateCaret();',
+          '      if (e.shiftKey) this.updateSelection();',
+          '      break;',
+          '    }',
+        ].join('\n'),
+        replace: [
+          "    case 'Home': {",
+          '      e.preventDefault();',
+          '      const macroWasInBody = !this.cursor.isInCell() && !this.cursor.isInHeaderFooter() && !this.cursor.isInFootnote() && !this.cursor.isInTextBox();',
+          '      if (e.shiftKey) {',
+          '        this.cursor.setAnchor();',
+          '        this.cursor.moveToLineStart();',
+          '      } else {',
+          '        this.cursor.clearSelection();',
+          '        this.cursor.moveToLineStart();',
+          '      }',
+          '      this.markCurrentFieldStartOutside?.();',
+          '      this.updateCaret();',
+          '      if (e.shiftKey) this.updateSelection();',
+          '      recordStudioKey(e, { inBody: macroWasInBody && !this.cursor.isInCell() && !this.cursor.isInHeaderFooter() && !this.cursor.isInFootnote() && !this.cursor.isInTextBox() });',
+          '      break;',
+          '    }',
+        ].join('\n'),
+      },
+      {
+        find: [
+          "    case 'End': {",
+          '      e.preventDefault();',
+          '      if (e.shiftKey) {',
+          '        this.cursor.setAnchor();',
+          '        this.cursor.moveToLineEnd();',
+          '      } else {',
+          '        this.cursor.clearSelection();',
+          '        this.cursor.moveToLineEnd();',
+          '      }',
+          '      this.markCurrentFieldEndOutside?.();',
+          '      this.updateCaret();',
+          '      if (e.shiftKey) this.updateSelection();',
+          '      break;',
+          '    }',
+        ].join('\n'),
+        replace: [
+          "    case 'End': {",
+          '      e.preventDefault();',
+          '      const macroWasInBody = !this.cursor.isInCell() && !this.cursor.isInHeaderFooter() && !this.cursor.isInFootnote() && !this.cursor.isInTextBox();',
+          '      if (e.shiftKey) {',
+          '        this.cursor.setAnchor();',
+          '        this.cursor.moveToLineEnd();',
+          '      } else {',
+          '        this.cursor.clearSelection();',
+          '        this.cursor.moveToLineEnd();',
+          '      }',
+          '      this.markCurrentFieldEndOutside?.();',
+          '      this.updateCaret();',
+          '      if (e.shiftKey) this.updateSelection();',
+          '      recordStudioKey(e, { inBody: macroWasInBody && !this.cursor.isInCell() && !this.cursor.isInHeaderFooter() && !this.cursor.isInFootnote() && !this.cursor.isInTextBox() });',
+          '      break;',
+          '    }',
+        ].join('\n'),
+      },
+      {
+        find: [
+          '      if (e.shiftKey) {',
+          '        this.applyHangingIndentAtCursor();',
+          '        break;',
+          '      }',
+          '      // 탭 문자 삽입 (본문·글상자 공통)',
+          "      this.executeOperation({ kind: 'command', command: new InsertTabCommand(this.cursor.getPosition()) });",
+          '      break;',
+        ].join('\n'),
+        replace: [
+          '      const macroWasInBody = !this.cursor.isInCell() && !this.cursor.isInHeaderFooter() && !this.cursor.isInFootnote() && !this.cursor.isInTextBox();',
+          '      if (e.shiftKey) {',
+          '        this.applyHangingIndentAtCursor();',
+          '        recordStudioKey(e, { inBody: macroWasInBody && !this.cursor.isInCell() && !this.cursor.isInHeaderFooter() && !this.cursor.isInFootnote() && !this.cursor.isInTextBox() });',
+          '        break;',
+          '      }',
+          '      // 탭 문자 삽입 (본문·글상자 공통)',
+          "      this.executeOperation({ kind: 'command', command: new InsertTabCommand(this.cursor.getPosition()) });",
+          '      recordStudioKey(e, { inBody: macroWasInBody && !this.cursor.isInCell() && !this.cursor.isInHeaderFooter() && !this.cursor.isInFootnote() && !this.cursor.isInTextBox() });',
+          '      break;',
+        ].join('\n'),
+      },
+      {
+        find: [
+          "    case 'backspace': {",
+          '      e.preventDefault();',
+          '      if (this.isFormMode?.()) return;',
+          '      if (this.cursor.hasSelection()) {',
+          '        this.deleteSelection();',
+          '      } else if (e.metaKey && !e.ctrlKey) {',
+          '        // Cmd+Backspace (macOS): 줄 시작까지 삭제',
+          '        this.cursor.setAnchor();',
+          '        this.cursor.moveToLineStart();',
+          '        if (this.cursor.hasSelection()) this.deleteSelection();',
+          '      } else {',
+          '        // Ctrl+Backspace (Win/Linux): 이전 단어 경계까지 삭제',
+          '        this.cursor.setAnchor();',
+          '        this.cursor.moveToWordBoundary(-1);',
+          '        if (this.cursor.hasSelection()) this.deleteSelection();',
+          '      }',
+          '      break;',
+        ].join('\n'),
+        replace: [
+          "    case 'backspace': {",
+          '      e.preventDefault();',
+          '      if (this.isFormMode?.()) return;',
+          '      const macroHadSelection = this.cursor.hasSelection();',
+          '      const macroInBody = !this.cursor.isInCell() && !this.cursor.isInHeaderFooter() && !this.cursor.isInFootnote() && !this.cursor.isInTextBox();',
+          '      if (macroHadSelection) {',
+          '        this.deleteSelection();',
+          '      } else if (e.metaKey && !e.ctrlKey) {',
+          '        // Cmd+Backspace (macOS): 줄 시작까지 삭제',
+          '        this.cursor.setAnchor();',
+          '        this.cursor.moveToLineStart();',
+          '        if (this.cursor.hasSelection()) this.deleteSelection();',
+          '      } else {',
+          '        // Ctrl+Backspace (Win/Linux): 이전 단어 경계까지 삭제',
+          '        this.cursor.setAnchor();',
+          '        this.cursor.moveToWordBoundary(-1);',
+          '        if (this.cursor.hasSelection()) this.deleteSelection();',
+          '      }',
+          '      recordStudioKey(e, { hadSelection: macroHadSelection, inBody: macroInBody });',
+          '      break;',
+        ].join('\n'),
+      },
+      {
+        find: [
+          "    case 'delete': {",
+          '      if (!e.ctrlKey) break;',
+          '      e.preventDefault();',
+          '      if (this.isFormMode?.()) return;',
+          '      if (this.cursor.hasSelection()) {',
+          '        this.deleteSelection();',
+          '      } else {',
+          '        // Ctrl+Delete (Win/Linux): 다음 단어 경계까지 삭제',
+          '        this.cursor.setAnchor();',
+          '        this.cursor.moveToWordBoundary(1);',
+          '        if (this.cursor.hasSelection()) this.deleteSelection();',
+          '      }',
+          '      break;',
+        ].join('\n'),
+        replace: [
+          "    case 'delete': {",
+          '      if (!e.ctrlKey) break;',
+          '      e.preventDefault();',
+          '      if (this.isFormMode?.()) return;',
+          '      const macroHadSelection = this.cursor.hasSelection();',
+          '      const macroInBody = !this.cursor.isInCell() && !this.cursor.isInHeaderFooter() && !this.cursor.isInFootnote() && !this.cursor.isInTextBox();',
+          '      if (macroHadSelection) {',
+          '        this.deleteSelection();',
+          '      } else {',
+          '        // Ctrl+Delete (Win/Linux): 다음 단어 경계까지 삭제',
+          '        this.cursor.setAnchor();',
+          '        this.cursor.moveToWordBoundary(1);',
+          '        if (this.cursor.hasSelection()) this.deleteSelection();',
+          '      }',
+          '      recordStudioKey(e, { hadSelection: macroHadSelection, inBody: macroInBody });',
+          '      break;',
+        ].join('\n'),
+      },
+      {
+        find: [
+          "    case 'home': {",
+          '      e.preventDefault();',
+          '      if (e.shiftKey) {',
+          '        this.cursor.setAnchor();',
+          '        this.cursor.moveToDocumentStart();',
+          '      } else {',
+          '        this.cursor.clearSelection();',
+          '        this.cursor.moveToDocumentStart();',
+          '      }',
+          '      this.updateCaret();',
+          '      snapViewToDocumentEdge.call(this, -1);',
+          '      break;',
+          '    }',
+        ].join('\n'),
+        replace: [
+          "    case 'home': {",
+          '      e.preventDefault();',
+          '      const macroWasInBody = !this.cursor.isInCell() && !this.cursor.isInHeaderFooter() && !this.cursor.isInFootnote() && !this.cursor.isInTextBox();',
+          '      if (e.shiftKey) {',
+          '        this.cursor.setAnchor();',
+          '        this.cursor.moveToDocumentStart();',
+          '      } else {',
+          '        this.cursor.clearSelection();',
+          '        this.cursor.moveToDocumentStart();',
+          '      }',
+          '      this.updateCaret();',
+          '      snapViewToDocumentEdge.call(this, -1);',
+          '      recordStudioKey(e, { inBody: macroWasInBody && !this.cursor.isInCell() && !this.cursor.isInHeaderFooter() && !this.cursor.isInFootnote() && !this.cursor.isInTextBox() });',
+          '      break;',
+          '    }',
+        ].join('\n'),
+      },
+      {
+        find: [
+          "    case 'end': {",
+          '      e.preventDefault();',
+          '      if (e.shiftKey) {',
+          '        this.cursor.setAnchor();',
+          '        this.cursor.moveToDocumentEnd();',
+          '      } else {',
+          '        this.cursor.clearSelection();',
+          '        this.cursor.moveToDocumentEnd();',
+          '      }',
+          '      this.updateCaret();',
+          '      snapViewToDocumentEdge.call(this, 1);',
+          '      break;',
+          '    }',
+        ].join('\n'),
+        replace: [
+          "    case 'end': {",
+          '      e.preventDefault();',
+          '      const macroWasInBody = !this.cursor.isInCell() && !this.cursor.isInHeaderFooter() && !this.cursor.isInFootnote() && !this.cursor.isInTextBox();',
+          '      if (e.shiftKey) {',
+          '        this.cursor.setAnchor();',
+          '        this.cursor.moveToDocumentEnd();',
+          '      } else {',
+          '        this.cursor.clearSelection();',
+          '        this.cursor.moveToDocumentEnd();',
+          '      }',
+          '      this.updateCaret();',
+          '      snapViewToDocumentEdge.call(this, 1);',
+          '      recordStudioKey(e, { inBody: macroWasInBody && !this.cursor.isInCell() && !this.cursor.isInHeaderFooter() && !this.cursor.isInFootnote() && !this.cursor.isInTextBox() });',
+          '      break;',
+          '    }',
+        ].join('\n'),
+      },
+      {
+        find: [
+          "    case 'arrowleft': {",
+          '      e.preventDefault();',
+          '      if (e.shiftKey) this.cursor.setAnchor();',
+          '      else this.cursor.clearSelection();',
+          '      this.cursor.moveToLineStart();',
+          '      this.updateCaret();',
+          '      break;',
+          '    }',
+          "    case 'arrowright': {",
+          '      e.preventDefault();',
+          '      if (e.shiftKey) this.cursor.setAnchor();',
+          '      else this.cursor.clearSelection();',
+          '      this.cursor.moveToLineEnd();',
+          '      this.updateCaret();',
+          '      break;',
+          '    }',
+        ].join('\n'),
+        replace: [
+          "    case 'arrowleft': {",
+          '      e.preventDefault();',
+          '      const macroWasInBody = !this.cursor.isInCell() && !this.cursor.isInHeaderFooter() && !this.cursor.isInFootnote() && !this.cursor.isInTextBox();',
+          '      if (e.shiftKey) this.cursor.setAnchor();',
+          '      else this.cursor.clearSelection();',
+          '      this.cursor.moveToLineStart();',
+          '      this.updateCaret();',
+          "      recordStudioKey(e, { navigationAction: 'lineStart', inBody: macroWasInBody && !this.cursor.isInCell() && !this.cursor.isInHeaderFooter() && !this.cursor.isInFootnote() && !this.cursor.isInTextBox() });",
+          '      break;',
+          '    }',
+          "    case 'arrowright': {",
+          '      e.preventDefault();',
+          '      const macroWasInBody = !this.cursor.isInCell() && !this.cursor.isInHeaderFooter() && !this.cursor.isInFootnote() && !this.cursor.isInTextBox();',
+          '      if (e.shiftKey) this.cursor.setAnchor();',
+          '      else this.cursor.clearSelection();',
+          '      this.cursor.moveToLineEnd();',
+          '      this.updateCaret();',
+          "      recordStudioKey(e, { navigationAction: 'lineEnd', inBody: macroWasInBody && !this.cursor.isInCell() && !this.cursor.isInHeaderFooter() && !this.cursor.isInFootnote() && !this.cursor.isInTextBox() });",
+          '      break;',
+          '    }',
+        ].join('\n'),
+      },
+      {
+        find: [
+          '      if (e.metaKey && !e.ctrlKey) {',
+          '        this.cursor.moveToDocumentStart();',
+          '      } else {',
+          '        this.cursor.moveToParagraphBoundary(-1);',
+          '      }',
+          '      this.updateCaret();',
+          '      break;',
+        ].join('\n'),
+        replace: [
+          '      const macroWasInBody = !this.cursor.isInCell() && !this.cursor.isInHeaderFooter() && !this.cursor.isInFootnote() && !this.cursor.isInTextBox();',
+          '      if (e.metaKey && !e.ctrlKey) {',
+          '        this.cursor.moveToDocumentStart();',
+          '      } else {',
+          '        this.cursor.moveToParagraphBoundary(-1);',
+          '      }',
+          '      this.updateCaret();',
+          "      recordStudioKey(e, { navigationAction: e.metaKey && !e.ctrlKey ? 'docStart' : 'paragraphBackward', inBody: macroWasInBody && !this.cursor.isInCell() && !this.cursor.isInHeaderFooter() && !this.cursor.isInFootnote() && !this.cursor.isInTextBox() });",
+          '      break;',
+        ].join('\n'),
+      },
+      {
+        find: [
+          '      if (e.metaKey && !e.ctrlKey) {',
+          '        this.cursor.moveToDocumentEnd();',
+          '      } else {',
+          '        this.cursor.moveToParagraphBoundary(1);',
+          '      }',
+          '      this.updateCaret();',
+          '      break;',
+        ].join('\n'),
+        replace: [
+          '      const macroWasInBody = !this.cursor.isInCell() && !this.cursor.isInHeaderFooter() && !this.cursor.isInFootnote() && !this.cursor.isInTextBox();',
+          '      if (e.metaKey && !e.ctrlKey) {',
+          '        this.cursor.moveToDocumentEnd();',
+          '      } else {',
+          '        this.cursor.moveToParagraphBoundary(1);',
+          '      }',
+          '      this.updateCaret();',
+          "      recordStudioKey(e, { navigationAction: e.metaKey && !e.ctrlKey ? 'docEnd' : 'paragraphForward', inBody: macroWasInBody && !this.cursor.isInCell() && !this.cursor.isInHeaderFooter() && !this.cursor.isInFootnote() && !this.cursor.isInTextBox() });",
+          '      break;',
+        ].join('\n'),
+      },
+    ],
+  },
+  'studio-macro-record-mouse': {
+    file: /[\\/]rhwp-studio[\\/]src[\\/]engine[\\/]input-handler-mouse\.ts$/,
+    edits: [
+      {
+        find: "import { hyperlinkAtPointer, hoverHyperlink, rememberHyperlinkClick, followHyperlinkClick } from './input-handler-hyperlink';",
+        replace: [
+          "import { hyperlinkAtPointer, hoverHyperlink, rememberHyperlinkClick, followHyperlinkClick } from './input-handler-hyperlink';",
+          `import { recordStudioMouseClick } from '${HANCOM_KEYS_MODULE}';`,
+        ].join('\n'),
+      },
+      {
+        find: [
+          '  if (localX >= this.container.clientWidth || localY >= this.container.clientHeight) {',
+          '    return;',
+          '  }',
+        ].join('\n'),
+        replace: [
+          '  if (localX >= this.container.clientWidth || localY >= this.container.clientHeight) {',
+          '    return;',
+          '  }',
+          '  if (e.button === 0) recordStudioMouseClick();',
+        ].join('\n'),
+      },
+    ],
+  },
+  'studio-macro-error-toast': {
+    file: /[\\/]rhwp-studio[\\/]src[\\/]main\.ts$/,
+    find: [
+      '        if (payload.documentSessionId !== inputHandler?.getCommandErrorState()?.documentSessionId) return;',
+      "        showToast({ message: payload.recovery === 'succeeded'",
+    ].join('\n'),
+    replace: [
+      '        if (payload.documentSessionId !== inputHandler?.getCommandErrorState()?.documentSessionId) return;',
+      `        if ((payload.operation === 'plugin:${AGENT_PLUGIN_ID}:macro' || payload.operation === 'plugin:ieumoffice-agent:macro') && payload.recovery === 'succeeded') return;`,
+      "        showToast({ message: payload.recovery === 'succeeded'",
+    ].join('\n'),
+  },
+  'studio-plugin-tx-noop': {
+    file: /[\\/]rhwp-studio[\\/]src[\\/]plugin[\\/]host\.ts$/,
+    find: [
+      '    let deferred = false;',
+      '    let ran = false;',
+      '    let result!: T;',
+      '',
+      '    const tx: Tx = {',
+      '      doc: () => this.requireDocument(),',
+      '      deferPagination: () => {',
+      '        if (deferred) return;',
+      '        deferred = true;',
+      '        this.deps.wasm.beginDeferredPagination();',
+      '      },',
+      '    };',
+      '',
+      '    this.ledger.activeTx += 1;',
+      '    try {',
+      '      ih.executeOperation({',
+      "        kind: 'snapshot',",
+      '        operationType: `plugin:${this.pluginId}:${label}`,',
+      '        operation: () => {',
+      '          result = fn(tx);',
+      '          ran = true;',
+      '          // 조판은 커밋 직전에 한 번만 turn — 호출당 재조판을 없애는 자리다.',
+      '          if (deferred) this.deps.wasm.flushDeferredPagination();',
+      '          return ih.getCursorPosition();',
+      '        },',
+      '      });',
+    ].join('\n'),
+    replace: [
+      '    let deferred = false;',
+      '    let noOp = false;',
+      '    let ran = false;',
+      '    let result!: T;',
+      '',
+      '    const tx: Tx & { markNoOp: () => void } = {',
+      '      doc: () => this.requireDocument(),',
+      '      deferPagination: () => {',
+      '        if (deferred) return;',
+      '        deferred = true;',
+      '        this.deps.wasm.beginDeferredPagination();',
+      '      },',
+      '      markNoOp: () => {',
+      '        noOp = true;',
+      '      },',
+      '    };',
+      '',
+      '    this.ledger.activeTx += 1;',
+      '    try {',
+      '      ih.executeOperation({',
+      "        kind: 'snapshot',",
+      '        operationType: `plugin:${this.pluginId}:${label}`,',
+      '        operation: () => {',
+      '          result = fn(tx);',
+      '          ran = true;',
+      '          // 조판은 커밋 직전에 한 번만 turn — 호출당 재조판을 없애는 자리다.',
+      '          if (deferred) {',
+      '            if (noOp) this.deps.wasm.cancelDeferredPagination();',
+      '            else this.deps.wasm.flushDeferredPagination();',
+      '          }',
+      '          return noOp ? null : ih.getCursorPosition();',
+      '        },',
+      '      });',
+    ].join('\n'),
   },
 }
 
@@ -368,13 +3283,67 @@ export const STUDIO_PATCHES = /** @type {const} */ ([
   'studio-nested-table-delete',
   'studio-nested-table-cut',
   'studio-nested-table-command',
+  'studio-nested-table-dispatch',
+  'studio-nested-table-path-calls',
+  'studio-nested-table-keys',
+  'studio-textbox-table-cell-block',
+  'studio-textbox-table-context-menu',
+  'studio-nested-table-move-drag',
   'studio-hancom-shortcuts',
   'studio-hancom-labels',
   'studio-hancom-commands',
+  'studio-hancom-equal-cells',
   'studio-hancom-chords',
   'studio-hancom-page-number',
-  'studio-font-memo-state',
-  'studio-font-memo-use',
+  'studio-quick-correct',
+  'studio-format-copy-safety',
+  'studio-format-copy',
+  'studio-format-copy-state',
+  'studio-single-cell-resize',
+  'studio-merged-row-below',
+  'studio-clipboard-objects',
+  'studio-table-props-border-bg',
+  'studio-hancom-cell-props-block',
+  'studio-hancom-block-format-dialogs',
+  'studio-hancom-row-drag',
+  'studio-table-props-menu-label',
+  'studio-memo-command',
+  'studio-memo-context-menu',
+  'studio-easy-words-context-menu',
+  'studio-toc-index-context-menu',
+  'studio-memo-label-ko',
+  'studio-memo-label-en',
+  'studio-cell-block-paste',
+  'studio-note-text',
+  'studio-note-typing',
+  'studio-submode-symbols',
+  'studio-pc-fonts',
+  'studio-font-file-reads',
+  'studio-missing-font-marks',
+  'studio-equation-fonts',
+  'studio-equation-fonts-subst',
+  'studio-hancom-object-drag',
+  'studio-hancom-object-drag-cancel',
+  'studio-hancom-object-step',
+  'studio-hancom-object-mouse',
+  'studio-object-duplicate',
+  'studio-wheel-zoom',
+  'studio-hyperlink-open',
+  'studio-hyperlink-bookmark',
+  'studio-hyperlink-preview',
+  'studio-textbox-edit-mouse',
+  'studio-textbox-edit-picture',
+  'studio-textbox-edit-keyboard',
+  'studio-textbox-edit-handler',
+  'studio-textbox-edit-cursor',
+  'studio-ruler-para-kinds',
+  'studio-ruler-para-marks',
+  'studio-macro-record-command',
+  'studio-macro-record-text',
+  'studio-macro-record-key',
+  'studio-macro-record-mouse',
+  'studio-macro-error-toast',
+  'studio-plugin-tx-noop',
 ])
 
 /** Whether a patch is written against this file. */
@@ -412,6 +3381,33 @@ export const pluginHooks = [
       'getSelectedCellRange()',
       'getCellTableContext()',
       'getExcludedCells()',
+      'isInPictureObjectSelection(): boolean',
+      // word and paragraph selection in a header, footer or footnote being edited
+      'isInHeaderFooter(): boolean',
+      "get headerFooterMode(): 'none' | 'header' | 'footer'",
+      'get hfSectionIdx(): number',
+      'get hfApplyTo(): number',
+      'get hfParaIdx(): number',
+      'get hfCharOffset(): number',
+      'get hfPreviewPage(): number',
+      'selectHeaderFooterRange(',
+      'getHeaderFooterSelectionOrdered()',
+      'isInFootnote(): boolean',
+      'get fnSectionIdx(): number',
+      'get fnParaIdx(): number',
+      'get fnControlIdx(): number',
+      'get fnInnerParaIdx(): number',
+      'get fnCharOffset(): number',
+      'setFnCursorPosition(fnParaIdx: number, charOffset: number): void',
+      'setFnAnchor(): void',
+      'getFootnoteSelectionOrdered()',
+    ],
+  },
+  {
+    file: 'src/core/wasm-bridge.ts',
+    needles: [
+      'getHeaderFooterParaInfo(sec: number, isHeader: boolean, applyTo: number, hfParaIdx: number): string',
+      'getFootnoteInfo(sec: number, para: number, controlIdx: number)',
     ],
   },
   {
@@ -468,10 +3464,31 @@ export const hancomHooks = [
       'moveToLineEnd(): void',
       'moveHorizontal(delta: number): void',
       'getSelection(): { anchor: DocumentPosition; focus: DocumentPosition } | null',
+      'getSelectedTableRef(): { sec: number; ppi: number; ci: number; cellPath?: CellPathEntry[] } | null',
       'isInHeaderFooter(): boolean',
       'isInFootnote(): boolean',
+      'isInTextBox(): boolean',
+      'nestingDepth(): number',
       'isInPictureObjectSelection(): boolean',
       'isInTableObjectSelection(): boolean',
+      'getPosition(): DocumentPosition',
+      'isInCellSelectionMode(): boolean',
+      'getCellTableContext()',
+      'getSelectedCellRange(): { startRow: number; startCol: number; endRow: number; endCol: number } | null',
+      'enterCellSelectionMode(',
+      'advanceCellSelectionPhase(',
+      'getCellSelectionPhase(',
+      'getCellSelectionFocus(',
+      'setCellSelectionAnchor(',
+      'setCellSelectionFocus(',
+      'exitCellSelectionMode(',
+      'moveToCellByIndex(',
+      'moveTo(pos: DocumentPosition): void',
+      'clearSelection(): void',
+      'isProtectedCellSelectionMode(): boolean',
+      'getExcludedCells(): Set<string>',
+      'hasSelection(): boolean',
+      'captureCellSelection(): CellBlockSelectionState | null',
     ],
   },
   {
@@ -479,16 +3496,79 @@ export const hancomHooks = [
     needles: [
       'private dispatcher: CommandDispatcher | null',
       'private _cellBlockLetterImeGuard = new CellBlockLetterImeGuard()',
+      'private wasm: WasmBridge',
+      'private caret: CaretRenderer',
       'private deleteSelection(',
       'applyStyle(styleId: number): void',
       'executeOperation(desc: OperationDescriptor): void',
+      'updateCellSelection(',
+      'private cellSelectionRenderer: CellSelectionRenderer | null',
+      'private updateCaret(skipScroll',
+      'clearSelectedCellBlock(',
       'isFormMode(): boolean',
+      'hasCopiedFormat(): boolean { return this.formatCopyState !== null; }',
+      'getCharProperties(): CharProperties',
+      'getParaProperties(): ParaProperties',
+      'getCursorPosition(): DocumentPosition',
+      'focus(): void',
       "eventBus.on('format-char'",
+      // the typed character, for 빠른 교정 (quickCorrectTyped in hancom-keys.mjs)
+      'private getTextAt(pos: DocumentPosition, count: number): string',
+      // a cell block's cells (표/셀 속성 on a block) and whether it holds more than one
+      'private getSelectedCellBlock(): SelectedCellBlock | null',
+      'hasMultiCellSelection(): boolean',
+      // Ctrl+Shift+Tab in a cell: the studio's Shift+Tab hanging indent
+      'applyHangingIndentAtCursor(): boolean',
+      // Hangul's Ctrl+PageUp/PageDown: the studio's Ctrl+Home/End (documentEdgeKey)
+      'private handleCtrlKey(e: KeyboardEvent): void',
+      // Esc while dragging an object (cancelObjectDrag in object-drag.mjs)
+      'private isPictureResizeDragging = false;',
+      'private pictureResizeState: {',
+      'private isPictureMoveDragging = false;',
+      'private pictureMoveState: {',
+      'private dragRafId = 0;',
+      'private cleanupPictureResizeDrag(): void {',
+      'private renderPictureObjectSelection(): void {',
+      'private setObjectProperties(ref:',
+      'private container: HTMLElement,',
+      'private eventBus: EventBus,',
+      // a selected picture or drawing object's Hancom keys (hancomPictureObjectKey)
+      'private gridStepMm = 3;',
+      'private moveSelectedPicture(key:',
+      'private resizeSelectedPicture(key:',
+      'private findPictureBbox(',
+      'private getObjectProperties(ref:',
+      'private exitPictureObjectSelectionIfNeeded(): void',
+      // Alt+click (hancomAltClickObject)
+      'private virtualScroll: VirtualScroll,',
+      'private viewportManager: ViewportManager,',
+      // Ctrl+drop copies the object and selects the copy (copyObjectDrag)
+      'selectPictureObject(sec: number, ppi: number, ci: number,',
+    ],
+  },
+  {
+    file: 'src/engine/cursor.ts',
+    needles: [
+      'enterPictureObjectSelectionDirect(',
+      'getSelectedPictureRef(): PictureSelectionRef | null',
+      'getSelectedPictureRefs(): PictureSelectionRef[]',
+    ],
+  },
+  {
+    file: 'src/engine/input-handler-keyboard.ts',
+    needles: [
+      'export function handleCtrlKey(this: any, e: KeyboardEvent): void',
+      'this.cursor.moveToDocumentStart();',
+      'this.cursor.moveToDocumentEnd();',
     ],
   },
   {
     file: 'src/command/dispatcher.ts',
-    needles: ['dispatch(commandId: string', 'isEnabled(commandId: string): boolean'],
+    needles: [
+      'dispatch(commandId: string',
+      'dispatchWithResult(commandId: string',
+      'isEnabled(commandId: string): boolean',
+    ],
   },
   { file: 'src/command/contextual-shortcut.ts', needles: ['arm('] },
   {
@@ -498,8 +3578,66 @@ export const hancomHooks = [
       'evaluateTableFormula(sec: number, parentPara: number, controlIdx: number,',
       'getCellParagraphCount(sec: number, parentPara: number, controlIdx: number, cellIdx: number)',
       'getCellParagraphLength(sec: number, parentPara: number, controlIdx: number, cellIdx: number, cellParaIdx: number)',
+      'getTextInCell(sec: number, parentPara: number, controlIdx: number,',
+      'getParagraphCount(sec: number): number {',
+      'getParagraphLength(sec: number, para: number): number {',
+      'setTableProperties(sec: number, parentPara: number, controlIdx: number, props: Partial<TableProperties>)',
+      'changeShapeZOrder(',
       'getCellInfo(sec: number, parentPara: number, controlIdx: number, cellIdx: number): CellInfo',
+      'getTableDimensions(sec: number, parentPara: number, controlIdx: number): TableDimensions',
+      'insertTextInCell(sec: number, parentPara: number, controlIdx: number, cellIdx: number, cellParaIdx: number, charOffset: number, text: string)',
+      'splitParagraphInCell(sec: number, parentPara: number, controlIdx: number, cellIdx: number, cellParaIdx: number, charOffset: number',
+      'deleteRangeInCell(sec: number, parentPara: number, controlIdx: number, cellIdx: number, startCellPara: number',
+      'getTableCellBboxes(sec: number,',
       'searchText(query: string, fromSec: number, fromPara: number, fromChar: number, forward: boolean',
+      'getCharPropertiesAt(sec: number, para: number, charOffset: number)',
+      'getCellCharPropertiesAtByPath(sec: number, parentPara: number, pathJson: string, charOffset: number)',
+      'getCellCharPropertiesAt(sec: number, parentPara: number, controlIdx: number, cellIdx: number, cellParaIdx: number, charOffset: number)',
+      'getParaPropertiesAt(sec: number, para: number)',
+      'getCellParaPropertiesAt(sec: number, parentPara: number, controlIdx: number, cellIdx: number, cellParaIdx: number)',
+      'applyCharFormat(sec: number, para: number, startOffset: number, endOffset: number, propsJson: string)',
+      'applyCharFormatInCellByPath(sec: number, parentPara: number, pathJson: string, startOffset: number, endOffset: number, propsJson: string)',
+      'applyParaFormat(sec: number, para: number, propsJson: string)',
+      'applyParaFormatInCell(sec: number, parentPara: number, controlIdx: number, cellIdx: number, cellParaIdx: number, propsJson: string)',
+      'setCharShapeId(sec: number, para: number, startOffset: number, endOffset: number, charShapeId: number)',
+      'setCharShapeIdInCellByPath(sec: number, parentPara: number, pathJson: string, startOffset: number, endOffset: number, charShapeId: number)',
+      'getCharShapeRuns(sec: number, para: number, start: number, end: number)',
+      'setCharShapeRuns(sec: number, para: number, start: number, end: number, runs: CharShapeRun[])',
+      'getCharShapeRunsInCellByPath(sec: number, para: number, path: string, start: number, end: number)',
+      'setCharShapeRunsInCellByPath(sec: number, para: number, path: string, start: number, end: number, runs: CharShapeRun[])',
+      'getCellOwnProperties(sec: number, parentPara: number, controlIdx: number, cellIdx: number): CellProperties',
+      'getCellPropertiesByPath(sec: number, parentPara: number, pathJson: string, cellIdx: number): CellProperties',
+      'setCellProperties(',
+      'getStyleAt(sec: number, para: number)',
+      'getCellStyleAt(sec: number, parentPara: number, controlIdx: number, cellIdx: number, cellParaIdx: number)',
+      'applyStyle(sec: number, para: number, styleId: number): { ok: boolean }',
+      'applyCellStyle(sec: number, parentPara: number, controlIdx: number, cellIdx: number, cellParaIdx: number, styleId: number)',
+      'findOrCreateFontIdForLang(lang: number, name: string): number',
+      'getCellParagraphCountByPath(sec: number, parentPara: number, pathJson: string)',
+      'getCellParagraphLengthByPath(sec: number, parentPara: number, pathJson: string)',
+      'getTableDimensionsByPath(sec: number, parentPara: number, pathJson: string)',
+      'getCellInfoByPath(sec: number, parentPara: number, pathJson: string)',
+      // a table inside a cell or a text box (innerTableBridge): the path calls upstream already has
+      'getTableCellBboxesByPath(sec: number, parentPara: number, pathJson: string): CellBbox[]',
+      'resizeTableCellsByPath(',
+      'runInBatch<T>(fn: () => T): T',
+      // the cell copy's table HTML and the 셀 붙이기 dialog's new rows and columns
+      "exportControlHtml(sec: number, para: number, ci: number, cellPathJson = ''): string",
+      'getCellProperties(sec: number, parentPara: number, controlIdx: number, cellIdx: number): CellProperties',
+      'insertTableRow(sec: number, parentPara: number, controlIdx: number, rowIdx: number, below: boolean)',
+      'insertTableColumn(sec: number, parentPara: number, controlIdx: number, colIdx: number, right: boolean)',
+      'mergeTableCells(sec: number, parentPara: number, controlIdx: number, startRow: number',
+      // 문서 정보 reads the document through these (studio-plugin/document-info.mjs)
+      'getSectionCount(): number {',
+      'getTextRange(sec: number, para: number, charOffset: number, count: number): string {',
+      'getTextInCellByPath(sec: number, parentPara: number, pathJson: string, charOffset: number, count: number): string {',
+      'getControlTextPositions(sec: number, para: number): number[] {',
+      'getTableDimensions(sec: number, parentPara: number, controlIdx: number): TableDimensions {',
+      'getTextBoxControlIndex(sec: number, para: number): number {',
+      'getLineInfo(sec: number, para: number, charOffset: number): LineInfo {',
+      'getLineInfoInCell(sec: number, parentPara: number, controlIdx: number, cellIdx: number, cellParaIdx: number, charOffset: number): LineInfo {',
+      'getControlImageMime(sec: number, para: number, ci: number,',
+      'getDocumentInfo(): DocumentInfo {',
     ],
   },
   // the studio parts the studio-hancom-commands patch hands to the new commands
@@ -519,8 +3657,67 @@ export const hancomHooks = [
       'export function navigateToSearchHit(',
     ],
   },
-  { file: 'src/engine/command.ts', needles: ['export class InsertTextCommand'] },
-  // what installHancomMainKeys is handed where the commands are registered
+  {
+    file: 'src/engine/command.ts',
+    needles: [
+      'export class InsertTextCommand',
+      // the Hanja conversion replaces a word with the studio's overwrite typing (5th argument)
+      "    private replacedText = '',",
+      'export class ApplyCharFormatCommand',
+      'export class ApplyParaFormatCommand',
+    ],
+  },
+  // the drag state hancomRowDragUpdates reads at the end of a border drag
+  {
+    file: 'src/engine/input-handler-table.ts',
+    needles: [
+      'tableRef: { ...this.cachedTableRef },',
+      '    affectedCellIndices,',
+      "const rawNewPos = state.edge.type === 'row' ? pageY : pageX;",
+      'const deltaHwpUnit = Math.round(deltaPagePx * 75);',
+    ],
+  },
+  // a cell block's L/C/B/F open the studio's own border/background dialog on its tab
+  {
+    file: 'src/ui/cell-border-bg-dialog.ts',
+    needles: ['export class CellBorderBgDialog', 'private switchTab(idx: number)'],
+  },
+  // the table-object L/C keys open 표/셀 속성 on its border/background tab, and a block's
+  // 표/셀 속성 reads what the dialog showed and where (hancomBlockCellProps)
+  {
+    file: 'src/ui/table-cell-props-dialog.ts',
+    needles: [
+      'export class TableCellPropsDialog',
+      'private tabs: HTMLButtonElement[] = [];',
+      'private switchTab(idx: number)',
+      'btn.dataset.tab = def.id;',
+      'private cellProps!: CellProperties;',
+      'private tableCtx: { sec: number; ppi: number; ci: number };',
+      'private cellIdx: number;',
+      "private mode: 'table' | 'cell';",
+      'private services: CommandServices | undefined;',
+    ],
+  },
+  // the studio parts the studio-format-copy patches hand to the app's module
+  {
+    file: 'src/command/commands/edit.ts',
+    needles: [
+      "id: 'edit:format-copy'",
+      'services.getInputHandler()?.performFormatCopy();',
+      'services.getInputHandler()?.performFormatPaste();',
+    ],
+  },
+  {
+    file: 'src/engine/cell-block-format.ts',
+    needles: [
+      'export function selectCellIndicesInRange(',
+      'export function paraFormatTargetsForCellBlock(',
+      'export function withCellPathTarget(',
+    ],
+  },
+  { file: 'src/ui/toast.ts', needles: ['export function showToast(options: ToastOptions): void'] },
+  { file: 'src/i18n/core.ts', needles: ['export function getLocale(): Locale'] },
+  // what installHancomMainKeys and installHanjaKey are handed where the commands are registered
   {
     file: 'src/main.ts',
     needles: [
@@ -545,6 +3742,50 @@ export const hancomHooks = [
 ]
 
 /**
+ * What studio-plugin/note-text.mjs uses of the studio, on the same terms as pluginHooks: the
+ * note's caret and selection, the engine's note calls, and the snapshot step that brings the
+ * caret back into the note on undo.
+ */
+export const noteTextHooks = [
+  {
+    file: 'src/engine/cursor.ts',
+    needles: [
+      'isInFootnote(): boolean',
+      'isInHeaderFooter(): boolean',
+      'get fnSectionIdx(): number',
+      'get fnParaIdx(): number',
+      'get fnControlIdx(): number',
+      'get fnInnerParaIdx(): number',
+      'get fnCharOffset(): number',
+      'get fnFootnoteIndex(): number',
+      'get fnPageNum(): number',
+      'getFootnoteSelectionOrdered(): {',
+      'clearSelection(): void',
+      'getPosition(): DocumentPosition',
+    ],
+  },
+  {
+    file: 'src/core/wasm-bridge.ts',
+    needles: [
+      'getFootnoteInfo(sec: number, para: number, controlIdx: number)',
+      'insertTextInFootnote(sec: number, para: number, controlIdx: number, fnParaIdx: number, charOffset: number, text: string)',
+      'deleteTextInFootnote(sec: number, para: number, controlIdx: number, fnParaIdx: number, charOffset: number, count: number)',
+      'splitParagraphInFootnote(sec: number, para: number, controlIdx: number, fnParaIdx: number, charOffset: number',
+      'mergeParagraphInFootnote(sec: number, para: number, controlIdx: number, fnParaIdx: number)',
+    ],
+  },
+  {
+    file: 'src/engine/input-handler.ts',
+    needles: [
+      'executeOperation(desc: OperationDescriptor): void',
+      'private replaceHeaderFooterSelection(',
+      'isFormMode(): boolean',
+      "if (ctx?.mode === 'footnote') {",
+    ],
+  },
+]
+
+/**
  * The studio commands the Hangul keys run that the studio's command sources no longer name;
  * `sources` is the text of every file in src/command/commands.
  */
@@ -556,10 +3797,45 @@ export function missingHancomCommands(sources) {
   return studioCommandIds().filter((id) => !named(id))
 }
 
+/** What studio-plugin/textbox-edit.mjs uses of the studio, on the same terms as pluginHooks. */
+export const textboxEditHooks = [
+  {
+    file: 'src/engine/cursor.ts',
+    needles: [
+      'exitPictureObjectSelection(): void',
+      'moveToHit(pos: DocumentPosition): void',
+      'resetPreferredX(): void',
+    ],
+  },
+  {
+    file: 'src/core/wasm-bridge.ts',
+    needles: [
+      'hitTest(pageNum: number, x: number, y: number): HitTestResult',
+      'getShapeBBox(sec: number, parentPara: number, controlIdx: number)',
+      'getCursorRectByPathNear(',
+    ],
+  },
+  {
+    file: 'src/engine/input-handler.ts',
+    needles: [
+      'private pagePointFromClientPoint(',
+      'private hitTestFromEvent(',
+      'private pictureObjectRenderer',
+      'private selectionRenderer',
+      'private textarea',
+    ],
+  },
+]
+
 /** The hooks a studio source tree lacks; `read` gives the text of one of its files, or null. */
 export function missingPluginHooks(read) {
   const missing = []
-  for (const { file, needles } of [...pluginHooks, ...hancomHooks]) {
+  for (const { file, needles } of [
+    ...pluginHooks,
+    ...hancomHooks,
+    ...noteTextHooks,
+    ...textboxEditHooks,
+  ]) {
     const text = read(file)
     for (const needle of needles) {
       if (text === null || !text.includes(needle)) missing.push(`${file}: ${needle}`)

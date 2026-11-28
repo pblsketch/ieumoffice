@@ -6,6 +6,7 @@ import type {
   AgentTransport,
   AgentMessage,
 } from './types'
+import { contextWarningFor, type ContextWarning } from './context-budget'
 
 /**
  * Machine-readable cause of a failed turn. The one definition of the union:
@@ -15,6 +16,12 @@ export type IpcStreamErrorKind =
   | 'timeout'
   | 'credits'
   | 'network'
+  /** proxy authentication or proxy connection failure */
+  | 'proxy-error'
+  /** TLS / SSL certificate verification failure */
+  | 'cert-error'
+  /** DNS or host unreachable / offline network failure */
+  | 'network-unreachable'
   | 'overloaded'
   /** no usable provider */
   | 'not-connected'
@@ -34,9 +41,15 @@ export type IpcStreamErrorKind =
   | 'headless-limit'
   /** today's free allowance of a free key connection (OpenRouter `:free`, Gemini free tier) is used up */
   | 'free-limit'
+  /** the model is not offered on the free tier the key is on (Gemini answers with a quota of 0) */
+  | 'free-tier-model'
+  /** the user declined to send a request larger than the context budget */
+  | 'context-limit'
+  /** the person turned the subscription CLI off in this app (decision 0114) */
+  | 'off-in-app'
 
-/** Providers reached through a locally installed vendor CLI (ai-provider's AiSubscriptionProviderId) */
-export type IpcSubscriptionProviderId = 'claude-code' | 'codex'
+/** Subscription providers (ai-provider's AiSubscriptionProviderId): vendor CLIs and ChatGPT reached directly */
+export type IpcSubscriptionProviderId = 'claude-code' | 'codex' | 'chatgpt' | 'antigravity'
 
 /** What an error chunk says about its cause, without the message */
 export interface IpcStreamErrorCause {
@@ -78,6 +91,7 @@ export interface IpcStreamChunk {
     | 'delta'
     | 'reasoning'
     | 'tool-call'
+    | 'acp-tool-call'
     | 'usage'
     | 'subscription-usage'
     | 'input-truncated'
@@ -86,6 +100,10 @@ export interface IpcStreamChunk {
     | 'ping'
   text?: string
   toolCall?: AgentToolCall
+  /** correlation id for an ACP-native live tool call ('acp-tool-call') */
+  callId?: string
+  /** true on 'done' when an ACP-native agent drove its own tool loop for this run */
+  acpNative?: boolean
   error?: string
   /** machine-readable error cause; maps to a localized message (see errorText) */
   errorCode?: IpcStreamErrorKind
@@ -121,6 +139,16 @@ export interface IpcStreamStart<S> {
  */
 export const IPC_STREAM_SILENCE_TIMEOUT_MS = 240_000
 
+/**
+ * Remembers which runs the person already confirmed for a large prompt. The app
+ * may share one across transports (a panel per window) so one tool loop asks
+ * once; without it a transport keeps its own memory.
+ */
+export interface IpcContextGate {
+  isConfirmed(runId: string): boolean
+  markConfirmed(runId: string): void
+}
+
 export interface IpcTransportOptions<S> {
   /** subscribe to stream chunks; returns the unsubscribe function */
   onStream(listener: (chunk: IpcStreamChunk) => void): () => void
@@ -150,6 +178,32 @@ export interface IpcTransportOptions<S> {
   onSubscriptionUsage?(usage: IpcSubscriptionUsage[]): void
   /** the input was cut to fit a limit; the app must tell the user */
   onInputTruncated?(): void
+  /**
+   * The selected model's context window, when the app knows how to read it.
+   * Returning undefined (a subscription provider or another connection without
+   * a local window) skips the context gate for that request; an unreported size
+   * is `{ limit: 4096, known: false }`, not undefined.
+   */
+  contextLimit?(settings: S): { limit: number; known: boolean } | undefined
+  /**
+   * Ask the person before sending a prompt close to that window. False means
+   * the request must not be sent. Absent is treated as a decline: a limit is
+   * reported only to protect the person, never to send silently.
+   */
+  confirmContext?(warning: ContextWarning): boolean
+  /** confirmation memory shared across transports (see IpcContextGate) */
+  contextGate?: IpcContextGate
+  /**
+   * Optional override for returning an ACP-native live tool result to the main
+   * process. When omitted, reads `window.aiOfficeAcpTool.sendResult` exposed
+   * by the shared preload bridge.
+   */
+  sendAcpToolResult?(payload: {
+    requestId: string
+    callId: string
+    output: string
+    isError?: boolean
+  }): void | Promise<unknown>
 }
 
 /**
@@ -157,10 +211,29 @@ export interface IpcTransportOptions<S> {
  * LLM providers (avoids renderer CORS) and streams chunks back per requestId.
  * Each app wires in its own preload bridge and i18n via the options.
  */
+/** what Electron puts in front of an error thrown by an `ipcMain.handle` handler */
+const IPC_INVOKE_PREFIX = /^Error invoking remote method '[^']*': (?:Error: )?/
+/** a JavaScript runtime error: a bug, not something the person can act on */
+const RUNTIME_ERROR = /^(?:ReferenceError|TypeError|RangeError|SyntaxError|EvalError|URIError):/
+
+/**
+ * The text for a run whose start was rejected. Electron's IPC wrapper
+ * ("Error invoking remote method 'ai:stream': …") is noise in a chat panel, so
+ * it is dropped. A message the main process wrote on purpose is shown as it
+ * is; a runtime error leads with the editor's own "unknown error" sentence and
+ * keeps the original in brackets, so a screenshot still says what broke.
+ */
+export function startFailureText(err: unknown, unknownErrorText: () => string): string {
+  if (!(err instanceof Error) || !err.message) return unknownErrorText()
+  const message = err.message.replace(IPC_INVOKE_PREFIX, '').trim()
+  if (!message) return unknownErrorText()
+  return RUNTIME_ERROR.test(message) ? `${unknownErrorText()} (${message})` : message
+}
+
 export function createIpcTransport<S>(options: IpcTransportOptions<S>): AgentTransport {
   const timeoutText = () =>
-    options.errorText?.({ kind: 'timeout' }) ??
     options.timeoutErrorText?.() ??
+    options.errorText?.({ kind: 'timeout' }) ??
     options.unknownErrorText()
   const causeText = (cause: IpcStreamErrorCause, carried: string | undefined): string => {
     if (cause.kind === 'timeout') return timeoutText()
@@ -175,9 +248,58 @@ export function createIpcTransport<S>(options: IpcTransportOptions<S>): AgentTra
     return options.errorText?.(cause) ?? legacy?.() ?? carried ?? options.unknownErrorText()
   }
   const sessionId = crypto.randomUUID()
+  /** runs this transport confirmed, when the app did not supply a shared gate */
+  const confirmedRuns = new Set<string>()
+  const ownGate: IpcContextGate = {
+    isConfirmed: (runId) => confirmedRuns.has(runId),
+    markConfirmed: (runId) => {
+      confirmedRuns.add(runId)
+    },
+  }
+  const gate = (): IpcContextGate => options.contextGate ?? ownGate
+  /** The warning this request must confirm first, or undefined when it may start */
+  const pendingWarning = (request: AgentStreamRequest): ContextWarning | undefined => {
+    // internal follow-up turns (a compaction summary) are not the person's request
+    if (request.skipContextGate) return undefined
+    const limit = options.contextLimit?.(options.getSettings())
+    if (!limit) return undefined
+    const warning = contextWarningFor(
+      request.system,
+      request.messages,
+      request.tools,
+      limit.limit,
+      limit.known,
+    )
+    if (!warning) return undefined
+    // an absent run id has no memory: each request is its own run, so each asks
+    if (request.runId && gate().isConfirmed(request.runId)) return undefined
+    return warning
+  }
   return {
     stream(request: AgentStreamRequest, cb) {
       const requestId = crypto.randomUUID()
+      const warning = pendingWarning(request)
+      if (warning) {
+        let confirmed: boolean
+        try {
+          confirmed = options.confirmContext?.(warning) === true
+        } catch {
+          // a broken dialog declines: nothing is sent without a yes
+          confirmed = false
+        }
+        if (!confirmed) {
+          const message = causeText({ kind: 'context-limit' }, undefined)
+          try {
+            options.onStreamError?.({ kind: 'context-limit', message })
+          } catch {
+            // a broken listener must not swallow the refusal
+          }
+          cb.onError(message)
+          // nothing was started, so nothing needs cancelling
+          return { cancel: () => {} }
+        }
+        if (request.runId) gate().markConfirmed(request.runId)
+      }
       let settled = false
       let silenceTimer: ReturnType<typeof setTimeout> | undefined
       const settle = () => {
@@ -195,12 +317,38 @@ export function createIpcTransport<S>(options: IpcTransportOptions<S>): AgentTra
         }
         cb.onError(error)
       }
+      let inFlightLiveTools = 0
       const armSilence = () => {
         clearTimeout(silenceTimer)
+        if (inFlightLiveTools > 0) return
         silenceTimer = setTimeout(() => {
           options.cancel(requestId)
           fail(timeoutText(), { kind: 'timeout' })
         }, IPC_STREAM_SILENCE_TIMEOUT_MS)
+      }
+      const sendLiveToolResult = (payload: {
+        requestId: string
+        callId: string
+        output: string
+        isError?: boolean
+      }) => {
+        if (options.sendAcpToolResult) {
+          return Promise.resolve(options.sendAcpToolResult(payload))
+        }
+        const bridge = (
+          globalThis as {
+            aiOfficeAcpTool?: {
+              sendResult(p: {
+                requestId: string
+                callId: string
+                output: string
+                isError?: boolean
+              }): Promise<void>
+            }
+          }
+        ).aiOfficeAcpTool
+        if (!bridge) return Promise.resolve()
+        return bridge.sendResult(payload)
       }
       const unsubscribe = options.onStream((chunk) => {
         if (chunk.requestId !== requestId || settled) return
@@ -215,6 +363,41 @@ export function createIpcTransport<S>(options: IpcTransportOptions<S>): AgentTra
         } else if (chunk.type === 'tool-call') {
           armSilence()
           if (chunk.toolCall) cb.onToolCall(chunk.toolCall)
+        } else if (chunk.type === 'acp-tool-call') {
+          const callId = chunk.callId
+          const toolCall = chunk.toolCall
+          if (!callId || !toolCall) return
+          inFlightLiveTools++
+          clearTimeout(silenceTimer)
+          const runTool = cb.onLiveToolCall
+            ? Promise.resolve()
+                .then(() => cb.onLiveToolCall!(toolCall))
+                .catch((err: unknown) => ({
+                  id: toolCall.id,
+                  name: toolCall.name,
+                  output: err instanceof Error ? err.message : String(err),
+                  isError: true,
+                }))
+            : Promise.resolve({
+                id: toolCall.id,
+                name: toolCall.name,
+                output: 'Tool execution is not available in this panel',
+                isError: true,
+              })
+          void runTool
+            .then((res) =>
+              sendLiveToolResult({
+                requestId,
+                callId,
+                output: res.output,
+                ...(res.isError ? { isError: true } : {}),
+              }),
+            )
+            .catch(() => undefined)
+            .finally(() => {
+              inFlightLiveTools = Math.max(0, inFlightLiveTools - 1)
+              if (!settled) armSilence()
+            })
         } else if (chunk.type === 'usage') {
           armSilence()
           if (chunk.usage) cb.onUsage?.(chunk.usage)
@@ -227,7 +410,7 @@ export function createIpcTransport<S>(options: IpcTransportOptions<S>): AgentTra
         } else if (chunk.type === 'done') {
           settle()
           if (chunk.stopReason) cb.onStopReason?.(chunk.stopReason)
-          cb.onDone()
+          cb.onDone(chunk.acpNative ? { acpNative: true } : undefined)
         } else if (chunk.type === 'error') {
           if (!chunk.errorCode) {
             fail(chunk.error ?? options.unknownErrorText())
@@ -257,10 +440,10 @@ export function createIpcTransport<S>(options: IpcTransportOptions<S>): AgentTra
             tools: request.tools,
           }),
         ).catch((err: unknown) => {
-          fail(err instanceof Error ? err.message : options.unknownErrorText())
+          fail(startFailureText(err, options.unknownErrorText))
         })
       } catch (err) {
-        fail(err instanceof Error ? err.message : options.unknownErrorText())
+        fail(startFailureText(err, options.unknownErrorText))
       }
       return { cancel: () => options.cancel(requestId) }
     },

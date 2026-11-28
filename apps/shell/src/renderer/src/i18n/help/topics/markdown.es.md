@@ -8,6 +8,7 @@ El editor Markdown abre .md / .markdown — y .txt / .json, directo a la vista d
 - **Guardar**: fiel byte a byte: el BOM, los CRLF y la presencia de un salto de línea final se conservan; un guardado sin cambios no reescribe el archivo.
 - **Buscar y reemplazar**: ctrl+F busca en el código fuente; Reemplazar todo lo reescribe.
 - **IA**: unos botones predefinidos permiten que el asistente reescriba, amplíe o traduzca el documento. Una selección puede ocultarse a la IA (ver el capítulo del panel de IA).
+- **Abrir enlaces**: al editar, Ctrl+clic en un enlace (⌘ en Mac) lo abre en el navegador; un clic normal coloca el cursor en el texto del enlace para editarlo. En la presentación (F5), un clic normal lo abre.
 
 ## La barra de herramientas
 
@@ -36,6 +37,7 @@ Menú Archivo, todo local y todo pregunta dónde poner el resultado:
 
 - **Exportar como Word…** y **Exportar como PDF…** escriben un .docx o .pdf de verdad.
 - **Exportar como ODT…** escribe un .odt (texto OpenDocument) con la misma conversión que la exportación a Word; si algo cambia o se pierde por el camino, verá la lista y confirmará antes.
+- **Exportar como documento HWP…** escribe un documento HWP (.hwp o .hwpx) con la misma conversión; los títulos, las listas y las tablas llegan como tales al documento HWP, y una tabla larga continúa en la página siguiente. Si algo no se puede trasladar, verá la lista y confirmará antes.
 - **Exportar como imágenes…** escribe un PNG por página en la carpeta que elija.
 - **Convertir y abrir en Docs** convierte a .docx y lo abre en la pestaña Docs integrada aquí en la app: no es un traspaso a nada en la nube, y la copia convertida vive en una carpeta de caché que se limpia al cabo de una semana aproximadamente.
 
@@ -43,6 +45,7 @@ Menú Archivo, todo local y todo pregunta dónde poner el resultado:
 
 La cinta de opciones lleva un conmutador **Código fuente** (localizado junto con la aplicación). Al activarlo, el editor se sustituye por el Markdown en crudo: exactamente el texto que escribe un guardado, nada embellecido, nada normalizado por debajo de usted.
 
+- **Teclado**: Ctrl+E (⌘E en Mac) alterna entre la vista de código fuente y el lienzo de edición renderizado. Pulsa F5 para leerlo a pantalla completa.
 - **La edición es fiel byte a byte.** Un guardado desde la vista de código fuente produce los mismos bytes que un guardado desde el editor: el BOM, los CRLF y la presencia de un salto de línea final se conservan.
 - **Es el mismo documento.** Alterne entre el editor y la fuente tantas veces como quiera; la fuente es el propio texto del editor, no una copia que haya que combinar.
 - **La barra de herramientas de formato no está disponible** mientras esta vista está abierta, porque la mayoría de esos botones insertan construcciones del editor que solo tienen sentido en la parte renderizada. Vuelve a aparecer cuando cierra la vista.

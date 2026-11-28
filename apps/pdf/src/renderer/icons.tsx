@@ -54,6 +54,12 @@ export const IconUnderline = () => (
     <path d="M5.89 19.5 L18.11 19.5" strokeWidth={1.85} />
   </Icon>
 )
+/** Wavy line: three quadratic humps, the squiggly-markup glyph */
+export const IconSquiggly = () => (
+  <Icon>
+    <path d="M4.2 13.1 C5.7 10.4 7.2 10.4 8.7 13.1 C10.2 15.8 11.7 15.8 13.2 13.1 C14.7 10.4 16.2 10.4 17.7 13.1 C19.2 15.8 20.7 15.8 22.2 13.1" />
+  </Icon>
+)
 export const IconStrike = () => (
   <Icon>
     <path d="M16.29 7.21 C15.72 5.52 14.03 4.5 12 4.5 C9.52 4.5 7.71 5.85 7.71 7.88 C7.71 9.46 8.73 10.36 10.65 10.93" />
@@ -95,6 +101,18 @@ export const IconNote = () => (
     <path d="M8.25 9.32 L15.75 9.32 M8.25 12 L13.07 12" />
   </Icon>
 )
+/** Insertion mark: the proofreader's caret wedge */
+export const IconCaret = () => (
+  <Icon>
+    <path d="M5.8 16.2 L12 9.4 L18.2 16.2" />
+  </Icon>
+)
+/** Regular pentagon outline */
+export const IconPolygon = () => (
+  <Icon>
+    <path d="M12 4.2 L19.6 9.7 L16.7 18.7 L7.3 18.7 L4.4 9.7 Z" />
+  </Icon>
+)
 export const IconSign = () => (
   <Icon>
     <path d="M5.5 15.1 C7.8 12.3 9.5 9 9.2 7 C9 5.7 7.9 5.9 7.6 7.4 C7.2 9.6 8.6 13.4 10.5 14.9 C12 16.1 13.9 15.3 14.7 13.8 C15.1 13 15.9 13 16.3 13.8 C16.7 14.7 17.7 15 18.5 14.4" />
@@ -109,11 +127,32 @@ export const IconCertSign = () => (
     <path d="M9 13.4 L7.5 19.5 L12 17.4 L16.5 19.5 L15 13.4" />
   </Icon>
 )
+/** Bates numbering: a # with a page corner */
+export const IconBates = () => (
+  <Icon>
+    <path d="M9 5 L7 19 M13 5 L11 19 M6.5 9 L17.5 9 M5.8 14 L16.8 14" />
+  </Icon>
+)
+/** Measurement: a ruler with tick marks */
+export const IconMeasure = () => (
+  <Icon>
+    <rect x="3.5" y="9" width="17" height="7" rx="1" />
+    <path d="M7.5 9 V12 M12 9 V13.5 M16.5 9 V12" />
+  </Icon>
+)
 /** Signature panel: a shield with a check mark */
 export const IconSignatures = () => (
   <Icon>
     <path d="M12 4 L18.5 6.4 V11.4 C18.5 15 15.9 18 12 19.6 C8.1 18 5.5 15 5.5 11.4 V6.4 Z" />
     <path d="M9.2 11.8 L11.2 13.8 L15 9.9" />
+  </Icon>
+)
+/** Document protection: a padlock */
+export const IconProtect = () => (
+  <Icon>
+    <rect x="5.5" y="10.5" width="13" height="8.5" rx="1.5" />
+    <path d="M8.5 10.5 V7.75 A3.5 3.5 0 0 1 15.5 7.75 V10.5" />
+    <path d="M12 13.75 V16.25" />
   </Icon>
 )
 export const IconPreviousField = () => (
@@ -486,6 +525,15 @@ export const IconFitPage = () => (
     <path d="M12 8 L12 16 M9.8 10.2 L12 8 L14.2 10.2 M9.8 13.8 L12 16 L14.2 13.8" />
   </Icon>
 )
+/** Hand tool: an open hand */
+export const IconHand = () => (
+  <Icon>
+    <path d="M8.5 13 V7 A1.25 1.25 0 0 1 11 7 V11.5" />
+    <path d="M11 11 V5.75 A1.25 1.25 0 0 1 13.5 5.75 V11" />
+    <path d="M13.5 11 V6.75 A1.25 1.25 0 0 1 16 6.75 V11.5" />
+    <path d="M16 9.5 A1.25 1.25 0 0 1 18.5 9.5 V14 C18.5 17.3 16 19.5 13 19.5 H12 C9.8 19.5 8.4 18.5 7.2 16.9 L4.8 13.5 A1.3 1.3 0 0 1 6.8 11.9 L8.5 13.6" />
+  </Icon>
+)
 export const IconOutline = () => (
   <Icon>
     <path d="M4.84 4.78 L19.5 4.78 M8.22 9.29 L19.5 9.29 M8.22 13.8 L19.5 13.8 M11.61 18.32 L19.5 18.32" />
@@ -754,3 +802,49 @@ export function IconAlert({ size = 13 }: { size?: number }): ReactElement {
     </Icon>
   )
 }
+
+export function IconLink({ size = 16 }: { size?: number }): ReactElement {
+  return (
+    <Icon size={size}>
+      <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+      <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+    </Icon>
+  )
+}
+
+/** Organize pages: 2x2 page thumbnails grid */
+export const IconOrganizePages = () => (
+  <Icon>
+    <rect x="4.5" y="4.5" width="6.2" height="6.2" rx="1" />
+    <rect x="13.3" y="4.5" width="6.2" height="6.2" rx="1" />
+    <rect x="4.5" y="13.3" width="6.2" height="6.2" rx="1" />
+    <rect x="13.3" y="13.3" width="6.2" height="6.2" rx="1" strokeDasharray="2 1.5" />
+  </Icon>
+)
+
+/** Interleave merge: alternating odd/even sheets */
+export const IconInterleave = () => (
+  <Icon>
+    <rect x="4.5" y="5" width="11" height="4.2" rx="0.8" />
+    <rect x="8.5" y="10" width="11" height="4.2" rx="0.8" />
+    <rect x="4.5" y="15" width="11" height="4.2" rx="0.8" />
+  </Icon>
+)
+
+/** Scan PDF OCR: frame corners with scanned text lines */
+export const IconOcrPdf = () => (
+  <Icon>
+    <path d="M4.5 8.5 V5.5 A1 1 0 0 1 5.5 4.5 H8.5 M15.5 4.5 H18.5 A1 1 0 0 1 19.5 5.5 V8.5 M19.5 15.5 V18.5 A1 1 0 0 1 18.5 19.5 H15.5 M8.5 19.5 H5.5 A1 1 0 0 1 4.5 18.5 V15.5" />
+    <path d="M8 9.5 H16 M8 12.5 H14.5 M8 15.5 H12.5" />
+  </Icon>
+)
+
+/** Documents to PDF: document sheets converting to PDF */
+export const IconDocsToPdf = () => (
+  <Icon>
+    <path d="M5.5 4.5 H11.5 L14.5 7.5 V15.5 A1 1 0 0 1 13.5 16.5 H5.5 A1 1 0 0 1 4.5 15.5 V5.5 A1 1 0 0 1 5.5 4.5 Z" />
+    <path d="M11.5 4.5 V7.5 H14.5 M7.5 10.5 H11.5 M7.5 13 H10.5" />
+    <path d="M15.5 12 H19.5 M17.7 10.2 L19.5 12 L17.7 13.8" />
+    <rect x="13" y="15" width="6.5" height="4.5" rx="0.8" />
+  </Icon>
+)

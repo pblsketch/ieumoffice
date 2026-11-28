@@ -2,6 +2,9 @@ import type { AgentMessage, AgentToolCall, AgentToolDef, ToolExecution } from '.
 import { composeSkills, type AgentSkill } from './skill'
 import { isOutboundCall } from './outbound'
 import { guardOutbound, windowOutboundBridge } from './outbound-guard'
+import { createUserMcpSkill, onMcpNewConversation, windowMcpState } from './user-mcp-skill'
+import { guardReceivedContent } from './user-mcp/keep-inside'
+import { parseMcpToolName } from './user-mcp/names'
 
 export { OUTBOUND_TOOLS, isOutboundCall } from './outbound'
 
@@ -67,11 +70,15 @@ export const DRIVE_OUTBOUND_BLOCKED =
   'and tell the user they can start a new chat to use it again.'
 
 const DRIVE_SYSTEM_PROMPT = `## Google Drive
-The user connected their Google Drive and lets you search and read it.
+The user connected their Google Drive and lets you search and read the Drive
+files they chose in this app. The app sees only those files, not the whole
+Drive.
 - Use drive_search when the request needs a file the user keeps in Drive
   (a report, minutes, a sheet) that is not already attached or open. It
-  matches file names and contents; retry with other words or the other
-  language when it finds nothing.
+  matches file names and contents among the chosen files; retry with other
+  words or the other language when it finds nothing. If the file is still
+  missing, tell the user to choose it under Google Drive on the home screen
+  (or attach it from Drive) and ask again.
 - Read a promising file with drive_read (by its id from a search, paged by
   offset) before answering from it. Never answer from file names alone.
 - Drive is read-only for you: you cannot change, delete, move or share Drive
@@ -98,8 +105,9 @@ export function createDriveSkill(deps: DriveSkillDeps): DriveSkill {
     {
       name: DRIVE_SEARCH_TOOL,
       description:
-        'Search the user’s Google Drive by file name and content. Returns matching files with ' +
-        'their id, type and last change. Read one with drive_read.',
+        'Search, by file name and content, the Google Drive files the user chose in this app ' +
+        '(not the rest of their Drive). Returns matching files with their id, type and last ' +
+        'change. Read one with drive_read.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -190,24 +198,36 @@ export function createDriveSkill(deps: DriveSkillDeps): DriveSkill {
   }
 }
 
+export interface GuardDriveContentOptions {
+  /** Built-in local-only connector tools that stay allowed even after Drive content enters the chat */
+  isLocalOnlyTool?: (name: string) => boolean
+}
+
 /**
  * Wrap a composed skill so outbound calls are refused while the conversation
  * holds Drive content. Getters stay live: the composed skill's tools and
  * prompt are read through on every access.
  */
-export function guardDriveContent(skill: AgentSkill, drive: DriveSkill | null): AgentSkill {
+export function guardDriveContent(
+  skill: AgentSkill,
+  drive: DriveSkill | null,
+  options?: GuardDriveContentOptions,
+): AgentSkill {
   if (!drive) return skill
   return {
     id: skill.id,
     get systemPrompt() {
       return skill.systemPrompt
     },
+    get toolsOffSystemPrompt() {
+      return skill.toolsOffSystemPrompt
+    },
     get tools() {
       return skill.tools
     },
     buildContext: () => skill.buildContext?.() ?? '',
     executeTool: (call, signal) => {
-      if (drive.driveContentSeen && isOutboundCall(call)) {
+      if (drive.driveContentSeen && isOutboundCall(call, options?.isLocalOnlyTool)) {
         return { output: DRIVE_OUTBOUND_BLOCKED, isError: true, summary: call.name }
       }
       return skill.executeTool(call, signal)
@@ -267,28 +287,124 @@ export function readAnswerOf(raw: unknown): DriveCallResult<{ page: DriveReadPag
 }
 
 /**
+ * Window-level Drive AI state shared by `createBridgedDriveSkill` and the AI
+ * panel's Connections popover (`McpServerButton`): follows Settings' Drive AI
+ * switch and tracks whether the user turned Drive off for this chat only.
+ */
+export interface DriveWindowState {
+  /** Drive is connected and Settings allows AI search/read */
+  enabled(): boolean
+  /** the user turned Drive off for this conversation only */
+  offInChat(): boolean
+  setOffInChat(off: boolean): void
+  /** reset per-chat override back to Settings default */
+  newConversation(): void
+  /** re-read Settings' Drive AI enabled state from the bridge */
+  refresh(): Promise<void>
+  subscribe(listener: () => void): () => void
+  dispose(): void
+}
+
+export function createDriveWindowState(bridge: DriveBridgeLike): DriveWindowState {
+  let on = false
+  let offInChat = false
+  const listeners = new Set<() => void>()
+  const notify = () => {
+    for (const listener of [...listeners]) listener()
+  }
+  const setEnabled = (value: boolean) => {
+    if (on === value) return
+    on = value
+    notify()
+  }
+  const refresh = async () => {
+    setEnabled((await bridge.driveAiEnabled().catch(() => false)) === true)
+  }
+  void refresh()
+  const offBridge = bridge.onDriveAiChanged?.((value) => setEnabled(value === true))
+  const offMcpReset = onMcpNewConversation(() => {
+    if (!offInChat) return
+    offInChat = false
+    notify()
+  })
+  return {
+    enabled: () => on,
+    offInChat: () => offInChat,
+    setOffInChat: (off) => {
+      if (offInChat === off) return
+      offInChat = off
+      notify()
+    },
+    newConversation: () => {
+      if (!offInChat) return
+      offInChat = false
+      notify()
+    },
+    refresh,
+    subscribe: (listener) => {
+      listeners.add(listener)
+      return () => {
+        listeners.delete(listener)
+      }
+    },
+    dispose: () => {
+      offBridge?.()
+      offMcpReset()
+    },
+  }
+}
+
+let driveWindowStateHolder: { bridge: DriveBridgeLike; state: DriveWindowState } | null = null
+
+/** This window's Drive AI state, made on first use; null when the preload has no Drive bridge */
+export function windowDriveState(): DriveWindowState | null {
+  const bridge = windowDriveBridge()
+  if (!bridge) return null
+  if (driveWindowStateHolder?.bridge !== bridge) {
+    driveWindowStateHolder?.state.dispose()
+    driveWindowStateHolder = { bridge, state: createDriveWindowState(bridge) }
+  }
+  return driveWindowStateHolder.state
+}
+
+/**
  * The Drive skill over an editor's preload bridge. Whether Drive is on is
- * kept here and refreshed from the main process's broadcasts, because the
- * loop reads the tool list synchronously.
+ * shared through `windowDriveState()` (when using the window's bridge) so
+ * the AI panel's Connections toggle and the skill stay in sync.
  */
 export function createBridgedDriveSkill(
   bridge: DriveBridgeLike,
   messages: () => readonly AgentMessage[],
 ): DriveSkill {
-  let on = false
-  void bridge.driveAiEnabled().then(
-    (value) => (on = value === true),
-    () => (on = false),
-  )
-  bridge.onDriveAiChanged?.((value) => (on = value))
-  return createDriveSkill({
-    enabled: () => on,
+  const driveState =
+    bridge === windowDriveBridge()
+      ? (windowDriveState() ?? createDriveWindowState(bridge))
+      : createDriveWindowState(bridge)
+  const inner = createDriveSkill({
+    enabled: () => driveState.enabled() && !driveState.offInChat(),
     search: async (query, limit) =>
       searchAnswerOf(await bridge.driveSearch(query, limit).catch(() => null)),
     read: async (fileId, offset) =>
       readAnswerOf(await bridge.driveRead(fileId, offset).catch(() => null)),
     messages,
   })
+  return {
+    id: inner.id,
+    get systemPrompt() {
+      return inner.systemPrompt
+    },
+    get tools() {
+      return inner.tools
+    },
+    get driveContentSeen() {
+      return inner.driveContentSeen
+    },
+    buildContext: () => {
+      if (messages().length === 0) driveState.newConversation()
+      return inner.buildContext?.() ?? ''
+    },
+    executeTool: (call, signal) => inner.executeTool(call, signal),
+  }
 }
 
 /** Whether a window's bridge carries the Drive calls (an older preload or a test mock may not) */
@@ -308,11 +424,60 @@ export function windowDriveBridge(): DriveBridgeLike | null {
 }
 
 /**
+ * The guarded composition every AI window uses: the editor's skills, the
+ * window's Drive skill (if given) and the person's MCP servers (when the
+ * preload carries `window.aiOfficeMcpTools`) composed into one, then wrapped
+ * innermost first: keep received content inside (user MCP spec 7.2) and the
+ * Drive block, then the internet-tools switch and address confirmation
+ * (guardOutbound, decision 0062). Built-in local-only connectors (e.g. Obsidian
+ * vaults) stay callable when internet tools are off or after reading Drive /
+ * other keep-inside servers, while still blocking outbound tools once their own
+ * keep-inside content enters the chat.
+ */
+function composeGuarded(
+  id: string,
+  intro: string,
+  messages: () => readonly AgentMessage[],
+  skills: AgentSkill[],
+  drive: DriveSkill | null,
+): AgentSkill {
+  const mcp = windowMcpState()
+  const isLocalOnly = mcp ? (server: string) => mcp.isLocalOnly(server) : undefined
+  const isLocalOnlyTool = isLocalOnly
+    ? (name: string) => {
+        const server = parseMcpToolName(name)?.server
+        return server !== undefined && isLocalOnly(server)
+      }
+    : undefined
+  const all = [
+    ...skills,
+    ...(drive ? [drive] : []),
+    ...(mcp ? [createUserMcpSkill(mcp, messages)] : []),
+  ]
+  const composed = composeSkills(id, intro, all)
+  const kept = mcp
+    ? guardReceivedContent(composed, {
+        keepsInside: (server) => mcp.keepsInside(server),
+        ...(isLocalOnly ? { isLocalOnly } : {}),
+        messages,
+      })
+    : composed
+  const localToolOpts = isLocalOnlyTool ? { isLocalOnlyTool } : undefined
+  return guardOutbound(
+    guardDriveContent(kept, drive, localToolOpts),
+    windowOutboundBridge(),
+    messages,
+    localToolOpts,
+  )
+}
+
+/**
  * composeSkills plus Google Drive: when this window's preload carries the
  * Drive calls, the Drive skill joins the editor's skills and the result is
  * guarded so outbound tools stop once Drive content is in the conversation.
- * Outside that, the person's internet-tools switch and address confirmation
- * apply (guardOutbound, decision 0062).
+ * The person's MCP servers join the same way (composeGuarded). Outside that,
+ * the person's internet-tools switch and address confirmation apply
+ * (guardOutbound, decision 0062).
  * `messages` reads the loop's history (the loop is built after its skill).
  */
 export function composeWithDrive(
@@ -323,9 +488,19 @@ export function composeWithDrive(
 ): AgentSkill {
   const bridge = windowDriveBridge()
   const drive = bridge ? createBridgedDriveSkill(bridge, messages) : null
-  return guardOutbound(
-    guardDriveContent(composeSkills(id, intro, drive ? [...skills, drive] : skills), drive),
-    windowOutboundBridge(),
-    messages,
-  )
+  return composeGuarded(id, intro, messages, skills, drive)
+}
+
+/**
+ * composeWithDrive without the Drive skill, for the home window's AI
+ * question (user MCP spec 7.2): the same guards in the same order, and the
+ * person's MCP servers when the window's preload carries them.
+ */
+export function composeWithGuards(
+  id: string,
+  intro: string,
+  messages: () => readonly AgentMessage[],
+  skills: AgentSkill[],
+): AgentSkill {
+  return composeGuarded(id, intro, messages, skills, null)
 }

@@ -18,6 +18,7 @@ import {
   type FontSizeStep,
 } from '@genoffice/pptx-ops/font-size'
 import { bulletRunText } from './bullet-presets'
+import { isCaretAtEditorEdge, parseTsvGrid, type CellNavDir } from './table-selection'
 
 interface Props {
   node: ShapeRenderNode
@@ -47,6 +48,18 @@ interface Props {
   onContextMenu?: (x: number, y: number, collapsed: boolean) => void
   /** Left press on the frame around the text (not on a line box) commits the edit and hands the press over as a shape drag */
   onFrameDrag?: (ev: MouseEvent) => void
+  /** Editing a table cell (disables fresh-autoshape centering and keeps width pinned to the cell box) */
+  isTableCell?: boolean
+  /** Arrow key at cell text edge: commit current cell (if changed) and jump to the adjacent cell. Returns true if navigation happened. */
+  onArrowNav?: (paragraphs: EditParagraph[] | null, dir: CellNavDir) => boolean
+  /** Shift+arrow past cell edge: commit current cell and switch to multi-cell selection. Returns true if selection switched. */
+  onExtendCellSelection?: (paragraphs: EditParagraph[] | null, dir: CellNavDir) => boolean
+  /** Second Ctrl/Cmd+A inside cell editor: commit and select all cells of the table */
+  onSelectAllCells?: (paragraphs: EditParagraph[] | null) => void
+  /** Dragging pointer into another cell of the same table: return true to commit and hand off to multi-cell drag selection. */
+  onDragExitCell?: (paragraphs: EditParagraph[] | null, ev: MouseEvent) => boolean
+  /** Pasting tabular (TSV) text into a table cell: spread across neighboring cells */
+  onPasteTableGrid?: (paragraphs: EditParagraph[] | null, grid: string[][]) => void
 }
 
 /**
@@ -340,6 +353,7 @@ export function populateEditorDom(
   anchorDy = 0,
   innerW?: number,
   vertical = false,
+  naturalFlow = false,
 ): void {
   div.innerHTML = ''
   delete div.dataset.layoutReleased
@@ -430,7 +444,9 @@ export function populateEditorDom(
       domBaseline = Math.max(domBaseline, (cssLineH - m.height) / 2 + m.ascent)
     }
     const dyFix =
-      !vertical && canvasBaseline > 0 && domBaseline > 0 ? canvasBaseline - domBaseline : 0
+      !vertical && dominant && canvasBaseline > 0 && domBaseline > 0
+        ? canvasBaseline - domBaseline
+        : 0
     // Horizontal: nowrap overflow — the canvas centers/right-aligns within the box and
     // spills both ways; the DOM block is max-content wide and anchored at the box's left.
     // The difference is a constant per box (zero when the content fits or the box wraps).
@@ -520,7 +536,7 @@ export function populateEditorDom(
             if (run.srcFontFamily) span.dataset.font = run.srcFontFamily
           }
           span.style.color = normalizeCss(run.color)
-          // Text highlight: display-only (extraction never reads it back; the patch path keeps <a:highlight>)
+          // Text highlight: extraction reads it back; the main process writes only a real change
           if (run.highlight) span.style.backgroundColor = normalizeCss(run.highlight)
           p.appendChild(span)
         }
@@ -533,7 +549,7 @@ export function populateEditorDom(
         // Vertical editing skips fixed advances entirely: the engine's widthPx is a horizontal
         // measure, and inline-block cells would break writing-mode glyph orientation. Restored
         // wrap-swallowed spaces (natural) also flow free: their run's widthPx excludes them.
-        if (!run.rtl && !vertical && !natural) {
+        if (!run.rtl && !vertical && !natural && !naturalFlow) {
           fragment.style.display = 'inline-block'
           fragment.style.width = `${run.widthPx}px`
           // The UA sheet gives contentEditable overflow-wrap: break-word, and a fixed-width
@@ -652,9 +668,19 @@ export function TextEditOverlay({
   zoom = 1,
   onFrameDrag,
   onContextMenu,
+  isTableCell = false,
+  onArrowNav,
+  onExtendCellSelection,
+  onSelectAllCells,
+  onDragExitCell,
+  onPasteTableGrid,
 }: Props) {
   const ref = useRef<HTMLDivElement>(null)
   const frameRef = useRef<HTMLDivElement>(null)
+  const exitingRef = useRef(false)
+  const populatedIdRef = useRef<string | null>(null)
+  const dragExitCleanupRef = useRef<(() => void) | null>(null)
+  useEffect(() => () => dragExitCleanupRef.current?.(), [])
 
   // The edit frame lives inside the CSS-scaled stage: during a zoom gesture only the
   // transform advances, so the zoom-compensated outline would thicken and then snap at
@@ -675,7 +701,7 @@ export function TextEditOverlay({
   // content does not jump between typing and commit. Every fresh body gets the standard
   // bodyPr insets (createTextBody writes them unconditionally); only an autoshape also
   // gets the centered anchor/alignment — keep both halves in step with setText.
-  const freshBody = !node.text && node.type === 'shape'
+  const freshBody = !isTableCell && !node.text && node.type === 'shape'
   const fresh = freshBody && !node.placeholder && !node.txBox
   const insets =
     node.text?.insets ??
@@ -719,6 +745,10 @@ export function TextEditOverlay({
   useEffect(() => {
     const div = ref.current
     if (!div) return
+    // Background slide updates (e.g. previous cell's async commit landing) must not wipe live DOM edits
+    if (populatedIdRef.current === node.id) return
+    populatedIdRef.current = node.id
+    exitingRef.current = false
     div.dataset.norm = String(norm) // The ribbon helpers for font size increase/decrease/set take the conversion factor from here
     // Same anchor offset as the engine (the dy text-layout bakes into line tops), removed back
     // during populate — the engine anchors against the glyph extent (inkBottom), so mirror it
@@ -734,6 +764,7 @@ export function TextEditOverlay({
       vertText ? 0 : anchorDy,
       vertText ? undefined : box.w - insets.l - insets.r,
       vertText,
+      isTableCell,
     )
     initialRef.current = JSON.stringify(extractParagraphs(div, norm))
     div.focus()
@@ -748,8 +779,34 @@ export function TextEditOverlay({
       return
     }
     if (sel) {
+      if (caretPoint?.from && caretPoint.x != null && caretPoint.y != null) {
+        const r1 = document.caretRangeFromPoint?.(caretPoint.from.x, caretPoint.from.y) ?? null
+        const r2 = document.caretRangeFromPoint?.(caretPoint.x, caretPoint.y) ?? null
+        if (r1 && r2 && div.contains(r1.startContainer) && div.contains(r2.startContainer)) {
+          const forward = r1.compareBoundaryPoints(Range.START_TO_START, r2) <= 0
+          const start = forward ? r1 : r2
+          const end = forward ? r2 : r1
+          const range = document.createRange()
+          range.setStart(start.startContainer, start.startOffset)
+          range.setEnd(end.startContainer, end.endOffset)
+          sel.removeAllRanges()
+          sel.addRange(range)
+          return
+        }
+      }
+      if (caretPoint?.place === 'start' || caretPoint?.place === 'end') {
+        const range = document.createRange()
+        range.selectNodeContents(div)
+        range.collapse(caretPoint.place === 'start')
+        sel.removeAllRanges()
+        sel.addRange(range)
+        return
+      }
       // Caret at the click point (double-click selects the word there); no coordinates/no hit → caret to end
-      const hit = caretPoint ? document.caretRangeFromPoint(caretPoint.x, caretPoint.y) : null
+      const hit =
+        caretPoint?.x != null && caretPoint?.y != null
+          ? (document.caretRangeFromPoint?.(caretPoint.x, caretPoint.y) ?? null)
+          : null
       if (hit && div.contains(hit.startContainer)) {
         sel.removeAllRanges()
         sel.addRange(hit)
@@ -771,6 +828,9 @@ export function TextEditOverlay({
   }, [node, norm, caretPoint, replaceWith, selectAll])
 
   const commit = () => {
+    if (exitingRef.current) return
+    exitingRef.current = true
+    dragExitCleanupRef.current?.()
     savedSel = null
     const div = ref.current
     if (!div) return onCancel()
@@ -860,6 +920,39 @@ export function TextEditOverlay({
         frame.style.cursor = pressOnEditFrame(div, e.target, e.clientX, e.clientY) ? 'move' : ''
       }}
       onMouseDown={(e) => {
+        if (onDragExitCell && e.button === 0 && !e.shiftKey && !e.metaKey && !e.ctrlKey) {
+          dragExitCleanupRef.current?.()
+          const onMove = (ev: MouseEvent) => {
+            if ((ev.buttons & 1) === 0) {
+              dragExitCleanupRef.current?.()
+              return
+            }
+            const frame = frameRef.current
+            if (!frame) return
+            const r = frame.getBoundingClientRect()
+            const outside =
+              ev.clientX < r.left - 2 ||
+              ev.clientX > r.right + 2 ||
+              ev.clientY < r.top - 2 ||
+              ev.clientY > r.bottom + 2
+            if (!outside) return
+            if (exitingRef.current) return
+            const paras = changedParagraphs()
+            if (!onDragExitCell(paras ?? null, ev)) return
+            dragExitCleanupRef.current?.()
+            exitingRef.current = true
+            savedSel = null
+            window.getSelection()?.removeAllRanges()
+          }
+          const onUp = () => dragExitCleanupRef.current?.()
+          window.addEventListener('mousemove', onMove)
+          window.addEventListener('mouseup', onUp)
+          dragExitCleanupRef.current = () => {
+            window.removeEventListener('mousemove', onMove)
+            window.removeEventListener('mouseup', onUp)
+            dragExitCleanupRef.current = null
+          }
+        }
         if (!onFrameDrag || e.button !== 0 || e.shiftKey || e.metaKey || e.ctrlKey) return
         const div = ref.current
         if (!div || !pressOnEditFrame(div, e.target, e.clientX, e.clientY)) return
@@ -881,6 +974,16 @@ export function TextEditOverlay({
           if (to?.closest('[data-keep-edit]')) return
           commit()
         }}
+        onPaste={(e) => {
+          if (!onPasteTableGrid) return
+          const text = e.clipboardData?.getData('text/plain')
+          if (!text || !text.includes('\t')) return
+          e.preventDefault()
+          if (exitingRef.current) return
+          exitingRef.current = true
+          savedSel = null
+          onPasteTableGrid(changedParagraphs() ?? null, parseTsvGrid(text))
+        }}
         onContextMenu={(e) => {
           if (!onContextMenu) return
           e.preventDefault()
@@ -899,24 +1002,91 @@ export function TextEditOverlay({
           }
         }}
         onKeyDown={(e) => {
+          const arrowDir: CellNavDir | null =
+            e.key === 'ArrowLeft'
+              ? 'left'
+              : e.key === 'ArrowRight'
+                ? 'right'
+                : e.key === 'ArrowUp'
+                  ? 'up'
+                  : e.key === 'ArrowDown'
+                    ? 'down'
+                    : null
+          if (e.key === 'Home' || e.key === 'End') {
+            // Fixed-width inline-block fragments trap Chromium's Home/End inside one word span
+            if (ref.current) releaseEditorLayoutConstraints(ref.current)
+          }
           if (e.key === 'Escape' || e.key === 'F2') {
             // Esc / F2 = commit the text and return to shape-selected state (input not lost);
             // when unchanged, commit internally goes through onCancel and produces no history step
             e.preventDefault()
+            e.stopPropagation()
             commit()
           } else if (e.key === 'Enter' && e.ctrlKey && onNextPlaceholder) {
             e.preventDefault()
+            if (exitingRef.current) return
+            exitingRef.current = true
             const paras = changedParagraphs()
             if (paras !== undefined) onNextPlaceholder(paras)
           } else if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
             e.preventDefault()
             commit()
+          } else if (
+            onSelectAllCells &&
+            (e.metaKey || e.ctrlKey) &&
+            !e.altKey &&
+            !e.shiftKey &&
+            e.key.toLowerCase() === 'a'
+          ) {
+            const div = ref.current
+            const sel = window.getSelection()
+            const allText = div?.textContent ?? ''
+            const selectedAll = !allText || (sel?.toString() ?? '').length >= allText.length
+            if (selectedAll) {
+              e.preventDefault()
+              if (exitingRef.current) return
+              exitingRef.current = true
+              savedSel = null
+              onSelectAllCells(changedParagraphs() ?? null)
+            }
+          } else if (arrowDir && !e.metaKey && !e.ctrlKey && !e.altKey && ref.current) {
+            const div = ref.current
+            if (!e.shiftKey && onArrowNav && isCaretAtEditorEdge(div, arrowDir)) {
+              if (exitingRef.current) return
+              if (onArrowNav(changedParagraphs() ?? null, arrowDir)) {
+                e.preventDefault()
+                exitingRef.current = true
+                savedSel = null
+              }
+              return
+            }
+            if (e.shiftKey && onExtendCellSelection) {
+              const sel = window.getSelection()
+              const allText = div.textContent ?? ''
+              const atEdge =
+                !allText ||
+                (sel?.isCollapsed && isCaretAtEditorEdge(div, arrowDir)) ||
+                (sel && !sel.isCollapsed && sel.toString().length >= allText.length)
+              if (atEdge) {
+                if (exitingRef.current) return
+                if (onExtendCellSelection(changedParagraphs() ?? null, arrowDir)) {
+                  e.preventDefault()
+                  exitingRef.current = true
+                  savedSel = null
+                }
+                return
+              }
+            }
           } else if (e.key === 'Tab' && onTabNav) {
             // Table cells: Tab commits and jumps to the next cell / Shift+Tab previous;
             // block the default focus move (otherwise blur falsely triggers commit-and-exit)
             e.preventDefault()
+            if (exitingRef.current) return
             const paras = changedParagraphs()
-            if (paras !== undefined) onTabNav(paras, e.shiftKey ? -1 : 1)
+            if (paras !== undefined) {
+              savedSel = null
+              onTabNav(paras, e.shiftKey ? -1 : 1)
+            }
           } else if (e.key === 'Tab') {
             // Multi-level lists: Tab/⇧Tab adjust the caret paragraph's indent level (lvl written on commit;
             // editing only shows a marginLeft visual hint, real indentation is laid out by the canvas per master styles)
@@ -959,7 +1129,11 @@ export function TextEditOverlay({
         style={{
           // wrap=none: no wrapping (width follows content, same as the canvas overflow behavior); soft-break \n still breaks via pre.
           // insets use padding not margin: paragraph divs' marginTop (paragraph spacing) must not collapse with the root node
-          width: wrap ? Math.max(box.w, 40 + insets.l + insets.r) : 'max-content',
+          width: wrap
+            ? isTableCell
+              ? box.w
+              : Math.max(box.w, 40 + insets.l + insets.r)
+            : 'max-content',
           // nowrap keeps max-content growth for overflow, but never below the box width:
           // a narrower block would defeat per-paragraph text-align (centered titles would
           // visually snap left on entering edit) — the canvas centers within the box.
@@ -1034,6 +1208,8 @@ function sameRunFormat(a: EditRun, b: EditRun): boolean {
     a.fontSize === b.fontSize &&
     a.fontFamily === b.fontFamily &&
     a.color === b.color &&
+    (a.highlight ?? null) === (b.highlight ?? null) &&
+    (a.letterSpacing ?? null) === (b.letterSpacing ?? null) &&
     (a.redact ?? null) === (b.redact ?? null) &&
     (a.link ? encodeLinkTarget(a.link) : '') === (b.link ? encodeLinkTarget(b.link) : '')
   )
@@ -1118,6 +1294,10 @@ export function extractParagraphs(root: HTMLElement, norm: number): EditParagrap
           ...(inherited.fontSize != null ? { fontSize: inherited.fontSize } : {}),
           ...(inherited.fontFamily ? { fontFamily: inherited.fontFamily } : {}),
           ...(inherited.color ? { color: inherited.color } : {}),
+          ...(inherited.highlight !== undefined ? { highlight: inherited.highlight } : {}),
+          ...(inherited.letterSpacing !== undefined
+            ? { letterSpacing: inherited.letterSpacing }
+            : {}),
           ...(inherited.srcRun != null ? { srcRun: inherited.srcRun } : {}),
           // explicit null = not withheld (the DOM is authoritative here, exactly as for `link`):
           // absent would mean "keep whatever the model had", so a run whose mark the reader just
@@ -1216,6 +1396,19 @@ export function extractParagraphs(root: HTMLElement, norm: number): EditParagrap
     if (el.tagName === 'SUP' || style.verticalAlign === 'super') next.baseline = 30
     else if (el.tagName === 'SUB' || style.verticalAlign === 'sub') next.baseline = -25
     if (style.color) next.color = rgbToHex(style.color)
+    // Highlight (populate's run background or hiliteColor's product); transparent = removed
+    if (style.backgroundColor) {
+      next.highlight = /^(transparent|rgba\(\s*0,\s*0,\s*0,\s*0\s*\))$/i.test(style.backgroundColor)
+        ? null
+        : (rgbToHex(style.backgroundColor) ?? next.highlight)
+    }
+    // Character spacing set in this edit (applySelectionLetterSpacing). The fragments' own
+    // letter-spacing is display-only and never read back: the source run keeps its spc.
+    const lsMark = el.dataset?.letterSpacing
+    if (lsMark != null) {
+      const pt = parseFloat(lsMark)
+      next.letterSpacing = Number.isFinite(pt) && pt ? pt : null
+    }
     if (style.fontSize) {
       const px = parseFloat(style.fontSize)
       if (!Number.isNaN(px)) next.fontSize = pxToPt(px, norm)
@@ -1828,4 +2021,168 @@ function rgbToHex(rgb: string): string | undefined {
   if (!m) return undefined
   const h = (n: string) => parseInt(n, 10).toString(16).padStart(2, '0')
   return `#${h(m[1]!)}${h(m[2]!)}${h(m[3]!)}`.toUpperCase()
+}
+
+/**
+ * Change the case of the editor selection in place. Text nodes are rewritten one by one, so
+ * every span keeps its formatting; the selection is transformed as one string (with a line
+ * break between paragraphs) so sentence and word starts read across spans. transform must
+ * keep the string length. Returns false when there is no non-empty selection in the editor.
+ */
+export function applySelectionCase(transform: (text: string) => string): boolean {
+  const root = document.activeElement
+  if (!(root instanceof HTMLElement) || !root.isContentEditable) return false
+  const sel = window.getSelection()
+  if (!sel?.rangeCount || sel.getRangeAt(0).collapsed) return false
+  const range = sel.getRangeAt(0)
+  const parts: Array<{ node: Text; start: number; end: number; at: number }> = []
+  let joined = ''
+  let lastBlock: Element | null = null
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+  while (walker.nextNode()) {
+    const node = walker.currentNode as Text
+    if (!range.intersectsNode(node)) continue
+    const start = node === range.startContainer ? range.startOffset : 0
+    const end = node === range.endContainer ? range.endOffset : node.data.length
+    if (end <= start) continue
+    const block = node.parentElement?.closest('[data-src-para], p, div') ?? null
+    if (parts.length && block !== lastBlock) joined += '\n'
+    lastBlock = block
+    parts.push({ node, start, end, at: joined.length })
+    joined += node.data.slice(start, end)
+  }
+  if (!parts.length) return false
+  const out = transform(joined)
+  if (out.length !== joined.length || out === joined) return out === joined
+  for (const p of parts) {
+    const next = out.slice(p.at, p.at + (p.end - p.start))
+    if (next === p.node.data.slice(p.start, p.end)) continue
+    p.node.replaceData(p.start, p.end - p.start, next)
+    // Measured advances no longer match the new glyphs
+    releaseFragment(fragmentAround(p.node, root))
+  }
+  const first = parts[0]!
+  const last = parts[parts.length - 1]!
+  const next = document.createRange()
+  next.setStart(first.node, first.start)
+  next.setEnd(last.node, last.end)
+  sel.removeAllRanges()
+  sel.addRange(next)
+  saveEditSelection()
+  return true
+}
+
+/** Character format the format painter carries between text selections (sizes in pt) */
+export interface SelectionRunFormat {
+  fontFamily?: string
+  fontSizePt?: number
+  bold: boolean
+  italic: boolean
+  underline: boolean
+  strike: boolean
+  color?: string
+}
+
+/** Character format at the start of the editor selection; null when no editor holds a non-empty selection */
+export function selectionRunFormat(): SelectionRunFormat | null {
+  const root = document.activeElement
+  if (!(root instanceof HTMLElement) || !root.isContentEditable) return null
+  const sel = window.getSelection()
+  if (!sel?.rangeCount || sel.getRangeAt(0).collapsed) return null
+  const start = sel.getRangeAt(0).startContainer
+  const el = start instanceof HTMLElement ? start : start.parentElement
+  if (!el || !root.contains(el)) return null
+  const cs = window.getComputedStyle(el)
+  const norm = parseFloat(root.dataset.norm ?? '') || 1
+  const px = parseFloat(cs.fontSize)
+  const family = firstFontFamily(cs.fontFamily)
+  const color = rgbToHex(cs.color)
+  return {
+    ...(family ? { fontFamily: family } : {}),
+    ...(Number.isFinite(px) ? { fontSizePt: pxToPt(px, norm) } : {}),
+    bold: document.queryCommandState('bold'),
+    italic: document.queryCommandState('italic'),
+    underline: document.queryCommandState('underline'),
+    strike: document.queryCommandState('strikeThrough'),
+    ...(color ? { color } : {}),
+  }
+}
+
+/** Paint a character format onto the editor selection; false when there is no non-empty selection */
+export function applySelectionRunFormat(fmt: SelectionRunFormat): boolean {
+  const root = document.activeElement
+  if (!(root instanceof HTMLElement) || !root.isContentEditable) return false
+  const sel = window.getSelection()
+  if (!sel?.rangeCount || sel.getRangeAt(0).collapsed) return false
+  if (fmt.fontFamily) applySelectionFontFamily(fmt.fontFamily)
+  if (fmt.fontSizePt) setSelectionFontSizePt(fmt.fontSizePt)
+  const toggles: Array<[string, boolean]> = [
+    ['bold', fmt.bold],
+    ['italic', fmt.italic],
+    ['underline', fmt.underline],
+    ['strikeThrough', fmt.strike],
+  ]
+  for (const [cmd, want] of toggles) {
+    const on = document.queryCommandState(cmd)
+    if (want && !on) document.execCommand(cmd)
+    else if (!want && on) document.execCommand(cmd)
+    else if (!want) {
+      // Reports off for a partly formatted selection: turn it fully on, then off
+      document.execCommand(cmd)
+      if (document.queryCommandState(cmd)) document.execCommand(cmd)
+    }
+  }
+  if (fmt.color) {
+    document.execCommand('styleWithCSS', false, 'true')
+    document.execCommand('foreColor', false, fmt.color)
+  }
+  return true
+}
+
+/** Highlight the editor selection (#RRGGBB) or clear it (null); false outside the editor */
+export function applySelectionHighlight(hex: string | null): boolean {
+  const root = document.activeElement
+  if (!(root instanceof HTMLElement) || !root.isContentEditable) return false
+  document.execCommand('styleWithCSS', false, 'true')
+  document.execCommand('hiliteColor', false, hex ?? 'transparent')
+  return true
+}
+
+/**
+ * Set the character spacing (pt; 0 = normal) of the editor selection. Each selected text
+ * node is wrapped in a span carrying the value (data-letter-spacing, read back on commit);
+ * the measured fragments around it give up their fixed advance.
+ */
+export function applySelectionLetterSpacing(pt: number): boolean {
+  const root = document.activeElement
+  if (!(root instanceof HTMLElement) || !root.isContentEditable) return false
+  const sel = window.getSelection()
+  if (!sel?.rangeCount || sel.getRangeAt(0).collapsed) return false
+  const range = sel.getRangeAt(0)
+  const norm = parseFloat(root.dataset.norm ?? '') || 1
+  const parts: Array<{ node: Text; start: number; end: number }> = []
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+  while (walker.nextNode()) {
+    const node = walker.currentNode as Text
+    if (!range.intersectsNode(node)) continue
+    const start = node === range.startContainer ? range.startOffset : 0
+    const end = node === range.endContainer ? range.endOffset : node.data.length
+    if (end > start) parts.push({ node, start, end })
+  }
+  if (!parts.length) return false
+  const spans: HTMLElement[] = []
+  for (const p of parts) {
+    let node = p.node
+    if (p.end < node.data.length) node.splitText(p.end)
+    if (p.start > 0) node = node.splitText(p.start)
+    const span = document.createElement('span')
+    span.dataset.letterSpacing = String(pt)
+    span.style.letterSpacing = pt ? `${(pt * 96 * norm) / 72}px` : 'normal'
+    node.parentNode!.insertBefore(span, node)
+    span.appendChild(node)
+    releaseFragment(fragmentAround(span, root))
+    spans.push(span)
+  }
+  reselectSpans(spans)
+  return true
 }

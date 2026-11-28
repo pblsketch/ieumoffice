@@ -18,11 +18,15 @@ export const pt = {
   cardErrNeedsUpdatePath: 'Arquivo que este aplicativo executa:',
   cardErrNeedsUpdateWindows:
     'Atualizar o {provider} dentro do WSL (Ubuntu) ou em outra pasta não altera este arquivo. Execute {command} no Windows PowerShell.',
+  claudeDesktopNote:
+    'O aplicativo de desktop do Claude não é o Claude Code, que é o que este aplicativo executa. O Claude Code é um programa separado usado no terminal, então instalar ou atualizar o aplicativo de desktop não o altera.',
   cardErrTimeout: 'O programa {provider} não respondeu a tempo. Verifique novamente em instantes.',
   cardErrFailed: 'Algo deu errado ao verificar {provider}. Verifique novamente.',
   actionInstall: 'Instalar',
   actionLogin: 'Entrar',
   actionLoginWindow: 'O navegador não abriu?',
+  actionLoginWithCode: 'O navegador mostrou um código?',
+  actionLoginBrowser: 'Entrar no navegador',
   actionRecheck: 'Verificar novamente',
   actionAcceptMetered: 'Usar mesmo assim',
   actionInstallHelp: 'Guia oficial de instalação',
@@ -42,17 +46,19 @@ export const pt = {
     'Este login usa uma chave de API ou uma conta de pagamento por consumo, ou não foi possível confirmar o tipo. “Usar mesmo assim” permite que a IA funcione com esta conexão, e cada solicitação é cobrada dessa conta.',
   connectTitle: 'Conecte uma IA para começar',
   connectBody:
-    'A IA funciona com a assinatura do Claude ou do Codex que você já tem. Nenhuma chave de API é necessária.',
+    'A IA funciona com a assinatura Claude, ChatGPT ou Google Antigravity que você já tem. Não é preciso chave API.',
   connectProviderTitle: 'A conexão {provider} não pode ser usada agora',
   connectKeyBody:
     'A configuração de {provider} não foi concluída. Conclua-a nas Configurações ou escolha outra IA.',
   errNotConnected:
-    'Nenhuma IA está conectada. Conecte primeiro uma assinatura do Claude ou do Codex, ou uma IA gratuita.',
+    'Nenhuma IA está conectada. Conecte primeiro uma assinatura Claude, ChatGPT, Codex ou Antigravity, ou uma IA gratuita.',
   errNotInstalled: 'O programa {provider} não foi encontrado neste PC.',
   errSignedOut: 'O login em {provider} expirou. Entre novamente para continuar.',
   errRateLimit: 'O limite da assinatura {provider} foi atingido.',
   errRateLimitReset:
     'O limite da assinatura {provider} foi atingido. Ele será redefinido às {time}.',
+  errChatGptAppLimit:
+    'Este aplicativo esgotou o uso do ChatGPT de que dispõe. Pode ser o limite de todo o seu plano ou um limite definido para este aplicativo. Confira no ChatGPT, em Configurações → Uso.',
   errUnsafeTools:
     'O programa {provider} foi iniciado com as próprias ferramentas ativadas, então a execução foi interrompida por segurança.',
   errMeteredNotAccepted:
@@ -68,6 +74,8 @@ export const pt = {
   errFreeLimit:
     'O uso gratuito de hoje acabou. Tente novamente amanhã ou escolha outra IA nas Configurações.',
   errFreeLimitReset: 'O uso gratuito de hoje acabou. Você poderá usá-lo novamente às {time}.',
+  errFreeTierModel:
+    'Este modelo não tem nível gratuito, então uma chave gratuita não pode usá-lo. Escolha um modelo incluído no nível gratuito (como um modelo Flash) ou ative o faturamento no console do provedor.',
   continueWith: 'Continuar com {provider}',
   continueMeteredNote:
     'A conexão {provider} não é uma assinatura: continuar é cobrado por consumo.',
@@ -76,7 +84,7 @@ export const pt = {
   usageWindowSevenDay: 'Limite de 7 dias',
   noticeTitle: 'Antes de usar a IA com a sua assinatura',
   noticeSend:
-    'O conteúdo do documento e a sua conversa são enviados à Anthropic ou à OpenAI pela sua própria conta. Cada solicitação leva também o nome, o título e a descrição de cada habilidade configurada como “A IA decide”; também são enviadas as habilidades em uso e os arquivos de habilidade que a IA lê.',
+    'O conteúdo do documento e a sua conversa são enviados à Anthropic, à OpenAI ou ao Google pela sua própria conta. Cada solicitação leva também o nome, o título e a descrição de cada habilidade configurada como “A IA decide”; também são enviadas as habilidades em uso e os arquivos de habilidade que a IA lê.',
   noticeTraining:
     'Se esse conteúdo é usado para treinar IA depende das configurações da sua própria conta nessa empresa.',
   noticeCodexHistory:
@@ -115,12 +123,14 @@ export const pt = {
   stepLogin: 'Entrar',
   stepReady: 'Conectado',
   installReturnNote:
-    'Quando a instalação terminar naquela janela, volte para cá. O app verifica de novo sozinho.',
+    'Durante o download, aquela janela pode não mostrar nada por alguns minutos. Deixe-a aberta. Quando a instalação terminar, volte para cá. O app verifica de novo sozinho.',
   loginHowNote:
     'Ao clicar, um navegador se abre. Entre com sua conta da {vendor} e clique em Permitir; a conexão é concluída sozinha.',
   signingInStalledNote:
     'Se nenhuma página de login abriu no navegador, abra a janela de login com o botão abaixo. Se você ainda está entrando pelo navegador, termine por lá: o botão interrompe esse login e recomeça do início.',
   actionLoginWindowOpen: 'Abrir a janela de login',
+  loginUnfinishedNote:
+    'O início de sessão não terminou. Se o navegador mostrou um código, é preciso colá-lo na janela de início de sessão: abra a janela e inicie sessão novamente ali. Um código mostrado antes já não funciona.',
   loginWindowTitle: 'Login em {provider}',
   loginWindowIntro:
     'Esta é a janela de login do programa {provider}. O texto em inglês abaixo vem do programa {provider}.',
@@ -143,4 +153,50 @@ export const pt = {
   actionCopyInfo: 'Copiar informações para ajuda',
   copyInfoDone: 'Copiado',
   actionConnectHelp: 'Ver cada passo na tela (página em coreano)',
+  guidePathChatGptBody:
+    'Entre com sua conta do ChatGPT e use o seu plano. Não é preciso instalar nada. O plano gratuito permite pouco uso.',
+  guideUseCodex: 'Já usa o programa Codex neste PC? Conectar com o Codex',
+  guideUseDirect: 'Conectar direto no aplicativo, sem o Codex',
+  chatgptLoginNote:
+    'Uma página de login do ChatGPT abre no navegador. Entre e permita que este aplicativo use seu plano do ChatGPT; a conexão é concluída sozinha.',
+  chatgptLoginUnfinishedNote:
+    'O login não terminou. Pressione de novo para recomeçar. Para conectar, você precisa permitir o uso do seu plano do ChatGPT.',
+  chatgptLoginNoPlanNote:
+    'Você entrou no ChatGPT, mas este aplicativo não recebeu permissão para usar seu plano. Pressione de novo e permita o uso do plano na página de autorização. Se você já permitiu, talvez a OpenAI não ofereça esse uso para sua conta (por exemplo, uma conta gerenciada por uma empresa ou escola) ou para seu plano. Nesse caso, você pode conectar com o programa Codex.',
+  chatgptLoginDeniedNote:
+    'Você entrou no navegador, mas a OpenAI não aceitou esta conexão, ou a resposta dela não pôde ser verificada. Confira se a data e a hora deste PC estão certas e pressione de novo para recomeçar.',
+  chatgptLoginNetworkNote:
+    'Não foi possível concluir o login: não deu para alcançar a OpenAI ou nenhum navegador abriu. Verifique a conexão com a internet (incluindo rede da empresa, VPN ou proxy) e pressione de novo.',
+  chatgptLoginWorkspacePolicyNote:
+    'Esta conta ChatGPT pertence a um espaço de trabalho gerido por uma empresa ou escola, e a OpenAI não permite que aplicações usem o plano ChatGPT de um espaço de trabalho. O administrador do espaço de trabalho não tem nenhuma definição para permitir esta aplicação, por isso iniciar sessão novamente não vai ajudar. Inicie sessão com uma conta ChatGPT pessoal (Go, Plus ou Pro) ou ligue-se pelo cartão Codex.',
+  chatgptLoginNotAllowedNote:
+    'Você não permitiu que este aplicativo use seu plano do ChatGPT, ou o navegador voltou do login com uma falha. Pressione de novo, entre e permita na página de autorização.',
+  chatgptSigningInNote:
+    'Entre com sua conta do ChatGPT no navegador que abriu e permita que este aplicativo use seu plano. A conexão é concluída sozinha.',
+  chatgptPlanNote:
+    'A IA deste aplicativo funciona com o seu plano do ChatGPT. Desconectar encerra o uso só neste aplicativo; os outros programas deste PC continuam conectados.',
+  actionContinueWithChatGpt: 'Continuar com o ChatGPT',
+  actionManageUsage: 'Gerenciar uso',
+  browserPageDoneBody: 'Você pode fechar esta aba e voltar ao aplicativo.',
+  browserPageFailedTitle: 'A conexão não foi concluída',
+  browserPageFailedBody: 'Volte ao aplicativo e tente novamente.',
+  cardOff: 'Desativado neste aplicativo',
+  offNote:
+    'Este aplicativo não executa o programa {provider} nem verifica o estado dele. O login do {provider} neste PC e o uso no terminal continuam como estão.',
+  offElsewhereNote: 'Você pode voltar a usá-lo em Configurações → IA.',
+  offSwitchNote:
+    '“Não usar neste aplicativo” mantém o login do {provider} neste PC e só para este aplicativo. Sair vale para o PC inteiro.',
+  actionTurnOff: 'Não usar neste aplicativo',
+  actionTurnOn: 'Usar novamente',
+  connectOffTitle: '{provider} está desativado neste aplicativo',
+  connectOffBody:
+    'Clique em “Usar novamente” no cartão do {provider} em Configurações → IA ou escolha outra IA.',
+  errOffInApp:
+    'O {provider} está desativado neste aplicativo, então nada foi executado. Você pode voltar a usá-lo em Configurações → IA.',
+  guideBadgeOff: 'Desativado',
+  guidePathAntigravityTitle: 'Uso o Google Antigravity',
+  guidePathAntigravityBody:
+    'Entre no programa Antigravity do Google com sua conta Google para usar seu plano do Google AI.',
+  antigravityCardNote:
+    'Funciona no painel de IA e no modo Agente pelo protocolo oficial ACP da CLI do Antigravity. Modelos disponíveis, uso de dados e créditos excedentes seguem as configurações do Antigravity.',
 } satisfies Record<keyof typeof zh, string>

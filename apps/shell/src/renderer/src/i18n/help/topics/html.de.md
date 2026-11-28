@@ -58,3 +58,11 @@ Die Viewport-Meta-Angabe fehlt bewusst: Sie wird in einer Desktop-Fläche gerend
 Das `lang` folgt der Oberflächensprache der App; das eingefügte Gerüst ist also das, für das Ihre Werkzeuge bereits eingerichtet sind. Bearbeiten Sie es danach frei.
 
 Der Eintrag erscheint nur im Bearbeitungsmodus und nur, solange das Dokument leer ist — sobald Inhalt da ist, gibt es nichts mehr, _worein_ ein Gerüst einzufügen wäre.
+
+## Formel bearbeiten
+
+Formeln direkt eingeben oder LaTeX bearbeiten. HTML speichert den Quelltext zur späteren Bearbeitung.
+
+Wählen Sie Formel einfügen in der Werkzeugleiste, verwenden Sie das Eingabefeld, Vorlagen oder LaTeX und wenden Sie die Formel an. Gespeicherte Formeln lassen sich per Klick in der Vorschau bearbeiten. Für eine Formel im Text wählen Sie einen Absatz und deaktivieren die eigene Zeile; die Formel wird am Absatzende eingefügt.
+
+Ein Ausdruck, den der Formelsatz nicht verarbeitet, geht nicht verloren: Die Formel behält ihren LaTeX-Quelltext und zeigt im Dokument den Rohtext, den Sie zum Korrigieren erneut öffnen können.

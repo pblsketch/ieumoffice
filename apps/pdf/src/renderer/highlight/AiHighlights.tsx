@@ -88,6 +88,11 @@ export interface AiHighlightsProps {
   /** a run ended with suggestions stored (the editor turns the preview on) */
   onRunEnded?: () => void
   onNotice: (text: string) => void
+  /**
+   * AI is turned off (Settings): nothing of this is shown and the window does
+   * not open
+   */
+  hidden?: boolean
 }
 
 export type HighlightOpenAnswer =
@@ -220,6 +225,8 @@ export const AiHighlights = forwardRef<AiHighlightsHandle, AiHighlightsProps>(
       const ask = createModelCall({
         settings: () => route.settings,
         lang: () => propsRef.current.lang,
+        // the run's own id: every page of it shares one confirmation
+        runId: run.runId,
         guard: async () => {
           const statuses = await attemptSubscription((s) => s.statuses())
           const current = await window.pdfApi?.getAiSettings().catch(() => null)
@@ -274,7 +281,7 @@ export const AiHighlights = forwardRef<AiHighlightsHandle, AiHighlightsProps>(
     useImperativeHandle(ref, () => ({
       requestOpen() {
         const p = propsRef.current
-        if (!p.api || !p.filePath) return { unavailable: true }
+        if (p.hidden || !p.api || !p.filePath) return { unavailable: true }
         const hash = docHashRef.current
         const tabRun = session.list().find((job) => job.state === 'running')
         const running =
@@ -286,7 +293,7 @@ export const AiHighlights = forwardRef<AiHighlightsHandle, AiHighlightsProps>(
       },
       resume(job) {
         const p = propsRef.current
-        if (!p.api || !p.filePath) return
+        if (p.hidden || !p.api || !p.filePath) return
         void (async () => {
           const runs = job.runId ? await p.suggestions.runs() : []
           const run = runs.find((r) => r.runId === job.runId)
@@ -303,6 +310,7 @@ export const AiHighlights = forwardRef<AiHighlightsHandle, AiHighlightsProps>(
         ? snap.views.filter((v) => v.state === 'pending' && !v.found).length
         : null
 
+    if (props.hidden) return null
     return (
       <>
         {view && view.kind === 'highlight' && (

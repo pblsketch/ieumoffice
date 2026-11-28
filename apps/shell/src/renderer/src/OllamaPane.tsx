@@ -7,7 +7,7 @@ import {
   prettyModelName,
 } from '@genoffice/ai-provider/browser'
 import type {
-  AiModelEffort,
+  OllamaEffortPreset,
   AiOllamaServer,
   AiSettings,
   OllamaModelInfo,
@@ -136,7 +136,7 @@ function ServerForm({
   )
 }
 
-const EFFORT_LEVELS: readonly AiModelEffort[] = ['low', 'medium', 'high']
+const EFFORT_LEVELS: readonly OllamaEffortPreset[] = ['low', 'medium', 'high']
 
 function ServerCard({
   server,
@@ -155,7 +155,7 @@ function ServerCard({
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [refresh, setRefresh] = useState(0)
   const [timeoutDraft, setTimeoutDraft] = useState<string | null>(null)
-  const [selectedEfforts, setSelectedEfforts] = useState<Record<string, AiModelEffort[]>>({})
+  const [selectedEfforts, setSelectedEfforts] = useState<Record<string, OllamaEffortPreset[]>>({})
   const [catalog, setCatalog] = useState<{
     baseUrl: string
     apiKey: string
@@ -232,7 +232,7 @@ function ServerCard({
     server.endpointIds.includes(e.id),
   )
 
-  const toggleEffort = (model: string, level: AiModelEffort, registered: boolean) => {
+  const toggleEffort = (model: string, level: OllamaEffortPreset, registered: boolean) => {
     if (registered) return
     setSelectedEfforts((prev) => {
       const currentList = prev[model] ?? ['medium']
@@ -342,7 +342,7 @@ function ServerCard({
             {(current?.models ?? []).map((model) => {
               const modelEndpoints = endpoints.filter((e) => e.model === model)
               const registeredEfforts = new Set(
-                modelEndpoints.map((e) => (e.effort ?? 'medium') as AiModelEffort),
+                modelEndpoints.map((e) => (e.effort ?? 'medium') as OllamaEffortPreset),
               )
               const allRegistered = EFFORT_LEVELS.every((level) => registeredEfforts.has(level))
               const currentSelected = selectedEfforts[model] ?? ['medium']

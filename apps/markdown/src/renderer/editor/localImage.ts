@@ -3,6 +3,7 @@ import { Image } from '@tiptap/extension-image'
 import { Link } from '@tiptap/extension-link'
 import { Paragraph } from '@tiptap/extension-paragraph'
 import { Plugin, PluginKey } from '@tiptap/pm/state'
+import { clipboardPictureIsRendering } from '@genoffice/ui/clipboard-picture'
 import { MAX_PASTED_IMAGE_BYTES } from '../../shared/ipc'
 import { t } from '../i18n/locale'
 import { showToast } from '../components/toast-bus'
@@ -50,6 +51,16 @@ export function resolveImageSrc(src: string, baseDir: string | null = imageBaseD
   return toAssetUrl(`${baseDir.replace(/\\/g, '/').replace(/\/$/, '')}/${src}`)
 }
 
+// A lone `%` (a file named `100%.png`) makes decodeURIComponent throw; such a
+// path is kept as it is.
+function decodePath(path: string): string {
+  try {
+    return decodeURIComponent(path)
+  } catch {
+    return path
+  }
+}
+
 /**
  * Reverse of {@link resolveImageSrc}: map a display URL (md-asset://) back to
  * the authored path so DOM-parsed content (copy/paste inside the editor) never
@@ -57,7 +68,10 @@ export function resolveImageSrc(src: string, baseDir: string | null = imageBaseD
  */
 export function unresolveImageSrc(src: string, baseDir: string | null = imageBaseDir): string {
   if (!src.startsWith('md-asset://')) return src
-  let path = decodeURIComponent(src.slice('md-asset://'.length))
+  // Reuse the guarded decoder: a lone `%` (e.g. in a file named `100%.png`)
+  // throws a URIError from decodeURIComponent, and parseHTML calls this for
+  // every md-asset img, so the throw would break paste/document load.
+  let path = decodePath(src.slice('md-asset://'.length))
   // Windows drive paths were prefixed with '/' to form a valid URL path
   if (/^\/[a-zA-Z]:\//.test(path)) path = path.slice(1)
   if (baseDir) {
@@ -206,7 +220,14 @@ export const LocalImage = Image.extend({
             return true
           },
           handlePaste(view, event) {
-            const file = imageFileIn(event.clipboardData)
+            const data = event.clipboardData
+            // a spreadsheet copy's picture is a rendering of its table: paste the table
+            if (
+              data &&
+              clipboardPictureIsRendering(data.getData('text/html'), data.getData('text/plain'))
+            )
+              return false
+            const file = imageFileIn(data)
             if (!file) return false
             void persistAndInsert(editor, file, view.state.selection.from)
             return true

@@ -165,14 +165,56 @@ function readPage(m: PdfiumModule, doc: number, page: number, maxChars: number):
 function pageText(m: PdfiumModule, textPage: number): string {
   const count = m._FPDFText_CountChars(textPage)
   if (count <= 0) return ''
-  return extract.withAlloc(m, (count + 1) * 2, (buf) => {
+  const text = extract.withAlloc(m, (count + 1) * 2, (buf) => {
     const written = m._FPDFText_GetText(textPage, 0, count, buf)
     if (written <= 0) return ''
-    return new TextDecoder('utf-16le')
-      .decode(m.HEAPU8.subarray(buf, buf + written * 2))
-      .replace(/\0+$/, '')
-      .replace(/\r\n?/g, '\n')
-      .trimEnd()
+    return new TextDecoder('utf-16le').decode(m.HEAPU8.subarray(buf, buf + written * 2))
+  })
+  return joinSameLineBreaks(m, textPage, text).replace(/\0+$/, '').replace(/\r\n?/g, '\n').trimEnd()
+}
+
+/**
+ * pdfium starts a new line whenever a glyph begins left of where the previous one ended.
+ * PDFs printed by Chromium (Word → PDF export) place tightly kerned Hangul and digits that
+ * way, so every few characters came back on their own line ("테\n스\n트"). A generated
+ * break whose neighbours share a baseline and run left to right is dropped again; a wide
+ * gap on the same line (a table cell) becomes a space.
+ */
+function joinSameLineBreaks(m: PdfiumModule, textPage: number, text: string): string {
+  // GetText writes one UTF-16 unit per char index; bail out when that does not hold
+  const count = m._FPDFText_CountChars(textPage)
+  if (text.replace(/\0+$/, '').length !== count) return text
+  return extract.withAlloc(m, 16, (xy) => {
+    const origin = (i: number): [number, number] => {
+      m._FPDFText_GetCharOrigin(textPage, i, xy, xy + 8)
+      return [m.HEAPF64[xy / 8]!, m.HEAPF64[xy / 8 + 1]!]
+    }
+    let out = ''
+    for (let i = 0; i < count; i++) {
+      const isBreak =
+        text[i] === '\r' &&
+        text[i + 1] === '\n' &&
+        m._FPDFText_IsGenerated(textPage, i) === 1 &&
+        i > 0 &&
+        i + 2 < count
+      if (!isBreak) {
+        out += text[i]
+        continue
+      }
+      const [px, py] = origin(i - 1)
+      const [nx, ny] = origin(i + 2)
+      const size = Math.min(
+        m._FPDFText_GetFontSize(textPage, i - 1),
+        m._FPDFText_GetFontSize(textPage, i + 2),
+      )
+      if (size > 0 && Math.abs(ny - py) < size * 0.3 && nx > px) {
+        if (nx - px > size * 2) out += ' '
+        i += 1
+        continue
+      }
+      out += text[i]
+    }
+    return out
   })
 }
 

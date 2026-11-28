@@ -26,9 +26,11 @@ Quy tắc: phần mở rộng được giữ tự động; ký tự không hợp
 ## Lưu và Lưu dưới dạng
 
 - **⌘S / ctrl+S** lưu tập tin hiện tại; một tập tin chưa có tiêu đề sẽ hỏi vị trí và tên trước.
+- Ở hầu hết trình soạn thảo, danh sách loại tệp trong hộp thoại Lưu dưới dạng cũng có các định dạng xuất (PDF, hình ảnh, các định dạng tài liệu khác). Chọn một trong số đó chỉ ghi ra một bản sao; tài liệu đang mở và thẻ của nó vẫn gắn với tệp gốc. Ảnh của nhiều trang được tách thành `tên-01.png`, `tên-02.png`, ….
+- **Docs**: danh sách Lưu dưới dạng còn có .hwp và .hwpx (Tệp ▸ Xuất dưới dạng tài liệu HWP… cũng vậy). Nếu có gì không chuyển được, như nhận xét, phương trình hay hộp văn bản, bạn sẽ được báo trước khi ghi tệp.
 - **Lưu dưới dạng** ghi một tập tin mới và để nguyên tệp gốc; các lần sửa sau đó nhắm vào tập tin mới.
 - Mỗi lần lưu đều là nguyên tử (tập tin tạm + đổi tên); thoát giữa chừng lúc đang ghi không làm hỏng tệp.
-- Tự động lưu chỉ bắt đầu sau lần lưu thủ công đầu tiên (xem [Bắt đầu nhanh](help://getting-started)).
+- Tự động lưu tuân theo công tắc của từng trình soạn thảo; tài liệu mới chưa có tệp riêng chỉ bắt đầu sau lần lưu đầu tiên (xem [Bắt đầu nhanh](help://getting-started)).
 
 ## Xuất dưới dạng PDF
 
@@ -44,7 +46,17 @@ Quy tắc: phần mở rộng được giữ tự động; ký tự không hợp
 
 ## In
 
-File ▸ In trong từng trình soạn thảo (⌘P/ctrl+P) mở hộp thoại in của hệ thống; PDF in theo thứ tự trang và góc xoay hiện tại.
+Tệp ▸ In (⌘P/ctrl+P) mở cửa sổ in có xem trước trực tiếp trong mọi trình chỉnh sửa — Docs, Sheets, Slides, PDF, Markdown, Hangul, HTML, Mind Map, Diagram và Whiteboard. Khi giữ nguyên bố cục trang và chọn hộp thoại in hệ thống, việc in hoạt động như trước.
+
+- **Đích xuất (máy in, PDF, hình ảnh)**: chọn máy in đã cài, **Lưu thành PDF**, **Lưu thành hình ảnh** hoặc **Hộp thoại in hệ thống** trong cùng một danh sách. Lưu ảnh hỗ trợ PNG và JPG (Cao 90%, Trung bình 80%, Tệp nhỏ 65%), xuất thành từng tệp đánh số hoặc gộp một tệp ZIP cho tài liệu nhiều trang. PDF bị giới hạn quyền sẽ tắt cả lưu PDF và lưu ảnh nhưng vẫn cho phép in.
+- **Xem trước khi in trực tiếp**: cả 10 trình chỉnh sửa đều có bản xem trước trước khi xuất. Khi bố cục, thang độ xám, hình mờ hoặc đầu trang/chân trang làm thay đổi mặt in, bản xem trước sẽ dựng mặt in thực tế theo nhu cầu cùng điều hướng trang, thu phóng và chuyển sang sơ đồ bố cục.
+- **Bố cục**: chọn Một trang mỗi tờ, Nhiều trang mỗi tờ (2, 4, 6, 9 hoặc 16, tùy chọn viền trang), Sách nhỏ (đóng gáy trái hoặc phải), Áp phích (cột × hàng, phần chồng mép, đường cắt và nhãn tọa độ mảnh) hoặc Nhãn dán (mỗi nhãn một trang hoặc lặp lại, ô bắt đầu, mẫu A4 hay kích thước tùy chỉnh).
+- **Tỷ lệ, hướng giấy, mặt in và thứ tự**: chọn Kích thước thực (100%), Vừa khổ giấy, Chỉ thu nhỏ trang quá khổ hoặc Tỷ lệ tùy chỉnh (10%–400%), cùng hướng Tự động, Dọc hoặc Ngang. Chỉ mặt lẻ, chỉ mặt chẵn và thứ tự đảo ngược được tính theo các mặt in cuối cùng.
+- **Hình mờ, đầu trang/chân trang, thang độ xám và độ phân giải**: thêm hình mờ chữ hoặc ảnh cùng 6 ô đầu/chân trang (tiêu đề, ngày, số trang hoặc văn bản tự nhập) chỉ áp dụng khi in mà không sửa tài liệu gốc. Thang độ xám và DPI (Tự động, 150, 300 hoặc 600 dpi) điều chỉnh chất lượng ảnh.
+- **Phạm vi trang và vùng chọn**: Docs và Markdown dàn lại đoạn văn đã chọn từ trang 1; Slides in các trang chiếu đã chọn; PDF in các trang đã chọn; Hangul hỗ trợ Tất cả, Trang hiện tại hoặc Phạm vi tùy chỉnh; Sheets in trang tính hiện hành, cả bảng tính hoặc vùng chọn.
+- **Hộp thoại in hệ thống**: khi in sách nhỏ, hãy bật in hai mặt lật theo cạnh ngắn và giữ nguyên phạm vi trang cùng số trang mỗi tờ trong cửa sổ hệ thống.
+
+Tệp PDF được in theo đúng thứ tự và góc xoay trang hiện tại.
 
 ## Tập tin chưa có tiêu đề nằm ở đâu
 

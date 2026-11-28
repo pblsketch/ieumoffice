@@ -325,6 +325,40 @@ describe('genoffice sheet apply --ops: gateway-written features', () => {
     expect(names).toEqual(['Sales', 'Table1'])
   })
 
+  it.skipIf(!sidecar)(
+    'charts a formula column: the sidecar fills the snapshot before the numeric check',
+    async () => {
+      const dir = tempDir()
+      const out = await book(dir)
+      expect(
+        (
+          await apply(out, [
+            {
+              op: 'set_range',
+              range: 'D1:D4',
+              values: [['total'], ['=B2*C2'], ['=B3*C3'], ['=B4*C4']],
+            },
+          ])
+        ).code,
+      ).toBe(0)
+      const r = await apply(out, [
+        { op: 'add_chart', chartType: 'column', dataRange: 'D1:D4', anchorCell: 'F2' },
+      ])
+      expect(r.code).toBe(0)
+      const chart = (await parts(out)).get('xl/charts/chart1.xml')!
+      expect(chart).toMatch(/<c:f>'sales'!\$D\$2:\$D\$4<\/c:f>/)
+
+      // formulas written in the same batch stay rejected: the sidecar reads the
+      // file on disk, which does not hold the batch's own writes yet
+      const sameBatch = await apply(out, [
+        { op: 'set_range', range: 'E1:E4', values: [['x'], ['=B2*2'], ['=B3*2'], ['=B4*2']] },
+        { op: 'add_chart', chartType: 'column', dataRange: 'E1:E4' },
+      ])
+      expect(sameBatch.code).toBe(1)
+      expect(sameBatch.json().message).toContain('numeric column')
+    },
+  )
+
   it('manages defined names, protection and sheet tabs', async () => {
     const dir = tempDir()
     const out = await book(dir)
@@ -382,6 +416,17 @@ describe('genoffice sheet apply --ops: gateway-written features', () => {
       `name="${longName.slice(0, 27)} (2)"`,
     )
 
+    // the default copy name is cut at 31 units; an emoji straddling the cut is dropped whole
+    const emojiName = `${'가'.repeat(26)}😀`
+    expect(emojiName).toHaveLength(28)
+    expect(
+      (await apply(out, [{ op: 'rename_sheet', sheet: longName, name: emojiName }])).code,
+    ).toBe(0)
+    expect((await apply(out, [{ op: 'duplicate_sheet', sheet: emojiName }])).code).toBe(0)
+    const copiedBook = (await parts(out)).get('xl/workbook.xml')!
+    expect(copiedBook).toContain(`name="${'가'.repeat(26)} (2)"`)
+    expect(copiedBook).not.toContain('\uFFFD')
+
     // the copy is cloned from the file, so it cannot share a batch with cell edits
     const mixed = await apply(out, [
       { op: 'set_cell', sheet: 'sales', address: 'A9', value: 'x' },
@@ -407,6 +452,37 @@ describe('genoffice sheet apply --ops: gateway-written features', () => {
     expect((await parts(out)).get('xl/workbook.xml')).not.toContain('Regions')
     const missing = await apply(out, [{ op: 'delete_defined_name', name: 'Nope' }])
     expect(missing.code).toBe(1)
+  })
+
+  it('treats sheet names as equal without regard to case, as Excel does', async () => {
+    const dir = tempDir()
+    const out = await book(dir)
+    // book() names its sheet "sales"; "Sales" would open in Excel with a repair prompt
+    for (const ops of [
+      [{ op: 'add_sheet', name: 'Sales' }],
+      [{ op: 'duplicate_sheet', sheet: 'sales', name: 'SALES' }],
+      [
+        { op: 'add_sheet', name: 'Notes' },
+        { op: 'rename_sheet', sheet: 'Notes', name: 'SALES' },
+      ],
+      // a sheet added earlier in the same batch counts too
+      [
+        { op: 'add_sheet', name: 'Notes' },
+        { op: 'add_sheet', name: 'NOTES' },
+      ],
+    ]) {
+      const r = await apply(out, ops)
+      expect(r.code).toBe(1)
+      expect(r.json().message).toMatch(/already exists/)
+    }
+    expect((await parts(out)).get('xl/workbook.xml')!.match(/<sheet /g)).toHaveLength(1)
+    // a rename to the very same name is refused as before
+    const same = await apply(out, [{ op: 'rename_sheet', sheet: 'sales', name: 'sales' }])
+    expect(same.code).toBe(1)
+    expect(same.json().message).toMatch(/already exists/)
+    // changing only the case of a sheet's own name is still a rename
+    expect((await apply(out, [{ op: 'rename_sheet', sheet: 'sales', name: 'Sales' }])).code).toBe(0)
+    expect((await parts(out)).get('xl/workbook.xml')).toContain('name="Sales"')
   })
 
   it('refuses editor-only ops with the reason and keeps edit_chart to file charts', async () => {

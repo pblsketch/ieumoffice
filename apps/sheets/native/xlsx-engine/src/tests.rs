@@ -200,6 +200,22 @@ fn preserves_future_function_markers_in_sheet_and_defined_names() {
 }
 
 #[test]
+fn strips_xlpm_parameter_markers_outside_strings_and_brackets() {
+    assert_eq!(
+        strip_future_function_markers("_xlfn.LET(_xlpm.x,A1*2,_xlpm.x+1)"),
+        "LET(x,A1*2,x+1)"
+    );
+    assert_eq!(
+        strip_future_function_markers("_xlfn.MAP(A1:A5,_xlfn.LAMBDA(_xlpm.v,_xlpm.v*2))"),
+        "MAP(A1:A5,LAMBDA(v,v*2))"
+    );
+    assert_eq!(
+        strip_future_function_markers("CONCAT(\"_xlpm.x\",Table1[_xlpm.col],Budget_xlpm.Total)"),
+        "CONCAT(\"_xlpm.x\",Table1[_xlpm.col],Budget_xlpm.Total)"
+    );
+}
+
+#[test]
 fn normalizes_worksheet_paths_with_forward_slashes() {
     assert_eq!(
         normalize_worksheet_path("worksheets/sheet1.xml").unwrap(),
@@ -352,6 +368,7 @@ fn rejects_oversized_ranges() {
         print_titles: None,
         has_scoped_defined_names: false,
         cell_images: Vec::new(),
+        protection: SheetProtectionMetadata::default(),
     };
     let range = CellRange {
         start_row: 0,
@@ -359,7 +376,7 @@ fn rejects_oversized_ranges() {
         start_column: 0,
         end_column: 99,
     };
-    assert!(range.validate(&sheet).is_err());
+    assert!(range.validate(&sheet, None).is_err());
 }
 
 fn sparklines_from(xml: &str) -> Vec<SparklineGroupInfo> {
@@ -487,6 +504,19 @@ fn ignores_worksheets_without_sparkline_ext() {
 }
 
 #[test]
+fn open_reports_sparklines_that_follow_the_cells() {
+    let xml = sparkline_ext(
+        r#"<x14:sparklineGroup>
+<x14:sparklines><x14:sparkline><xm:f>S!A1:A1</xm:f><xm:sqref>B1</xm:sqref></x14:sparkline></x14:sparklines>
+</x14:sparklineGroup>"#,
+    );
+    let metadata = open_single_sheet(&xml);
+    assert_eq!(metadata.sheets[0].sparklines.len(), 1);
+    assert_eq!(metadata.sheets[0].sparklines[0].cells[0].cell, "B1");
+    assert_eq!(metadata.sheets[0].sparklines[0].cells[0].source_ref, "S!A1:A1");
+}
+
+#[test]
 fn omits_empty_sparklines_field_from_metadata_json() {
     let sheet = SheetMetadata {
         id: "sheet-1".into(),
@@ -525,6 +555,7 @@ fn omits_empty_sparklines_field_from_metadata_json() {
         print_titles: None,
         has_scoped_defined_names: false,
         cell_images: Vec::new(),
+        protection: SheetProtectionMetadata::default(),
     };
     let json = serde_json::to_string(&sheet).unwrap();
     assert!(!json.contains("sparklines"));
@@ -966,6 +997,62 @@ fn open_single_sheet(sheet_xml: &str) -> WorkbookMetadata {
     ]);
     let mut sessions = WorkbookSessions::new();
     sessions.open(&path).unwrap()
+}
+
+/// The validation rules the sidecar reads out of a worksheet.
+fn data_validations_of(sheet_xml: &str) -> Vec<DataValidationRule> {
+    let (_dir, path) = open_fixture(&[
+        (
+            "xl/workbook.xml",
+            r#"<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="S" sheetId="1" r:id="rId1"/></sheets></workbook>"#,
+        ),
+        (
+            "xl/_rels/workbook.xml.rels",
+            r#"<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>"#,
+        ),
+        ("xl/worksheets/sheet1.xml", sheet_xml),
+    ]);
+    let mut sessions = WorkbookSessions::new();
+    let metadata = sessions.open(&path).unwrap();
+    let range = CellRange {
+        start_row: 0,
+        end_row: 99,
+        start_column: 0,
+        end_column: 9,
+    };
+    let result = sessions
+        .read_range(&metadata.session_id, "sheet-1", &range)
+        .unwrap();
+    result.data_validations
+}
+
+/// The x14 form of a rule only counts inside Excel's x14 data-validation
+/// extension; in the conditional-formatting extension Excel ignores it, so
+/// the reader does too.
+#[test]
+fn reads_x14_validations_only_from_the_data_validation_extension() {
+    let rules = r#"<x14:dataValidations xmlns:xm="http://schemas.microsoft.com/office/excel/2006/main" count="1">
+<x14:dataValidation type="list"><x14:formula1><xm:f>Lookup!$A$1</xm:f></x14:formula1><xm:sqref>C1:C9</xm:sqref></x14:dataValidation>
+</x14:dataValidations>"#;
+    let in_dv_ext = data_validations_of(&format!(
+        r#"<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+<dimension ref="A1:J100"/>
+<sheetData><row r="1"><c r="A1"><v>1</v></c></row></sheetData>
+<extLst><ext uri="{{CCE6A557-97BC-4b89-ADB6-D9C93CAAB3DF}}" xmlns:x14="http://schemas.microsoft.com/office/spreadsheetml/2009/9/main">{rules}</ext></extLst>
+</worksheet>"#
+    ));
+    assert_eq!(in_dv_ext.len(), 1);
+    assert_eq!(in_dv_ext[0].rule_type, "list");
+    assert_eq!(in_dv_ext[0].formulas, vec!["Lookup!$A$1".to_owned()]);
+
+    let in_cf_ext = data_validations_of(&format!(
+        r#"<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+<dimension ref="A1:J100"/>
+<sheetData><row r="1"><c r="A1"><v>1</v></c></row></sheetData>
+<extLst><ext uri="{{78C0D931-6437-407d-A8EE-F0AAD7539E65}}" xmlns:x14="http://schemas.microsoft.com/office/spreadsheetml/2009/9/main">{rules}</ext></extLst>
+</worksheet>"#
+    ));
+    assert!(in_cf_ext.is_empty());
 }
 
 /// A few far-apart cells make a huge bounding box; the host's load gates
@@ -4635,13 +4722,19 @@ fn reads_sheet_protection_flags_hash_and_unlocked_styles() {
 <row r="1"><c r="A1"><v>1</v></c><c r="B1" s="1"/><c r="C1" s="2"><f>A1</f><v>1</v></c></row>
 </sheetData>
 <sheetProtection algorithmName="SHA-512" hashValue="aGFzaA==" saltValue="c2FsdA==" spinCount="100000" sheet="1" objects="1" scenarios="1" formatCells="0" sort="0" selectLockedCells="1"/>
+<protectedRanges><protectedRange name="Input" sqref="B1"><securityDescriptor>acl</securityDescriptor></protectedRange></protectedRanges>
 </worksheet>"#,
         ),
     ]);
 
     let mut sessions = WorkbookSessions::new();
     let metadata = sessions.open(&path).unwrap();
-    let sheet_id = metadata.sheets[0].id.clone();
+    let sheet = &metadata.sheets[0];
+    let sheet_id = sheet.id.clone();
+    let early = sheet.protection.sheet_protection.as_ref().unwrap();
+    assert!(early.protected && early.has_password);
+    assert_eq!(sheet.protection.protected_ranges[0].name, "Input");
+    assert!(sheet.protection.protected_ranges[0].has_password);
     assert_eq!(metadata.styles[1].locked, Some(false));
     assert_eq!(metadata.styles[1].hidden, None);
     assert_eq!(metadata.styles[2].locked, None);
@@ -4672,6 +4765,20 @@ fn reads_sheet_protection_flags_hash_and_unlocked_styles() {
             .iter()
             .any(|cell| cell.row == 0 && cell.column == 1 && cell.style_index == Some(1))
     );
+
+    let status = sessions
+        .read_range_with_mode(
+            &metadata.session_id,
+            &sheet_id,
+            &range,
+            RangeReadMode::Status,
+            None,
+        )
+        .unwrap();
+    assert!(status.indexing_complete);
+    assert_eq!(status.indexed_through_row, result.indexed_through_row);
+    assert!(status.cells.is_empty());
+    assert_eq!(result.protected_ranges[0].sqref, "B1");
 
     let protection = result.sheet_protection.expect("sheetProtection parsed");
     assert!(protection.protected);

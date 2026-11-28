@@ -18,12 +18,16 @@ export const nl = {
   cardErrNeedsUpdatePath: 'Bestand dat deze app uitvoert:',
   cardErrNeedsUpdateWindows:
     'Als je {provider} in WSL (Ubuntu) of in een andere map bijwerkt, verandert dit bestand niet. Voer {command} uit in Windows PowerShell.',
+  claudeDesktopNote:
+    'De Claude-desktopapp is niet Claude Code, dat deze app uitvoert. Claude Code is een apart programma voor de terminal, dus de desktopapp installeren of bijwerken verandert het niet.',
   cardErrTimeout:
     'Het programma {provider} heeft niet op tijd gereageerd. Controleer het zo dadelijk opnieuw.',
   cardErrFailed: 'Er ging iets mis bij het controleren van {provider}. Controleer het opnieuw.',
   actionInstall: 'Installeren',
   actionLogin: 'Aanmelden',
   actionLoginWindow: 'Browser niet geopend?',
+  actionLoginWithCode: 'Toont de browser een code?',
+  actionLoginBrowser: 'In de browser aanmelden',
   actionRecheck: 'Opnieuw controleren',
   actionAcceptMetered: 'Toch gebruiken',
   actionInstallHelp: 'Officiële installatiehandleiding',
@@ -43,17 +47,19 @@ export const nl = {
     'Deze aanmelding gebruikt een API-sleutel of een account met betaling per verbruik, of het type kon niet worden vastgesteld. Met ‘Toch gebruiken’ draait AI via deze verbinding en wordt elk verzoek bij dat account in rekening gebracht.',
   connectTitle: 'Koppel een AI om te beginnen',
   connectBody:
-    'AI draait op het Claude- of Codex-abonnement dat je al hebt. Een API-sleutel is niet nodig.',
+    'De AI werkt met het Claude-, ChatGPT- of Google Antigravity-abonnement dat je al hebt. Er is geen API-sleutel nodig.',
   connectProviderTitle: 'De verbinding {provider} is nu niet bruikbaar',
   connectKeyBody:
     'De configuratie van {provider} is nog niet af. Rond die af in Instellingen of kies een andere AI.',
   errNotConnected:
-    'Er is geen AI verbonden. Koppel eerst een Claude- of Codex-abonnement, of een gratis AI.',
+    'Er is geen AI verbonden. Verbind eerst een Claude-, ChatGPT-, Codex- of Antigravity-abonnement, of een gratis AI.',
   errNotInstalled: 'Het programma {provider} is niet gevonden op deze pc.',
   errSignedOut: 'De aanmelding bij {provider} is verlopen. Meld je opnieuw aan om door te gaan.',
   errRateLimit: 'De limiet van het abonnement {provider} is bereikt.',
   errRateLimitReset:
     'De limiet van het abonnement {provider} is bereikt. Deze wordt om {time} hersteld.',
+  errChatGptAppLimit:
+    'Deze app heeft het ChatGPT-gebruik opgebruikt waarover hij beschikt. Dat kan de limiet van je hele abonnement zijn of een limiet die voor deze app is ingesteld. Controleer het in ChatGPT onder Instellingen → Gebruik.',
   errUnsafeTools:
     'Het programma {provider} is gestart met eigen hulpmiddelen ingeschakeld; de uitvoering is uit veiligheid gestopt.',
   errMeteredNotAccepted:
@@ -69,6 +75,8 @@ export const nl = {
   errFreeLimit:
     'Het gratis tegoed van vandaag is op. Probeer het morgen opnieuw of kies een andere AI in Instellingen.',
   errFreeLimitReset: 'Het gratis tegoed van vandaag is op. Je kunt het weer gebruiken om {time}.',
+  errFreeTierModel:
+    'Dit model heeft geen gratis niveau, dus een gratis sleutel kan het niet gebruiken. Kies een model dat onder het gratis niveau valt (zoals een Flash-model) of zet facturering aan in de console van de aanbieder.',
   continueWith: 'Doorgaan met {provider}',
   continueMeteredNote:
     'De verbinding {provider} is geen abonnement: doorgaan wordt per verbruik in rekening gebracht.',
@@ -77,7 +85,7 @@ export const nl = {
   usageWindowSevenDay: 'Limiet per 7 dagen',
   noticeTitle: 'Voordat je AI met je abonnement gebruikt',
   noticeSend:
-    'De inhoud van het document en je gesprek worden onder je eigen account naar Anthropic of OpenAI verzonden. Elk verzoek bevat ook de naam, titel en beschrijving van elke vaardigheid die op ‘AI beslist’ staat; gebruikte vaardigheden en vaardigheidsbestanden die de AI leest, worden ook verzonden.',
+    'De inhoud van het document en je gesprek worden onder je eigen account naar Anthropic, OpenAI of Google verzonden. Elk verzoek bevat ook de naam, titel en beschrijving van elke vaardigheid die op ‘AI beslist’ staat; gebruikte vaardigheden en vaardigheidsbestanden die de AI leest, worden ook verzonden.',
   noticeTraining:
     'Of die inhoud wordt gebruikt om AI te trainen, wordt bepaald door de instellingen van je eigen account bij dat bedrijf.',
   noticeCodexHistory:
@@ -104,7 +112,7 @@ export const nl = {
   guidePathCodexTitle: 'Ik gebruik ChatGPT',
   guidePathCodexBody:
     'Meld je met je ChatGPT-account aan bij het Codex-programma van OpenAI. Met het gratis abonnement kun je maar weinig gebruiken.',
-  guidePathFreeTitle: 'Nog geen van beide',
+  guidePathFreeTitle: 'Nog geen van deze',
   guidePathFreeBody:
     'Koppel in ongeveer een minuut een gratis AI. Zolang je die gratis gebruikt, kan wat je verstuurt worden gebruikt om de AI van dat bedrijf te verbeteren.',
   guideBack: 'Een andere manier kiezen',
@@ -116,12 +124,14 @@ export const nl = {
   stepLogin: 'Aanmelden',
   stepReady: 'Verbonden',
   installReturnNote:
-    'Kom hier terug als de installatie in dat venster klaar is. De app controleert dan vanzelf opnieuw.',
+    'Tijdens het downloaden kan dat venster een paar minuten niets tonen. Laat het open. Kom hier terug als de installatie klaar is. De app controleert dan vanzelf opnieuw.',
   loginHowNote:
     'Als je erop klikt, opent er een browser. Meld je aan met je {vendor}-account en klik op Toestaan; de verbinding komt vanzelf tot stand.',
   signingInStalledNote:
     'Is er in je browser geen aanmeldpagina geopend, open dan het aanmeldvenster met de knop hieronder. Ben je nog bezig met aanmelden in de browser, maak het dan daar af: de knop stopt die aanmelding en begint helemaal opnieuw.',
   actionLoginWindowOpen: 'Aanmeldvenster openen',
+  loginUnfinishedNote:
+    'Het aanmelden is niet afgerond. Als de browser een code toont, moet die in het aanmeldvenster worden geplakt: open het venster en meld daar opnieuw aan. Een eerder getoonde code werkt niet meer.',
   loginWindowTitle: 'Aanmelden bij {provider}',
   loginWindowIntro:
     'Dit is het aanmeldvenster van het programma {provider}. De Engelse tekst hieronder komt van het programma {provider}.',
@@ -144,4 +154,50 @@ export const nl = {
   actionCopyInfo: 'Gegevens kopiëren voor hulp',
   copyInfoDone: 'Gekopieerd',
   actionConnectHelp: 'Bekijk elke stap op het scherm (pagina in het Koreaans)',
+  guidePathChatGptBody:
+    'Meld je aan met je ChatGPT-account en gebruik je abonnement. Je hoeft niets te installeren. Met het gratis abonnement kun je maar weinig gebruiken.',
+  guideUseCodex: 'Gebruik je het Codex-programma al op deze pc? Verbinden via Codex',
+  guideUseDirect: 'Rechtstreeks in de app verbinden, zonder Codex',
+  chatgptLoginNote:
+    'Er opent een aanmeldpagina van ChatGPT in je browser. Meld je aan en sta deze app toe je ChatGPT-abonnement te gebruiken; de verbinding komt dan vanzelf tot stand.',
+  chatgptLoginUnfinishedNote:
+    'Het aanmelden is niet afgerond. Druk nogmaals om opnieuw te beginnen. Voor de verbinding moet je toestaan dat je ChatGPT-abonnement wordt gebruikt.',
+  chatgptLoginNoPlanNote:
+    'Je bent aangemeld bij ChatGPT, maar deze app heeft geen toestemming gekregen om je abonnement te gebruiken. Druk nogmaals en sta het gebruik van je abonnement toe op de toestemmingspagina. Heb je dat al gedaan, dan biedt OpenAI dit gebruik misschien niet aan voor je account (bijvoorbeeld een account dat een bedrijf of school beheert) of je abonnement. Je kunt dan verbinden met het programma Codex.',
+  chatgptLoginDeniedNote:
+    'Je bent in de browser aangemeld, maar OpenAI heeft deze verbinding niet geaccepteerd, of het antwoord kon niet worden gecontroleerd. Controleer of de datum en tijd van deze pc kloppen en druk dan nogmaals om opnieuw te beginnen.',
+  chatgptLoginNetworkNote:
+    'Het aanmelden kon niet worden afgerond: OpenAI was niet bereikbaar of er ging geen browser open. Controleer de internetverbinding (ook een bedrijfsnetwerk, VPN of proxy) en druk dan nogmaals.',
+  chatgptLoginWorkspacePolicyNote:
+    'Dit ChatGPT-account hoort bij een werkruimte die door een bedrijf of school wordt beheerd, en OpenAI staat apps niet toe het ChatGPT-abonnement van een werkruimte te gebruiken. De beheerder van de werkruimte heeft geen instelling om deze app toe te staan, dus opnieuw inloggen helpt niet. Log in met een persoonlijk ChatGPT-account (Go, Plus of Pro) of maak verbinding via de Codex-kaart.',
+  chatgptLoginNotAllowedNote:
+    'Je hebt deze app niet toegestaan je ChatGPT-abonnement te gebruiken, of de browser kwam met een fout terug van het aanmelden. Druk nogmaals, meld je aan en geef toestemming op de toestemmingspagina.',
+  chatgptSigningInNote:
+    'Meld je in de geopende browser aan met je ChatGPT-account en sta deze app toe je abonnement te gebruiken. De verbinding komt vanzelf tot stand.',
+  chatgptPlanNote:
+    'AI in deze app draait op je ChatGPT-abonnement. Als je de verbinding verbreekt, geldt dat alleen voor deze app; andere programma’s op deze pc blijven aangemeld.',
+  actionContinueWithChatGpt: 'Doorgaan met ChatGPT',
+  actionManageUsage: 'Gebruik beheren',
+  browserPageDoneBody: 'Je kunt dit tabblad sluiten en teruggaan naar de app.',
+  browserPageFailedTitle: 'De verbinding is niet gelukt',
+  browserPageFailedBody: 'Ga terug naar de app en probeer het opnieuw.',
+  cardOff: 'Uit in deze app',
+  offNote:
+    'Deze app start het programma {provider} niet en controleert de status niet. De aanmelding van {provider} op deze pc en het gebruik in een terminal blijven zoals ze zijn.',
+  offElsewhereNote: 'Je kunt het weer gebruiken via Instellingen → AI.',
+  offSwitchNote:
+    '"Niet gebruiken in deze app" laat de aanmelding van {provider} op deze pc staan en stopt alleen deze app. Afmelden geldt voor de hele pc.',
+  actionTurnOff: 'Niet gebruiken in deze app',
+  actionTurnOn: 'Weer gebruiken',
+  connectOffTitle: '{provider} staat uit in deze app',
+  connectOffBody:
+    'Klik op "Weer gebruiken" bij {provider} in Instellingen → AI, of kies een andere AI.',
+  errOffInApp:
+    '{provider} staat uit in deze app, dus er is niets uitgevoerd. Je kunt het weer gebruiken via Instellingen → AI.',
+  guideBadgeOff: 'Uit',
+  guidePathAntigravityTitle: 'Ik gebruik Google Antigravity',
+  guidePathAntigravityBody:
+    'Log met je Google-account in bij het Antigravity-programma van Google om je Google AI-abonnement te gebruiken.',
+  antigravityCardNote:
+    'Werkt in het AI-paneel en in de agentmodus via het officiële ACP-protocol van Antigravity CLI. Beschikbare modellen, gegevensgebruik en extra tegoed volgen uw Antigravity-instellingen.',
 } satisfies Record<keyof typeof zh, string>

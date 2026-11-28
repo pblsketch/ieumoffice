@@ -4,7 +4,7 @@ O agente usa como projeto uma pasta que escolher e executa nela o Claude Code ou
 
 ## Antes de começar
 
-- Uma assinatura do Claude ou uma assinatura do ChatGPT conectada em **Configurações ▸ IA**. O tópico «Conexão por assinatura» explica como.
+- O programa Claude Code ou Codex conectado em **Configurações ▸ IA** (com sessão iniciada com uma assinatura do Claude ou um plano do ChatGPT). O ChatGPT conectado diretamente no aplicativo não é usado pelo agente. O tópico «Conexão por assinatura» explica como.
 - Uma pasta com o seu material. Não é possível escolher uma unidade inteira, toda a sua pasta pessoal nem pastas com dados de início de sessão ou de aplicações.
 
 ## Iniciar uma sessão

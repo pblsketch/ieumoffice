@@ -15,6 +15,10 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 
 const agentHarness = vi.hoisted(() => ({
   options: null as null | {
+    events?: {
+      onDone?: (result: { text: string; cancelled: boolean }) => void
+      onError?: (error: string) => void
+    }
     skill?: {
       executeTool: (call: {
         id: string
@@ -113,7 +117,12 @@ const PLAN: AttachmentMeta = {
   sizeBytes: 4096,
 }
 const REQUEST = 'Make a kickoff deck from these'
-const HANDOFF = {
+const HANDOFF: {
+  id: string
+  text: string
+  materials: Array<{ path: string; name: string }>
+  speakerNotesSeparate?: boolean
+} = {
   id: 'h-1',
   text: REQUEST,
   materials: [
@@ -452,5 +461,70 @@ describe('generate hand-off in the PPT editor', () => {
     expect(agentHarness.run).not.toHaveBeenCalled()
     expect(container.querySelector('.ai-sub-prompt')).not.toBeNull()
     expect(composer(container).value).toBe('')
+  })
+
+  it('syncs speakerNotesSeparate from the hand-off into the panel toggle before sending', async () => {
+    installBridge(statusMap('ready', 'signed-out'), { ...HANDOFF, speakerNotesSeparate: true })
+    const { container } = mount()
+    await flush()
+    const toggle = container.querySelector<HTMLInputElement>(
+      '[data-testid="slides-deck-options"] input[type="checkbox"]',
+    )!
+    expect(toggle).not.toBeNull()
+    expect(toggle.checked).toBe(true)
+    expect(agentHarness.run).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('the deck a create flow handed over goes into the project (spec 6)', () => {
+  const endRun = async (end: { ok: true } | { ok: false; error?: boolean }) => {
+    await act(async () => {
+      const events = agentHarness.options?.events
+      if (end.ok) events?.onDone?.({ text: 'Done', cancelled: false })
+      else if (end.error) events?.onError?.('boom')
+      else events?.onDone?.({ text: '', cancelled: true })
+    })
+    await flush()
+  }
+
+  it('asks for the project save once the handed-over run ended well, and only once', async () => {
+    installBridge(statusMap('ready', 'signed-out'), HANDOFF)
+    const onHandedRunDone = vi.fn()
+    mount({ onHandedRunDone })
+    await flush()
+    expect(agentHarness.run).toHaveBeenCalledTimes(1)
+    expect(onHandedRunDone).not.toHaveBeenCalled()
+    await endRun({ ok: true })
+    expect(onHandedRunDone).toHaveBeenCalledTimes(1)
+    // a later run is the person's own: no second save into the project
+    await endRun({ ok: true })
+    expect(onHandedRunDone).toHaveBeenCalledTimes(1)
+  })
+
+  it('a failed or stopped run leaves the deck untitled', async () => {
+    installBridge(statusMap('ready', 'signed-out'), HANDOFF)
+    const onHandedRunDone = vi.fn()
+    mount({ onHandedRunDone })
+    await flush()
+    await endRun({ ok: false, error: true })
+    expect(onHandedRunDone).not.toHaveBeenCalled()
+
+    resetGenerateHandoffForTest()
+    installBridge(statusMap('ready', 'signed-out'), HANDOFF)
+    const stopped = vi.fn()
+    mount({ onHandedRunDone: stopped })
+    await flush()
+    await endRun({ ok: false })
+    expect(stopped).not.toHaveBeenCalled()
+  })
+
+  it('a run nobody handed over never asks', async () => {
+    installBridge(statusMap('ready', 'signed-out'), null)
+    const onHandedRunDone = vi.fn()
+    mount({ onHandedRunDone, preset: { text: 'Polish this slide', nonce: 1, autoRun: true } })
+    await flush()
+    expect(agentHarness.run).toHaveBeenCalledTimes(1)
+    await endRun({ ok: true })
+    expect(onHandedRunDone).not.toHaveBeenCalled()
   })
 })

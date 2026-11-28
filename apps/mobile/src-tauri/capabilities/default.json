@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/mobile-schema.json",
+  "identifier": "default",
+  "description": "Default mobile WebView capability for IeumOffice Mobile",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}

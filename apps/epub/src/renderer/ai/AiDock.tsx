@@ -24,11 +24,13 @@ import '@genoffice/ui/ai-queue-strip.css'
 import '@genoffice/ui/ai-usage.css'
 import '@genoffice/ui/ai-panel-prefs.css'
 import './ai-panel.css'
+import '@genoffice/ui/ai-panel.css'
 import type { EpubAiApi, EpubBookSummary, EpubChapterResult } from '../../shared/ipc'
 import { BLOCK_ATTR } from '../reader/chapter-html'
 import { useI18n } from '../i18n/locale'
 import { AiPanel } from './AiPanel'
 import type { BookAiEditor, BookAiHost, BookAiView, StartBookTranslation } from './book-tools'
+import type { BookMarks } from './run-changes'
 
 export type {
   BookTranslationAnswer,
@@ -77,18 +79,24 @@ export interface EpubAiWiring {
   frameDoc: MutableRefObject<Document | null>
   /** opens the book-translation window (the translating screen); absent until it exists */
   startBookTranslation?: StartBookTranslation | null
+  /** navigates the reader to a chapter and block */
+  focusBlock?: ((spineIndex: number, blockId: string) => void) | null
 }
 
 export interface EpubAi {
   host: BookAiHost
   open: boolean
   setOpen(open: boolean): void
+  /** the blocks the last AI run changed, for the reader to mark; null while none are marked */
+  marks: BookMarks | null
 }
 
 /** The AI's view of the editor, and whether its panel is open. */
 export function useEpubAi(wiring: EpubAiWiring): EpubAi {
-  const { book, readChapter, editor, shownChapter, frameDoc, startBookTranslation } = wiring
+  const { book, readChapter, editor, shownChapter, frameDoc, startBookTranslation, focusBlock } =
+    wiring
   const [open, setOpen] = useState(() => aiPanelInitiallyOpen(OPEN_KEY))
+  const [marks, setMarks] = useState<BookMarks | null>(null)
   useEffect(() => rememberAiPanelOpen(OPEN_KEY, open), [open])
 
   // the shell's AI panel preferences (text size): read once, then followed
@@ -117,10 +125,14 @@ export function useEpubAi(wiring: EpubAiWiring): EpubAi {
         }
       },
       startBookTranslation: startBookTranslation ?? null,
+      showChangeMarks: setMarks,
+      focusBlock: focusBlock ?? null,
     }),
-    [book, readChapter, editor, shownChapter, frameDoc, startBookTranslation],
+    [book, readChapter, editor, shownChapter, frameDoc, startBookTranslation, focusBlock],
   )
-  return { host, open, setOpen }
+  // another book in this tab: the last one's marks do not belong to it
+  useEffect(() => setMarks(null), [book])
+  return { host, open, setOpen, marks }
 }
 
 export interface EpubAiDockProps {

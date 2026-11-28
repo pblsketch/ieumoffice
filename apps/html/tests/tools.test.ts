@@ -4,9 +4,11 @@ import { compileOps, type HtmlOp } from '../src/renderer/document/ops'
 import { applyPatches } from '../src/renderer/document/patch'
 import { buildProjection } from '../src/renderer/ai/redact'
 import {
+  AGENT_TOOLS,
   createHtmlSkillCore,
   expandAttachmentRefs,
   findTruncatedDataUrl,
+  findWholeDocumentOp,
   buildOutline,
   type HtmlDocAccess,
 } from '../src/renderer/ai/tools'
@@ -180,34 +182,12 @@ describe('html skill tools', () => {
 })
 
 describe('generation flow tools', () => {
-  it('ask_clarification hands the card answers (or a skip) back to the model', async () => {
-    const doc = fakeAccess('')
-    let seen: unknown = null
-    doc.access.askClarification = async (questions) => {
-      seen = questions
-      return { answers: 'Audience: board\nTone: executive' }
-    }
-    const core = createHtmlSkillCore(doc.access)
-    const r = await core.executeTool(
-      call('ask_clarification', {
-        questions: [
-          { id: 'aud', label: 'Audience?', options: ['board', 'team', 'customers'] },
-          { label: 'no id', options: ['a', 'b', 'c', 'd', 'e', 'f', 'g'] },
-          { id: 'empty', label: 'no options', options: [] },
-        ],
-      }),
-    )
-    expect(r.isError).toBeFalsy()
-    expect(r.output).toContain('Audience: board')
-    const qs = seen as Array<{ id: string; options: string[] }>
-    expect(qs).toHaveLength(2)
-    expect(qs[1]!.id).toBe('q2')
-    expect(qs[1]!.options).toHaveLength(5)
-    doc.access.askClarification = async () => ({ answers: '', cancelled: true })
-    const skipped = await createHtmlSkillCore(doc.access).executeTool(
+  it('has no questionnaire tool of its own: the shared ask_questions card asks', async () => {
+    expect(AGENT_TOOLS.map((tool) => tool.name)).not.toContain('ask_clarification')
+    const r = await createHtmlSkillCore(fakeAccess('').access).executeTool(
       call('ask_clarification', { questions: [{ id: 'a', label: 'x', options: ['1'] }] }),
     )
-    expect(skipped.output).toMatch(/skipped/)
+    expect(r.isError).toBe(true)
   })
 
   it('plan_page drafts the brief through the writer and relays confirm / redo / dismiss decisions', async () => {
@@ -752,6 +732,164 @@ describe('truncated data: URL guard in apply_ops', () => {
     expect(r.mutated).toBe(true)
     expect(doc.text).toContain('R0lGODlhAQABAAAAACw=')
     expect(doc.text).toContain('To be continued\u2026')
+  })
+})
+
+describe('whole-document guard in apply_ops', () => {
+  const STYLED = `<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>Plan</title>
+<style>
+body { margin: 0 }
+</style>
+</head>
+<body>
+<h1>Plan</h1>
+<p>First.</p>
+</body>
+</html>`
+  const sidOf = (doc: ReturnType<typeof fakeAccess>, tag: string) =>
+    doc.access.getMap().elements.find((e) => e.tag === tag)!.sid
+  const run = (doc: ReturnType<typeof fakeAccess>, ops: unknown[]) => {
+    const core = createHtmlSkillCore(doc.access)
+    core.buildContext()
+    return core.executeTool(call('apply_ops', { ops })) as {
+      output: string
+      isError?: boolean
+      mutated?: boolean
+    }
+  }
+
+  it('refuses a whole document as the new <style>, and then as the new <title>', () => {
+    const doc = fakeAccess(STYLED)
+    const full = STYLED.replace('<h1>Plan</h1>', '<h1>Plan v2</h1>')
+    for (const tag of ['style', 'title']) {
+      const r = run(doc, [{ op: 'replace_element', sid: sidOf(doc, tag), html: full }])
+      expect(r.isError).toBe(true)
+      expect(r.output).toContain('0 of 1 ops applied')
+      expect(r.output).toContain('op 1 puts a whole document')
+      expect(r.output).toContain('<!doctype>')
+      expect(r.output).toContain('plan_page with mode "redesign"')
+      expect(r.output).toContain('replace_element')
+      expect(doc.text).toBe(STYLED)
+    }
+  })
+
+  it('refuses the whole batch when one op inserts a page skeleton', () => {
+    const doc = fakeAccess(STYLED)
+    const r = run(doc, [
+      { op: 'set_text', sid: sidOf(doc, 'h1'), text: 'Changed' },
+      { op: 'insert_html', sid: sidOf(doc, 'p'), position: 'after', html: '<body><p>x</p></body>' },
+    ])
+    expect(r.isError).toBe(true)
+    expect(r.output).toContain('op 2')
+    expect(r.output).toContain('<body>')
+    expect(doc.text).toBe(STYLED)
+  })
+
+  it('lets a str_replace change the attributes of <body> and <html>', () => {
+    const doc = fakeAccess(STYLED)
+    const r = run(doc, [
+      { op: 'str_replace', old: '<body>', new: '<body class="dark">' },
+      { op: 'str_replace', old: '<html lang="ko">', new: '<html lang="en">' },
+    ])
+    expect(r.isError).toBeFalsy()
+    expect(doc.text).toContain('<body class="dark">')
+    expect(doc.text).toContain('<html lang="en">')
+  })
+
+  it('lets replace_element rewrite the body through its own sid', () => {
+    const doc = fakeAccess(STYLED)
+    const r = run(doc, [
+      {
+        op: 'replace_element',
+        sid: sidOf(doc, 'body'),
+        html: '<body class="page">\n<h1>New</h1>\n</body>',
+      },
+    ])
+    expect(r.isError).toBeFalsy()
+    expect(r.mutated).toBe(true)
+    expect(doc.text).toContain('<body class="page">\n<h1>New</h1>\n</body>')
+    expect(doc.text.match(/<!doctype/gi)).toHaveLength(1)
+  })
+
+  it('lets an edit remove the duplicate copy from a page that already holds two', () => {
+    const copy = STYLED.replace('<p>First.</p>', '<p>Second.</p>')
+    const doubled = STYLED.replace('</body>\n</html>', `${copy}\n</body>\n</html>`)
+    expect(doubled.match(/<!doctype/gi)).toHaveLength(2)
+    const doc = fakeAccess(doubled)
+    const r = run(doc, [{ op: 'str_replace', old: `${copy}\n`, new: '' }])
+    expect(r.isError).toBeFalsy()
+    expect(doc.text.match(/<!doctype/gi)).toHaveLength(1)
+    expect(doc.text).not.toContain('Second.')
+
+    // the same cleanup by rewriting the outer body, which holds the second skeleton
+    const again = fakeAccess(doubled)
+    const r2 = run(again, [
+      {
+        op: 'replace_element',
+        sid: sidOf(again, 'body'),
+        html: '<body>\n<h1>Plan</h1>\n<p>First.</p>\n</body>',
+      },
+    ])
+    expect(r2.isError).toBeFalsy()
+    expect(again.text.match(/<!doctype/gi)).toHaveLength(1)
+  })
+
+  it('checks the batch result, so a rename to <html> is refused as well', () => {
+    const doc = fakeAccess(STYLED)
+    const r = run(doc, [{ op: 'set_tag', sid: sidOf(doc, 'p'), tag: 'html' }])
+    expect(r.isError).toBe(true)
+    expect(r.output).toContain('would raise the number of <html> (1 → 2)')
+    expect(r.output).toContain('plan_page with mode "redesign"')
+    expect(doc.text).toBe(STYLED)
+  })
+
+  it('tells the model how the line count changed', () => {
+    const doc = fakeAccess(STYLED)
+    const r = run(doc, [
+      { op: 'insert_html', sid: sidOf(doc, 'p'), position: 'after', html: '<p>A</p>\n<p>B</p>' },
+    ])
+    expect(r.isError).toBeFalsy()
+    expect(r.output).toMatch(/^Applied 1 op\(s\) at L\d+/)
+    expect(doc.text.split('\n')).toHaveLength(15)
+    expect(r.output).toContain('it went from 14 to 15 lines.')
+  })
+
+  it('compares each marker with the text the op replaces', () => {
+    const map = buildParseMap(STYLED, 1, null)
+    const head = map.elements.find((e) => e.tag === 'head')!.sid
+    const html = map.elements.find((e) => e.tag === 'html')!.sid
+    expect(
+      findWholeDocumentOp(
+        [{ op: 'set_inner_html', sid: html, html: '<head></head><body></body>' }],
+        STYLED,
+        map,
+      ),
+    ).toBeNull()
+    expect(
+      findWholeDocumentOp(
+        [{ op: 'replace_element', sid: html, html: '<!doctype html><html></html>' }],
+        STYLED,
+        map,
+      ),
+    ).toEqual({ index: 0, marker: '<!doctype>' })
+    expect(
+      findWholeDocumentOp(
+        [{ op: 'set_inner_html', sid: head, html: '<header>x</header>' }],
+        STYLED,
+        map,
+      ),
+    ).toBeNull()
+    expect(
+      findWholeDocumentOp(
+        [{ op: 'str_replace', old: '<!doctype html>', new: '<!DOCTYPE html>' }],
+        STYLED,
+        map,
+      ),
+    ).toBeNull()
   })
 })
 

@@ -1,0 +1,464 @@
+diff --git a/src/document_core/commands/text_editing.rs b/src/document_core/commands/text_editing.rs
+index 1c4150fdc..fb73ceffd 100644
+--- a/src/document_core/commands/text_editing.rs
++++ b/src/document_core/commands/text_editing.rs
+@@ -6768,11 +6768,24 @@ impl DocumentCore {
+             .get_mut(parent_para_idx)
+             .ok_or_else(|| HwpError::RenderError("문단 범위 초과".to_string()))?;
+ 
+-        // path를 따라 마지막 셀까지 진입
++        // Walk path down to the innermost table cell or shape text box.
+         for (i, &(ctrl_idx, cell_idx, _cpi)) in path.iter().enumerate() {
+-            let table = match para.controls.get_mut(ctrl_idx) {
+-                Some(Control::Table(t)) => t.as_mut(),
+-                // 머리말·꼬리말 뿌리: 그 문단에 든 표로 내려간다(머리말 문단 자체는 머리말 API가 맡는다).
++            let paragraphs: &mut Vec<Paragraph> = match para.controls.get_mut(ctrl_idx) {
++                Some(Control::Table(t)) => {
++                    let cell = t
++                        .cells
++                        .get_mut(cell_idx)
++                        .ok_or_else(|| HwpError::RenderError("셀 범위 초과".to_string()))?;
++                    &mut cell.paragraphs
++                }
++                Some(Control::Shape(shape)) => {
++                    let text_box = super::super::helpers::get_textbox_at_mut(shape, cell_idx)
++                        .ok_or_else(|| {
++                            HwpError::RenderError("경로: 글상자가 아닙니다".to_string())
++                        })?;
++                    &mut text_box.paragraphs
++                }
++                // Header/footer root: descend into the table or shape hosted in its paragraph.
+                 Some(ctrl @ (Control::Header(_) | Control::Footer(_)))
+                     if i == 0 && cell_idx == 0 && path.len() > 1 =>
+                 {
+@@ -6786,28 +6799,23 @@ impl DocumentCore {
+                 }
+                 _ => return Err(HwpError::RenderError("경로: 표가 아닙니다".to_string())),
+             };
+-            let cell = table
+-                .cells
+-                .get_mut(cell_idx)
+-                .ok_or_else(|| HwpError::RenderError("셀 범위 초과".to_string()))?;
+             if i == path.len() - 1 {
+-                // 이 셀에서 문단 분할. 리플로우/shift/recalc 는 borrow 해제 후 루프 밖에서 한다.
+-                if cell_para_idx >= cell.paragraphs.len() {
++                // Split paragraph inside this cell/textbox; reflow/vpos runs after borrow ends.
++                if cell_para_idx >= paragraphs.len() {
+                     return Err(HwpError::RenderError("셀문단 범위 초과".to_string()));
+                 }
+-                split_origin_vpos = cell.paragraphs[cell_para_idx]
++                split_origin_vpos = paragraphs[cell_para_idx]
+                     .line_segs
+                     .first()
+                     .map(|seg| seg.vertical_pos);
+-                let mut new_para = cell.paragraphs[cell_para_idx].split_at(char_offset);
++                let mut new_para = paragraphs[cell_para_idx].split_at(char_offset);
+                 if let Some(meta) = restore_meta {
+                     restore_para_meta(&mut new_para, meta, &self.document.doc_info.para_shapes);
+                 }
+-                cell.paragraphs.insert(cell_para_idx + 1, new_para);
++                paragraphs.insert(cell_para_idx + 1, new_para);
+                 break;
+             }
+-            para = cell
+-                .paragraphs
++            para = paragraphs
+                 .get_mut(_cpi)
+                 .ok_or_else(|| HwpError::RenderError("셀문단 범위 초과".to_string()))?;
+         }
+@@ -6887,9 +6895,20 @@ impl DocumentCore {
+         // 사라지는 문단의 스코프 메타 — undo(split)가 되돌릴 값이다 (Task #2342).
+         let mut removed_meta: Option<ParaMeta> = None;
+         for (i, &(ctrl_idx, cell_idx, _cpi)) in path.iter().enumerate() {
+-            let table = match para.controls.get_mut(ctrl_idx) {
+-                Some(Control::Table(t)) => t.as_mut(),
+-                // 머리말·꼬리말 뿌리: 그 문단에 든 표로 내려간다(머리말 문단 자체는 머리말 API가 맡는다).
++            let paragraphs: &mut Vec<Paragraph> = match para.controls.get_mut(ctrl_idx) {
++                Some(Control::Table(t)) => {
++                    let cell = t
++                        .cells
++                        .get_mut(cell_idx)
++                        .ok_or_else(|| HwpError::RenderError("셀 범위 초과".to_string()))?;
++                    &mut cell.paragraphs
++                }
++                Some(Control::Shape(shape)) => {
++                    let text_box = super::super::helpers::get_textbox_at_mut(shape, cell_idx)
++                        .ok_or_else(|| HwpError::RenderError("경로: 글상자가 아닙니다".to_string()))?;
++                    &mut text_box.paragraphs
++                }
++                // Header/footer root: descend into the table or shape hosted in its paragraph.
+                 Some(ctrl @ (Control::Header(_) | Control::Footer(_)))
+                     if i == 0 && cell_idx == 0 && path.len() > 1 =>
+                 {
+@@ -6903,27 +6922,22 @@ impl DocumentCore {
+                 }
+                 _ => return Err(HwpError::RenderError("경로: 표가 아닙니다".to_string())),
+             };
+-            let cell = table
+-                .cells
+-                .get_mut(cell_idx)
+-                .ok_or_else(|| HwpError::RenderError("셀 범위 초과".to_string()))?;
+             if i == path.len() - 1 {
+-                if cell_para_idx >= cell.paragraphs.len() {
++                if cell_para_idx >= paragraphs.len() {
+                     return Err(HwpError::RenderError("셀문단 범위 초과".to_string()));
+                 }
+-                merge_origin_vpos = cell.paragraphs[prev_idx]
++                merge_origin_vpos = paragraphs[prev_idx]
+                     .line_segs
+                     .first()
+                     .map(|seg| seg.vertical_pos);
+-                let removed = cell.paragraphs.remove(cell_para_idx);
++                let removed = paragraphs.remove(cell_para_idx);
+                 removed_meta = Some(removed.capture_meta());
+-                let prev = &mut cell.paragraphs[prev_idx];
++                let prev = &mut paragraphs[prev_idx];
+                 merge_point = prev.text.chars().count();
+                 prev.merge_from(&removed);
+                 break;
+             }
+-            para = cell
+-                .paragraphs
++            para = paragraphs
+                 .get_mut(_cpi)
+                 .ok_or_else(|| HwpError::RenderError("셀문단 범위 초과".to_string()))?;
+         }
+diff --git a/src/document_core/queries/cursor_rect.rs b/src/document_core/queries/cursor_rect.rs
+index 3982cd38b..c5caa6f47 100644
+--- a/src/document_core/queries/cursor_rect.rs
++++ b/src/document_core/queries/cursor_rect.rs
+@@ -2042,7 +2042,7 @@ impl DocumentCore {
+             serde_json::json!({
+                 "sectionIndex":tb.section_index,"paragraphIndex":0,"charOffset":0,
+                 "parentParaIndex":tb.parent_para_index,"controlIndex":tb.control_index,
+-                "cellIndex":first.cell_index,"cellParaIndex":0,"isTextBox":true,
++                "cellIndex":first.cell_index,"cellParaIndex":first.cell_para_index,"isTextBox":true,
+                 "cellPath":tb.context.path.iter().map(|entry| serde_json::json!({
+                     "controlIndex":entry.control_index,"cellIndex":entry.cell_index,
+                     "cellParaIndex":entry.cell_para_index,
+@@ -2310,28 +2310,58 @@ impl DocumentCore {
+             }
+         }
+ 
+-        // is_textbox 정확 판별: document의 실제 컨트롤 타입으로 재확인
++        // Determine is_textbox by walking ctx.path in the model: true when any
++        // container step (outermost shape or a shape textbox inside a table cell)
++        // resolves to a Shape carrying a textbox at step.cell_index.
+         for run in &mut runs {
+             if let Some(ref ctx) = run.cell_context {
+-                let Some(outer) = ctx.path.first() else {
+-                    run.is_textbox = false;
+-                    continue;
+-                };
+-                // isTextBox는 바깥 편집 소유자가 글상자인지를 나타낸다. 안 표의 셀은
+-                // ctx.in_textbox=false여도 글상자 소유 경로를 유지한다 (#919).
+                 run.is_textbox = self
+                     .document
+                     .sections
+                     .get(run.section_index)
+                     .and_then(|s| s.paragraphs.get(ctx.parent_para_index))
+-                    .and_then(|p| p.controls.get(outer.control_index))
+-                    .and_then(|control| match control {
+-                        Control::Shape(shape) => {
+-                            super::super::helpers::get_textbox_at(shape, outer.cell_index)
++                    .is_some_and(|start_para| {
++                        let mut cur_para = start_para;
++                        let mut has_textbox = false;
++                        for (i, step) in ctx.path.iter().enumerate() {
++                            let is_last = i + 1 == ctx.path.len();
++                            let next_paras: Option<&[Paragraph]> =
++                                match cur_para.controls.get(step.control_index) {
++                                    Some(Control::Shape(shape)) => {
++                                        super::super::helpers::get_textbox_at(
++                                            shape,
++                                            step.cell_index,
++                                        )
++                                        .map(|tb| {
++                                            has_textbox = true;
++                                            tb.paragraphs.as_slice()
++                                        })
++                                    }
++                                    Some(Control::Table(table)) => table
++                                        .cells
++                                        .get(step.cell_index)
++                                        .map(|cell| cell.paragraphs.as_slice()),
++                                    Some(Control::Picture(pic)) if step.cell_index == 0 => {
++                                        pic.caption.as_ref().map(|c| c.paragraphs.as_slice())
++                                    }
++                                    Some(ctrl @ (Control::Header(_) | Control::Footer(_)))
++                                        if step.cell_index == 0 =>
++                                    {
++                                        ctrl.header_footer_paragraphs().map(Vec::as_slice)
++                                    }
++                                    _ => None,
++                                };
++                            if is_last {
++                                break;
++                            }
++                            let Some(next) = next_paras.and_then(|ps| ps.get(step.cell_para_index))
++                            else {
++                                break;
++                            };
++                            cur_para = next;
+                         }
+-                        _ => None,
+-                    })
+-                    .is_some();
++                        has_textbox
++                    });
+             } else {
+                 run.is_textbox = false;
+             }
+@@ -2666,27 +2696,30 @@ impl DocumentCore {
+             .filter(|cb| x >= cb.x && x <= cb.x + cb.w && y >= cb.y && y <= cb.y + cb.h)
+             .min_by_key(|cb| ((cb.w.max(0.0) * cb.h.max(0.0)) * 1000.0) as i64);
+ 
+-        // [#7442] 중첩 표를 품은 바깥 칸의 run은 TAC 줄 높이만큼 bbox가 커서 안쪽 칸의
+-        // 빈 영역·괘선까지 덮는다. hit_cell이 있어도 클릭된 칸이 그 run보다 더 깊은
+-        // 경로(같은 parent_para_index 아래 run 경로를 (control,cell) 접두사로 갖는
+-        // 자손 칸)를 가리키면 run hit를 건너뛰고 그 칸 분기를 사용한다. 같은 깊이나
+-        // 무관한 경로에서는 지금처럼 텍스트 run 정밀도가 우선한다.
++        let textbox_hit: Option<&TextBoxBboxInfo> = textbox_bboxes
++            .iter()
++            .filter(|tb| x >= tb.x && x <= tb.x + tb.w && y >= tb.y && y <= tb.y + tb.h)
++            .min_by_key(|tb| ((tb.w.max(0.0) * tb.h.max(0.0)) * 1000.0) as i64);
++
++        // [#7442] Also skip an outer cell run when a deeper nested cell or
++        // in-cell textbox contains the click (same parent_para_index and
++        // matching (control, cell) prefix).
+         let hit_cell = hit_cell.filter(|&(idx, _)| {
+-            match (
+-                runs[idx].cell_context.as_ref(),
+-                clicked_cell.and_then(|cb| cb.cell_context.as_ref()),
+-            ) {
+-                (Some(run_ctx), Some(cell_ctx)) => {
+-                    let clicked_is_descendant = cell_ctx.parent_para_index
+-                        == run_ctx.parent_para_index
+-                        && cell_ctx.path.len() > run_ctx.path.len()
+-                        && run_ctx.path.iter().zip(&cell_ctx.path).all(|(r, c)| {
+-                            r.control_index == c.control_index && r.cell_index == c.cell_index
+-                        });
+-                    !clicked_is_descendant
+-                }
+-                _ => true,
+-            }
++            let Some(run_ctx) = runs[idx].cell_context.as_ref() else {
++                return true;
++            };
++            let is_descendant = |target_ctx: &CellContext| {
++                target_ctx.parent_para_index == run_ctx.parent_para_index
++                    && target_ctx.path.len() > run_ctx.path.len()
++                    && run_ctx.path.iter().zip(&target_ctx.path).all(|(r, c)| {
++                        r.control_index == c.control_index && r.cell_index == c.cell_index
++                    })
++            };
++            let cell_descends = clicked_cell
++                .and_then(|cb| cb.cell_context.as_ref())
++                .is_some_and(is_descendant);
++            let textbox_descends = textbox_hit.is_some_and(|tb| is_descendant(&tb.context));
++            !cell_descends && !textbox_descends
+         });
+ 
+         if let Some((idx, offset)) = hit_cell {
+@@ -2696,7 +2729,20 @@ impl DocumentCore {
+         // 클릭 좌표가 속한 칼럼 결정 (다단 지원)
+         let click_column = self.find_column_at_x(page_num, x);
+ 
++        // Prefer the deeper container when both a table cell and a textbox bbox
++        // contain the click: [Table, Shape] picks the inner textbox, while
++        // [Shape, Table] keeps the inner table cell.
++        let textbox_beats_cell = match (clicked_cell, textbox_hit) {
++            (Some(cb), Some(tb)) => {
++                let cb_depth = cb.cell_context.as_ref().map_or(1, |ctx| ctx.path.len());
++                tb.context.path.len() > cb_depth
++            }
++            (None, Some(_)) => true,
++            _ => false,
++        };
++
+         // 셀 내부 클릭이면: 해당 셀의 run만 검색하여 가장 가까운 위치 반환
++        if !textbox_beats_cell {
+         if let Some(cb) = clicked_cell {
+             let cell_runs: Vec<&RunInfo> = runs
+                 .iter()
+@@ -2787,15 +2833,64 @@ impl DocumentCore {
+                 ));
+             }
+         }
++        }
+ 
+-        // [Task #919] 글상자 빈 영역 매칭 — clicked_cell 매칭 안 됐으면 글상자 시도.
+-        // 글상자 안 표 셀은 위쪽 clicked_cell 분기에서 이미 처리됨.
+-        // 후보 여럿이면 가장 작은 (가장 specific) 것 선택.
+-        let textbox_hit: Option<&TextBoxBboxInfo> = textbox_bboxes
+-            .iter()
+-            .filter(|tb| x >= tb.x && x <= tb.x + tb.w && y >= tb.y && y <= tb.y + tb.h)
+-            .min_by_key(|tb| ((tb.w.max(0.0) * tb.h.max(0.0)) * 1000.0) as i64);
++        // Resolve clicks inside a textbox (including line spacing and empty padding):
++        // snap to the nearest visual line and character inside the textbox before
++        // falling back to paragraph 0 for an empty textbox.
+         if let Some(tb) = textbox_hit {
++            let textbox_runs: Vec<&RunInfo> = runs
++                .iter()
++                .filter(|r| {
++                    r.section_index == tb.section_index
++                        && r.cell_context.as_ref().is_some_and(|ctx| {
++                            ctx.parent_para_index == tb.parent_para_index
++                                && ctx.path.len() == tb.context.path.len()
++                                && ctx.path.iter().zip(&tb.context.path).enumerate().all(
++                                    |(i, (a, b))| {
++                                        a.control_index == b.control_index
++                                            && a.cell_index == b.cell_index
++                                            && (i + 1 == tb.context.path.len()
++                                                || a.cell_para_index == b.cell_para_index)
++                                    },
++                                )
++                        })
++                })
++                .collect();
++
++            if !textbox_runs.is_empty() {
++                let line_y = textbox_runs
++                    .iter()
++                    .filter(|r| y >= r.bbox_y && y <= r.bbox_y + r.bbox_h)
++                    .map(|r| r.bbox_y)
++                    .next()
++                    .or_else(|| {
++                        textbox_runs
++                            .iter()
++                            .min_by(|a, b| {
++                                let da = (y - (a.bbox_y + a.bbox_h / 2.0)).abs();
++                                let db = (y - (b.bbox_y + b.bbox_h / 2.0)).abs();
++                                da.partial_cmp(&db).unwrap()
++                            })
++                            .map(|r| r.bbox_y)
++                    });
++
++                if let Some(ly) = line_y {
++                    let mut line_runs: Vec<&RunInfo> = textbox_runs
++                        .iter()
++                        .copied()
++                        .filter(|r| (r.bbox_y - ly).abs() < 1.0)
++                        .collect();
++                    line_runs.sort_by(|a, b| a.bbox_x.partial_cmp(&b.bbox_x).unwrap());
++                    let (idx, offset) = resolve_x_on_line(&line_runs, x);
++                    return Ok(format_hit(line_runs[idx], offset, page_num));
++                }
++                return Ok(format_hit(
++                    textbox_runs[0],
++                    textbox_runs[0].char_start,
++                    page_num,
++                ));
++            }
+             return Ok(format_textbox_entry(tb, page_num));
+         }
+ 
+@@ -4234,6 +4329,28 @@ impl DocumentCore {
+                         return Some(hit);
+                     }
+                 }
++                if let Some((tb_sec, tb_ctx)) = &node.textbox_source {
++                    if *tb_sec == section_idx
++                        && tb_ctx.parent_para_index == parent_para
++                        && tb_ctx.path.len() == path.len()
++                        && tb_ctx.path.iter().zip(path).enumerate().all(
++                            |(i, (a, &(ci, cei, cpi)))| {
++                                a.control_index == ci
++                                    && a.cell_index == cei
++                                    && (i + 1 == path.len() || a.cell_para_index == cpi)
++                            },
++                        )
++                    {
++                        let caret_h = (node.bbox.height - 4.0).max(12.0).min(20.0);
++                        return Some((
++                            page,
++                            node.bbox.x + 2.0,
++                            node.bbox.y + 2.0,
++                            caret_h,
++                            current_cell_bounds,
++                        ));
++                    }
++                }
+                 None
+             }
+             if let Some((pi, x, y, h, cell_bounds)) = find_any_run(
+diff --git a/src/renderer/layout/shape_layout.rs b/src/renderer/layout/shape_layout.rs
+index ba6fe87d9..69de45da8 100644
+--- a/src/renderer/layout/shape_layout.rs
++++ b/src/renderer/layout/shape_layout.rs
+@@ -1944,6 +1944,21 @@ impl LayoutEngine {
+             (base_x, base_y, w, h)
+         };
+ 
++        // Table cell shapes arrive via table_cell_ref rather than parent_cell_path.
++        // Combine them once so textbox layout and group children keep the full container path.
++        let shape_container_path: Vec<CellPathEntry> = {
++            let mut p = parent_cell_path.to_vec();
++            if let Some((cell_idx, cell_para_idx, outer_ctrl)) = table_cell_ref {
++                p.push(CellPathEntry {
++                    control_index: outer_ctrl,
++                    cell_index: cell_idx,
++                    cell_para_index: cell_para_idx,
++                    text_direction: 0,
++                });
++            }
++            p
++        };
++
+         match shape {
+             ShapeObject::Rectangle(rect) => {
+                 // 글상자의 텍스트·채우기와 선의 가시성은 별개다.
+@@ -2001,7 +2016,7 @@ impl LayoutEngine {
+                     styles,
+                     bin_data_content,
+                     overflow_map,
+-                    parent_cell_path,
++                    &shape_container_path,
+                     shape.common().treat_as_char,
+                     matrix_positioned,
+                     textbox_vpos_origin_hu(shape.common(), matrix_positioned),
+@@ -2331,7 +2346,7 @@ impl LayoutEngine {
+                     styles,
+                     bin_data_content,
+                     &empty_map,
+-                    parent_cell_path,
++                    &shape_container_path,
+                     shape.common().treat_as_char,
+                     matrix_positioned,
+                     textbox_vpos_origin_hu(shape.common(), matrix_positioned),
+@@ -2561,7 +2576,7 @@ impl LayoutEngine {
+                     styles,
+                     bin_data_content,
+                     &empty_map,
+-                    parent_cell_path,
++                    &shape_container_path,
+                     shape.common().treat_as_char,
+                     matrix_positioned,
+                     textbox_vpos_origin_hu(shape.common(), matrix_positioned),
+@@ -2629,7 +2644,7 @@ impl LayoutEngine {
+                     styles,
+                     bin_data_content,
+                     &empty_map,
+-                    parent_cell_path,
++                    &shape_container_path,
+                     shape.common().treat_as_char,
+                     matrix_positioned,
+                     textbox_vpos_origin_hu(shape.common(), matrix_positioned),
+@@ -2675,7 +2690,7 @@ impl LayoutEngine {
+                             control_index,
+                             styles,
+                             bin_data_content,
+-                            parent_cell_path,
++                            &shape_container_path,
+                         );
+                     } else {
+                         // render_tx/ty와 render_sx/sy에는 top-level group 로컬 좌표계
+@@ -2716,7 +2731,7 @@ impl LayoutEngine {
+                         for rendered in &mut group_node.children[first_child..] {
+                             offset_group_textbox_sources(
+                                 rendered,
+-                                parent_cell_path.len(),
++                                shape_container_path.len(),
+                                 textbox_offset,
+                             );
+                         }

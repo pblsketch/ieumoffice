@@ -1,8 +1,10 @@
 import { beforeEach, describe, expect, it } from 'vitest'
+import { ObjectMatrix, type ICellData } from '@univerjs/core'
 import type { CellState } from '@genoffice/xlsx-gateway/domain/workbook.types'
 import {
   clearVerifiedFormulaValues,
   formulaTargetsFromOps,
+  hasUncomputedFormulaCells,
   rememberFormulaValue,
   verifiedFormulaValues,
 } from '../src/renderer/formula-values'
@@ -60,5 +62,37 @@ describe('verifiedFormulaValues', () => {
       { sheetId: 's1', row: 0, column: 0, value: 46282 },
       { sheetId: 's1', row: 1, column: 0, value: { error: '#DIV/0!' } },
     ])
+  })
+})
+
+describe('hasUncomputedFormulaCells', () => {
+  const matrix = (cells: Record<number, Record<number, ICellData>>) =>
+    new ObjectMatrix<ICellData>(cells)
+
+  it('reports a formula cell installed without a value (plain arithmetic, recomputed on open)', () => {
+    expect(
+      hasUncomputedFormulaCells(matrix({ 0: { 0: { v: 1 }, 1: { v: 2 }, 3: { f: '=A1+B1' } } })),
+    ).toBe(true)
+  })
+
+  it('reports a shared-formula follower without a value', () => {
+    expect(hasUncomputedFormulaCells(matrix({ 1: { 3: { si: 'abc' } } }))).toBe(true)
+  })
+
+  it('is settled once every formula cell holds a result, empty text and errors included', () => {
+    expect(
+      hasUncomputedFormulaCells(
+        matrix({
+          0: { 0: { v: 1 }, 3: { f: '=A1+B1', v: 3 } },
+          1: { 3: { f: '=IF(A1,"","x")', v: '' } },
+          2: { 3: { f: '=1/0', v: '#DIV/0!' } },
+        }),
+      ),
+    ).toBe(false)
+  })
+
+  it('ignores plain values and empty sheets', () => {
+    expect(hasUncomputedFormulaCells(matrix({ 0: { 0: { v: 'a' }, 1: {} } }))).toBe(false)
+    expect(hasUncomputedFormulaCells(matrix({}))).toBe(false)
   })
 })

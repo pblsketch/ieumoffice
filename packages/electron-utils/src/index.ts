@@ -23,11 +23,16 @@ export {
   editMenuTemplate,
   helpCheckUpdatesItems,
   helpMenuTemplate,
+  macAppMenuTemplate,
+  SETTINGS_ACCELERATOR,
+  setOpenSettingsInvoker,
+  settingsMenuItem,
   setUpdateCheckInvoker,
   toggleDevToolsItem,
   viewMenuTemplate,
   windowMenuTemplate,
   type AppMenuLabels,
+  type SettingsShortcut,
   type ViewMenuOptions,
 } from './app-menu'
 export {
@@ -56,23 +61,49 @@ export {
   showOpenDialogWithMemory,
   showSaveDialogWithMemory,
 } from './dialog-memory'
+export { numberedExportPaths } from './numbered-export-paths'
 export {
   DEFAULT_SAVE_DIR_KEY,
   configuredDefaultSaveDir,
+  defaultSaveDirFallback,
+  documentsDirOrFallback,
   isUsableSaveDir,
   readDefaultSaveDirSetting,
   resolveDefaultSaveDir,
   type PathProvider,
 } from './default-save-dir'
+export {
+  HWP_DEFAULT_FORMAT_KEY,
+  normalizeHwpDefaultFormat,
+  readHwpDefaultFormat,
+  type HwpDefaultFormat,
+  type SettingsPathProvider,
+} from './hwp-default-format'
 export { installNavigationGuard } from './navigation-guard'
 export {
+  decodeChunks,
+  decodeChunksUtf8,
+  decodeCommandOutput,
+  decodeUtf8,
+  windowsOemCodePage,
+  type DecodeCommandOptions,
+} from './console-output'
+export {
   DROP_OPEN_CHANNEL,
+  USER_FILE_PATHS_SEEN_CHANNEL,
   droppableFilePaths,
   installDropOpenBridge,
   KNOWN_UNSUPPORTED_DOC_RE,
   OPENABLE_DOC_RE,
   partitionDropPayload,
+  seenFilePaths,
 } from './drop-open'
+export {
+  createPathGrants,
+  isBesideDocument,
+  sharedPathGrants,
+  type PathGrants,
+} from './path-grants'
 export { safeExternalUrl, type SafeExternalUrlOptions } from './safe-external-url'
 export {
   fetchWithSsrfGuard,
@@ -88,7 +119,12 @@ export {
   readBodyCapped,
   remoteImageHeaders,
 } from './remote-image'
-export { GENERATED_IMAGE_DIR, readGeneratedImage, storeGeneratedImage } from './generated-images'
+export {
+  GENERATED_IMAGE_DIR,
+  MAX_GENERATED_IMAGE_BYTES,
+  readGeneratedImage,
+  storeGeneratedImage,
+} from './generated-images'
 export {
   buildPrintableHtml,
   printHtmlToPdf,
@@ -107,33 +143,41 @@ export {
   type OpenFilesSource,
 } from './unsaved-files'
 export {
+  DIAGRAM_BATCH_MODES,
+  DIAGRAM_FILE_TARGETS,
   HEADLESS_EXIT,
   HEADLESS_EXPORT_FLAG,
+  HEADLESS_PDF_EXTENSIONS,
   HEADLESS_SUPPORTED_EXTENSIONS,
   HEADLESS_TARGETS,
   formatHeadlessEnvelope,
   headlessExitCode,
   headlessModuleFor,
   headlessSummary,
+  isDiagramFileTarget,
   parseHeadlessExportArgv,
+  type DiagramBatchMode,
+  type DiagramFileTarget,
   type HeadlessArgvParse,
   type HeadlessExitCode,
   type HeadlessExportFormat,
   type HeadlessExportModule,
   type HeadlessExportOutcome,
+  type HeadlessExportProduct,
   type HeadlessExportRequest,
   type HeadlessExportTarget,
 } from './headless-export'
 export {
   RENDERER_SCHEME,
   DOCX_MEDIA_SCHEME_PRIVILEGE,
+  SLIDE_MEDIA_SCHEME_PRIVILEGE,
   RENDERER_SCHEME_PRIVILEGE,
   rendererUrl,
   resolveRendererFile,
   type RendererHost,
 } from './renderer-scheme'
 export { installRendererProtocol, registerRendererScheme } from './renderer-protocol'
-export { atomicWriteFile, writeJsonAtomic } from './atomic-write'
+export { atomicWriteFile, atomicWriteVia, writeJsonAtomic } from './atomic-write'
 export {
   PRINT_READY_SCRIPT,
   printHtmlDocument,
@@ -148,6 +192,7 @@ export {
   templateFontsDir,
   type TemplateFontsHost,
 } from './template-fonts-dir'
+export { UI_FONTS_DIR_NAME, UI_FONTS_REPO_DIR, uiFontsDir } from './ui-fonts-dir'
 export {
   RECOVERY_COPY_MAX_AGE_MS,
   RECOVERY_EDITOR_KINDS,
@@ -210,3 +255,26 @@ export {
   type SaveConflictOptions,
   type SaveDiskState,
 } from './save-conflict'
+
+export {
+  MAX_PROMPT_SUMMARY_CHARS,
+  MAX_SINGLE_SNAPSHOT_BYTES,
+  MAX_TIMELINE_TOTAL_BYTES,
+  MAX_VERSIONS_PER_DOC,
+  VersionTimelineStore,
+  docKeyFromPath,
+  isValidDocKey,
+} from './version-timeline-store'
+export type { VersionTimelineStoreOptions } from './version-timeline-store'
+export { VERSION_TIMELINE_BRIDGE_KEY, VERSION_TIMELINE_CHANNELS } from './version-timeline-channels'
+export type {
+  RecordVersionInput,
+  RecordVersionResult,
+  TimelineEditorKind,
+  VersionEntry,
+  VersionSource,
+  VersionTimelineBridge,
+  VersionTimelineStats,
+} from './version-timeline-channels'
+export { GENERATE_EDITOR_CHANNELS } from './generate-editor-channels'
+export type { GenerateEditorBridge, GenerateEditorOpenResult } from './generate-editor-channels'

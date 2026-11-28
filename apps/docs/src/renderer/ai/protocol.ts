@@ -176,11 +176,11 @@ export const AGENT_SYSTEM_PROMPT = [
   '- Summarizing is read-only: do not modify the document, and never try to accept or reject revisions — the user does that in the Review tab.',
   '',
   '# Mind map',
-  '- When the user asks for a mind map / 思维导图 / 脑图 / knowledge structure / overview diagram of the document or a topic, call generate_mindmap with the whole tree in one call — never draw it with text or ask the user to confirm first;',
+  '- When the user asks for a mind map / knowledge structure / overview diagram of the document or a topic, call generate_mindmap with the whole tree in one call — never draw it with text or ask the user to confirm first;',
   '- The root is the document title (or the focus topic when the user named one — also pass it as `focus`); its children are the main sections/headings, then key concepts, 2-5 per node, 2-4 levels deep;',
   "- Labels are short phrases (2-8 words) in the document's own language and wording, taken from its headings and key sentences — never invent topics the document does not cover;",
   "- Cite each node's source with `block` (a block index from the current block list); omit it for nodes that span several blocks. Only cite indexes that exist;",
-  '- generate_mindmap does not modify the document. After it returns, reply with one short sentence (e.g. that the map is ready and branches can be expanded).',
+  "- generate_mindmap does not modify the document. After it returns, reply with one short sentence (e.g. that the map is ready and branches can be expanded). If the user wants the map inside the document, point at the card's insert button — it places the map in the document as a picture.",
   '',
   '# HTML fragment rules',
   HTML_RULES,
@@ -459,13 +459,35 @@ export function serializeRangeToHtml(
   const json = redactNode(editor.getJSON() as RedactableNode) as PmNode
   const children = (json.content ?? []).slice(startIndex, endIndex + 1)
   const parts: string[] = []
-  let listBuffer: { kind: string; items: string[] } | null = null
-
+  // Open lists, outermost first; a deeper Word level (ilvl) nests a list inside the open item,
+  // which is how parseList reads it back.
+  let listHtml = ''
+  let listBase = 0
+  const openLists: string[] = []
+  const listTag = (kind: string) => (kind === 'ordered' ? 'ol' : 'ul')
+  const closeList = () => {
+    listHtml += `</li></${listTag(openLists.pop()!)}>`
+  }
   const flushList = () => {
-    if (!listBuffer) return
-    const tag = listBuffer.kind === 'ordered' ? 'ol' : 'ul'
-    parts.push(`<${tag}>${listBuffer.items.join('')}</${tag}>`)
-    listBuffer = null
+    if (!openLists.length) return
+    while (openLists.length) closeList()
+    parts.push(listHtml)
+    listHtml = ''
+  }
+  const addListItem = (kind: string, ilvl: number, html: string) => {
+    if (!openLists.length) listBase = ilvl
+    const depth = Math.min(Math.max(ilvl - listBase, 0) + 1, openLists.length + 1)
+    while (openLists.length > depth) closeList()
+    if (openLists.length === depth && openLists[depth - 1] !== kind) {
+      if (depth === 1) flushList()
+      else closeList()
+    }
+    if (openLists.length < depth) {
+      listHtml += `<${listTag(kind)}><li>${html}`
+      openLists.push(kind)
+    } else {
+      listHtml += `</li><li>${html}`
+    }
   }
   const inlineSel = (i: number): InlineSelection | undefined => {
     if (!sel) return undefined
@@ -489,11 +511,11 @@ export function serializeRangeToHtml(
       parts.push(`<h${level}>${inlineToHtml(node.content, inlineSel(i), image)}</h${level}>`)
     } else if (node.type === 'docListItem') {
       const kind = (node.attrs?.kind as string) ?? 'bullet'
-      if (!listBuffer || listBuffer.kind !== kind) {
-        flushList()
-        listBuffer = { kind, items: [] }
-      }
-      listBuffer.items.push(`<li>${inlineToHtml(node.content, inlineSel(i), image)}</li>`)
+      addListItem(
+        kind,
+        Number(node.attrs?.ilvl) || 0,
+        inlineToHtml(node.content, inlineSel(i), image),
+      )
     } else if (node.type === 'docParagraph') {
       flushList()
       if (isCodeParagraph(node)) {
@@ -936,11 +958,17 @@ const INLINE_MARK_TAGS: Record<string, string> = {
   strike: 'strike',
 }
 
+/**
+ * HTML whitespace is only space, tab, newline, carriage return and form feed. JavaScript's `\s`
+ * also matches no-break and ideographic spaces, which are document text and must survive.
+ */
+const HTML_WHITESPACE = /[ \t\n\r\f]+/g
+
 function parseInline(element: Node, marks: PmMark[]): PmNode[] {
   const nodes: PmNode[] = []
   element.childNodes.forEach((child) => {
     if (child.nodeType === Node.TEXT_NODE) {
-      const text = (child.textContent ?? '').replace(/\s+/g, ' ')
+      const text = (child.textContent ?? '').replace(HTML_WHITESPACE, ' ')
       if (text)
         nodes.push({ type: 'text', text, ...(marks.length > 0 ? { marks: [...marks] } : {}) })
       return
@@ -1029,7 +1057,7 @@ function cellParas(cell: Element): string[] {
   const paras: string[] = []
   let current = ''
   const push = () => {
-    paras.push(current.replace(/\s+/g, ' ').trim())
+    paras.push(current.replace(HTML_WHITESPACE, ' ').replace(/^ | $/g, ''))
     current = ''
   }
   const walk = (node: Node) => {

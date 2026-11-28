@@ -1,6 +1,8 @@
 import type { zh } from './zh'
 
 export const id = {
+  appLegacyPptImported:
+    'File .ppt dibuka sebagai salinan .pptx hasil konversi. File asli tetap seperti semula; menyimpan akan menulis file .pptx baru. Catatan pembicara dan animasi tidak ikut terbawa.',
   redactMenuLabel: 'Sembunyikan pilihan dari AI',
   redactDialogDesc:
     'Konten yang dipilih tetap ada di dokumen dan berkas; model hanya melihat placeholder di bawah. Beri nama agar model tahu apa yang diwakili.',
@@ -174,6 +176,9 @@ export const id = {
   appPrintLandscape: 'Lanskap',
   appPrintFrame: 'Bingkai slide',
   appPrintHidden: 'Cetak slide tersembunyi',
+  appPrintRangeSelected: 'Slide yang dipilih',
+  appPrintLayoutBlocked:
+    'Handout dan halaman catatan dicetak satu halaman per lembar. Untuk mengatur halaman, pilih Slide Halaman Penuh.',
   appPrintPageCount: '{n} halaman',
   appPrintNoPages: 'Tidak ada slide untuk dicetak',
   appPrintRendering: 'Membuat pratinjau…',
@@ -184,6 +189,7 @@ export const id = {
   appCtxSendToBack: 'Kirim ke Belakang',
   appCtxBringForward: 'Bawa Maju',
   appCtxSendBackward: 'Kirim Mundur',
+  appCtxRotate: 'Putar',
   appCtxRotateLeft90: 'Putar Kiri 90°',
   appCtxRotateRight90: 'Putar Kanan 90°',
   appCtxFlipH: 'Balik Horizontal',
@@ -223,6 +229,8 @@ export const id = {
   appMasterFillNone: 'Tanpa isian',
   appMasterStroke: 'Warna garis luar…',
   appMasterStrokeNone: 'Tanpa garis luar',
+  appMasterInsertTextBox: 'Kotak Teks',
+  appMasterInsertShape: 'Bentuk',
   appStartOpening: 'Membuka…',
   appReadingSlideTitle: 'Klik untuk ke slide berikutnya (Esc untuk keluar dari Tampilan Baca)',
   appReadingPrev: '‹ Sebelumnya',
@@ -259,4 +267,13 @@ export const id = {
   appStatusSummaryZoomInserted: 'Slide Zoom Ringkasan disisipkan dengan {count} ubin',
   appSectionSummary: 'Bagian Ringkasan',
   appSectionN: 'Bagian {n}',
+  appStatusAnimPainterNone: 'Elemen yang dipilih tidak memiliki animasi',
+  appStatusAnimPainterOnce:
+    'Klik elemen yang akan diberi animasi tersebut; klik dua kali tombol untuk mode berkelanjutan',
+  appStatusAnimPainterContinuous: 'Mode Penyalin Animasi berkelanjutan; tekan Esc untuk keluar',
+  appStatusAnimPainted: 'Animasi diterapkan',
+  appStatusMergeUnsupported:
+    'Bentuk ini tidak dapat digabungkan (garis, gambar, tabel, bagan, dan beberapa bentuk dikecualikan)',
+  appStatusMergeEmpty:
+    'Tidak ada yang tersisa setelah digabungkan (bentuk tidak saling tumpang tindih)',
 } satisfies Record<keyof typeof zh, string>

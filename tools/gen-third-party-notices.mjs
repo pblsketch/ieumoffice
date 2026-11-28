@@ -13,10 +13,14 @@
  * own LICENSE (Apache-2.0) ships beside it as LICENSE.txt; the NOTICE that
  * license requires to travel with the work opens the generated file.
  *
- * The two Rust sections need cargo, and the rhwp one a sparse checkout of the
+ * The six Rust sections need cargo, and the rhwp one a sparse checkout of the
  * rhwp tag (manifests only, cached under node_modules/.cache). Without them a
  * local build degrades to a pointer; with CI or IEUM_RELEASE set the gap is an
  * error, and electron-builder's beforePack rejects a notice that has it.
+ *
+ * The draw.io section reads the pinned draw.io release through
+ * vendor/drawio/bundle.mjs (downloaded once into vendor/drawio/.cache) for
+ * the license files it ships; without it the section is a gap like the above.
  */
 import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, rmSync } from 'node:fs'
 import { join, dirname, relative } from 'node:path'
@@ -24,6 +28,7 @@ import { fileURLToPath } from 'node:url'
 import { execFileSync } from 'node:child_process'
 import { builtinModules, createRequire } from 'node:module'
 import { licenseText } from './license-text.mjs'
+import { loadDrawio, loadInventory, VENDOR_DIR as DRAWIO_VENDOR } from '../vendor/drawio/bundle.mjs'
 
 const require = createRequire(import.meta.url)
 
@@ -65,7 +70,10 @@ const SRC_GLOBS = [
   'apps/mindmap/src',
   'apps/hwp/src',
   'apps/epub/src',
+  'apps/diagram/src',
+  'apps/whiteboard/src',
   'apps/markdown/src',
+  'apps/mobile/src',
   'apps/pdf/src',
   'apps/sheets/src',
   'apps/shell/src',
@@ -452,7 +460,8 @@ const git = (args, cwd) =>
  * whole repository is several GB of sample documents).
  */
 function rhwpSourceTree() {
-  const { tag, commit } = RHWP.rhwp
+  // `branch` is set when the engine is pinned to a commit ahead of a release (decision 0107)
+  const { tag, branch, commit } = RHWP.rhwp
   const atCommit = (dir) => {
     try {
       return existsSync(join(dir, 'Cargo.toml')) && git(['rev-parse', 'HEAD'], dir) === commit
@@ -467,15 +476,23 @@ function rhwpSourceTree() {
   try {
     rmSync(sparse, { recursive: true, force: true })
     mkdirSync(dirname(sparse), { recursive: true })
-    git(
-      ['clone', '--quiet', '--filter=blob:none', '--no-checkout', '--depth', '1'].concat([
-        '--branch',
-        tag,
-        RHWP_REPO,
-        sparse,
-      ]),
-      dirname(sparse),
-    )
+    if (branch) {
+      // a branch moves on; fetch the pinned commit itself
+      mkdirSync(sparse, { recursive: true })
+      git(['init', '--quiet'], sparse)
+      git(['remote', 'add', 'origin', RHWP_REPO], sparse)
+      git(['fetch', '--quiet', '--depth', '1', '--filter=blob:none', 'origin', commit], sparse)
+    } else {
+      git(
+        ['clone', '--quiet', '--filter=blob:none', '--no-checkout', '--depth', '1'].concat([
+          '--branch',
+          tag,
+          RHWP_REPO,
+          sparse,
+        ]),
+        dirname(sparse),
+      )
+    }
     git(
       ['sparse-checkout', 'set', '--no-cone', '/Cargo.lock', '**/Cargo.toml'].concat([
         '**/src/lib.rs',
@@ -483,7 +500,7 @@ function rhwpSourceTree() {
       ]),
       sparse,
     )
-    git(['checkout', '--quiet', tag], sparse)
+    git(['checkout', '--quiet', branch ? 'FETCH_HEAD' : tag], sparse)
   } catch {
     return null
   }
@@ -492,17 +509,21 @@ function rhwpSourceTree() {
 
 /**
  * Rust crates compiled into rhwp_bg.wasm (resources/wasm and the HWP editor):
- * the normal dependencies of the rhwp library for the wasm32 target with its
- * default features, i.e. what `wasm-pack build` links. Proc macros run in the
+ * the normal dependencies of the rhwp library for the wasm32 target with the
+ * features it is built with (its defaults, or `rhwp.features`), i.e. what
+ * `wasm-pack build` links. Proc macros run in the
  * compiler and link nothing, so neither they nor their dependencies count.
  */
 function rhwpCrates() {
   const tree = rhwpSourceTree()
   if (tree === null) return null
+  // the features tools/build-rhwp-core.mjs builds with, when they replace the defaults
+  const features = RHWP.rhwp.features
   const meta = cargoMetadata(join(tree, 'Cargo.toml'), [
     '--locked',
     '--filter-platform',
     RHWP_TARGET,
+    ...(features ? ['--no-default-features', '--features', features.join(',')] : []),
   ])
   if (meta === null) return null
   const byId = new Map(meta.packages.map((p) => [p.id, p]))
@@ -521,9 +542,100 @@ function rhwpCrates() {
     }
   }
   seen.delete(root.id)
+  // cargo metadata resolves the whole workspace, whose other members ask for the rhwp
+  // defaults; the build links what the rhwp package alone pulls in with its features
+  let built = null
+  if (features) {
+    try {
+      const listed = execFileSync(
+        'cargo',
+        ['tree', '--locked', '-p', 'rhwp', '--target', RHWP_TARGET, '-e', 'normal']
+          .concat(['--no-default-features', '--features', features.join(',')])
+          .concat([
+            '--prefix',
+            'none',
+            '--format',
+            '{p}',
+            '--manifest-path',
+            join(tree, 'Cargo.toml'),
+          ]),
+        { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'] },
+      )
+      built = new Set(
+        listed.split(/\r?\n/).map((line) => line.split(' (')[0].replace(' (*)', '').trim()),
+      )
+    } catch {
+      return null
+    }
+  }
+  return [...seen]
+    .filter((id) => !built || built.has(`${byId.get(id).name} v${byId.get(id).version}`))
+    .map((id) => crateRow(byId.get(id)))
+    .sort((a, b) => a.name.localeCompare(b.name) || a.version.localeCompare(b.version))
+}
+
+/** Normal non-proc-macro crates reachable from `rootName` in a Cargo manifest */
+function linkedRustCrates(manifestPath, rootName, extraArgs = []) {
+  const meta = cargoMetadata(manifestPath, ['--locked', ...extraArgs])
+  if (meta === null) return null
+  const byId = new Map(meta.packages.map((p) => [p.id, p]))
+  const depsOf = new Map(meta.resolve.nodes.map((n) => [n.id, n.deps]))
+  const root = meta.packages.find((p) => p.name === rootName && p.source === null)
+  if (!root) return null
+  const isProcMacro = (p) => p.targets.some((t) => t.kind.includes('proc-macro'))
+  const seen = new Set([root.id])
+  const queue = [root.id]
+  while (queue.length > 0) {
+    for (const dep of depsOf.get(queue.shift()) ?? []) {
+      if (seen.has(dep.pkg) || !dep.dep_kinds.some((k) => k.kind === null)) continue
+      if (isProcMacro(byId.get(dep.pkg))) continue
+      seen.add(dep.pkg)
+      queue.push(dep.pkg)
+    }
+  }
+  seen.delete(root.id)
   return [...seen]
     .map((id) => crateRow(byId.get(id)))
     .sort((a, b) => a.name.localeCompare(b.name) || a.version.localeCompare(b.version))
+}
+
+/** Rust crates statically linked into ieum-parse-sidecar */
+function parseSidecarCrates() {
+  return linkedRustCrates(
+    join(ROOT, 'packages/file-parse/native/parse-sidecar/Cargo.toml'),
+    'ieum-parse-sidecar',
+  )
+}
+
+/** Rust crates compiled into hwp5_wasm_bg.wasm (resources/wasm/hwp5_bg.wasm) */
+function hwp5WasmCrates() {
+  return linkedRustCrates(join(ROOT, 'packages/hwp5-wasm/Cargo.toml'), 'hwp5-wasm', [
+    '--filter-platform',
+    RHWP_TARGET,
+  ])
+}
+
+/** Rust crates compiled into print_layout_wasm_bg.wasm (resources/wasm/print_layout_bg.wasm) */
+function printLayoutWasmCrates() {
+  return linkedRustCrates(
+    join(ROOT, 'packages/print-layout/wasm/Cargo.toml'),
+    'print-layout-wasm',
+    ['--filter-platform', RHWP_TARGET],
+  )
+}
+
+/** Rust crates compiled into whiteboard_engine_bg.wasm (resources/wasm/whiteboard_engine_bg.wasm) */
+function whiteboardEngineWasmCrates() {
+  return linkedRustCrates(
+    join(ROOT, 'packages/whiteboard-engine/rust/Cargo.toml'),
+    'whiteboard-engine',
+    ['--filter-platform', RHWP_TARGET],
+  )
+}
+
+/** Rust crates statically linked into the Tauri 2 Mobile backend (apps/mobile/src-tauri) */
+function mobileTauriCrates() {
+  return linkedRustCrates(join(ROOT, 'apps/mobile/src-tauri/Cargo.toml'), 'ieumoffice-mobile')
 }
 
 /** the crate list and each distinct license text; the count line is what electron-builder checks */
@@ -606,6 +718,76 @@ if (wasmCrates === null) {
   out += ` at ${RHWP.rhwp.tag}.\n`
 } else {
   out += crateSection(wasmCrates)
+}
+
+const sidecarCrates = parseSidecarCrates()
+out += hr('4. Rust crates (ieum-parse-sidecar native component, statically linked)')
+if (sidecarCrates === null) {
+  gap('cargo metadata failed for packages/file-parse/native/parse-sidecar (is cargo on PATH?)')
+  out += '\ncargo metadata unavailable at generation time; see'
+  out += ' packages/file-parse/native/parse-sidecar/Cargo.lock for the full crate list.\n'
+} else {
+  out += crateSection(sidecarCrates)
+}
+
+const hwp5Crates = hwp5WasmCrates()
+out += hr('5. Rust crates (hwp5-wasm HWP 5 container helper, compiled into hwp5_bg.wasm)')
+out += `
+hwp5-wasm (packages/hwp5-wasm) is built for ${RHWP_TARGET} and ships as
+resources/wasm/hwp5_bg.wasm for HWP 5 OLE2/CFB container post-processing.
+`
+if (hwp5Crates === null) {
+  gap('cargo metadata failed for packages/hwp5-wasm (is cargo on PATH?)')
+  out += '\ncargo metadata unavailable at generation time; see'
+  out += ' packages/hwp5-wasm/Cargo.lock for the full crate list.\n'
+} else {
+  out += crateSection(hwp5Crates)
+}
+
+const printLayoutCrates = printLayoutWasmCrates()
+out += hr(
+  '6. Rust crates (print-layout-wasm advanced print layout engine, compiled into print_layout_bg.wasm)',
+)
+out += `
+print-layout-wasm (packages/print-layout/wasm) is built for ${RHWP_TARGET} and ships as
+resources/wasm/print_layout_bg.wasm for advanced print layout PDF imposition, grayscale
+PDF assembly, and PNG encoding.
+`
+if (printLayoutCrates === null) {
+  gap('cargo metadata failed for packages/print-layout/wasm (is cargo on PATH?)')
+  out += '\ncargo metadata unavailable at generation time; see'
+  out += ' packages/print-layout/wasm/Cargo.lock for the full crate list.\n'
+} else {
+  out += crateSection(printLayoutCrates)
+}
+
+const whiteboardEngineCrates = whiteboardEngineWasmCrates()
+out += hr('7. Rust crates (whiteboard-engine, compiled into whiteboard_engine_bg.wasm)')
+out += `
+whiteboard-engine (packages/whiteboard-engine/rust) is built for ${RHWP_TARGET} and ships as
+resources/wasm/whiteboard_engine_bg.wasm for .whiteboard ZIP archives, edit planning,
+template layout, Markdown outline extraction, and Excalidraw import.
+`
+if (whiteboardEngineCrates === null) {
+  gap('cargo metadata failed for packages/whiteboard-engine/rust (is cargo on PATH?)')
+  out += '\ncargo metadata unavailable at generation time; see'
+  out += ' packages/whiteboard-engine/rust/Cargo.lock for the full crate list.\n'
+} else {
+  out += crateSection(whiteboardEngineCrates)
+}
+
+const mobileCrates = mobileTauriCrates()
+out += hr('7b. Rust crates (ieumoffice-mobile Tauri 2 backend, apps/mobile/src-tauri)')
+out += `
+ieumoffice-mobile (apps/mobile/src-tauri) is the Tauri 2 Mobile Rust backend for
+Android and iOS, linking hwp5-wasm and tauri-plugin-ieum-mobile directly.
+`
+if (mobileCrates === null) {
+  gap('cargo metadata failed for apps/mobile/src-tauri (is cargo on PATH?)')
+  out += '\ncargo metadata unavailable at generation time; see'
+  out += ' apps/mobile/src-tauri/Cargo.lock for the full crate list.\n'
+} else {
+  out += crateSection(mobileCrates)
 }
 
 const GOTHIC_KR_COPYRIGHT = [
@@ -694,18 +876,30 @@ const FONTS = [
       'KaTeX_Main, KaTeX_Math, KaTeX_SansSerif, KaTeX_Script, KaTeX_Size1, ' +
       'KaTeX_Size2, KaTeX_Size3, KaTeX_Size4, and KaTeX_Typewriter.',
   ],
+  [
+    'Pretendard Variable 1.309 (UI font, resources/ui-fonts)',
+    'SIL OFL 1.1',
+    'Copyright (c) 2021, Kil Hyung-jin (https://github.com/orioncactus/pretendard),\n' +
+      'with Reserved Font Name Pretendard. Full SIL OFL 1.1 license text reproduced\n' +
+      'under Pretendard 1.309 below.',
+  ],
 ]
 
 /**
- * The slide design templates' fonts (packages/ui/template-fonts, shipped
- * unmodified as resources/template-fonts): each family's own license file is
+ * The slide design templates' fonts (packages/ui/template-fonts, shipped as
+ * resources/template-fonts; unmodified except Noto Serif KR's TrueType
+ * outlines): each family's own license file is
  * reproduced, preceded by the copyright the font file states where the
  * license file omits it or names an older holder.
  */
 const TEMPLATE_FONTS_DIR = join(ROOT, 'packages/ui/template-fonts')
 const TEMPLATE_FONTS = [
   ['Pretendard 1.309', 'Pretendard-OFL.txt'],
-  ['Noto Serif KR 2.003', 'NotoSerifKR-OFL.txt', '© 2017-2024 Adobe (http://www.adobe.com/).'],
+  [
+    'Noto Serif KR 2.003',
+    'NotoSerifKR-OFL.txt',
+    '© 2017-2024 Adobe (http://www.adobe.com/), Reserved Font Name "Source".\nCFF outlines converted to TrueType (glyf); names and metrics unmodified.',
+  ],
   ['Black Han Sans 1.001', 'BlackHanSans-OFL.txt'],
   ['Do Hyeon 1.001', 'DoHyeon-OFL.txt'],
   ['Gowun Dodum 2.000', 'GowunDodum-OFL.txt'],
@@ -720,7 +914,12 @@ const TEMPLATE_FONTS = [
   ['Archivo Black 1.006', 'ArchivoBlack-OFL.txt'],
 ]
 
-out += hr('4. Bundled fonts')
+out += hr('8. Bundled fonts')
+out += `
+The SIL OFL 1.1 Korean font subsets (GenOffice Serif KR, GenOffice Sans KR,
+GenOffice Gothic KR, GenOffice Che Latin KR) are also bundled in the mobile app
+(apps/mobile/src/renderer/assets/fonts/, LICENSE-OFL.txt) for Hangul layout fidelity.
+`
 for (const [name, spdx, copyright] of FONTS) out += sub(`${name} — ${spdx}`) + copyright + '\n'
 for (const [name, file, copyright] of TEMPLATE_FONTS) {
   out += sub(`${name} (slide design templates, resources/template-fonts) — SIL OFL 1.1`)
@@ -731,7 +930,7 @@ out += sub('SIL Open Font License 1.1 — full text')
 out +=
   readFileSync(join(ROOT, 'apps/docs/src/renderer/fonts/LICENSE-OFL.txt'), 'utf8').trim() + '\n'
 
-out += hr('5. Unicode Character Database data')
+out += hr('9. Unicode Character Database data')
 out += `
 apps/pdf/src/shared/radicals.ts contains a generated mapping derived from
 Unicode Character Database 17.0.0, EquivalentUnifiedIdeograph.txt
@@ -742,7 +941,7 @@ https://www.unicode.org/Public/17.0.0/ucd/EquivalentUnifiedIdeograph.txt
 out += readFileSync(join(ROOT, 'LICENSE-UNICODE.txt'), 'utf8').trim() + '\n'
 
 // Hancom's condition for using its published HWP format document; the wording is fixed
-out += hr('6. Hangul (HWP) document format and trademarks')
+out += hr('10. Hangul (HWP) document format and trademarks')
 out += `
 The HWP/HWPX editor is built on rhwp (https://github.com/edwardkim/rhwp,
 MIT License, listed above as @rhwp/core and @rhwp/editor).
@@ -761,6 +960,133 @@ and "PowerPoint" are trademarks of Microsoft Corporation. "한글" (Hangul),
 ${PRODUCT_NAME} opens.
 `
 
+const BSD_3_CLAUSE = `Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+1. Redistributions of source code must retain the above copyright notice,
+   this list of conditions and the following disclaimer.
+2. Redistributions in binary form must reproduce the above copyright notice,
+   this list of conditions and the following disclaimer in the documentation
+   and/or other materials provided with the distribution.
+3. Neither the name of the copyright holder nor the names of its contributors
+   may be used to endorse or promote products derived from this software
+   without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGE.`
+
+/** the license terms of one draw.io inventory component, by its SPDX expression */
+async function drawioComponentTerms(c, read) {
+  switch (c.license) {
+    case 'MIT':
+      return MIT_PERMISSION
+    case 'MIT AND Zlib':
+      return `${MIT_PERMISSION}\n\nzlib License (the parts ported from zlib):\n\n${ZLIB_LICENSE}`
+    case 'BSD-3-Clause':
+      return BSD_3_CLAUSE
+    case 'Apache-2.0':
+      return 'Licensed under the Apache License, Version 2.0 (full text at the start of this section).'
+    case 'OFL-1.1':
+      return 'Licensed under the SIL Open Font License 1.1 (full text in section 8).'
+    case 'CC-BY-4.0':
+      return (await read(c.licenseFile)).toString('utf8').trim()
+    default:
+      throw new Error(`no license text for draw.io component ${c.name}: ${c.license}`)
+  }
+}
+
+/**
+ * draw.io and everything inside the bundle the diagram editor ships: the
+ * release it comes from, what was left out or cut and why, the Apache-2.0
+ * text, and each component of vendor/drawio/inventory.json with its terms.
+ * The shape-library restriction and the template license are copied from
+ * the release files verbatim.
+ */
+async function drawioSection(drawio, inventory) {
+  const { config } = drawio
+  const [self, ...others] = inventory.components
+  let text = `
+draw.io ${config.version} (${self.url}), Apache License 2.0.
+${self.copyright}
+
+The diagram editor ships the files of the draw.io release asset
+${config.url}
+(SHA-256 ${config.sha256}) in the archive resources/modules/diagram/drawio.asar.
+${self.note}
+
+Changes from the release:
+
+- ${drawio.removedFiles.length} release files are left out: server parts, development sources,
+  bundles and helpers the editor does not load, cloud connection pages,
+  service workers, and parts under licenses this application does not ship
+  (PlantUML, ELK, libavoid, and the Glyphicons sharing icons, CC BY 3.0),
+  matched by these patterns:
+${config.remove.map((p) => `    ${p}`).join('\n')}
+`
+  for (const cut of config.cut) {
+    const d = drawio.derived.get(cut.file)
+    text += `- ${cut.file} is the release file (${d.originalLength} bytes) with the bytes
+  of the following files of the same release removed, each found verbatim
+  exactly once inside it (byte offsets in the release file). Nothing else in
+  it is changed; the result is ${d.bytes.length} bytes, SHA-256 ${cut.sha256}.
+${d.ranges.map((r) => `    ${r.name}: bytes ${r.offset}-${r.offset + r.length - 1}`).join('\n')}
+  Those files are ELK (EPL-2.0) and libavoid with its routing core
+  (LGPL-2.1), which this application does not ship.
+`
+  }
+  text += `- Every other shipped file is byte-identical to the release. When the
+  editor page is served, the application adds its own bridge script to
+  index.html in memory; the shipped file itself is not changed.
+`
+  text += sub('Apache License 2.0 — full text (draw.io LICENSE)')
+  // trimEnd only: the license title is indented in the original
+  text += readFileSync(join(DRAWIO_VENDOR, 'LICENSE'), 'utf8').replace(/^\n+/, '').trimEnd() + '\n'
+
+  for (const c of others) {
+    const version = c.version ? ` ${c.version}` : ''
+    const license = c.offered
+      ? `${c.license} (dual ${c.offered}, used under ${c.license})`
+      : c.license
+    text += sub(`${c.name}${version} — ${license}`)
+    text += `${c.copyright}\n${c.url}\nShipped in: ${c.files.join(', ')}\n`
+    if (c.note) text += `${c.note}\n`
+    if (c.restrictionFiles) {
+      const byText = new Map()
+      for (const f of c.restrictionFiles) {
+        const restriction = (await drawio.read(f)).toString('utf8').trim()
+        byText.set(restriction, [...(byText.get(restriction) ?? []), f])
+      }
+      for (const [restriction, files] of byText) {
+        text += `\nRestriction, verbatim from ${files.join(', ')}:\n\n${restriction}\n`
+      }
+    }
+    text += `\n${await drawioComponentTerms(c, drawio.read)}\n`
+  }
+  return text
+}
+
+out += hr('11. draw.io (diagram editor)')
+let drawio = null
+try {
+  drawio = await loadDrawio()
+} catch (err) {
+  gap(`draw.io bundle unavailable (${err.message.split('\n')[0]})`)
+}
+if (drawio === null) {
+  out += '\ndraw.io release unavailable at generation time; see vendor/drawio/inventory.json.\n'
+} else {
+  out += await drawioSection(drawio, loadInventory())
+}
+
 for (const term of ['@embedpdf/pdfium', 'Copyright 2014 PDFium Authors', 'Apache License']) {
   if (!out.includes(term)) {
     throw new Error(`generated third-party notice is missing PDFium term: ${term}`)
@@ -773,7 +1099,9 @@ writeFileSync(dest, out)
 console.log(
   `written: ${relative(ROOT, dest)} (${(out.length / 1024).toFixed(0)} KB) — ` +
     `${resolved.length} npm packages, ${crates?.length ?? 0} xlsx-sidecar crates, ` +
-    `${wasmCrates?.length ?? 0} rhwp crates`,
+    `${wasmCrates?.length ?? 0} rhwp crates, ${sidecarCrates?.length ?? 0} parse-sidecar crates, ` +
+    `${hwp5Crates?.length ?? 0} hwp5-wasm crates, ${printLayoutCrates?.length ?? 0} print-layout-wasm crates, ` +
+    `${whiteboardEngineCrates?.length ?? 0} whiteboard-engine crates, ${mobileCrates?.length ?? 0} mobile crates, draw.io ${drawio ? drawio.config.version : 'missing'}`,
 )
 if (noText.length > 0) console.warn(`no license file published: ${noText.join(', ')}`)
 if (missing.size > 0) console.warn(`not installed, skipped: ${[...missing].join(', ')}`)

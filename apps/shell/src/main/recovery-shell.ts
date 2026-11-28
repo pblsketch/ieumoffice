@@ -34,15 +34,34 @@ import {
   hwpRecoveryIdentity,
   setHwpRecoveryTitle,
 } from '../../../hwp/src/main/hwp-main'
+import {
+  diagramRecoveryIdentity,
+  discardDiagramRecovery,
+  setDiagramRecoveryTitleHook,
+} from '../../../diagram/src/main/diagram-main'
+import {
+  setWhiteboardRecoveryTitleHook,
+  whiteboardMarkDontSave,
+  whiteboardViewIdentity,
+} from '../../../whiteboard/src/main/whiteboard-main'
 import type { DocumentTabKind, TabKind } from '../shared/tabs-api'
 import {
   planLaunch,
   resolveLaunchDecisions,
+  sessionIndexOfPlannedTab,
+  withoutPlannedTabs,
+  withoutRefusedAppends,
   type LaunchListGate,
   type LaunchOutcome,
+  type LaunchPlan,
   type PlannedTab,
 } from './launch-recovery'
-import { initSessionRecord, judgePreviousExit, type SessionUntitledCopy } from './session-record'
+import {
+  initSessionRecord,
+  judgePreviousExit,
+  type SessionRecorder,
+  type SessionUntitledCopy,
+} from './session-record'
 import {
   createPlainEditorView,
   type TabManager,
@@ -90,6 +109,10 @@ export function editorRecoveryIdentity(
         return hwpRecoveryIdentity(contents)
       case 'slides':
         return slidesRecoveryIdentity(contents.id)
+      case 'diagram':
+        return diagramRecoveryIdentity(contents.id)
+      case 'whiteboard':
+        return whiteboardViewIdentity(contents.id)
       default:
         return null
     }
@@ -256,6 +279,8 @@ export function discardEditorRecovery(kind: TabKind, contents: WebContents): voi
   else if (kind === 'sheets') discardSheetsRecovery(contents)
   else if (kind === 'mindmap') discardMindmapRecovery(contents)
   else if (kind === 'hwp') hwpDiscardRecoveryCopy(contents)
+  else if (kind === 'diagram') discardDiagramRecovery(contents)
+  else if (kind === 'whiteboard') whiteboardMarkDontSave(contents)
 }
 
 /** the untitled documents' copies are listed under their real tab titles */
@@ -265,6 +290,8 @@ export function installRecoveryTitleSources(
   setMarkdownRecoveryTitleSource(titleOf)
   setHtmlRecoveryTitleSource(titleOf)
   setMindmapRecoveryTitleHook(titleOf)
+  setDiagramRecoveryTitleHook(titleOf)
+  setWhiteboardRecoveryTitleHook(titleOf)
 }
 
 /** hwp is told its untitled tabs' titles (it does not ask) */
@@ -294,6 +321,45 @@ export interface LaunchRecoveryDeps {
    * only after the strip was rebuilt).
    */
   sessionChanged(): void
+  /** the installer started this run after an update: the previous tabs come back */
+  reopenedByInstaller?: boolean
+  /**
+   * Before tabs are placed: ask about the ones whose editor is turned off
+   * (spec 7.5). Answers the keys not to restore, at once when there is
+   * nothing to ask. Absent = everything is restored. `fromList`: copies the
+   * person chose to restore in the launch list (a person's open: asks even
+   * about an editor declined earlier in this run).
+   */
+  askRestore?(
+    tabs: readonly PlannedTab[],
+    context: { fromList: boolean },
+  ): ReadonlySet<string> | Promise<ReadonlySet<string>>
+}
+
+const NOTHING_REFUSED: ReadonlySet<string> = new Set()
+
+/** ask, then go on with the answer: at once when it is there, else when it comes */
+function afterRestoreAnswer(
+  tabs: readonly PlannedTab[],
+  deps: Pick<LaunchRecoveryDeps, 'askRestore'>,
+  fromList: boolean,
+  next: (refused: ReadonlySet<string>) => void,
+): void {
+  let answer: ReadonlySet<string> | Promise<ReadonlySet<string>> = NOTHING_REFUSED
+  try {
+    if (deps.askRestore && tabs.length > 0) answer = deps.askRestore(tabs, { fromList })
+  } catch (error) {
+    // a question that cannot be asked restores everything (nothing is lost)
+    console.warn('[recovery] could not ask about turned-off editors:', error)
+  }
+  if (answer instanceof Promise) {
+    void answer.then(next, (error: unknown) => {
+      console.warn('[recovery] could not ask about turned-off editors:', error)
+      next(NOTHING_REFUSED)
+    })
+  } else {
+    next(answer)
+  }
 }
 
 /**
@@ -305,6 +371,44 @@ export interface LaunchRecoveryDeps {
  */
 export function runLaunchRecovery(deps: LaunchRecoveryDeps): void {
   const recoveryStore = shellRecoveryStore()
+  try {
+    recoveryStore.pruneStaleCopies()
+  } catch (error) {
+    console.warn('[recovery] stale copies could not be removed:', error)
+  }
+  migrateSheetsLegacyRecovery()
+
+  let record: SessionRecorder | null = null
+  let planned: LaunchPlan | null = null
+  try {
+    record = initSessionRecord({ userDataDir: deps.userDataDir })
+    const judgment = judgePreviousExit(record.previous, recoveryStore, {
+      reopenedByInstaller: deps.reopenedByInstaller === true,
+    })
+    planned = planLaunch({
+      judgment,
+      previous: record.previous,
+      copies: recoveryStore,
+      launchPaths: deps.launchPaths,
+    })
+  } catch (error) {
+    console.warn('[recovery] the launch could not restore the previous session:', error)
+    planned = null
+  }
+  // tabs of turned-off editors are asked about before any tab is placed
+  afterRestoreAnswer(planned?.tabs ?? [], deps, false, (refused) =>
+    placeLaunch(deps, record, planned, refused),
+  )
+}
+
+/** the launch after the questions about turned-off editors (runLaunchRecovery) */
+function placeLaunch(
+  deps: LaunchRecoveryDeps,
+  record: SessionRecorder | null,
+  planned: LaunchPlan | null,
+  refused: ReadonlySet<string>,
+): void {
+  const recoveryStore = shellRecoveryStore()
   const openerDeps: RestoredTabOpenerDeps = {
     blocked: () => deps.gate.blocking(),
     afterSheetsOpen: deps.afterSheetsOpen,
@@ -313,25 +417,18 @@ export function runLaunchRecovery(deps: LaunchRecoveryDeps): void {
     if (deps.launchPaths.length > 0) deps.openLaunchPaths(deps.launchPaths)
     else deps.restoreSplitMemoryOrHome()
   }
-  try {
-    recoveryStore.pruneStaleCopies()
-  } catch (error) {
-    console.warn('[recovery] stale copies could not be removed:', error)
-  }
-  migrateSheetsLegacyRecovery()
-
   let ids = new Map<string, string>()
-  let plan: ReturnType<typeof planLaunch> | null
+  let plan: LaunchPlan | null = planned
   try {
-    const record = initSessionRecord({ userDataDir: deps.userDataDir })
-    const judgment = judgePreviousExit(record.previous, recoveryStore)
-    plan = planLaunch({
-      judgment,
-      previous: record.previous,
-      copies: recoveryStore,
-      launchPaths: deps.launchPaths,
-    })
-    record.startRun({ restoreRun: plan.restoreRun })
+    if (!record || !plan) throw new Error('no session record or launch plan')
+    // a declined tab is left out of this run's record too: it is not asked again
+    const dropTabs = new Set<number>()
+    for (const key of refused) {
+      const index = sessionIndexOfPlannedTab(key)
+      if (index !== undefined) dropTabs.add(index)
+    }
+    plan = withoutPlannedTabs(plan, refused)
+    record.startRun({ restoreRun: plan.restoreRun, dropTabs })
     if (!plan.plainLaunch) {
       const tabs = plan.tabs
       const tabIds = deps
@@ -347,7 +444,8 @@ export function runLaunchRecovery(deps: LaunchRecoveryDeps): void {
       }
     }
   } catch (error) {
-    console.warn('[recovery] the launch could not restore the previous session:', error)
+    if (record && planned)
+      console.warn('[recovery] the launch could not restore the previous session:', error)
     plan = null
   }
   if (!plan || plan.plainLaunch) {
@@ -425,8 +523,14 @@ export function runLaunchRecovery(deps: LaunchRecoveryDeps): void {
   // Home stays in front while the list is up: an editor view would cover it,
   // and what a restored tab loads depends on the answer
   deps.manager().openHomeTab()
-  deps.gate.publish(launchPlan.items, (result) => {
-    const outcome = resolveLaunchDecisions(launchPlan, result)
+  deps.gate.publish(launchPlan.items, async (result) => {
+    const resolved = resolveLaunchDecisions(launchPlan, result)
+    // a copy chosen in the list whose editor is turned off asks like any open;
+    // a "no" keeps the copy for later instead of restoring it
+    const declined = await new Promise<ReadonlySet<string>>((resolve) =>
+      afterRestoreAnswer(resolved.append, deps, true, resolve),
+    )
+    const outcome = withoutRefusedAppends(resolved, launchPlan, declined)
     for (const { identity, decision } of outcome.storeDecisions) {
       try {
         recoveryStore.applyLaunchDecision(identity, decision)

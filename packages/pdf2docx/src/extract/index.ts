@@ -790,7 +790,13 @@ export function jpegSofComponents(data: Uint8Array): number {
   while (i + 3 < data.length) {
     if (data[i] !== 0xff) return 0
     const marker = data[i + 1]!
-    if (marker === 0xd8 || (marker >= 0xd0 && marker <= 0xd7)) {
+    // Any number of 0xFF fill bytes may precede a marker (ITU T.81 B.1.1.2)
+    if (marker === 0xff) {
+      i += 1
+      continue
+    }
+    // Standalone markers (SOI, RSTn, TEM) carry no length field
+    if (marker === 0xd8 || (marker >= 0xd0 && marker <= 0xd7) || marker === 0x01) {
       i += 2
       continue
     }
@@ -1883,7 +1889,11 @@ export function renderPagePng(m: PdfiumModule, page: number, scale: number): Pag
   if (!bitmap) return null
   try {
     m._FPDFBitmap_FillRect(bitmap, 0, 0, width, height, 0xffffffff)
-    m._FPDF_RenderPageBitmap(bitmap, page, 0, 0, width, height, 0, 0)
+    // FPDF_ANNOT (1): a mark-up drawn in the app is saved as an annotation with
+    // an appearance stream, not as page content. Without the flag the bitmap is
+    // blank wherever the page holds only drawings, and a rasterized page loses
+    // them; the bytes on disk already carry them, so the render must too.
+    m._FPDF_RenderPageBitmap(bitmap, page, 0, 0, width, height, 0, 1 /* FPDF_ANNOT */)
     const px = bitmapToRgba(m, bitmap)
     if (!px) return null
     return {

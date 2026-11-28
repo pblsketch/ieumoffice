@@ -6,7 +6,7 @@ GenOffice mluví protokolem Model Context Protocol, takže programový agent mů
 
 Uděláte to v **Nastavení ▸ Integrace**. Panel má dvě poloviny a můžete použít jednu, druhou, nebo obě.
 
-**Skill.** Jeden řádek na každého programového agenta nalezeného v tomto počítači — Claude Code, Codex, Cursor, Gemini CLI, Copilot CLI, OpenCode, Windsurf —, každý s **Nainstalovat**, **Aktualizovat** a **Odinstalovat**, navíc **Nainstalovat do jiné složky…**, **Stáhnout skill (zip)** a **Kopírovat cestu**. Pokud váš asistent v seznamu není, ukážte GenOffice složku, ze které čte `SKILL.md`, nebo uložte zip a nechte ho nainstalovat samotný asistent. Skill a MCP mohou stát vedle sebe: asistent si vybere jedno z nich a dělají přesně stejné věci.
+**Skill.** Jeden řádek na každého programového agenta nalezeného v tomto počítači — Claude Code, sdílená složka `~/.agents` (čtou ji Codex, Cursor, Gemini CLI, Copilot CLI a OpenCode), Windsurf —, každý s **Nainstalovat**, **Aktualizovat** a **Odinstalovat**, navíc **Nainstalovat do jiné složky…**, **Stáhnout skill (zip)** a **Kopírovat cestu**. Pokud váš asistent v seznamu není, ukážte GenOffice složku, ze které čte `SKILL.md`, nebo uložte zip a nechte ho nainstalovat samotný asistent. Skill a MCP mohou stát vedle sebe: asistent si vybere jedno z nich a dělají přesně stejné věci. Kopie nainstalovaná dříve do vlastní složky některého z těchto pěti nástrojů zůstává uvedená pod řádkem sdílené složky a dál se aktualizuje; jakmile sdílená složka skill obsahuje, můžete tuto kopii odebrat.
 
 **MCP.** Nabízí se dvě cesta: **Spouští asistent (doporučeno)** — tam přidáte zobrazenou konfiguraci do svého klienta a asistent server spustí sám — a **Místní HTTP server**, který spustí aplikace za vás. Tak či onak nakonec asistent mluví s GenOffice a vy nikdy nenapíšete příkaz.
 
@@ -58,7 +58,7 @@ Každý příkaz je nástroj. Zajímavé jsou tyto:
 Požadavek z příkazu `ieumoffice` nebo od klienta MCP jste v aplikaci nenapsali vy, a proto s ním GenOffice zachází opatrně.
 
 - **Vyhledávání** funguje vždy a ve výchozím stavu je zdarma. Klíč poskytovatele vyhledávání se použije jen tehdy, pokud jste nějaký vybrali.
-- **Generování obrázku** potřebuje klíč poskytovatele obrázků. V této verzi předplatné obrázky negeneruje.
+- **Generování obrázku** se řídí volbou generování obrázků v nastavení. Výchozí volba Tarif ChatGPT (program Codex) používá váš tarif ChatGPT přes program Codex a **nepoužije se, dokud to nepovolíte** (viz níže). Jinak se použije klíč nastaveného poskytovatele obrázků. Model, který agent uvede, se použije, pokud ho tato cesta nabízí.
 - **Popis obrázku** používá poskytovatele s klíčem, pokud je nastaven. Vaše předplatné Claude nebo Codex se **nepoužije, dokud to nepovolíte**.
 - **Video a zvuk** potřebují poskytovatele s klíčem, který podporuje video.
 

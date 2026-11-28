@@ -20,8 +20,10 @@ import {
   headlessSubscriptionOn,
   isSubscriptionProvider,
   modelLacksVision,
+  offSubscriptionStatus,
   resolveImageBackend,
   selectAiProvider,
+  subscriptionOffIn,
   type AiImageBackend,
   type AiMediaKeyProviderId,
   type AiMediaProviderConfig,
@@ -61,16 +63,20 @@ export function headlessSubscriptionBlocked(
  * The statuses routing may look at. A blocked headless request behaves as if
  * no subscription existed, so `ready` logins are left out; a metered login
  * stays, because whether it runs is the user's explicit selection, not the
- * headless setting.
+ * headless setting. A CLI turned off in this app reads as off whatever its
+ * status says, so no tool (Codex image generation among them) starts it.
  */
 function routingStatuses(settings: AiSettings, context: AiToolCallContext): AiSubscriptionStatuses {
-  const statuses = context.statuses ?? {}
+  const statuses: AiSubscriptionStatuses = { ...context.statuses }
+  for (const id of ['claude-code', 'codex'] as const) {
+    if (subscriptionOffIn(settings, id)) statuses[id] = offSubscriptionStatus(id)
+  }
   if (!headlessSubscriptionBlocked(settings, context)) return statuses
   const visible: AiSubscriptionStatuses = {}
-  if (statuses['claude-code'] && statuses['claude-code'].state !== 'ready') {
-    visible['claude-code'] = statuses['claude-code']
+  for (const id of ['claude-code', 'chatgpt', 'codex'] as const) {
+    const status = statuses[id]
+    if (status && status.state !== 'ready') visible[id] = status
   }
-  if (statuses.codex && statuses.codex.state !== 'ready') visible.codex = statuses.codex
   return visible
 }
 
@@ -90,6 +96,14 @@ export function resolveImageRoute(
   })
 }
 
+/**
+ * True for everyone, so it is always said: a ChatGPT plan makes pictures only
+ * through the Codex program, because OpenAI allows no image generation on the
+ * app's direct ChatGPT connection (decision 0081).
+ */
+export const CHATGPT_PLAN_IMAGE_HINT =
+  " If the user uses a ChatGPT plan, making images needs the Codex program signed in with the same ChatGPT account (Settings > AI > Codex); the app's direct ChatGPT connection cannot make images because OpenAI does not allow it."
+
 export function imageGenerationUnavailableMessage(
   settings: AiSettings,
   context: AiToolCallContext = SCREEN_TOOL_CONTEXT,
@@ -101,6 +115,7 @@ export function imageGenerationUnavailableMessage(
   return (
     `Image generation is unavailable: ${connect}add an image provider key under Settings > AI > Advanced.` +
     (offered && blocked ? HEADLESS_SETTING_HINT : '') +
+    CHATGPT_PLAN_IMAGE_HINT +
     ' Use image search for imagery instead.'
   )
 }

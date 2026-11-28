@@ -1,4 +1,4 @@
-import type { AgentSkill, ToolDisplay } from '@genoffice/agent-core'
+import { attachedImageNote, type AgentSkill, type ToolDisplay } from '@genoffice/agent-core'
 import type {
   GroupRenderNode,
   PictureRenderNode,
@@ -9,7 +9,18 @@ import type {
 import type { AgentToolCall, AgentToolDef, ReadUrlResult, SlideComment } from '../../shared/ipc'
 import { OP_GROUPS, opGuide, opGuideCatalog, opSignatureIndex } from '@genoffice/pptx-ops/op-docs'
 import { auditSlideLayout, formatAudit } from '@genoffice/pipelines/slides/layout-audit'
-import { findSlideTemplate, listSlideTemplates } from '@genoffice/pipelines/slides/templates'
+import {
+  findSlideTemplate,
+  formatDeckStructurePromptNote,
+  listSlideTemplates,
+  type SlideDeckStructure,
+} from '@genoffice/pipelines/slides/templates'
+import {
+  REPLY_COMMENT_TOOL,
+  executeReplyCommentTool,
+  type ReplyCommentDeps,
+} from './comment-reply-tool'
+import { speakerNotesPromptAddition } from './speaker-notes-option'
 import { runLayoutScript, type LayoutScriptElement } from './layout-script'
 import {
   extractLayoutSkeleton,
@@ -34,6 +45,9 @@ import systemPrompt from './prompts/system.md?raw'
 import { placeholderInstruction } from './redact'
 import { textForModel, redactLabelsOf } from './redact-view'
 import { redactGuardFor } from './redact-guard'
+import { isGenerationStopKind } from './generation-stop'
+import { deckTakesDefaultFonts } from './default-fonts'
+import type { SlidesAiFontRoles } from '@genoffice/ui/slides-ai-fonts'
 
 /**
  * Slides capability as an AgentSkill: deck outline context + three tools (read structure /
@@ -98,6 +112,8 @@ export type DeckProgressEvent =
 /** Panel/skill access point to the currently open deck (refs provided by App, stay fresh across renders). */
 export interface DeckAccess {
   getSlides(): RenderSlide[]
+  /** The fonts of Settings › General as title/body families; null for "auto" or when unavailable */
+  getAiDefaultFonts?(): Promise<SlidesAiFontRoles | null>
   getCurrent(): number
   getSelectedIds(): string[]
   /** Every page's review comments (index = slide index; pages without comments are empty arrays). */
@@ -136,8 +152,12 @@ export interface DeckAccess {
     slideIndex: number,
     marker: string,
   ): Promise<{ ok: boolean; error?: string; imageFailures?: { page: number; url: string }[] }>
-  /** Survey: shows a card with options and waits for the user's choices, returning an answer summary. */
-  askClarification?(questions: ClarifyQuestion[]): Promise<{ answers: string; cancelled?: boolean }>
+  /** Optional PowerPoint-compatible comment reply handler (T10) */
+  replyComment?: ReplyCommentDeps
+  /** Optional speaker-notes separation toggle (default OFF) (T11) */
+  speakerNotesSeparate?(): boolean
+  /** Optional purpose-specific deck structure preset (T11) */
+  deckStructure?(): SlideDeckStructure | undefined
   /**
    * In-tool image search (embedded in the tool):
    * given English keywords, returns an array of real image URLs (at most N).
@@ -172,8 +192,17 @@ export interface DeckAccess {
     skeleton?: string
     /** The style is a built-in design template, or a style saved from one: its devices override the ban rules they collide with */
     templateDevices?: boolean
+    /** Settings › General fonts, present only when they apply to this deck (default-fonts.ts) */
+    defaultFonts?: SlidesAiFontRoles
     signal?: AbortSignal
-  }): Promise<{ ok: boolean; marker?: string; error?: string; imageFailures?: string[] }>
+  }): Promise<{
+    ok: boolean
+    marker?: string
+    error?: string
+    imageFailures?: string[]
+    /** the run cannot go on (rate limit, signed out, credits, …): stop generating */
+    stopKind?: string
+  }>
   /**
    * In-tool Style Skill generation:
    * a dedicated LLM call focused on producing a complete structured visual style guide
@@ -184,8 +213,10 @@ export interface DeckAccess {
     topic: string
     questionnaire?: string
     styleHint?: string
+    /** Settings › General fonts, present only when they apply to this deck (default-fonts.ts) */
+    defaultFonts?: SlidesAiFontRoles
     signal?: AbortSignal
-  }): Promise<{ ok: boolean; styleSkill?: string; error?: string }>
+  }): Promise<{ ok: boolean; styleSkill?: string; error?: string; stopKind?: string }>
   /**
    * In-tool planning: given topic + page count, the LLM produces a structured outline.
    * Fixes "missing pages at the input side" at the root — the main agent doesn't hand-write dozens of pages of pages JSON (avoids the argument being truncated by max_tokens).
@@ -206,6 +237,7 @@ export interface DeckAccess {
     // only validated field-by-field at the point of use.
     outline?: { core_hook?: unknown; pages?: unknown }
     error?: string
+    stopKind?: string
   }>
   /**
    * Persist the current draft's Style Skill as a sidecar file (same directory and name as the draft, .styleskill.json).
@@ -254,6 +286,14 @@ export interface DeckAccess {
   /** Base retry backoff in ms for single-page generation failures (default 2000; tests pass 0 to disable backoff) */
   retryBackoffMs?: number
   /**
+   * A stop kind already hit in the current run. The panel clears it before
+   * every send; the skill then refuses a second generate_deck/regenerate_slide
+   * in the same run without sending another request.
+   */
+  generationStopped?(): string | undefined
+  /** Remember the stop kind for the rest of this run (see generationStopped) */
+  markGenerationStopped?(kind: string): void
+  /**
    * Names of text attachments in the current conversation that were never read with
    * read_attachment. When non-empty, generate_deck refuses to run until they are read
    * (decks must be built from attachment content, not generic filler).
@@ -267,6 +307,8 @@ export interface DeckAccess {
   resolveAttachmentImage?(
     name: string,
   ): Promise<{ ok: true; base64: string; ext: string } | { ok: false; error: string }>
+  /** exact names of the image files in this chat, for the prompt */
+  imageAttachmentNames?(): string[]
 }
 
 /** `attachment://<file name>` → decoded file name, or null when not an attachment reference. */
@@ -278,17 +320,6 @@ export function attachmentRefName(url: string): string | null {
   } catch {
     return raw
   }
-}
-
-/** Single survey question structure (with options). */
-export interface ClarifyQuestion {
-  id: string
-  label: string
-  description?: string
-  /** Option text array (≤5 per question); the frontend automatically appends "Other (fill in)" */
-  options: string[]
-  /** Multi-select (single-select by default) */
-  multi?: boolean
 }
 
 const TOOLS: AgentToolDef[] = [
@@ -310,6 +341,7 @@ const TOOLS: AgentToolDef[] = [
       'List the deck\'s review comments in page order: page number, hidden flag, id "authorId:idx", author, ISO time and text. The ids are what apply_ops deleteComment takes — delete a comment only when the user asks.',
     inputSchema: { type: 'object', properties: {}, required: [] },
   },
+  REPLY_COMMENT_TOOL,
   {
     name: 'execute_slide_script',
     description:
@@ -425,6 +457,11 @@ const TOOLS: AgentToolDef[] = [
           description:
             'Set true when the result must have a real transparent background (icons, logos, cutouts placed over slide content). The app strips the background automatically after generation; never rely on the prompt for transparency.',
         },
+        model: {
+          type: 'string',
+          description:
+            'Image model name, only when the user named a model; the app uses it if the current image route offers it, otherwise it answers with the models it can use',
+        },
       },
       required: ['prompt'],
     },
@@ -485,37 +522,6 @@ const TOOLS: AgentToolDef[] = [
         keepCrop: { type: 'boolean', description: 'Keep the existing crop window (default false)' },
       },
       required: ['slideIndex', 'sourceId', 'url'],
-    },
-  },
-  {
-    name: 'ask_clarification',
-    description:
-      "[Call before creating a whole new deck] Shows a questionnaire card with options, letting the user make key choices for this deck (audience/scenario/tone/focus etc.); the user's choices directly determine the deck's Core Hook and style. Questions must target the specific topic, each being a real trade-off (options represent different directions). Ask 2–4 questions, ≤5 options each. After calling, wait for the user to finish choosing in the card and generate once you have the answers. Don't repeat the questions in your reply text.",
-    inputSchema: {
-      type: 'object',
-      properties: {
-        questions: {
-          type: 'array',
-          description: 'Question list (2–4 questions)',
-          items: {
-            type: 'object',
-            properties: {
-              id: { type: 'string', description: 'Unique question id (short English/pinyin)' },
-              label: { type: 'string', description: 'Question text' },
-              description: { type: 'string', description: 'Optional one-line note' },
-              options: {
-                type: 'array',
-                items: { type: 'string' },
-                description:
-                  'Options (≤5); the frontend automatically appends "Decide for me" and "Other"',
-              },
-              multi: { type: 'boolean', description: 'Multi-select (single-select by default)' },
-            },
-            required: ['id', 'label', 'options'],
-          },
-        },
-      },
-      required: ['questions'],
     },
   },
   {
@@ -672,7 +678,7 @@ const TOOLS: AgentToolDef[] = [
         style_template: {
           type: 'string',
           description:
-            "Optional: a built-in design template's id or name, or the name of a saved style (both from list_style_templates); when passed, Step 0 is skipped and that template's style is used directly, no style regeneration, and it becomes the document's selected template. A style saved from a finished deck also carries its layout skeleton, which pins the title/brand-image geometry on every page for a consistent look",
+            "Optional: a built-in design template's id or name, or the name of a saved style (both from list_style_templates); when passed, style generation is skipped and that template's style is used directly, no style regeneration, and it becomes the document's selected template. A style saved from a finished deck also carries its layout skeleton, which pins the title/brand-image geometry on every page for a consistent look",
         },
         dataSource: {
           type: 'string',
@@ -1104,10 +1110,15 @@ function hiddenMediaTools(access: DeckAccess): Set<string> {
   return hidden
 }
 
+/** told whenever generate_image is hidden, so the model can point a ChatGPT plan user at the one path that draws */
+export const IMAGE_GEN_CHATGPT_NOTE =
+  'If the user uses a ChatGPT plan: making images needs the Codex program signed in with the same ChatGPT account (Settings > AI > Codex); the direct ChatGPT connection in the app cannot make images because OpenAI does not allow it. Tell the user this when they ask for an image.'
+
 function mediaToolsOffNote(hidden: Set<string>): string {
   if (hidden.size === 0) return ''
   const plural = hidden.size > 1
-  return `\n\nNote: ${[...hidden].join(' and ')} ${plural ? 'are' : 'is'} currently unavailable (no image/media provider is connected or set up in Settings). Do not call or promise ${plural ? 'them' : 'it'}; for imagery use image_search + insert_web_image instead.`
+  const chatgpt = hidden.has('generate_image') ? ` ${IMAGE_GEN_CHATGPT_NOTE}` : ''
+  return `\n\nNote: ${[...hidden].join(' and ')} ${plural ? 'are' : 'is'} currently unavailable (no image/media provider is connected or set up in Settings). Do not call or promise ${plural ? 'them' : 'it'}; for imagery use image_search + insert_web_image instead.${chatgpt}`
 }
 
 export function createSlidesSkill(access: DeckAccess): AgentSkill {
@@ -1137,11 +1148,25 @@ export function createSlidesSkill(access: DeckAccess): AgentSkill {
       // pays nothing and is not told to look for markers that are not there.
       const labels = deckRedactLabels(access)
       const redact = labels.length > 0 ? `\n\n${placeholderInstruction(labels)}` : ''
-      return brandText(systemPrompt, 'en') + mediaToolsOffNote(hiddenMediaTools(access)) + redact
+      const attached = attachedImageNote(
+        access.imageAttachmentNames?.() ?? [],
+        'pass url=attachment://<name> to insert_web_image',
+      )
+      const speakerNote = speakerNotesPromptAddition(access.speakerNotesSeparate?.())
+      const structureNote = formatDeckStructurePromptNote(access.deckStructure?.())
+      return (
+        brandText(systemPrompt, 'en') +
+        mediaToolsOffNote(hiddenMediaTools(access)) +
+        attached +
+        redact +
+        speakerNote +
+        (structureNote ? `\n\n${structureNote}` : '')
+      )
     },
     // live view: the predicates are re-read before every model request
     get tools() {
       const hidden = hiddenMediaTools(access)
+      if (!access.replyComment) hidden.add(REPLY_COMMENT_TOOL.name)
       return hidden.size ? TOOLS.filter((t) => !hidden.has(t.name)) : TOOLS
     },
     buildContext: () => {
@@ -1258,7 +1283,7 @@ function buildTemplateNote(access: DeckAccess): string {
   return (
     `<design-template>\n` +
     `The user chose a design template for this document: ${what}. generate_deck and regenerate_slide apply it automatically; this overrides any instruction to define or pass a style.\n` +
-    `- The deck's visual style is settled. Do not ask the user about style (colors, fonts, tone, look), neither in ask_clarification nor in text. Questions about content (audience, scenario, focus) are still fine.\n` +
+    `- The deck's visual style is settled. Do not ask the user about style (colors, fonts, tone, look), neither in ask_questions nor in text. Questions about content (audience, scenario, focus) are still fine.\n` +
     `- Leave generate_deck's style_template empty unless the user names another template or saved style in this conversation and asks to use it; naming one switches the document to it.\n` +
     `- Leave generate_deck's style empty, also when you pass pages, add pages with insert_mode:"append", or follow a plan_deck plan. Never describe or invent a style yourself. Pass style only when the user explicitly asks for a look that differs from the template (e.g. "make it mostly blue"), and then pass just that request in the user's own terms. It is kept with the document as a request added on top of the template.` +
     requests +
@@ -1597,6 +1622,13 @@ async function executeTool(
       }
     }
 
+    case 'reply_comment': {
+      if (!access.replyComment) {
+        return fail('reply_comment unavailable', 'reply_comment is not configured in this view')
+      }
+      return executeReplyCommentTool(call.input, access.replyComment)
+    }
+
     case 'execute_layout_script':
     case 'execute_slide_script': {
       const idx = Number(call.input.slideIndex)
@@ -1757,7 +1789,8 @@ async function executeTool(
       return {
         output:
           `Image generated, URL: ${r.url}\n` +
-          'New imagery: insert it with insert_web_image. If this edits an existing slide picture (e.g. background removal), swap it in place with replace_image instead.',
+          'New imagery: insert it with insert_web_image. If this edits an existing slide picture (e.g. background removal), swap it in place with replace_image instead.' +
+          (r.note ? `\nNote: ${r.note}` : ''),
         mutated: false,
         summary: t('aiSumGenImage', {
           prompt: `${prompt.slice(0, 20)}${prompt.length > 20 ? '…' : ''}`,
@@ -1874,45 +1907,6 @@ async function executeTool(
       }
     }
 
-    case 'ask_clarification': {
-      if (!access.askClarification)
-        return fail(
-          t('aiFailClarify'),
-          'The current environment does not support questionnaire cards',
-        )
-      const raw = Array.isArray(call.input.questions) ? call.input.questions : []
-      const questions: ClarifyQuestion[] = raw
-        .map((q: Record<string, unknown>, i: number) => ({
-          id: String(q.id ?? `q${i + 1}`),
-          label: String(q.label ?? ''),
-          description: q.description ? String(q.description) : undefined,
-          options: Array.isArray(q.options)
-            ? q.options.map((o: unknown) => String(o)).slice(0, 5)
-            : [],
-          multi: !!q.multi,
-        }))
-        .filter((q) => q.label && q.options.length > 0)
-      if (questions.length === 0)
-        return fail(
-          t('aiFailClarify'),
-          'questions must be non-empty and every question needs options',
-        )
-      const r = await access.askClarification(questions)
-      if (r.cancelled) {
-        return {
-          output:
-            'The user skipped the questionnaire. Decide the Core Hook and style yourself based on professional judgment and generate directly.',
-          mutated: false,
-          summary: t('aiSumClarifySkipped'),
-        }
-      }
-      return {
-        output: `User questionnaire answers:\n${r.answers}\nDecide the Core Hook and style accordingly, then generate with generate_deck.`,
-        mutated: false,
-        summary: t('aiSumClarifyDone'),
-      }
-    }
-
     case 'plan_deck': {
       const coreHook = String(call.input.core_hook ?? '').trim()
       const style = String(call.input.style ?? '').trim()
@@ -1949,6 +1943,12 @@ async function executeTool(
     }
 
     case 'regenerate_slide': {
+      const stopped = access.generationStopped?.()
+      if (stopped)
+        return fail(
+          t('aiFailRegen'),
+          `Generation is already stopped in this turn (${stopped}). Do not call regenerate_slide again; tell the user the connection cannot continue right now and to try again after it recovers.`,
+        )
       const idx = Number(call.input.slideIndex)
       if (!slides[idx])
         return fail(t('aiFailRegen'), `slideIndex out of range (0-${slides.length - 1})`)
@@ -1973,10 +1973,24 @@ async function executeTool(
       let marker: string | null = null
       let genImageFails: string[] = []
       let lastErr = ''
+      let regenStopKind: string | undefined
       // The document's design template and its added requests when one is selected;
       // otherwise the last style this window generated with.
       const selected = await selectedTemplateOf(access)
       const regenBasedOn = selected ? selected.basedOn : state?.lastStyleBasedOn
+      // Settings › General fonts as in generate_deck, judged on the pages the redo keeps
+      const regenSettingFonts =
+        !selected && access.getAiDefaultFonts
+          ? await access.getAiDefaultFonts().catch(() => null)
+          : null
+      const regenFonts =
+        regenSettingFonts &&
+        deckTakesDefaultFonts(
+          slides.filter((_, i) => i !== idx),
+          regenSettingFonts,
+        )
+          ? regenSettingFonts
+          : undefined
       const regenArgs = {
         pageIndex: idx + 1,
         totalPages: slides.length,
@@ -1991,6 +2005,9 @@ async function executeTool(
         canvasW: 1280,
         canvasH: 720,
         ...(regenBasedOn ? { templateDevices: true } : {}),
+        ...(regenFonts ? { defaultFonts: regenFonts } : {}),
+        // the run's signal: Stop ends the redo, and its two attempts share one context check
+        ...(signal ? { signal } : {}),
       }
       const runRegen = async (gen: NonNullable<DeckAccess['generatePageLocal']>) => {
         for (let attempt = 0; attempt < 2 && !marker; attempt++) {
@@ -2000,15 +2017,28 @@ async function executeTool(
             marker = res.marker
             if ('imageFailures' in res && Array.isArray(res.imageFailures))
               genImageFails = res.imageFailures
-          } else lastErr = res.error ?? t('aiErrUnknown')
+          } else {
+            lastErr = res.error ?? t('aiErrUnknown')
+            if (isGenerationStopKind(res.stopKind)) {
+              regenStopKind = res.stopKind
+              access.markGenerationStopped?.(res.stopKind)
+              break
+            }
+          }
         }
       }
       await runRegen(access.generatePageLocal)
-      if (!marker)
+      if (!marker) {
+        if (regenStopKind)
+          return fail(
+            t('aiFailRegen'),
+            `Page generation stopped: ${lastErr}. Do not call regenerate_slide again in this turn — the connection cannot continue right now, so a retry would only spend more quota. Tell the user and try again after it recovers. The page was not modified.`,
+          )
         return fail(
           t('aiFailRegen'),
           `Page generation failed (2 attempts): ${lastErr}. This is usually a temporary service error — do not keep calling regenerate_slide in a loop. Instead, make the requested changes in place with execute_slide_script / set_element_* (group children are editable too), or tell the user to retry in a few minutes. The page was not modified.`,
         )
+      }
       const r = await access.regenerateSlide(idx, marker)
       if (!r.ok)
         return fail(
@@ -2030,6 +2060,12 @@ async function executeTool(
     }
 
     case 'generate_deck': {
+      const stopped = access.generationStopped?.()
+      if (stopped)
+        return fail(
+          t('aiFailGenDeck'),
+          `Generation is already stopped in this turn (${stopped}). Do not call generate_deck again; tell the user the connection cannot continue right now and to try again after it recovers.`,
+        )
       // ── Self-driven pipeline:
       //   1) Plan: use pages if passed; with topic, the tool plans the outline via LLM (batched recursion over threshold) — fixes missing pages at the input side.
       //   2) Generate: batched concurrent page generation (one retry per page), **each batch lands immediately → frontend shows pages one by one**.
@@ -2066,6 +2102,10 @@ async function executeTool(
       const PLAN_BATCH = 12 // Per-batch planning cap (kept slightly conservative against truncation)
       const GEN_BATCH = 2 // Per-page generation concurrency (opus large output + proxy concurrent streams time out easily; lowered to 2, stability first)
       const BACKOFF_MS = access.retryBackoffMs ?? 2000 // Retry backoff base (rate limits/overload are mostly transient; immediate retries would hit them again)
+      // A run whose connection cannot go on (limit used up, signed out, …) ends
+      // the whole generation: no more pages, no retry round.
+      let stopKind: string | undefined
+      let stopMessage = ''
 
       let coreHook = String(call.input.core_hook ?? '').trim()
       const style = String(call.input.style ?? '').trim()
@@ -2137,6 +2177,17 @@ async function executeTool(
         styleSkill = styleWithRequests(template.styleText, template.requests)
         templateSkeleton = template.layout
       }
+      // Settings › General fonts: never over a design template, and on append only to a
+      // deck that takes them (blank, or made in these fonts); a font the request names wins
+      const settingFonts =
+        !template && access.getAiDefaultFonts
+          ? await access.getAiDefaultFonts().catch(() => null)
+          : null
+      const defaultFonts =
+        settingFonts &&
+        (insertMode === 'replace' || deckTakesDefaultFonts(access.getSlides(), settingFonts))
+          ? settingFonts
+          : undefined
       // User clicked stop → checked inside each stage loop, abort as soon as possible (pages already landed are kept)
       const cancelled = () => signal?.aborted === true
       const cancelResult = (landed: number, totalPages: number) => ({
@@ -2161,9 +2212,20 @@ async function executeTool(
           topic: styleTopic,
           ...(style ? { styleHint: style } : {}),
           ...(context ? { questionnaire: context } : {}),
+          ...(defaultFonts ? { defaultFonts } : {}),
           ...(signal ? { signal } : {}),
         })
         if (sr.ok && sr.styleSkill) styleSkill = sr.styleSkill
+        if (isGenerationStopKind(sr.stopKind)) {
+          access.markGenerationStopped?.(sr.stopKind)
+          access.onProgress?.({
+            stage: 'style',
+            label: t('aiStageStyle'),
+            status: 'error',
+            summary: t('aiFailGenDeck'),
+          })
+          return fail(t('aiFailGenDeck'), `Generation stopped: ${sr.error ?? sr.stopKind}`)
+        }
         access.onProgress?.({
           stage: 'style',
           label: t('aiStageStyle'),
@@ -2220,6 +2282,19 @@ async function executeTool(
             !Array.isArray(r.outline.pages) ||
             r.outline.pages.length === 0
           ) {
+            if (isGenerationStopKind(r.stopKind)) {
+              access.markGenerationStopped?.(r.stopKind)
+              // finalize the planning progress before the tool reports the stop
+              access.onProgress?.({
+                stage: 'plan',
+                label: t('aiStagePlan'),
+                done: 0,
+                total: approx,
+                status: 'error',
+                summary: t('aiStagePlanFailed'),
+              })
+              return fail(t('aiFailGenDeck'), `Generation stopped: ${r.error ?? r.stopKind}`)
+            }
             if (pages.length === 0) {
               // On failure the progress must be finalized, otherwise the UI spins forever at "Planning outline…"
               access.onProgress?.({
@@ -2434,6 +2509,12 @@ async function executeTool(
             return { marker: res.marker, err: '' }
           }
           lastErr = res.error ?? t('aiErrUnknown')
+          if (isGenerationStopKind(res.stopKind)) {
+            stopKind = res.stopKind
+            stopMessage = lastErr
+            access.markGenerationStopped?.(res.stopKind)
+            return { marker: null, err: lastErr }
+          }
         }
         return { marker: null, err: lastErr }
       }
@@ -2479,6 +2560,7 @@ async function executeTool(
           canvasH,
           ...(skeleton ? { skeleton } : {}),
           ...(template?.basedOn ? { templateDevices: true } : {}),
+          ...(defaultFonts ? { defaultFonts } : {}),
           ...(signal ? { signal } : {}),
         }
         const local = await tryGenerate(access.generatePageLocal!, pageArgs, pageIndex)
@@ -2532,7 +2614,7 @@ async function executeTool(
       }
 
       for (let start = 0; start < total; start += GEN_BATCH) {
-        if (cancelled()) break
+        if (cancelled() || stopKind) break
         const batchIdxs = []
         for (let k = start; k < Math.min(start + GEN_BATCH, total); k++) batchIdxs.push(k)
         const results = await Promise.all(
@@ -2562,12 +2644,13 @@ async function executeTool(
       //   Landing-failed pages re-land (cheap: the one-slide pptx already exists). Pages whose
       //   generation failed get one more attempt here (LLM calls are the user's own quota, and
       //   a JSON spec retry is cheap).
-      if (!cancelled()) {
+      if (!cancelled() && !stopKind) {
         const retryIdxs = [...new Set([...genFailed, ...landFailed])].sort((a, b) => a - b)
         for (const idx of retryIdxs) {
-          if (cancelled()) break
+          if (cancelled() || stopKind) break
           let marker = markerByIndex[idx]
           if (!marker) marker = await genOne(pages[idx]!, idx + 1)
+          if (stopKind) break
           if (!marker) {
             pageProgressItems[idx] = {
               ...pageProgressItems[idx]!,
@@ -2617,6 +2700,30 @@ async function executeTool(
               error: pageErrors[idx],
             }
           }
+        }
+      }
+
+      // Connection lost mid-deck (limit used up, signed out, …): stop here with
+      // whatever landed. The tool result says not to call generate_deck again in
+      // this turn, so the model does not spend the next request on the same wall.
+      if (stopKind) {
+        if (state) state.htmlGenerated = landedPages > 0 || state.htmlGenerated
+        access.onProgress?.({
+          stage: 'done',
+          total: landedPages,
+          summary: landedPages > 0 ? t('aiSumStoppedKept', { n: landedPages }) : t('aiErrStopped'),
+          outcome: landedPages > 0 ? 'cancelled' : 'failed',
+        })
+        const why = stopMessage || stopKind
+        const landedNote =
+          landedPages > 0
+            ? `${landedPages} of ${total} page(s) landed and remain on the canvas.`
+            : 'No page landed.'
+        return {
+          output: `Generation stopped early: ${why} ${landedNote} Do not call generate_deck again in this turn; tell the user the connection cannot continue right now and that the remaining pages can be generated after it recovers.`,
+          isError: true,
+          mutated: landedPages > 0,
+          summary: landedPages > 0 ? t('aiSumStoppedKept', { n: landedPages }) : t('aiFailGenDeck'),
         }
       }
 

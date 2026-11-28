@@ -159,6 +159,7 @@ describe('vision capability fallback', () => {
     const result = await qcSlidePage({
       access: one,
       transport,
+      settings: defaultAiSettings,
       pageIndex: 0,
       screenshot: null,
     })
@@ -198,6 +199,7 @@ describe('vision capability fallback', () => {
     const result = await qcSlidePage({
       access: one,
       transport,
+      settings: defaultAiSettings,
       pageIndex: 0,
       screenshot: null,
     })

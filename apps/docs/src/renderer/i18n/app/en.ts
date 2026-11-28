@@ -1,6 +1,8 @@
 import type { zh } from './zh'
 
 export const en = {
+  appLegacyDocImported:
+    'Opened the .{ext} file as a converted .docx copy. The original stays as it was; saving writes a new .docx file.',
   appScTitle: 'Keyboard Shortcuts',
   appScFilter: 'Search shortcuts',
   appScNone: 'No matching shortcuts',
@@ -54,6 +56,7 @@ export const en = {
   appVerticalTextNotice:
     'This document contains vertical text (shown horizontally for now; saving is unaffected)',
   appNewDocCreated: 'Blank document created. Describe what to generate in the AI pane on the left.',
+  appNewDocCreatedNoAi: 'Blank document created.',
   appNewFailed: 'Failed to create document: {error}',
   appSaveFailed: 'Save failed: {error}',
   appAutoSavedAt: 'AutoSaved ({time})',
@@ -93,6 +96,9 @@ export const en = {
   appPrintRangeAll: 'All pages',
   appPrintRangeCurrent: 'Current page',
   appPrintRangeCustom: 'Custom range',
+  appPrintRangeSelection: 'Selection',
+  appPrintSelectionPreparing: 'Laying out the selection…',
+  appPrintSelectionFailed: 'Could not lay out the selection: {error}',
   appPrintRangeHint: 'e.g. 1,3,5-8',
   appPrintPageCount: '{n} pages',
   appPrintNoPages: 'No pages to print',
@@ -345,6 +351,9 @@ export const en = {
   appAiBadgeTip: 'Uses AI',
   appTranslate: 'Translate',
   appTranslateTo: 'Translate to {lang}',
+  appEasyWords: 'Explain in plain words',
+  appEasyWordsPrompt:
+    'Explain the selected text in English so that someone who needs easy reading (a child, an older person, or someone learning English) can understand it. Use everyday words and short sentences, and keep every fact, number and condition. Do not modify the document: "{text}"',
   redactMenuLabel: 'Hide the selection from AI',
   redactDialogDesc:
     'The words stay in the document and in the file; the model sees the placeholder below instead. Name it so the model knows what it stands for.',
@@ -375,6 +384,7 @@ export const en = {
   appLangHindi: 'Hindi',
   appLangTraditionalChinese: 'Traditional Chinese',
   appLangVietnamese: 'Vietnamese',
+  appLangTurkish: 'Turkish',
   appWrapTextMenu: 'Wrap Text',
   appViewImage: 'View Image',
   appSaveImageAs: 'Save Image As…',
@@ -468,6 +478,12 @@ export const en = {
   appLatexPlaceholder: 'e.g. x = \\frac{-b \\pm \\sqrt{b^2-4ac}}{2a}',
   appLatexPreviewHint: 'Type LaTeX to see a preview',
   appPreviewUnavailable: 'Unable to generate a preview',
+  appMathTypeConvertNote:
+    'MathType equation — saving converts it to a native Word equation (OMML).',
+  appMathTypeConvertOnlyNote:
+    'This MathType equation uses structures outside the LaTeX subset. You can convert it directly to a native Word equation (OMML) while keeping its layout.',
+  appMathTypeConvertAction: 'Convert & Update',
+  appMathTypeEditHint: 'MathType equation (double-click to edit or convert)',
   appInlineEquationToggle: 'Inline equation (inserted at the cursor, flows with text)',
   appInsertNewEquation: 'π Insert New Equation (LaTeX)…',
   appEqCircleArea: 'Area of Circle',
@@ -572,4 +588,13 @@ export const en = {
   appOdtLabelObject: 'Object (shown in Hancom)',
   appOdtLabelNotice:
     'Objects drawn as labelled boxes may look different from how Hancom Office shows them.',
+  appMergeSourceLoaded: 'Loaded {name} ({n} records)',
+  appMergeWritten: '{n} documents written',
+  appMergeNothingToWrite: 'There is nothing to write',
+  appExportingHwp: 'Exporting HWP document…',
+  appExportedHwp: 'HWP document exported: {path}',
+  appExportHwpFailed: 'HWP export failed: {error}',
+  appExportHwpCanceled: 'HWP export canceled',
+  appExportHwpReadback:
+    'This document could not be written exactly as .hwp. Try saving it as .hwpx.',
 } satisfies Record<keyof typeof zh, string>

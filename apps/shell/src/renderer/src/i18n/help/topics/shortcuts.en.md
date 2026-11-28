@@ -12,10 +12,12 @@ Every editor has its own key bindings, and only a few of them work everywhere. T
 | Collapse / expand the ribbon — every editor     | ⌥⌘R   | Ctrl+F1         |
 | Compact the ribbon — Docs only                  | ⌥⌘K   | Ctrl+Alt+K      |
 | Open the Keyboard Shortcuts sheet — Word only   | ⌘/    | Ctrl+/          |
+| Open Settings — every tab except Word           | ⌘,    | Ctrl+,          |
 
 - **F1 opens this manual**, not the shortcut sheet. It belongs to the application menu, so it works from Word, Sheets, Slides, PDF or the Home tab alike.
 - **The ribbon toggle is `Ctrl+F1`, or `⌥⌘R` on macOS.** Pressing bare `F1` does nothing — F1 is the manual, and the ribbon key deliberately does not share it. `Ctrl+F1` is accepted on macOS as well, though `⌥⌘R` is the key Office for Mac uses.
 - **The Keyboard Shortcuts sheet is Word's alone** (`⌘/`). It lists exactly the Word table below. No other editor has one.
+- **`⌘,` opens Settings** (`Ctrl+,` on Windows and Linux), as in most Mac apps. In a Word tab the chord stays subscript, so open Settings there from the app menu on a Mac, or from Menu (☰) ▸ Settings… on Windows and Linux.
 
 ![Word's own Keyboard Shortcuts sheet: the action on the left, the chord on the right, grouped by File, Edit, Text, Paragraph, Insert, Review and View](img/word-shortcuts.png)
 
@@ -24,7 +26,7 @@ Every editor has its own key bindings, and only a few of them work everywhere. T
 
 ## Presentation mode
 
-- **Start**: F5 in Word, PDF, Mindmap, HTML and Markdown. In a spreadsheet use Ctrl+F5 (from A1) or Shift+F5 (from the current cell).
+- **Start**: F5 in Word, PDF, Mindmap, HTML and Markdown. In a spreadsheet use Ctrl+F5 (from A1) or Shift+F5 (from the current cell). In an HWP document use Ctrl+F5 (F5 selects table cells there).
 - **Other entry points**: in Word, Ctrl+F5 and Shift+F5 open the reading view without fullscreen; in PDF they start from the current page; in HTML they present inside the tab.
 - **End**: Esc or F5. F11 is the window's own fullscreen and does not change the document view.
 
@@ -290,6 +292,7 @@ Excel's filter shortcut, Ctrl+Shift+L, does nothing on Windows or Linux. Press �
 | Zoom with the mouse wheel                                   | ⌘ + scroll | Ctrl + scroll   |
 | Show or hide formulas in the cells                          | ⌘`         | Ctrl+`          |
 | Expand or collapse the formula bar                          | ⌘⇧U        | Ctrl+Shift+U    |
+| Run a Quick Access Toolbar button by position (1st to 10th) |            | Alt+1 … Alt+0   |
 
 ## Slides
 
@@ -312,20 +315,24 @@ Closing a tab is the one place the two platforms split completely: ⌘W on macOS
 
 ### Editing
 
-| Action                                                | macOS  | Windows / Linux |
-| ----------------------------------------------------- | ------ | --------------- |
-| New slide                                             | ⇧⌘N    | Ctrl+M          |
-| Find (not while editing text in a shape)              | ⌘F     | Ctrl+F          |
-| Annotate the selection with AI (with shapes selected) | ⌘K     | Ctrl+K          |
-| Zoom in                                               | ⌘=     | Ctrl+=          |
-| Zoom out                                              | ⌘-     | Ctrl+-          |
-| Actual size (100%)                                    | ⌘0     | Ctrl+0          |
-| Select all                                            | ⌘A     | Ctrl+A          |
-| Cycle shape selection forward / back                  | ⇥ / ⇧⇥ | Tab / Shift+Tab |
+| Action                                                         | macOS  | Windows / Linux |
+| -------------------------------------------------------------- | ------ | --------------- |
+| New slide                                                      | ⇧⌘N    | Ctrl+M          |
+| Find (not while editing text in a shape)                       | ⌘F     | Ctrl+F          |
+| Annotate the selection with AI (with shapes selected)          | ⌘K     | Ctrl+K          |
+| Zoom in                                                        | ⌘=     | Ctrl+=          |
+| Zoom out                                                       | ⌘-     | Ctrl+-          |
+| Actual size (100%)                                             | ⌘0     | Ctrl+0          |
+| Select all                                                     | ⌘A     | Ctrl+A          |
+| Cycle shape selection forward / back                           | ⇥ / ⇧⇥ | Tab / Shift+Tab |
+| Repeat the last action (format, fill, line, align, duplicate…) | F4     | F4              |
+| Show/hide the Selection Pane                                   | ⌥F10   | Alt+F10         |
 
 New slide is the other platform split. Each platform has its own key and the other one does nothing: ⇧⌘N on macOS, Ctrl+M on Windows and Linux. ⌘M cannot do the job on macOS because that is the system Minimize key.
 
 Select all follows focus: with the thumbnail pane, outline pane or slide sorter focused it selects every slide, and anywhere else it selects every element on the current slide. Tab cycles through the shapes on the slide, and only when the slide canvas itself is focused.
+
+F4 also works inside a text box, applying the last format to the selected text.
 
 ### Text formatting
 
@@ -445,12 +452,12 @@ Undo and Redo step the document history; when the cursor sits in a text field th
 
 ### View
 
-| Action            | macOS            | Windows / Linux     |
-| ----------------- | ---------------- | ------------------- |
-| Zoom In           | ⌘=               | Ctrl+=              |
-| Zoom Out          | ⌘-               | Ctrl+-              |
-| Fit to width      | ⌘0               | Ctrl+0              |
-| Zoom (continuous) | ⌘ + scroll wheel | Ctrl + scroll wheel |
+| Action          | macOS            | Windows / Linux     |
+| --------------- | ---------------- | ------------------- |
+| Zoom In         | ⌘=               | Ctrl+=              |
+| Zoom Out        | ⌘-               | Ctrl+-              |
+| Fit to width    | ⌘0               | Ctrl+0              |
+| Zoom (5% steps) | ⌘ + scroll wheel | Ctrl + scroll wheel |
 
 Zoom In also answers to ⌘+ and Ctrl++.
 
@@ -627,6 +634,8 @@ These keys work while the HWP/HWPX tab is in front and the document has focus. T
 | Find again        | ⌃L          | Ctrl+L                       |
 | Find backward     | ⌃Q, L       | Ctrl+Q, L                    |
 | Go to             | ⌥G          | Alt+G                        |
+| Start of document | ⌃⇞          | Ctrl+PageUp                  |
+| End of document   | ⌃⇟          | Ctrl+PageDown                |
 | Compare documents | ⌥⇧V         | Alt+Shift+V                  |
 
 ### Character
@@ -690,21 +699,29 @@ These keys work while the HWP/HWPX tab is in front and the document has focus. T
 | Date/time string                 | ⌃K, D       | Ctrl+K, D          |
 | Edit object, field or table/cell | ⌃N, K       | Ctrl+N, K          |
 | Symbols                          | ⌃F10 / ⌥F10 | Ctrl+F10 / Alt+F10 |
+| Convert to Hanja                 | F9          | Hanja key / F9     |
 
 ### Table
 
-| Action              | macOS        | Windows / Linux        |
-| ------------------- | ------------ | ---------------------- |
-| Add row/column      | ⌥⏎ / ⌥Insert | Alt+Enter / Alt+Insert |
-| Delete row/column   | ⌥⌫           | Alt+Delete             |
-| Split cell          | F5 → S       | F5 → S                 |
-| Merge cells         | F5 → M       | F5 → M                 |
-| Block sum           | F5 → ⇧⌘S     | F5 → Ctrl+Shift+S      |
-| Block average       | F5 → ⌃⇧A     | F5 → Ctrl+Shift+A      |
-| Block product       | F5 → ⌃⇧P     | F5 → Ctrl+Shift+P      |
-| Split table         | ⌃N, A        | Ctrl+N, A              |
-| Attach table        | ⌃N, Z        | Ctrl+N, Z              |
-| Calculation formula | ⌃N, F        | Ctrl+N, F              |
+| Action                           | macOS        | Windows / Linux        |
+| -------------------------------- | ------------ | ---------------------- |
+| Add row/column                   | ⌥⏎ / ⌥Insert | Alt+Enter / Alt+Insert |
+| Delete row/column                | ⌥⌫           | Alt+Delete             |
+| Split cell                       | F5 → S       | F5 → S                 |
+| Merge cells                      | F5 → M       | F5 → M                 |
+| Table/cell properties            | F5 → P       | F5 → P                 |
+| Borders / shading, each cell     | F5 → L / C   | F5 → L / C             |
+| Borders / shading, cells as one  | F5 → B / F   | F5 → B / F             |
+| Equal row height / column width  | F5 → H / W   | F5 → H / W             |
+| Table auto fill                  | F5 → A       | F5 → A                 |
+| Back to editing the cell         | F5 → ⏎       | F5 → Enter             |
+| Quick hanging indent (in a cell) | ⌃⇧⇥          | Ctrl+Shift+Tab         |
+| Block sum                        | F5 → ⇧⌘S     | F5 → Ctrl+Shift+S      |
+| Block average                    | F5 → ⌃⇧A     | F5 → Ctrl+Shift+A      |
+| Block product                    | F5 → ⌃⇧P     | F5 → Ctrl+Shift+P      |
+| Split table                      | ⌃N, A        | Ctrl+N, A              |
+| Attach table                     | ⌃N, Z        | Ctrl+N, Z              |
+| Calculation formula              | ⌃N, F        | Ctrl+N, F              |
 
 ### Table calculations
 
@@ -745,3 +762,5 @@ These work only while the caret is in an empty table cell. Separate keys calcula
 | Go to the Home tab (outside a table) | ⇧⌘H   | Ctrl+Shift+H    |
 
 A key written `Ctrl+N,T` means press Ctrl+N, release it, then press T. `F5 → S` means select a cell block with F5 and then press S. `Ctrl+1 … Ctrl+0` stand for the document’s first through tenth styles; `Ctrl+Alt+1 … Ctrl+Alt+0` apply the same styles. While a block of cells is selected, `Ctrl+Shift+S` (on macOS `⇧⌘S`) is the block sum; elsewhere that key saves under a new name.
+
+With the mouse, as in Hangul, a double click selects a word, a triple click selects the whole paragraph, and a double click held and dragged extends the selection word by word. This also works while you edit a header, footer or footnote. Copying a cell block (`Ctrl+C`) copies the cells' text and the table itself, so pasting it in the body makes the same table again. Pasting with just the caret in a cell of another table opens the Paste Cells dialog: overwrite from that cell (cells that fall outside the table are dropped), or insert the cells above, below, to the left or to the right. Dragging a picture's corner handle keeps its proportions; a shape or text box keeps them when you hold `Shift` while dragging a corner. Press `Shift` while moving an object to keep it on a horizontal or vertical line, and press `Esc` during a move or resize to put the object back where it was. With an object selected, the arrow keys move it 0.2 mm and `Shift`+arrow keys resize it 1 mm. `Tab` and `Shift+Tab` select the next and previous object on the page, `Shift+PageUp` and `Shift+PageDown` bring the object to the front or send it to the back, and `Shift+Home` and `Shift+End` put the object in front of or behind the text. `G` and `U` group and ungroup, `L` and `C` open the line and fill tabs of the object properties, and `Ctrl+E` deletes the object. To select an object lying under another, hold `Alt` and click; each further click selects the next one down. Dragging a picture's corner with `Shift` held crops the picture at its scale, and dragging an object with `Ctrl` held leaves it in place and drops a copy where you let go.

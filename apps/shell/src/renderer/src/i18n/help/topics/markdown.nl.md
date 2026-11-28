@@ -8,6 +8,7 @@ De Markdown-editor opent .md / .markdown — en .txt / .json, rechtstreeks in de
 - **Opslaan**: bytegetrouw — BOM, CRLF en de aanwezigheid van een afsluitende lege regel blijven behouden; opslaan zonder wijzigingen schrijft het bestand niet opnieuw.
 - **Zoeken en vervangen**: ctrl+F zoekt in de bron; Alles vervangen schrijft het resultaat terug.
 - **AI**: voorinstellingsknoppen laten de assistent het document herschrijven, uitbreiden of vertalen. Een selectie kan voor de AI verborgen worden (zie het hoofdstuk over het AI-paneel).
+- **Links openen**: tijdens bewerken opent Ctrl+klik op een link (⌘ op de Mac) deze in de browser; een gewone klik zet de cursor in de linktekst zodat je die kunt bewerken. In de presentatie (F5) opent een gewone klik de link.
 
 ## De werkbalk
 
@@ -36,6 +37,7 @@ Menu Bestand, alles lokaal en alles vraagt waar het resultaat heen moet:
 
 - **Exporteren als Word…** en **Exporteren als PDF…** schrijven een echte .docx of .pdf.
 - **Exporteren als ODT…** schrijft een .odt (OpenDocument-tekst) via dezelfde omzetting als de Word-export; verandert er onderweg iets of valt er iets weg, dan ziet u de lijst en bevestigt u eerst.
+- **Exporteren als HWP-document…** schrijft via dezelfde conversie een HWP-document (.hwp of .hwpx); koppen, lijsten en tabellen komen als zodanig in het HWP-document, en een lange tabel loopt door op de volgende pagina. Kan iets niet worden overgenomen, dan zie je eerst de lijst en bevestig je.
 - **Exporteren als afbeeldingen…** schrijft één PNG per pagina naar een map die u kiest.
 - **Converteren en openen in Docs** zet om naar .docx en opent het in het ingebouwde Docs-tabblad hier in de app — het is geen overdracht naar iets in de cloud, en de omgezette kopie staat in een cachemap die na ongeveer een week wordt opgeschoond.
 
@@ -43,6 +45,7 @@ Menu Bestand, alles lokaal en alles vraagt waar het resultaat heen moet:
 
 Het lint bevat een schakelaar **Bron** (vertalen mee met de app). Zet hem aan en de editor wordt vervangen door de ruwe Markdown: precies de tekst die een opslaactie wegschrijft, niets is opgeschoond, niets wordt eronder genormaliseerd.
 
+- **Toetsenbord**: Ctrl+E (⌘E op een Mac) wisselt tussen bronweergave en het gerenderde bewerkingsscherm. Druk op F5 om het volledig scherm te lezen.
 - **Bewerken is bytegetrouw.** Een opslaactie vanuit de bronweergave levert dezelfde bytes als een opslaactie vanuit de editor — BOM, CRLF en de aanwezigheid van een afsluitende newline blijven allemaal behouden.
 - **Het is hetzelfde document.** Schakel rustig heen en weer; de bron is de eigen tekst van de editor, geen kopie die je zou moeten samenvoegen.
 - **De opmaakwerkbalk is niet beschikbaar** zolang de weergave open is, omdat de meeste van die knoppen editorconstructies invoegen die alleen aan de weergegeven kant betekenis hebben. Hij komt terug zodra je de weergave sluit.

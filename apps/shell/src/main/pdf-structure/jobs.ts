@@ -21,11 +21,22 @@
 import { createHash } from 'node:crypto'
 import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
+import { PDFDocument } from 'pdf-lib'
 import type { OcrEngine, PdfiumModule } from '../../../../../packages/pdf2docx/src'
+import {
+  convertPdfToDocx,
+  convertPdfToPptx,
+  convertPdfToXlsx,
+} from '../../../../../packages/pdf2docx/src'
 import { withPdfDocument } from '../../../../../packages/pdf2docx/src/extract/pdfium'
 import { renderPageByIndexPng } from '../../../../../packages/pdf2docx/src/extract'
-import { findBlankPages } from '../../../../pdf/src/main/blank-pages'
-import { decryptPdfBytes, encryptPdfBytes } from '../../../../pdf/src/main/qpdf'
+import { HwpEngine, docxToHwp } from '@genoffice/docx2hwp'
+import { findBlankPages, type BlankPagesPdfium } from '../../../../pdf/src/main/blank-pages'
+import { stripDocumentMetadata } from '../../../../pdf/src/main/compress'
+import { ocrPdfBytes } from '../../../../pdf/src/main/ocr-pdf'
+import { renderPageThumbs, renderPdfPagesAtDpi } from '../../../../pdf/src/main/page-thumbs'
+import { decryptPdfBytes, encryptPdfBytes, optimizePdfBytes } from '../../../../pdf/src/main/qpdf'
+import { extractPagesBytes } from '../../../../pdf/src/main/save-pdf'
 import {
   RepairFailedError,
   pdfiumOpens,
@@ -67,11 +78,16 @@ import * as plugins from './plugins'
 import { NotAvailableError } from './plugins'
 import type { StructuredTextFormatter, TranslatedPdfWriter } from './plugins'
 import type {
+  ConvertDocJobValue,
   EpubJobValue,
   FingerprintsJobValue,
   ImagesJobValue,
   JobSource,
   MarkdownJobValue,
+  OcrPdfJobValue,
+  OptimizeJobValue,
+  RenderPagesJobValue,
+  RenderThumbsJobValue,
   StructuredTextJobValue,
   StructureJob,
   TranslationInput,
@@ -105,6 +121,8 @@ export interface JobDeps {
   writebackFontLocator?: WritebackFontLocator
   /** qpdf's wasm on disk; absent or null = adding and removing a password is not available */
   qpdfWasmPath?: string | null
+  /** rhwp wasm on disk; absent or null = PDF -> HWPX conversion is not available */
+  rhwpWasmPath?: string | null
 }
 
 /** the stored translation of a document hash into a language, or null */
@@ -423,6 +441,7 @@ export async function runStructureJob(
         ...(coverPng ? { coverPng } : {}),
         ...(options.language !== undefined ? { language: options.language } : {}),
         ...(options.uiLanguage !== undefined ? { uiLanguage: options.uiLanguage } : {}),
+        ...(options.pageBreaks ? { pageBreaks: true } : {}),
         ...(alt !== undefined
           ? { pageImageAlt: (page: number) => alt.split('{page}').join(String(page)) }
           : {}),
@@ -448,7 +467,14 @@ export async function runStructureJob(
     }
     case 'encrypt': {
       if (!deps.qpdfWasmPath) throw new NotAvailableError('qpdf is not available')
-      const locked = await encryptPdfBytes(deps.qpdfWasmPath, bytes, {
+      let plain = bytes
+      if (job.source.password !== undefined) {
+        const m = (await deps.pdfium()) as unknown as RepairPdfium
+        plain = await decryptPdfBytes(deps.qpdfWasmPath, bytes, job.source.password, (b, p) =>
+          pdfiumOpens(m, b, p),
+        )
+      }
+      const locked = await encryptPdfBytes(deps.qpdfWasmPath, plain, {
         userPassword: job.userPassword,
         ...(job.ownerPassword !== undefined ? { ownerPassword: job.ownerPassword } : {}),
       })
@@ -473,6 +499,169 @@ export async function runStructureJob(
         if (!salvaged) throw err
         return { bytes: salvaged.bytes }
       }
+    }
+    case 'optimize': {
+      if (!deps.qpdfWasmPath) throw new NotAvailableError('qpdf is not available')
+      const stripMeta = async (pdfBytes: Uint8Array): Promise<Uint8Array> => {
+        const doc = await PDFDocument.load(pdfBytes, { updateMetadata: false })
+        stripDocumentMetadata(doc)
+        return doc.save({ useObjectStreams: false })
+      }
+      let working = bytes
+      if (job.stripMetadata && !job.source.password) {
+        working = await stripMeta(working)
+      }
+      let optimized = await optimizePdfBytes(deps.qpdfWasmPath, working, {
+        linearize: job.linearize,
+        ...(job.source.password !== undefined ? { password: job.source.password } : {}),
+      })
+      if (job.stripMetadata && job.source.password) {
+        optimized = await stripMeta(optimized)
+        optimized = await optimizePdfBytes(deps.qpdfWasmPath, optimized, {
+          linearize: job.linearize,
+        })
+      }
+      return { bytes: optimized } satisfies OptimizeJobValue
+    }
+    case 'ocrPdf': {
+      const ocr = deps.ocr()
+      if (!ocr) throw new NotAvailableError('OCR engine is not available')
+      const m = (await deps.pdfium()) as unknown as BlankPagesPdfium
+      const result = await ocrPdfBytes(
+        bytes,
+        ocr,
+        {
+          reocrExisting: job.reocrExisting,
+          ...(job.source.pages ? { pages: job.source.pages } : {}),
+          ...(job.source.password !== undefined ? { password: job.source.password } : {}),
+          onProgress,
+        },
+        m,
+      )
+      return result satisfies OcrPdfJobValue
+    }
+    case 'renderThumbs': {
+      const m = await deps.pdfium()
+      return withPdfDocument(
+        m,
+        bytes,
+        (doc) =>
+          renderPageThumbs(
+            m as unknown as BlankPagesPdfium,
+            doc,
+            {
+              startPage: job.startPage,
+              endPage: job.endPage,
+              longSide: job.longSide,
+            },
+            onProgress,
+          ),
+        job.source.password,
+      ) satisfies RenderThumbsJobValue
+    }
+    case 'renderPages': {
+      const m = await deps.pdfium()
+      return withPdfDocument(
+        m,
+        bytes,
+        (doc) =>
+          renderPdfPagesAtDpi(
+            m as unknown as BlankPagesPdfium,
+            doc,
+            {
+              pages: job.pages,
+              dpi: job.dpi,
+            },
+            onProgress,
+          ),
+        job.source.password,
+      ) satisfies RenderPagesJobValue
+    }
+    case 'convertDoc': {
+      const m = await deps.pdfium()
+      let working = bytes
+      let effectivePassword = job.source.password
+      if (job.source.pages && job.source.pages.length > 0) {
+        const checkedPages = pagesOf(m, bytes, job.source)
+        if (effectivePassword !== undefined) {
+          if (!deps.qpdfWasmPath) throw new NotAvailableError('qpdf is not available')
+          working = await decryptPdfBytes(deps.qpdfWasmPath, working, effectivePassword, (b, p) =>
+            pdfiumOpens(m as unknown as RepairPdfium, b, p),
+          )
+        }
+        working = await extractPagesBytes(
+          working,
+          checkedPages.map((p) => p - 1),
+        )
+        effectivePassword = undefined
+      }
+      const ocr = deps.ocr()
+      if (job.format === 'docx') {
+        const res = await convertPdfToDocx(working, {
+          pdfium: m,
+          ...(ocr ? { ocr } : {}),
+          ...(effectivePassword !== undefined ? { password: effectivePassword } : {}),
+          onProgress,
+        })
+        await atomicWriteFile(job.outPath, res.docx)
+        return {
+          outPath: job.outPath,
+          pages: res.pages,
+          warnings: res.warnings,
+          pageResults: res.pageResults,
+          scannedDocument: res.scannedDocument,
+        } satisfies ConvertDocJobValue
+      }
+      if (job.format === 'xlsx') {
+        const res = await convertPdfToXlsx(working, {
+          pdfium: m,
+          ...(effectivePassword !== undefined ? { password: effectivePassword } : {}),
+          onProgress,
+        })
+        await atomicWriteFile(job.outPath, res.xlsx)
+        return {
+          outPath: job.outPath,
+          pages: res.pages,
+          warnings: res.warnings,
+          pageResults: res.pageResults,
+          scannedDocument: res.scannedDocument,
+        } satisfies ConvertDocJobValue
+      }
+      if (job.format === 'pptx') {
+        const res = await convertPdfToPptx(working, {
+          pdfium: m,
+          ...(effectivePassword !== undefined ? { password: effectivePassword } : {}),
+          onProgress,
+        })
+        await atomicWriteFile(job.outPath, res.pptx)
+        return {
+          outPath: job.outPath,
+          pages: res.pages,
+          warnings: res.warnings,
+          pageResults: res.pageResults,
+          scannedDocument: res.scannedDocument,
+        } satisfies ConvertDocJobValue
+      }
+      if (!deps.rhwpWasmPath) throw new NotAvailableError('HWP engine is not available')
+      const docxRes = await convertPdfToDocx(working, {
+        pdfium: m,
+        ...(ocr ? { ocr } : {}),
+        ...(effectivePassword !== undefined ? { password: effectivePassword } : {}),
+        onProgress,
+      })
+      const rhwpBytes = await readFile(deps.rhwpWasmPath)
+      const engine = await HwpEngine.start(
+        new Uint8Array(rhwpBytes.buffer, rhwpBytes.byteOffset, rhwpBytes.byteLength),
+      )
+      const hwp = await docxToHwp(docxRes.docx, 'hwpx', engine)
+      await atomicWriteFile(job.outPath, hwp.bytes)
+      return {
+        outPath: job.outPath,
+        pages: docxRes.pages,
+        warnings: docxRes.warnings,
+        pageResults: docxRes.pageResults,
+        scannedDocument: docxRes.scannedDocument,
+      } satisfies ConvertDocJobValue
     }
     case 'blankPages': {
       const m = await deps.pdfium()

@@ -8,6 +8,7 @@
  * are classified by name and code rather than by class, so this module does
  * not load the PDF packages.
  */
+import type { PageResult } from '../../../../../packages/pdf2docx/src/pipeline'
 import type { DocumentTree, InlineRun } from '../../../../../packages/pdf-structure/src/tree/types'
 import type { PageFingerprint } from '../../../../../packages/pdf-structure/src/tree/extract'
 import type { MarkdownWarning } from '../../../../../packages/pdf-structure/src/markdown/write'
@@ -68,6 +69,16 @@ export type StructureJob =
   | { op: 'encrypt'; source: JobSource; userPassword: string; ownerPassword?: string }
   | { op: 'decrypt'; source: JobSource; password: string }
   | { op: 'repair'; source: JobSource }
+  | { op: 'optimize'; source: JobSource; linearize: boolean; stripMetadata: boolean }
+  | { op: 'ocrPdf'; source: JobSource; reocrExisting: boolean }
+  | { op: 'renderThumbs'; source: JobSource; startPage: number; endPage: number; longSide: number }
+  | { op: 'renderPages'; source: JobSource; pages: number[]; dpi: 150 | 200 | 300 }
+  | {
+      op: 'convertDoc'
+      source: JobSource
+      format: 'docx' | 'xlsx' | 'pptx' | 'hwpx'
+      outPath: string
+    }
   | { op: 'writeBack'; source: JobSource; tree?: DocumentTree; outPath: string; payload: unknown }
 
 export type StructureOp = StructureJob['op']
@@ -84,6 +95,8 @@ export interface ProcessSetup {
   hbSubsetWasmPath?: string
   /** qpdf wasm on disk (wasm-path.ts qpdfWasmPath); adding and removing a password needs it */
   qpdfWasmPath?: string
+  /** rhwp wasm on disk (@genoffice/file-parse rhwpWasmPath); PDF -> HWPX conversion needs it */
+  rhwpWasmPath?: string
 }
 
 export interface RunMessage {
@@ -152,6 +165,46 @@ export interface WriteBackJobValue {
   report: unknown
 }
 
+export interface OptimizeJobValue {
+  bytes: Uint8Array
+}
+
+export interface OcrPdfJobValue {
+  bytes: Uint8Array
+  ocredPages: number
+  skippedPages: number
+}
+
+export interface RenderThumbsJobValue {
+  pageCount: number
+  thumbs: {
+    page: number
+    widthPt: number
+    heightPt: number
+    width: number
+    height: number
+    bgra: Uint8Array
+  }[]
+}
+
+export interface RenderPagesJobValue {
+  pageCount: number
+  pages: {
+    page: number
+    width: number
+    height: number
+    bgra: Uint8Array
+  }[]
+}
+
+export interface ConvertDocJobValue {
+  outPath: string
+  pages: number
+  warnings: string[]
+  pageResults: PageResult[]
+  scannedDocument: boolean
+}
+
 // ── validation ──
 
 const ERROR_CODES: ReadonlySet<string> = new Set<PdfStructureErrorCode>([
@@ -213,6 +266,11 @@ const OPS: ReadonlySet<string> = new Set<StructureOp>([
   'encrypt',
   'decrypt',
   'repair',
+  'optimize',
+  'ocrPdf',
+  'renderThumbs',
+  'renderPages',
+  'convertDoc',
 ])
 
 /** the child's view of the parent's message; null when it is not a run message */
@@ -226,6 +284,7 @@ export function parseRunMessage(raw: unknown): RunMessage | null {
   if (setup.hbSubsetWasmPath !== undefined && typeof setup.hbSubsetWasmPath !== 'string')
     return null
   if (setup.qpdfWasmPath !== undefined && typeof setup.qpdfWasmPath !== 'string') return null
+  if (setup.rhwpWasmPath !== undefined && typeof setup.rhwpWasmPath !== 'string') return null
   if (!isRecord(job) || typeof job.op !== 'string' || !OPS.has(job.op)) return null
   if (!isRecord(job.source) || typeof job.source.pdfPath !== 'string') return null
   return raw as unknown as RunMessage

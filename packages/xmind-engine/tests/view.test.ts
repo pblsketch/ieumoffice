@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { layoutFromStructureClass, structureClassForLayout } from '../src/layout'
+import { layoutFromStructureClass, structureClassForLayout, VIEW_LAYOUTS } from '../src/layout'
 import { htmlToPlainText, noteText } from '../src/notes'
 import type { XmindSheet } from '../src/types'
 import {
@@ -128,6 +128,7 @@ describe('sheetToView', () => {
       fill: '#445566',
       fontWeight: '700',
       fontSize: '18pt',
+      fontFamily: 'Some Family',
     })
     expect(find(sheetToView(sample(), 0).root, 'a')!.style).toEqual({})
     const remote = sheetWithRoot({ image: { src: 'https://example.com/p.png' } })
@@ -172,7 +173,13 @@ describe('sheetToView', () => {
   it('carries relationships between shown topics only', () => {
     const view = sheetToView(sample(), 0)
     expect(view.relationships).toEqual([
-      { id: 'rel-1', fromId: 'a1', toId: 'b', title: 'leads to' },
+      {
+        id: 'rel-1',
+        fromId: 'a1',
+        toId: 'b',
+        title: 'leads to',
+        curve: { from: { x: 1.5, y: 2 }, to: { x: 3, y: 4 } },
+      },
     ])
     const odd = sheetWithRoot(
       { children: { attached: [{ id: 'x' }, { id: 'y' }] } },
@@ -248,10 +255,9 @@ describe('sheetToView', () => {
       'float',
       'callout-1',
       'under-summary',
-      'bound-1',
       'futureTopicKey',
       'futureSheetKey',
-      'Some Family',
+      'line-width',
       'theme-map',
       'controlPoints',
       'someone.else',
@@ -298,6 +304,7 @@ describe('sheetToView', () => {
       image: null,
       markers: ['flag'],
       style: { fill: '#abc' },
+      titleRuns: null,
       summaries: [],
       children: [],
     })
@@ -314,6 +321,8 @@ describe('layout', () => {
       ['org.xmind.ui.map.clockwise', 'both', true],
       ['org.xmind.ui.map.anticlockwise', 'both', true],
       ['org.xmind.ui.org-chart.down', 'down', true],
+      ['org.xmind.ui.tree.right', 'tree', true],
+      ['org.xmind.ui.timeline.horizontal', 'timeline', true],
       [undefined, 'both', true],
     ]
     for (const [structureClass, layout, exact] of cases) {
@@ -325,7 +334,7 @@ describe('layout', () => {
   })
 
   it('draws every other arrangement as a stand-in and says so', () => {
-    for (const rightward of ['org.xmind.ui.tree.right', 'org.xmind.ui.brace.right']) {
+    for (const rightward of ['org.xmind.ui.brace.right', 'org.xmind.ui.fishbone.right']) {
       expect(layoutFromStructureClass(rightward), rightward).toEqual({
         layout: 'right',
         exact: false,
@@ -336,7 +345,7 @@ describe('layout', () => {
       'org.xmind.ui.brace.left',
       'org.xmind.ui.org-chart.up',
       'org.xmind.ui.fishbone.leftHeaded',
-      'org.xmind.ui.timeline.horizontal',
+      'org.xmind.ui.timeline.vertical',
       'org.xmind.ui.spreadsheet',
       'something.new',
       '',
@@ -350,17 +359,21 @@ describe('layout', () => {
     }
   })
 
-  it('never stands in with left or down: those are only drawn for the classes that mean them', () => {
+  it('never stands in with left, down, tree or timeline: those are only drawn for the classes that mean them', () => {
     for (const unknown of [
       'org.xmind.ui.tree.left',
       'org.xmind.ui.brace.left',
       'org.xmind.ui.fishbone.rightHeaded',
       'org.xmind.ui.timeline.down',
+      'org.xmind.ui.timeline.vertical',
       'org.xmind.ui.org-chart.up',
       'vendor.new.left',
       'vendor.new.down',
+      'vendor.tree',
       'left',
       'down',
+      'tree',
+      'timeline',
     ]) {
       const { layout, exact } = layoutFromStructureClass(unknown)
       expect(exact, unknown).toBe(false)
@@ -375,7 +388,7 @@ describe('layout', () => {
   })
 
   it('names a structure class for each layout that maps back to the same layout', () => {
-    for (const layout of ['left', 'right', 'both', 'down'] as const) {
+    for (const layout of VIEW_LAYOUTS) {
       expect(layoutFromStructureClass(structureClassForLayout(layout))).toEqual({
         layout,
         exact: true,
@@ -408,6 +421,45 @@ describe('notes', () => {
     for (const none of [undefined, null, 'x', {}, { plain: 'x' }, { plain: { content: 3 } }]) {
       expect(noteText(none), JSON.stringify(none)).toBeNull()
     }
+  })
+
+  // The official xmind-sdk-js writes a note's rich form under `html` as
+  // structured paragraphs of spans (see its Note class), never as an HTML
+  // string. `notes.ts` walks that shape directly instead of expecting an
+  // HTML string there, since there is none to parse.
+  it('reads the xmind-sdk-js `html` paragraph/span shape as text', () => {
+    expect(
+      noteText({ html: { content: { paragraphs: [{ spans: [{ text: 'rich text' }] }] } } }),
+    ).toBe('rich text\n')
+    // realHTML still wins when both forms are present
+    expect(
+      noteText({
+        realHTML: { content: '<div>real</div>' },
+        html: { content: { paragraphs: [{ spans: [{ text: 'sdk' }] }] } },
+      }),
+    ).toBe('real\n')
+    // multiple paragraphs, a hyperlink span's own nested text, and an
+    // image span (which contributes no text)
+    expect(
+      noteText({
+        html: {
+          content: {
+            paragraphs: [
+              {
+                spans: [
+                  { text: 'Hello ' },
+                  { href: 'https://example.com', spans: [{ text: 'world' }] },
+                ],
+              },
+              { spans: [{ image: 'xap:resources/abc.png' }] },
+            ],
+          },
+        },
+      }),
+    ).toBe('Hello world\n\n')
+    // an unset note (the SDK's own default `Note` before any text is set)
+    // has no rich content at all, same as having none of these keys
+    expect(noteText({ html: { content: { paragraphs: [] } }, plain: {} })).toBeNull()
   })
 
   it('turns a rich note into lines of text', () => {

@@ -1,6 +1,6 @@
 # Bắt đầu nhanh: giao diện và những điều cơ bản
 
-GenOffice là bộ ứng dụng văn phòng chạy trên máy của bạn: một cửa sổ, một hàng thẻ, chứa tám trình soạn thảo — Docs (xử lý văn bản), Sheets (bảng tính), Slides (trình chiếu), PDF, Markdown và văn bản thuần, HTML, HWP/HWPX (tài liệu Hangul) và sơ đồ tư duy (.xmind). Mỗi trình soạn thảo mở và lưu tập tin theo định dạng riêng của nó: .docx, .xlsx, .pptx, .pdf, .md, .html, .hwp/.hwpx và .xmind. Chỉnh sửa không cần mạng; các tính năng AI thì cần.
+GenOffice là bộ ứng dụng văn phòng chạy trên máy của bạn: một cửa sổ, một hàng thẻ, chứa tám trình soạn thảo — Docs (xử lý văn bản), Sheets (bảng tính), Slides (trình chiếu), PDF, Markdown và văn bản thuần, HTML, HWP/HWPX (tài liệu Hangul) và sơ đồ tư duy (.xmind). Mỗi trình soạn thảo mở và lưu tập tin theo định dạng riêng của nó: .docx, .xlsx, .pptx, .pdf, .md, .html, .hwp/.hwpx và .xmind. Chỉnh sửa không cần mạng; các tính năng AI thì cần. Trình chỉnh sửa sơ đồ tư duy cũng nhập tệp FreeMind và Freeplane (.mm) thành sơ đồ mới, được lưu dưới dạng .xmind.
 
 ## Tổng quan giao diện
 
@@ -38,7 +38,7 @@ Tệp .odt (văn bản OpenDocument, định dạng mà Hancom Office, LibreOffi
 ## Mô hình lưu
 
 - **Lưu thủ công**: ⌘S/ctrl+S, hoặc File ▸ Lưu / Lưu dưới dạng. Lần lưu đầu tiên sẽ hỏi vị trí và tên.
-- **Tự động lưu** chỉ bật sau khi bạn đã lưu tay tập tin đó ít nhất một lần — một tập tin PDF bạn chỉ đọc sẽ không bao giờ bị ghi lại trong im lặng. Tự động lưu chạy ngay sau khi nội dung thay đổi.
+- **Tự động lưu** tuân theo công tắc của từng trình soạn thảo (và giá trị mặc định của ứng dụng). Một tập tin PDF bạn chỉ đọc sẽ không bao giờ bị ghi lại trong im lặng, và tài liệu mới chưa có tệp riêng chỉ bắt đầu tự động lưu sau lần lưu đầu tiên.
 - Đóng một thẻ có thay đổi chưa lưu sẽ hỏi Lưu / Bỏ / Hủy trước.
 - Mọi lần ghi đều diễn ra theo kiểu nguyên tử (tập tin tạm + đổi tên), nên mất điện không thể để lại một tập tin dở dang.
 

@@ -1,16 +1,20 @@
-import { execSync, spawn } from 'node:child_process'
+import { execSync } from 'node:child_process'
 import {
+  copyFileSync,
   existsSync,
   mkdirSync,
+  mkdtempSync,
+  readdirSync,
   readFileSync,
   renameSync,
   rmSync,
   statSync,
   writeFileSync,
+  type Dirent,
 } from 'node:fs'
 import { randomUUID } from 'node:crypto'
 import { release } from 'node:os'
-import { basename, dirname, extname, join, resolve } from 'node:path'
+import { basename, dirname, extname, join, relative, resolve } from 'node:path'
 import {
   BrowserWindow,
   Menu,
@@ -20,6 +24,7 @@ import {
   ipcMain,
   nativeImage,
   nativeTheme,
+  net,
   screen,
   safeStorage,
   powerMonitor,
@@ -27,9 +32,17 @@ import {
   shell,
   webContents,
 } from 'electron'
-import type { MenuItemConstructorOptions, NativeImage, WebContents } from 'electron'
+import type {
+  MenuItemConstructorOptions,
+  MessageBoxOptions,
+  NativeImage,
+  WebContents,
+} from 'electron'
 import { atomicWriteFile } from './atomic-write'
+import { openTrash } from './trash'
 import { tabStripOverlay } from './title-bar-overlay'
+import { shellWindowBackground } from './window-background'
+import { installPointerSize } from './pointer-size'
 import {
   applyUiScaleTo,
   applyUiScaleToAll,
@@ -55,6 +68,10 @@ import menuHwpIcon1x from './assets/menu-hwp.png?asset'
 import menuHwpIcon2x from './assets/menu-hwp@2x.png?asset'
 import menuEpubIcon1x from './assets/menu-epub.png?asset'
 import menuEpubIcon2x from './assets/menu-epub@2x.png?asset'
+import menuDiagramIcon1x from './assets/menu-diagram.png?asset'
+import menuDiagramIcon2x from './assets/menu-diagram@2x.png?asset'
+import menuWhiteboardIcon1x from './assets/menu-whiteboard.png?asset'
+import menuWhiteboardIcon2x from './assets/menu-whiteboard@2x.png?asset'
 import menuHomeIcon1x from './assets/menu-home.png?asset'
 import menuHomeIcon2x from './assets/menu-home@2x.png?asset'
 import posidSignatureAsset from './assets/posid-signature.png?asset'
@@ -69,7 +86,12 @@ import {
 import { DEV_USER_DATA_DIR_NAME, PRODUCT_CONTACT_EMAIL, productName } from '@genoffice/i18n'
 import {
   DEFAULT_SAVE_DIR_KEY,
+  defaultSaveDirFallback,
   DROP_OPEN_CHANNEL,
+  USER_FILE_PATHS_SEEN_CHANNEL,
+  seenFilePaths,
+  isBesideDocument,
+  sharedPathGrants,
   GITHUB_REPO_URL,
   appMenuLabels,
   contextMenuLabels,
@@ -83,6 +105,7 @@ import {
   parseHeadlessExportArgv,
   setHeadlessMode,
   setOpenFilesSource,
+  fileHasUnsavedChanges,
   setOpenPathProbe,
   type HeadlessArgvParse,
   showOpenDialogWithMemory,
@@ -91,6 +114,8 @@ import {
   aboutMenuItem,
   appMenuPopupTemplate,
   helpCheckUpdatesItems,
+  macAppMenuTemplate,
+  setOpenSettingsInvoker,
   setUpdateCheckInvoker,
   installRendererProtocol,
   AUTHOR_NAME_KEY,
@@ -130,8 +155,32 @@ import { installCliLinkBestEffort } from './cli-link'
 import { createDefaultAppService, execFileRunner } from './default-app'
 import { registerIntegrationsIpc } from './integrations-ipc'
 import { registerResultStoreIpc } from './result-store-ipc'
+import { VersionTimelineStore } from '@genoffice/electron-utils'
+import { registerVersionTimelineIpc } from './version-timeline-ipc'
+import { registerDiagnosticsIpc } from './diagnostics-bundle'
+import { openQuickSwitcherWindow, registerQuickSwitcherIpc } from './quick-switcher-window'
+import { quickSwitcherCommandText } from '../shared/quick-switcher-commands-i18n'
+import { registerGenerateEditorIpc } from './generate/generate-editor-ipc'
+import { openGenerateWindowForDocument } from './generate/generate-window'
+import { builtinCraftDirFor } from './user-skills/builtin-craft-dir'
 import { FEEDBACK_SURVEY_URL, feedbackDetails, feedbackText, platformLabel } from './feedback'
 import { registerDriveIpc, type DriveService } from './drive/drive-ipc'
+import { registerEditorChoiceIpc, type EditorChoiceService } from './editor-choice-main'
+import { createEditorGate, installEditorGate, whenReady, type OpenOrigin } from './editor-gate'
+import { aiOffRefusalText, watchAiFeatures } from './ai-off-main'
+import { resumeAiBackgroundWork, stopAiBackgroundWork } from '../../../docs/src/main/ai-background'
+import { createEditorEntrances } from './editor-entrances'
+import { writeDocumentFileOnly } from './document-file-only'
+import { setEditorEntranceAsker } from '@genoffice/electron-utils/editor-entrance'
+import { aiFeaturesOn, appChoice } from '@genoffice/electron-utils/app-choice'
+import {
+  editorItemOfTabKind,
+  hiddenNewDocumentKinds,
+  type EditorItemId,
+} from '../shared/editor-choice'
+import { startMcpHub } from './mcp-client/hub-app'
+import type { McpHub } from './mcp-client/hub'
+import { freeAiInUse } from './drive/drive-consent'
 import { registerOutboundIpc } from './outbound-confirm'
 import { projectSkillsAllowed, projectSkillsView, setProjectSkills } from './agent/project-skills'
 import {
@@ -139,12 +188,16 @@ import {
   ATTACHABLE_IMAGE_EXTS,
   ATTACHABLE_IMAGE_MAX_BYTES,
   ATTACHABLE_MAX_BYTES,
+  attachableMaxBytes,
+  diagramPictureExtOfName,
   parseFileToText,
+  stopParseSidecar,
 } from '@genoffice/file-parse'
 import { createDocList } from './doc-picker/doc-list'
 import { resolveDocAsker } from './doc-picker/doc-asker'
 import { createDocPicker } from './doc-picker/doc-picker-window'
-import { handleDroppedFiles } from './dropped-files'
+import { createConnectorPicker } from './connector-picker/picker-window'
+import { handleDroppedFiles, type DroppedFilesDeps } from './dropped-files'
 import { collectLaunchPaths } from './launch-paths'
 
 import {
@@ -181,6 +234,9 @@ import {
   uniquePathIn,
   authorizeMcpDocWrite,
   activeAiStreamCount,
+  legacyDocumentChatFor,
+  hwpCopy,
+  sanitizeAiDocFileBase,
 } from '../../../docs/src/main/docs-main'
 import { blankXlsxBuffer } from '@genoffice/xlsx-gateway/gateway/csv-import'
 import { blankPdfBuffer } from '../../../pdf/src/main/blank-pdf'
@@ -198,12 +254,14 @@ import {
   type McpSettings,
 } from './mcp/app-mcp'
 import { createCliRunner } from './mcp/cli-runner'
-import { DEFAULT_MCP_PORT } from './mcp/mcp-server'
+import { DEFAULT_MCP_PORT } from './mcp/constants'
 import { createDocsControl, installDocsBridge } from './mcp/docs-bridge'
 import { createSlidesControl } from './mcp/slides-bridge'
 import { createSheetsControl, installSheetsBridge } from './mcp/sheets-bridge'
 import { createOpenDocumentsControl, createOpenTargetResolver } from './mcp/open-documents-bridge'
-import { sanitizeFileBase } from './mcp/tools/document-tools'
+import { createDiagramControl } from './mcp/diagram-bridge'
+import { createWhiteboardControl } from './mcp/whiteboard-bridge'
+import { sanitizeFileBase } from './mcp/file-base'
 import { createFileViaCli } from './mcp/headless-cli'
 import {
   configureSheetsRuntime,
@@ -239,6 +297,7 @@ import {
   setSlidesCloseTabHook,
   setSlidesExtraFileMenuItems,
   setSlidesDocumentLinkMenuItems,
+  setSlidesLegacyOpenHook,
   setSlidesOpenedHook,
   setSlidesHostWindowHook,
   setSlidesPasswordPrompt,
@@ -252,7 +311,9 @@ import {
   flushPdfSave,
   markPdfUntitledPath,
   pdfFileRenamed,
+  requestPdfPageImages,
   requestPdfSaveAsOutcome,
+  requestPdfSplitDialog,
   pdfCloseCancelled,
   sendPdfPrintRequest,
   setPdfRenamedHook,
@@ -260,14 +321,27 @@ import {
   setPdfSaveAsInFlight,
 } from '../../../pdf/src/main/pdf-main'
 import { PDF_CHANNELS } from '../../../pdf/src/shared/ipc'
-import { convertPdfFileToDocxLocalWithPrompt, PdfLoadError } from './pdf2docx-local'
+import { convertPdfFileViaJobWithPrompt, PdfLoadError } from './pdf2docx-local'
 import { insertIntoNoteTab, openNoteTab, type NoteTabHost } from './pdf-note-tabs'
-import { convertPdfFileToPptxLocalWithPrompt } from './pdf2pptx-local'
-import { convertPdfFileToXlsxLocalWithPrompt } from './pdf2xlsx-local'
 import { closePdfPasswordDialog, promptPdfPassword } from './pdf-password-dialog'
 import { createDocumentPasswordPrompt } from './document-password-prompt'
-import { cancelWindowJob, registerPdfStructureIpc, runWindowJob } from './pdf-structure-ipc'
-import { registerPdfConvertUiIpc, requestPdfConvertDialog } from './pdf-convert-ui'
+import {
+  cancelWindowJob,
+  grantPdfStructureTarget,
+  registerPdfStructureIpc,
+  runWindowJob,
+} from './pdf-structure-ipc'
+import {
+  askThenRequestPdfConvertDialog,
+  registerPdfConvertUiIpc,
+  requestPdfConvertDialog,
+} from './pdf-convert-ui'
+import {
+  pdfSaveAsDefaultPath,
+  pdfSaveAsFilters,
+  pdfSaveAsFormatOf,
+  pdfSaveAsPickedPath,
+} from './pdf-save-as-formats'
 import {
   configureMarkdownRuntime,
   exportMarkdownPdfHeadless,
@@ -280,15 +354,26 @@ import {
   sendMarkdownPrintRequest,
   setMarkdownDocxExportedHook,
   setMarkdownFileSavedHook,
+  setMarkdownHwpExport,
 } from '../../../markdown/src/main/markdown-main'
 import {
   configureHwpRuntime,
+  editorTakes,
+  exportHwpPdfHeadless,
   hwpFileRenamed,
   hwpReadText,
+  requestHwpPreview,
   requestHwpPrint,
   requestHwpSave,
+  requestHwpSubmissionSave,
   setHwpFileSavedHook,
 } from '../../../hwp/src/main/hwp-main'
+import {
+  HWP_DEFAULT_FORMAT_KEY,
+  normalizeHwpDefaultFormat,
+  readHwpDefaultFormat,
+} from '../../../hwp/src/main/default-format'
+import { SLIDES_AI_FONTS_KEY, normalizeSlidesAiFonts } from '@genoffice/ui/slides-ai-fonts'
 import {
   configureHtmlRuntime,
   exportHtmlHeadless,
@@ -305,9 +390,11 @@ import {
   setHtmlFileSavedHook,
   setHtmlPresentHooks,
   setHtmlProvisionalTitleHook,
+  htmlToDocxBytes,
 } from '../../../html/src/main/html-main'
 import {
   configureMindmapRuntime,
+  exportMindmapPdfHeadless,
   mindmapFileRenamed,
   mindmapSaveToPath,
   requestMindmapSave,
@@ -323,6 +410,7 @@ import {
   EPUB_ASSET_SCHEME_PRIVILEGE,
   configureEpubRuntime,
   epubFileRenamed,
+  exportEpubPdfHeadless,
   registerEpubAssetProtocol,
   requestEpubSave,
   sendEpubMenuCommand,
@@ -331,6 +419,51 @@ import {
 import { epubReadText, epubSaveToPath } from '../../../epub/src/main/mcp-queries'
 import type { EpubMenuCommand } from '../../../epub/src/shared/ipc'
 import { migrateJobRecords } from './pdf-structure/job-migration'
+import {
+  DRAWIO_SCHEME_PRIVILEGE,
+  configureDiagramRuntime,
+  drawioBundleDir,
+  diagramFileRenamed,
+  diagramHasRecoveryCopy,
+  diagramOpenRefusal,
+  diagramSaveToPath,
+  requestDiagramSave,
+  sendDiagramExportRequest,
+  sendDiagramMenuCommand,
+  sendDiagramPrintRequest,
+  setDiagramFileSavedHook,
+  setDiagramHelpHook,
+  setDiagramOpenFailedHook,
+  setDiagramProvisionalTitleHook,
+  visioOpenRefusal,
+} from '../../../diagram/src/main/diagram-main'
+import { openDiagramChecked } from './diagram-open-gate'
+import {
+  diagramApplyOps,
+  diagramReadPage,
+  diagramReadText,
+} from '../../../diagram/src/main/mcp-queries'
+import { exportDiagramHeadless } from '../../../diagram/src/main/headless-main'
+import type { DiagramMenuCommand } from '../../../diagram/src/shared/ipc'
+import {
+  configureWhiteboardRuntime,
+  excalidrawOpenRefusal,
+  exportWhiteboardHeadless,
+  setWhiteboardFileSavedHook,
+  setWhiteboardProvisionalTitleHook,
+  whiteboardApplyOps,
+  whiteboardNotifyFileRenamed,
+  whiteboardOpenRefusal,
+  whiteboardReadPage,
+  whiteboardReadText,
+  whiteboardSaveToPath,
+  whiteboardSendMenuCommand,
+  whiteboardTriggerExport,
+  whiteboardTriggerPrint,
+  whiteboardTriggerSave,
+} from '../../../whiteboard/src/main/whiteboard-main'
+import { openWhiteboardChecked } from './whiteboard-open-gate'
+import type { WhiteboardMenuCommand } from '../../../whiteboard/src/shared/ipc'
 import type {
   AutoSaveDefault,
   AuthorNameSetting,
@@ -364,9 +497,10 @@ import type {
   SplitOrientation,
   SplitViewState,
 } from '../shared/split-view-api'
-import { TAB_STRIP_HEIGHT } from '../shared/tab-drag-geometry'
+import { TAB_STRIP_HEIGHT, tabStripHeight } from '../shared/tab-drag-geometry'
 import { SHELL_SUBSCRIPTION_CHANNELS, isSubscriptionProviderId } from '../shared/subscription-api'
 import {
+  SUBSCRIPTION_CHATGPT_USAGE_URL,
   SUBSCRIPTION_INSTALL_URLS,
   initSubscriptionChildTracking,
   sharedSubscriptionStatuses,
@@ -374,15 +508,19 @@ import {
   subscriptionConnectHelpUrl,
   trackedSubscriptionChildCount,
 } from '@genoffice/ai-provider/subscription'
+import { closeAllAntigravityPanelSessions } from '@genoffice/ai-provider'
 import { showErrorDialog } from './error-dialog'
 import { startRendererWatchdog } from './renderer-watchdog'
-import { memoryFigures, startCrashWatch, startLowMemoryWatch } from './crash-watch'
+import { crashLogPath, memoryFigures, startCrashWatch, startLowMemoryWatch } from './crash-watch'
+import { appendCrashLog } from './crash-log'
+import { runStopEntry } from './ai-run-stop-log'
+import { startHeartbeat, type HeartbeatHandle } from './crash-heartbeat'
 import {
   capStatPaths,
   matchesExtFamily,
   normalizeRecentQuery,
   pageRecentPaths,
-  statPathEntries,
+  statPathEntriesAsync,
 } from './recent-files'
 import { isMoveSource, isUserVisibleFile, type FileTargetSources } from './file-targets'
 import {
@@ -392,13 +530,17 @@ import {
   MINDMAP_RE,
   HWP_RE,
   EPUB_RE,
+  DIAGRAM_RE,
+  WHITEBOARD_RE,
   PDF_RE,
   PPTX_RE,
   TEXT_RE,
   XLSX_RE,
+  appForPath,
   renameStaysInApp,
 } from './app-routing'
 import { isSameFile, pdfSaveAsTarget, isValidRawRenameName } from './rename-validation'
+import { convertLegacyFile, legacyEditorFor } from './legacy-open'
 import {
   FolderWatcher,
   createFolder,
@@ -431,41 +573,125 @@ import {
   KbRunScopes,
   listKnowledgeFiles,
   parseKbCreateRequest,
-  readKnowledgeFilePage,
-  searchSavedKnowledgeBase,
+  parseKbOpenScope,
+  readKnowledgeOrProjectPage,
+  searchSavedKnowledgeWithProject,
 } from './knowledge-base'
-import { runHeadlessExport, type HeadlessExporters } from './headless-export'
+import {
+  PROJECT_EDITORS,
+  PROJECT_FOLDER_LISTEN_CHANNEL,
+  type ProjectEditor,
+} from '@genoffice/project-store'
+import { ProjectChatStore } from './projects/chat-store'
+import { resolveCloudOnly } from './projects/cloud-files'
+import { createCachedCloudResolver } from './projects/cloud-cache'
+import {
+  downloadPromptOptions,
+  folderPickerOptions,
+  trustChoiceOf,
+  trustPromptOptions,
+  useExistingPromptOptions,
+} from './projects/project-dialog-text'
+import {
+  createCachedFileLister,
+  createContextFiles,
+  projectMentionFiles,
+} from './projects/project-files'
+import { NewDocumentPlacer, type NewDocumentOpener } from './projects/new-documents'
+import { ProjectGuide } from './projects/project-guide'
+import {
+  createProjectNameOnly,
+  createRerankIgnoreFilter,
+  mergeIndexRoots,
+  projectFolderRoots,
+} from './projects/project-index'
+import {
+  registerProjectFolderIpc,
+  waitForPageReturn,
+  type ProjectIpcController,
+  type ProjectWindow,
+} from './projects/project-ipc'
+import { PROJECT_UNAVAILABLE, ProjectFolderTools, type DownloadAsk } from './projects/project-tools'
+import {
+  runExporterWithLegacyConversion,
+  runHeadlessExport,
+  type HeadlessExporters,
+} from './headless-export'
 import { TabManager, canonicalPath, type DetachedTab } from './tab-manager'
+import { shellWindowTitle } from './window-title'
 import { tabMenuTemplate, type TabMenuActions, isProgramFile } from './tab-menu'
 import { runTabDocumentAction, type TabDocumentAction } from './tab-document-actions'
 import { duplicateDocumentFile } from './tab-duplicate'
 import { closeTabsInOrder, createRecentlyClosedTracker } from './tab-lifecycle'
 import { handleTabShortcut } from './tab-shortcuts'
-import { readSplitMemory, writeSplitMemory, type SplitMemory } from './split-memory'
-import { SPLIT_EVEN_RATIO, decideSplitDrop, paneRects, splitDropZone } from './split-layout'
-import { configureGenerateWindow } from './generate/generate-window'
-import { configurePdfToolsWindow, openPdfToolsWithFile } from './pdf-tools/pdf-tools-window'
 import {
+  forgetSplitMemoryPaths,
+  readSplitMemory,
+  writeSplitMemory,
+  type SplitMemory,
+} from './split-memory'
+import { SPLIT_EVEN_RATIO, decideSplitDrop, paneRects, splitDropZone } from './split-layout'
+import {
+  currentFilePanelInset,
+  filePanelKeyAction,
+  filePanelScaleChanged,
+  installFilePanel,
+  notifyFilePanelQuickLookChanged,
+  notifyFilePanelQuickLookStep,
+  registerFilePanelIpc,
+  toggleFilePanel,
+  withFilePanelMenuItem,
+} from './file-panel'
+import { FILE_PANEL_SETTINGS_KEY } from '../shared/file-panel-api'
+import { configureGenerateWindow } from './generate/generate-window'
+import {
+  cleanupPdfToolsOnQuit,
+  configurePdfToolsWindow,
+  openPdfToolsWithFile,
+} from './pdf-tools/pdf-tools-window'
+import {
+  closeFilePanelQuickLook,
   configureQuickLookWindow,
+  handleEditorFocusForQuickLook,
+  handleShellWindowBlurForQuickLook,
   notifyQuickLookLangOrThemeChanged,
   shouldKeepQuickLookInTray,
+  showFilePanelQuickLook,
   stopQuickLookRuntime,
 } from './quick-look/quick-look-window'
 import { normalizeQuickLookSettings } from '../shared/quick-look-home'
 import {
+  HOME_KINDS_CHANNELS,
+  HOME_KINDS_SETTING_KEY,
+  normalizeHomeKinds,
+  storedHomeKinds,
+  visibleHomeKinds,
+  type HomeKind,
+  type HomeKindsSettings,
+} from '../shared/home-kinds'
+import {
+  closeAgentWindow,
   configureAgentWindow,
   isAgentWindowContents,
   stopAgentSessions,
 } from './agent/agent-window'
-import { startAgentMcpServer } from './agent/agent-mcp'
+import { queueSkillHandoffFor } from '@genoffice/electron-utils/generate-handoff'
+import { openMarkdownAsHangul, type MarkdownImportDeps } from './hwp-import'
+import { sweepAgentSessionFolders } from './agent/agent-session-folders'
 import { userSkillsManageGate } from './agent/agent-skills'
 import {
   buildAgentSkillBundle,
+  startAntigravityAgentSession,
   startClaudeAgentSession,
   startCodexAgentSession,
 } from '@genoffice/ai-provider/agent-session'
 import { normalizeAgentPrefs } from '../shared/agent-api'
-import { normalizeAiSettings, setAiSecretCodec, type AiSettings } from '@genoffice/ai-provider'
+import {
+  droppedSkillSourceOf,
+  normalizeAiSettings,
+  setAiSecretCodec,
+  type AiSettings,
+} from '@genoffice/ai-provider'
 import {
   REVEAL_FLAG,
   fileSearchHoldsPlainKeys,
@@ -497,9 +723,11 @@ import {
 } from './window-bounds'
 import { installShellCloseGuard } from './window-close-guard'
 import {
+  holdSessionTabsForUpdateRestart,
   markSessionCleanExit,
   markSessionClosedToTray,
   markSessionOsEnd,
+  markSessionUpdateRestart,
   noteSessionChanged,
   sessionRecorder,
 } from './session-record'
@@ -548,6 +776,7 @@ import {
   takeTornTab,
 } from './detached-windows'
 import { applyUpdateChannel } from './updater'
+import { cancelUpdateRestart, reopenedByInstaller, updateRestartRequested } from './update-restart'
 import { isUpdateChannel, type UpdateChannel } from '../shared/update-api'
 
 /**
@@ -631,6 +860,14 @@ const HWP_OUT = app.isPackaged
 const EPUB_OUT = app.isPackaged
   ? join(process.resourcesPath, 'modules', 'epub')
   : join(APPS_ROOT, 'epub', 'out')
+// the draw.io bundle sits beside the renderer (out/drawio; the archive
+// modules/diagram/drawio.asar packaged, decision 0166)
+const DIAGRAM_OUT = app.isPackaged
+  ? join(process.resourcesPath, 'modules', 'diagram')
+  : join(APPS_ROOT, 'diagram', 'out')
+const WHITEBOARD_OUT = app.isPackaged
+  ? join(process.resourcesPath, 'modules', 'whiteboard')
+  : join(APPS_ROOT, 'whiteboard', 'out')
 const SIDECAR_BIN = app.isPackaged
   ? join(process.resourcesPath, 'native', SIDECAR_EXE)
   : join(APPS_ROOT, 'sheets', 'native', 'xlsx-engine', 'target', 'release', SIDECAR_EXE)
@@ -647,6 +884,26 @@ function bundledCliRunner(): ReturnType<typeof createCliRunner> {
   return cliRunner
 }
 
+/**
+ * Markdown made into .docx bytes by the bundled CLI in an app temp folder, for
+ * a home create_document with a project (spec 6): the file reaches the
+ * project folder only through its write guard, after the conversion succeeded.
+ */
+async function markdownDocxBytes(markdown: string): Promise<Uint8Array> {
+  const dir = mkdtempSync(join(tmpdir(), 'ieumoffice-kb-docx-'))
+  try {
+    const out = join(dir, 'document.docx')
+    await createFileViaCli(bundledCliRunner(), {
+      type: 'docx',
+      input: { name: 'content.md', content: markdown },
+      out,
+    })
+    return new Uint8Array(readFileSync(out))
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+}
+
 configureDocsRuntime({
   preloadPath: join(DOCS_OUT, 'preload', 'index.js'),
   rendererUrl: process.env.DOCS_RENDERER_URL,
@@ -661,12 +918,17 @@ configureSheetsRuntime({
   // The sheets AI's create_document (docx/pdf/md) funnels into the docs-owned
   // creation flow, like the pdf app below.
   createDocument: createAiDocument,
+  newDocumentDir: (id) => newDocumentFolderFor(id),
+  writeNewDocument: (id, fileName, bytes) => writeProjectNewDocument(id, fileName, bytes),
 })
 configureSlidesRuntime({
   preloadPath: join(SLIDES_OUT, 'preload', 'index.js'),
   rendererDevUrl: process.env.SLIDES_RENDERER_URL,
   rendererFilePath: join(SLIDES_OUT, 'renderer', 'index.html'),
   openGeneratedPath: (path) => openGeneratedDocument(path),
+  newDocumentDir: (id) => newDocumentFolderFor(id),
+  // a deck a create flow handed to the AI goes into the panel's project once made (spec 6)
+  writeNewDocument: (id, fileName, bytes) => writeProjectNewDocument(id, fileName, bytes),
 })
 /** a PDF's note (reading-assist 4.9): its Markdown tab or detached window, else a new tab */
 const noteTabHost: NoteTabHost = {
@@ -692,26 +954,47 @@ configurePdfRuntime({
   rendererFile: join(PDF_OUT, 'renderer', 'index.html'),
   openGeneratedPath: (path) => openGeneratedDocument(path),
   createDocument: createAiDocument,
+  // "create the file only" of the annotation list's document while its editor is off
+  writeDocumentFile: (request, owner) =>
+    writeDocumentFileOnly(
+      {
+        fileBase: sanitizeAiDocFileBase,
+        htmlToDocx: htmlToDocxBytes,
+        writeInProject: writeProjectNewDocument,
+        writeInDefaultFolder: writeInDefaultSaveFolder,
+        reveal: (path) => shell.showItemInFolder(path),
+      },
+      request,
+      owner,
+    ),
   openPdfTools: (path, tool) => openPdfToolsWithFile(path, tool),
   openNote: (path) => openNoteTab(noteTabHost, path) !== null,
   insertIntoNote: (path, text) => insertIntoNoteTab(noteTabHost, path, text),
+  newDocumentDir: (id) => newDocumentFolderFor(id),
 })
 configureMarkdownRuntime({
   preloadPath: join(MARKDOWN_OUT, 'preload', 'index.js'),
   rendererUrl: process.env.MARKDOWN_RENDERER_URL,
   rendererFile: join(MARKDOWN_OUT, 'renderer', 'index.html'),
   openGeneratedPath: (path) => openGeneratedDocument(path),
+  newDocumentDir: (id) => newDocumentFolderFor(id),
+  writeNewDocument: (id, fileName, bytes) => writeProjectNewDocument(id, fileName, bytes),
 })
 configureHtmlRuntime({
   preloadPath: join(HTML_OUT, 'preload', 'index.js'),
   rendererUrl: process.env.HTML_RENDERER_URL,
   rendererFile: join(HTML_OUT, 'renderer', 'index.html'),
   openGeneratedPath: (path) => openGeneratedDocument(path),
+  newDocumentDir: (id) => newDocumentFolderFor(id),
+  writeNewDocument: (id, fileName, bytes) => writeProjectNewDocument(id, fileName, bytes),
 })
 configureMindmapRuntime({
   preloadPath: join(MINDMAP_OUT, 'preload', 'index.js'),
   rendererUrl: process.env.MINDMAP_RENDERER_URL,
   rendererFile: join(MINDMAP_OUT, 'renderer', 'index.html'),
+  newDocumentDir: (id) => newDocumentFolderFor(id),
+  // a map a create flow handed to the AI goes into the panel's project once made (spec 6)
+  writeNewDocument: (id, fileName, bytes) => writeProjectNewDocument(id, fileName, bytes),
 })
 configureHwpRuntime({
   preloadPath: join(HWP_OUT, 'preload', 'index.js'),
@@ -721,6 +1004,14 @@ configureHwpRuntime({
   openFileDialog: () => void openFileViaDialog(),
   goHome: () => tabManager?.openHomeTab(),
   newDocument: () => newHwpTab(),
+  importPdf: () => void importPdfAsHwp(),
+  newDocumentDir: (id) => newDocumentFolderFor(id),
+  openMarkdownAsDocument: (_id, path, request) =>
+    openMarkdownAsHangul(markdownImportDeps, path, request),
+  noteAiRunStop: (stop) => {
+    const entry = runStopEntry('hwp', stop)
+    if (entry) appendCrashLog(crashLogPath(), entry)
+  },
 })
 configureEpubRuntime({
   preloadPath: join(EPUB_OUT, 'preload', 'index.js'),
@@ -732,9 +1023,27 @@ configureEpubRuntime({
   // a result book is never written over a file open in any tab or window
   isPathOpenInTab: (path) => isPathOpenInAnyTab(path),
 })
+configureDiagramRuntime({
+  preloadPath: join(DIAGRAM_OUT, 'preload', 'index.js'),
+  rendererUrl: process.env.DIAGRAM_RENDERER_URL,
+  rendererFile: join(DIAGRAM_OUT, 'renderer', 'index.html'),
+  drawioDir: drawioBundleDir(DIAGRAM_OUT),
+  bridgeFile: join(DIAGRAM_OUT, 'bridge', 'bridge.js'),
+  packaged: app.isPackaged,
+  newDocumentDir: (id) => newDocumentFolderFor(id),
+  writeNewDocument: (id, fileName, bytes) => writeProjectNewDocument(id, fileName, bytes),
+})
+configureWhiteboardRuntime({
+  preloadPath: join(WHITEBOARD_OUT, 'preload', 'index.js'),
+  rendererUrl: process.env.WHITEBOARD_RENDERER_URL,
+  rendererFile: join(WHITEBOARD_OUT, 'renderer', 'index.html'),
+  newDocumentDir: (id) => newDocumentFolderFor(id),
+  writeNewDocument: (id, fileName, bytes) => writeProjectNewDocument(id, fileName, bytes),
+})
 // privileged-scheme registration is only legal before app ready, and only once
-// per process: the html module's call carries the book's asset scheme along
-registerPrivilegedSchemes([EPUB_ASSET_SCHEME_PRIVILEGE])
+// per process: the html module's call carries the book's asset scheme and the
+// diagram editor's draw.io scheme along
+registerPrivilegedSchemes([EPUB_ASSET_SCHEME_PRIVILEGE, DRAWIO_SCHEME_PRIVILEGE])
 
 // ---- UI language ----
 // Persisted in userData/app-settings.json so the editor modules can read the
@@ -743,6 +1052,8 @@ registerPrivilegedSchemes([EPUB_ASSET_SCHEME_PRIVILEGE])
 const APP_SETTINGS_PATH = () => join(app.getPath('userData'), 'app-settings.json')
 /** Google Drive (decision 0033); registered once this instance holds the single-instance lock */
 let driveService: DriveService | null = null
+/** the person's own MCP servers (user MCP spec 5.1); started once the app is ready */
+let mcpHub: McpHub | null = null
 const OPEN_DOCUMENTS_PATH = () => join(app.getPath('userData'), OPEN_DOCUMENTS_FILE)
 /** only the instance holding the single-instance lock may write or remove the registry */
 let ownsOpenDocumentsRegistry = false
@@ -812,13 +1123,19 @@ function liveDocumentContents(tabId: string): Promise<WebContents | undefined> {
  * no save prompt, every editor writes its copies now, nothing deletes them,
  * and the next run treats this exit as abnormal (spec 4).
  */
+/** the main process's heartbeat (crash-heartbeat.ts); normal runs only */
+let mainHeartbeat: HeartbeatHandle | null = null
+
 const endForOsSession = createOsSessionEnd({
   markShuttingDown: () => {
     appQuitting = true
     markSheetsShuttingDown()
     markAppShuttingDown()
   },
-  markSessionOsEnd,
+  markSessionOsEnd: () => {
+    markSessionOsEnd()
+    mainHeartbeat?.markEnded('os')
+  },
   editors: () => recoveryEditors(),
   finish: () => {
     stopSheetsSidecar()
@@ -890,6 +1207,13 @@ function currentUpdateChannel(): UpdateChannel {
   const saved = readAppSettings(APP_SETTINGS_PATH()).updateChannel
   cachedUpdateChannel = isUpdateChannel(saved) ? saved : 'stable'
   return cachedUpdateChannel
+}
+
+let cachedAutoUpdateCheck: boolean | null = null
+
+function autoUpdateCheckEnabled(): boolean {
+  cachedAutoUpdateCheck ??= readAppSettings(APP_SETTINGS_PATH()).autoUpdateCheck !== false
+  return cachedAutoUpdateCheck
 }
 
 let cachedTheme: UiTheme | null = null
@@ -977,6 +1301,7 @@ const tMain = createI18n({
       '“{title}” 已持续数分钟占用大量内存或 CPU（内存 {memory} MB，CPU {cpu}%）。可以继续等待，或关闭这个文档（有未保存的改动会先询问是否保存）。诊断信息已记录。', // public-hygiene: allow
     watchdogWait: '继续等待',
     watchdogClose: '关闭文档',
+    watchdogIgnore: '本次不再提醒',
     crashTitle: '文档意外停止',
     crashBody: '“{title}” 意外停止。上次保存后的改动可能已丢失。',
     crashReopen: '重新打开',
@@ -998,27 +1323,37 @@ const tMain = createI18n({
     untitledMarkdown: '未命名 Markdown',
     untitledHtml: '未命名 HTML',
     untitledMindmap: '未命名思维导图',
+    untitledDiagram: '未命名图表',
+    untitledWhiteboard: '未命名白板',
     untitledHwp: '未命名 HWP',
     untitledPdf: '未命名 PDF',
     menuNewSlide: 'AI Slides',
     menuNewMarkdown: 'AI Markdown',
     menuNewHtml: 'AI HTML',
     menuNewMindmap: '思维导图',
+    menuNewDiagram: '图表',
+    menuNewWhiteboard: '白板',
     menuNewHwp: 'AI HWP',
     menuNewPdf: 'AI PDF',
+    menuImportPdf: '导入 PDF…',
     menuExportPdf: '导出为 PDF…',
     menuExportImages: '导出为图片…',
     menuExportHtml: '导出为单文件 HTML…',
     menuExportMapImage: '导出为图片 (PNG)…',
+    menuExportMapSvg: '导出为图片 (SVG)…',
+    menuExportSvg: '导出为 SVG…',
+    menuZoomFit: '适合窗口',
     menuExportMapOutline: '导出为 Markdown 大纲…',
     menuMakeFromDocument: '用此文档新建其他文档',
     menuDocumentSources: '查看资料',
     menuDerivedDocuments: '用此文档新建的文档',
     menuOpenInDocs: '转换为 Docs 文档并打开',
     menuPrint: '打印…',
+    menuPreview: '打印预览…',
     menuOpen: '打开…',
     menuSave: '保存',
     menuSaveAs: '另存为…',
+    menuSaveSubmission: '另存为提交版…',
     menuClose: '关闭',
     menuEdit: '编辑',
     menuView: '视图',
@@ -1036,13 +1371,16 @@ const tMain = createI18n({
     filterPpt: 'PowerPoint 演示文稿',
     filterMarkdown: '文本文件 (Markdown, TXT, JSON)',
     filterHtml: 'HTML 文档',
-    filterMindmap: '思维导图 (XMind 文件)',
+    filterMindmap: '思维导图 (XMind, FreeMind, Freeplane)',
     filterHwp: 'HWP 文档 (HWP, HWPX)',
     filterEpub: '电子书 (EPUB)',
+    filterDiagram: '图表 (draw.io, VSDX)',
+    filterWhiteboard: '白板 (.whiteboard, Excalidraw)',
     menuFind: '查找…',
     menuReplace: '替换…',
     menuTranslateBook: '翻译图书…',
     filterPdf: 'PDF 文档',
+    filterPdfPageImages: 'PNG 图片（每页一个文件）',
     errBadArgs: '参数无效',
     errBadName: '文件名不合法',
     errBadExtension: '这个扩展名不受支持，改了文件就打不开了',
@@ -1053,12 +1391,18 @@ const tMain = createI18n({
     errNewTabFailed: '新建文档失败',
     errDuplicateFailed: '复制文件失败',
     errUnsupportedExt: '暂不支持 .{ext} 类型',
+    errLegacyConvert: '无法转换此 .{ext} 文件',
+    errLegacyConvertDetail:
+      '文件可能已损坏，或采用了此转换器尚不支持的格式。请在创建它的程序中打开并另存为 .{to}，再在这里打开该文件。',
+    errLegacyEncrypted:
+      '此文件受密码保护。请在创建它的程序中取消密码，或另存为 .{to}，然后在这里打开。',
     copySuffix: '副本',
     menuHelp: '帮助',
     menuUserGuide: '使用手册',
     thirdPartyNotices: '第三方软件声明',
     menuExportDocx: '导出为 Word…',
     menuExportOdt: '导出为 ODT…',
+    menuExportHwp: '导出为 HWP 文档…',
     btnCancel: '取消',
     pdfDocxFailedMsg: '导出为 Word 失败',
     pdfDocxBusyMsg: '正在转换中，请等待当前导出完成。',
@@ -1096,6 +1440,9 @@ const tMain = createI18n({
     pdfDocxLocalCorruptDetail: '文件已损坏或不是有效的 PDF，无法转换。',
     dlgPickSaveDir: '选择默认保存位置',
     errSaveDirUnusable: '所选文件夹不可写，无法用作默认保存位置',
+    saveDirFallbackMsg: '无法保存到"文档"文件夹',
+    saveDirFallbackDetail:
+      '无法创建或写入 {blocked}，新文件将保存到 {using}。如果是 Windows 安全中心的"受控文件夹访问"阻止了它，请在"允许应用通过受控文件夹访问"中添加 GenOffice，然后重新启动应用。也可以在 设置 → 通用 → 默认保存位置 中选择其他文件夹。',
   },
   en: {
     menuTabSave: 'Save',
@@ -1120,6 +1467,7 @@ const tMain = createI18n({
       '"{title}" has been using a lot of memory or CPU for several minutes ({memory} MB, {cpu}% CPU). You can keep waiting, or close the document (you will be asked to save unsaved changes first). Diagnostics have been recorded.',
     watchdogWait: 'Keep Waiting',
     watchdogClose: 'Close Document',
+    watchdogIgnore: "Don't Remind Again",
     crashTitle: 'A document stopped unexpectedly',
     crashBody: '"{title}" stopped unexpectedly. Changes made since it was last saved may be lost.',
     crashReopen: 'Reopen',
@@ -1145,27 +1493,37 @@ const tMain = createI18n({
     untitledMarkdown: 'Untitled Markdown',
     untitledHtml: 'Untitled HTML',
     untitledMindmap: 'Untitled Mind Map',
+    untitledDiagram: 'Untitled Diagram',
+    untitledWhiteboard: 'Untitled Whiteboard',
     untitledHwp: 'Untitled HWP',
     untitledPdf: 'Untitled PDF',
     menuNewSlide: 'AI Slides',
     menuNewMarkdown: 'AI Markdown',
     menuNewHtml: 'AI HTML',
     menuNewMindmap: 'Mind Map',
+    menuNewDiagram: 'Diagram',
+    menuNewWhiteboard: 'Whiteboard',
     menuNewHwp: 'AI HWP',
     menuNewPdf: 'AI PDF',
+    menuImportPdf: 'Import PDF…',
     menuExportPdf: 'Export as PDF…',
     menuExportImages: 'Export as Images…',
     menuExportHtml: 'Export as Single-File HTML…',
     menuExportMapImage: 'Export as Image (PNG)…',
+    menuExportMapSvg: 'Export as Image (SVG)…',
+    menuExportSvg: 'Export as SVG…',
+    menuZoomFit: 'Fit to Window',
     menuExportMapOutline: 'Export as Markdown Outline…',
     menuMakeFromDocument: 'Make Another Document from This',
     menuDocumentSources: 'View Sources',
     menuDerivedDocuments: 'Documents Made from This',
     menuOpenInDocs: 'Convert and Open in Docs',
     menuPrint: 'Print…',
+    menuPreview: 'Print Preview…',
     menuOpen: 'Open…',
     menuSave: 'Save',
     menuSaveAs: 'Save As…',
+    menuSaveSubmission: 'Save as Submission Copy…',
     menuClose: 'Close',
     menuEdit: 'Edit',
     menuWindow: 'Window',
@@ -1179,13 +1537,16 @@ const tMain = createI18n({
     filterPpt: 'PowerPoint Presentations',
     filterMarkdown: 'Text Files (Markdown, TXT, JSON)',
     filterHtml: 'HTML Documents',
-    filterMindmap: 'Mind Maps (XMind files)',
+    filterMindmap: 'Mind Maps (XMind, FreeMind, Freeplane)',
     filterHwp: 'HWP Documents (HWP, HWPX)',
     filterEpub: 'E-books (EPUB)',
+    filterDiagram: 'Diagrams (draw.io, VSDX)',
+    filterWhiteboard: 'Whiteboards (.whiteboard, Excalidraw)',
     menuFind: 'Find…',
     menuReplace: 'Replace…',
     menuTranslateBook: 'Translate Book…',
     filterPdf: 'PDF Documents',
+    filterPdfPageImages: 'PNG Images (one file per page)',
     errBadArgs: 'Invalid arguments',
     errBadName: 'Invalid file name',
     errBadExtension: 'That extension is not supported, and the file would no longer open',
@@ -1196,12 +1557,18 @@ const tMain = createI18n({
     errNewTabFailed: 'Could not create the new document',
     errDuplicateFailed: 'Could not duplicate the file',
     errUnsupportedExt: '.{ext} files are not supported',
+    errLegacyConvert: 'Could not convert this .{ext} file',
+    errLegacyConvertDetail:
+      'The file may be damaged or in a form this converter does not read yet. Open it in the program that made it and save it as .{to}, then open that file here.',
+    errLegacyEncrypted:
+      'This file is password-protected. Remove the password in the program that made it, or save it there as .{to}, then open it here.',
     copySuffix: 'copy',
     menuHelp: 'Help',
     menuUserGuide: 'User Guide',
     thirdPartyNotices: 'Third-Party Notices',
     menuExportDocx: 'Export as Word…',
     menuExportOdt: 'Export as ODT…',
+    menuExportHwp: 'Export as HWP Document…',
     btnCancel: 'Cancel',
     pdfDocxFailedMsg: 'Export as Word failed',
     pdfDocxBusyMsg: 'A Word export is already in progress. Please wait for it to finish.',
@@ -1247,6 +1614,9 @@ const tMain = createI18n({
     dlgPickSaveDir: 'Choose Default Save Location',
     errSaveDirUnusable:
       'The selected folder is not writable and cannot be used as the default save location',
+    saveDirFallbackMsg: "Can't save to the Documents folder",
+    saveDirFallbackDetail:
+      'GenOffice could not create or write {blocked}, so new files are saved in {using}. If Windows Security\'s "Controlled folder access" blocked it, add GenOffice under "Allow an app through Controlled folder access" and restart the app. You can also pick another folder in Settings → General → Save Location.',
   },
   vi: {
     menuTabSave: 'Lưu',
@@ -1271,6 +1641,7 @@ const tMain = createI18n({
       '"{title}" đã dùng nhiều bộ nhớ hoặc CPU trong vài phút ({memory} MB, {cpu}% CPU). Bạn có thể tiếp tục chờ hoặc đóng tài liệu này (sẽ hỏi lưu các thay đổi chưa lưu trước). Thông tin chẩn đoán đã được ghi lại.',
     watchdogWait: 'Tiếp tục chờ',
     watchdogClose: 'Đóng tài liệu',
+    watchdogIgnore: 'Không nhắc lại nữa',
     crashTitle: 'Tài liệu dừng đột ngột',
     crashBody: '"{title}" đã dừng đột ngột. Những thay đổi sau lần lưu gần nhất có thể đã bị mất.',
     crashReopen: 'Mở lại',
@@ -1292,27 +1663,37 @@ const tMain = createI18n({
     untitledMarkdown: 'Markdown chưa có tiêu đề',
     untitledHtml: 'HTML chưa có tiêu đề',
     untitledMindmap: 'Sơ đồ tư duy chưa có tiêu đề',
+    untitledDiagram: 'Sơ đồ chưa có tiêu đề',
+    untitledWhiteboard: 'Bảng trắng chưa đặt tên',
     untitledHwp: 'HWP chưa có tiêu đề',
     untitledPdf: 'PDF chưa có tiêu đề',
     menuNewSlide: 'AI Slides',
     menuNewMarkdown: 'AI Markdown',
     menuNewHtml: 'AI HTML',
     menuNewMindmap: 'Sơ đồ tư duy',
+    menuNewDiagram: 'Sơ đồ',
+    menuNewWhiteboard: 'Bảng trắng',
     menuNewHwp: 'AI HWP',
     menuNewPdf: 'AI PDF',
+    menuImportPdf: 'Nhập PDF…',
     menuExportPdf: 'Xuất dưới dạng PDF…',
     menuExportImages: 'Xuất dưới dạng hình ảnh…',
     menuExportHtml: 'Xuất dưới dạng HTML một tệp…',
     menuExportMapImage: 'Xuất dưới dạng hình ảnh (PNG)…',
+    menuExportMapSvg: 'Xuất dưới dạng hình ảnh (SVG)…',
+    menuExportSvg: 'Xuất dưới dạng SVG…',
+    menuZoomFit: 'Vừa cửa sổ',
     menuExportMapOutline: 'Xuất dưới dạng dàn ý Markdown…',
     menuMakeFromDocument: 'Tạo tài liệu khác từ tài liệu này',
     menuDocumentSources: 'Xem tài liệu nguồn',
     menuDerivedDocuments: 'Tài liệu tạo từ tài liệu này',
     menuOpenInDocs: 'Chuyển đổi và mở trong Docs',
     menuPrint: 'In…',
+    menuPreview: 'Xem trước khi in…',
     menuOpen: 'Mở…',
     menuSave: 'Lưu',
     menuSaveAs: 'Lưu dưới dạng…',
+    menuSaveSubmission: 'Lưu bản nộp…',
     menuClose: 'Đóng',
     menuEdit: 'Chỉnh sửa',
     menuView: 'Hiển thị',
@@ -1330,13 +1711,16 @@ const tMain = createI18n({
     filterPpt: 'Bản trình bày PowerPoint',
     filterMarkdown: 'Tệp văn bản (Markdown, TXT, JSON)',
     filterHtml: 'Tài liệu HTML',
-    filterMindmap: 'Sơ đồ tư duy (tệp XMind)',
+    filterMindmap: 'Sơ đồ tư duy (XMind, FreeMind, Freeplane)',
     filterHwp: 'Tài liệu HWP (HWP, HWPX)',
     filterEpub: 'Sách điện tử (EPUB)',
+    filterDiagram: 'Sơ đồ (draw.io, VSDX)',
+    filterWhiteboard: 'Bảng trắng (.whiteboard, Excalidraw)',
     menuFind: 'Tìm…',
     menuReplace: 'Thay thế…',
     menuTranslateBook: 'Dịch sách…',
     filterPdf: 'Tài liệu PDF',
+    filterPdfPageImages: 'Ảnh PNG (mỗi trang một tệp)',
     errBadArgs: 'Đối số không hợp lệ',
     errBadName: 'Tên tệp không hợp lệ',
     errBadExtension: 'Phần mở rộng đó không được hỗ trợ và tệp sẽ không còn mở được',
@@ -1347,12 +1731,18 @@ const tMain = createI18n({
     errNewTabFailed: 'Không thể tạo tài liệu mới',
     errDuplicateFailed: 'Không thể nhân bản tệp',
     errUnsupportedExt: 'Tệp .{ext} không được hỗ trợ',
+    errLegacyConvert: 'Không thể chuyển đổi tệp .{ext} này',
+    errLegacyConvertDetail:
+      'Tệp có thể bị hỏng hoặc ở dạng mà trình chuyển đổi này chưa đọc được. Hãy mở tệp trong chương trình đã tạo ra nó, lưu thành .{to}, rồi mở tệp đó tại đây.',
+    errLegacyEncrypted:
+      'Tệp này được bảo vệ bằng mật khẩu. Hãy gỡ mật khẩu trong chương trình đã tạo ra nó, hoặc lưu thành .{to} ở đó, rồi mở tại đây.',
     copySuffix: 'bản sao',
     menuHelp: 'Trợ giúp',
     menuUserGuide: 'Hướng dẫn sử dụng',
     thirdPartyNotices: 'Thông báo của bên thứ ba',
     menuExportDocx: 'Xuất dưới dạng Word…',
     menuExportOdt: 'Xuất dưới dạng ODT…',
+    menuExportHwp: 'Xuất dưới dạng tài liệu HWP…',
     btnCancel: 'Hủy',
     pdfDocxFailedMsg: 'Xuất dưới dạng Word thất bại',
     pdfDocxBusyMsg: 'Một tác vụ xuất Word đang được tiến hành. Vui lòng đợi tác vụ hoàn tất.',
@@ -1398,6 +1788,183 @@ const tMain = createI18n({
       'Tệp bị hỏng hoặc không phải là tệp PDF hợp lệ và không thể chuyển đổi.',
     dlgPickSaveDir: 'Chọn vị trí lưu mặc định',
     errSaveDirUnusable: 'Thư mục đã chọn không thể ghi và không thể dùng làm vị trí lưu mặc định',
+    saveDirFallbackMsg: 'Không thể lưu vào thư mục Tài liệu',
+    saveDirFallbackDetail:
+      'Không thể tạo hoặc ghi vào {blocked}, nên tệp mới sẽ được lưu vào {using}. Nếu "Quyền truy cập thư mục được kiểm soát" của Bảo mật Windows đã chặn, hãy thêm GenOffice vào "Cho phép ứng dụng thông qua quyền truy cập thư mục được kiểm soát" rồi khởi động lại ứng dụng. Bạn cũng có thể chọn thư mục khác trong Cài đặt → Chung → Vị trí lưu.',
+  },
+  tr: {
+    menuTabSave: 'Kaydet',
+    menuTabSaveAs: 'Farklı kaydet…',
+    menuTabPrint: 'Yazdır…',
+    menuTabRename: 'Yeniden adlandır',
+    menuTabDuplicate: 'Kopyasını oluştur (kaydedilmiş dosyayı kopyalar)',
+    menuTabSplitBeside: 'Yan yana böl',
+    menuTabCopyPath: 'Yolu kopyala',
+    menuTabCopyName: 'Dosya adını kopyala',
+    menuTabReveal: 'Klasörde göster',
+    menuTabOpenDefault: 'Varsayılan uygulamayla aç',
+    menuTabMoveLeft: 'Sola taşı',
+    menuTabMoveRight: 'Sağa taşı',
+    menuTabCloseOthers: 'Diğer sekmeleri kapat',
+    menuTabCloseRight: 'Sağdaki sekmeleri kapat',
+    menuTabCloseAll: 'Tüm sekmeleri kapat',
+    menuTabReopen: 'Kapatılan sekmeyi yeniden aç',
+    dlgAddFolderRoot: 'Ana ekrana klasör ekle',
+    watchdogTitle: 'Belge çok fazla kaynak kullanıyor',
+    watchdogBody:
+      '“{title}” birkaç dakikadır çok fazla bellek veya CPU kullanıyor ({memory} MB, CPU %{cpu}). Beklemeye devam edebilir veya belgeyi kapatabilirsiniz (önce kaydedilmemiş değişiklikler sorulur). Tanılama bilgileri kaydedildi.',
+    watchdogWait: 'Beklemeye devam et',
+    watchdogClose: 'Belgeyi kapat',
+    watchdogIgnore: 'Bir Daha Hatırlatma',
+    crashTitle: 'Bir belge beklenmedik şekilde durdu',
+    crashBody:
+      '“{title}” beklenmedik şekilde durdu. Son kaydedildikten sonra yapılan değişiklikler kaybolabilir.',
+    crashReopen: 'Yeniden aç',
+    crashReload: 'Yeniden yükle',
+    crashClose: 'Kapat',
+    crashLater: 'Şimdi değil',
+    errFolderRootUnusable: 'Seçilen klasör okunamıyor',
+    menuFile: 'Dosya',
+    menuSectionNew: 'Yeni',
+    menuView: 'Görünüm',
+    menuUiZoomIn: 'Arayüzü büyüt',
+    menuUiZoomOut: 'Arayüzü küçült',
+    menuUiZoomReset: 'Arayüz yakınlaştırmasını sıfırla',
+    menuOpenInNewWindow: 'Yeni pencerede aç',
+    menuSplitRight: 'Sağa böl',
+    menuSplitDown: 'Aşağıya böl',
+    menuUnsplit: 'Bölmeyi kaldır',
+    menuNewDoc: 'AI Belgeler',
+    menuNewSheet: 'AI E-Tablolar',
+    untitledSheet: 'Başlıksız E-Tablo',
+    untitledDoc: 'Başlıksız Belge',
+    untitledDeck: 'Başlıksız Sunum',
+    untitledMarkdown: 'Başlıksız Markdown',
+    untitledHtml: 'Başlıksız HTML',
+    untitledMindmap: 'Başlıksız Zihin Haritası',
+    untitledDiagram: 'Başlıksız Diyagram',
+    untitledWhiteboard: 'Adsız Beyaz Tahta',
+    untitledHwp: 'Başlıksız HWP',
+    untitledPdf: 'Başlıksız PDF',
+    menuNewSlide: 'AI Sunumlar',
+    menuNewMarkdown: 'AI Markdown',
+    menuNewHtml: 'AI HTML',
+    menuNewMindmap: 'Zihin Haritası',
+    menuNewDiagram: 'Diyagram',
+    menuNewWhiteboard: 'Beyaz Tahta',
+    menuNewHwp: 'AI HWP',
+    menuNewPdf: 'AI PDF',
+    menuImportPdf: 'PDF İçe Aktar…',
+    menuExportPdf: 'PDF olarak dışa aktar…',
+    menuExportImages: 'Görüntü olarak dışa aktar…',
+    menuExportHtml: 'Tek dosyalı HTML olarak dışa aktar…',
+    menuExportMapImage: 'Görüntü olarak dışa aktar (PNG)…',
+    menuExportMapSvg: 'Görüntü Olarak Dışa Aktar (SVG)…',
+    menuExportSvg: 'SVG Olarak Dışa Aktar…',
+    menuZoomFit: 'Pencereye Sığdır',
+    menuExportMapOutline: 'Markdown ana hattı olarak dışa aktar…',
+    menuMakeFromDocument: 'Bundan başka bir belge oluştur',
+    menuDocumentSources: 'Kaynakları görüntüle',
+    menuDerivedDocuments: 'Bundan oluşturulan belgeler',
+    menuOpenInDocs: 'Dönüştür ve Belgelerde aç',
+    menuPrint: 'Yazdır…',
+    menuPreview: 'Baskı Önizleme…',
+    menuOpen: 'Aç…',
+    menuSave: 'Kaydet',
+    menuSaveAs: 'Farklı kaydet…',
+    menuSaveSubmission: 'Teslim kopyası olarak kaydet…',
+    menuClose: 'Kapat',
+    menuEdit: 'Düzen',
+    menuWindow: 'Pencere',
+    menuHome: 'Ana ekran',
+    backToHome: 'Ana ekrana dön',
+    dlgOpenTitle: 'Dosya aç',
+    filterSupported: 'Desteklenen dosyalar',
+    filterWord: 'Word belgeleri',
+    filterOdt: 'OpenDocument Metni',
+    filterExcel: 'Excel çalışma kitapları',
+    filterPpt: 'PowerPoint sunumları',
+    filterMarkdown: 'Metin dosyaları (Markdown, TXT, JSON)',
+    filterHtml: 'HTML belgeleri',
+    filterMindmap: 'Zihin haritaları (XMind dosyaları)',
+    filterHwp: 'HWP belgeleri (HWP, HWPX)',
+    filterEpub: 'E-kitaplar (EPUB)',
+    filterDiagram: 'Diyagramlar (draw.io, VSDX)',
+    filterWhiteboard: 'Beyaz Tahtalar (.whiteboard, Excalidraw)',
+    menuFind: 'Bul…',
+    menuReplace: 'Değiştir…',
+    menuTranslateBook: 'Kitabı çevir…',
+    filterPdf: 'PDF belgeleri',
+    filterPdfPageImages: 'PNG Görüntüleri (sayfa başına bir dosya)',
+    errBadArgs: 'Geçersiz bağımsız değişkenler',
+    errBadName: 'Geçersiz dosya adı',
+    errBadExtension: 'Bu uzantı desteklenmiyor ve dosya artık açılamaz',
+    errMissing: 'Dosya bulunamadı',
+    errExists: 'Bu ada sahip bir dosya zaten var',
+    errRenameFailed: 'Yeniden adlandırılamadı',
+    errPdfSaveAsFailed: 'PDF kopyası kaydedilemedi',
+    errNewTabFailed: 'Yeni belge oluşturulamadı',
+    errDuplicateFailed: 'Dosyanın kopyası oluşturulamadı',
+    errUnsupportedExt: '.{ext} dosyaları desteklenmiyor',
+    errLegacyConvert: 'Bu .{ext} dosyası dönüştürülemedi',
+    errLegacyConvertDetail:
+      'Dosya bozuk olabilir ya da bu dönüştürücünün henüz okuyamadığı bir biçimde olabilir. Dosyayı oluşturan programda açıp .{to} olarak kaydedin, sonra o dosyayı burada açın.',
+    errLegacyEncrypted:
+      'Bu dosya parola korumalı. Parolayı dosyayı oluşturan programda kaldırın ya da orada .{to} olarak kaydedin, sonra burada açın.',
+    copySuffix: 'kopya',
+    menuHelp: 'Yardım',
+    menuUserGuide: 'Kullanım kılavuzu',
+    thirdPartyNotices: 'Üçüncü taraf bildirimleri',
+    menuExportDocx: 'Word olarak dışa aktar…',
+    menuExportOdt: 'ODT olarak dışa aktar…',
+    menuExportHwp: 'HWP belgesi olarak dışa aktar…',
+    btnCancel: 'İptal',
+    pdfDocxFailedMsg: 'Word olarak dışa aktarma başarısız oldu',
+    pdfDocxBusyMsg: 'Zaten bir Word dışa aktarma işlemi sürüyor. Bitmesini bekleyin.',
+    menuExportPptx: 'PowerPoint olarak dışa aktar…',
+    pdfPptxFailedMsg: 'PowerPoint olarak dışa aktarma başarısız oldu',
+    pdfPptxBusyMsg: 'Zaten bir dışa aktarma işlemi sürüyor. Bitmesini bekleyin.',
+    pdfPptxLocalScannedDetail:
+      'Her sayfa tam sayfa görüntü olarak dışa aktarıldı; slaytlardaki metin düzenlenemez.',
+    menuExportXlsx: 'Excel olarak dışa aktar…',
+    menuExportMd: 'Markdown olarak dışa aktar…',
+    menuExportEpub: 'EPUB olarak dışa aktar…',
+    pdfXlsxFailedMsg: 'Excel olarak dışa aktarma başarısız oldu',
+    pdfXlsxBusyMsg: 'Zaten bir dışa aktarma işlemi sürüyor. Bitmesini bekleyin.',
+    pdfXlsxLocalScannedDetail:
+      'Taranmış sayfalar hücrelere dönüştürülemez; her sayfanın çalışma sayfası bunun yerine bir uyarı satırı taşır.',
+    pdfXlsxLocalSkippedMsg: 'Bazı sayfalar hücrelere dönüştürülemedi',
+    pdfXlsxLocalSkippedDetail:
+      '{pages} sayfası hücrelere dönüştürülemedi; çalışma sayfaları bunun yerine bir uyarı satırı taşıyor.',
+    pdfDocxLocalScannedMsg: 'Taranmış belge algılandı',
+    pdfDocxLocalScannedDetail:
+      'Görünümlerini korumak için sayfalar görüntü olarak dışa aktarıldı; düzenlenebilir metin tanınamadı.',
+    pdfDocxLocalDegradedMsg: 'Bazı sayfalar görüntü olarak dışa aktarıldı',
+    pdfDocxLocalDegradedDetail:
+      '{pages} sayfası güvenilir şekilde yeniden oluşturulamadı ve tam sayfa görüntü olarak dışa aktarıldı.',
+    pdfDocxLocalOcrMsg: 'Taranmış sayfalar düzenlenebilir metne dönüştürüldü',
+    pdfDocxLocalOcrDetail:
+      '{pages} sayfası tarama idi; metinleri cihaz üzerinde OCR ile geri kazanıldı. Lütfen sonucu gözden geçirin.',
+    pdfDocxLocalEncryptedDetail: 'Bu PDF şifreli ve doğru parola olmadan açılamadı.',
+    pdfDocxLocalUnsupportedEncDetail:
+      'Bu PDF sertifika tabanlı veya desteklenmeyen bir şifreleme kullanıyor ve dönüştürülemez.',
+    pdfPwdTitle: 'Parolayı girin',
+    pdfPwdPrompt: 'Bu PDF şifreli. Açmak için parolayı girin:',
+    docPwdPrompt: 'Bu dosya parola korumalı. Açmak için parolayı girin:',
+    pdfPwdRetryPrompt: 'Parola yanlış. Lütfen tekrar deneyin.',
+    pdfPwdOk: 'Tamam',
+    pdfPwdVerifying: 'Parola doğrulanıyor…',
+    pdfPwdLabel: 'Parola',
+    pdfPwdPlaceholder: 'Açma parolasını girin',
+    pdfPwdShow: 'Parolayı göster',
+    pdfPwdHide: 'Parolayı gizle',
+    pdfDocxLocalCorruptDetail: 'Dosya hasarlı veya geçerli bir PDF değil, dönüştürülemez.',
+    dlgPickSaveDir: 'Varsayılan kaydetme konumunu seçin',
+    errSaveDirUnusable:
+      'Seçilen klasör yazılabilir değil ve varsayılan kaydetme konumu olarak kullanılamaz',
+    saveDirFallbackMsg: 'Belgeler klasörüne kaydedilemiyor',
+    saveDirFallbackDetail:
+      'GenOffice {blocked} konumunu oluşturamadı veya oraya yazamadı, bu yüzden yeni dosyalar {using} konumuna kaydediliyor. Bunu Windows Güvenliği’nin "Denetimli klasör erişimi" engellediyse GenOffice’i "Denetimli klasör erişimi üzerinden bir uygulamaya izin ver" altına ekleyip uygulamayı yeniden başlatın. Ayarlar → Genel → Kayıt Konumu bölümünden başka bir klasör de seçebilirsiniz.',
   },
   ja: {
     menuTabSave: '保存',
@@ -1422,6 +1989,7 @@ const tMain = createI18n({
       '「{title}」が数分間にわたり大量のメモリまたは CPU を使用しています（メモリ {memory} MB、CPU {cpu}%）。そのまま待つか、このドキュメントを閉じることができます（未保存の変更がある場合は保存を確認します）。診断情報を記録しました。',
     watchdogWait: '待つ',
     watchdogClose: 'ドキュメントを閉じる',
+    watchdogIgnore: '今回は再通知しない',
     crashTitle: 'ドキュメントが予期せず停止しました',
     crashBody:
       '「{title}」が予期せず停止しました。最後に保存した後の変更は失われた可能性があります。',
@@ -1444,27 +2012,37 @@ const tMain = createI18n({
     untitledMarkdown: '無題の Markdown',
     untitledHtml: '無題の HTML',
     untitledMindmap: '無題のマインドマップ',
+    untitledDiagram: '無題のダイアグラム',
+    untitledWhiteboard: '無題のホワイトボード',
     untitledHwp: '無題の HWP',
     untitledPdf: '無題の PDF',
     menuNewSlide: 'AI Slides',
     menuNewMarkdown: 'AI Markdown',
     menuNewHtml: 'AI HTML',
     menuNewMindmap: 'マインドマップ',
+    menuNewDiagram: 'ダイアグラム',
+    menuNewWhiteboard: 'ホワイトボード',
     menuNewHwp: 'AI HWP',
     menuNewPdf: 'AI PDF',
+    menuImportPdf: 'PDF を取り込む…',
     menuExportPdf: 'PDF として書き出す…',
     menuExportImages: '画像としてエクスポート…',
     menuExportHtml: '単一ファイル HTML として書き出す…',
     menuExportMapImage: '画像 (PNG) としてエクスポート…',
+    menuExportMapSvg: '画像 (SVG) としてエクスポート…',
+    menuExportSvg: 'SVG として書き出す…',
+    menuZoomFit: 'ウィンドウに合わせる',
     menuExportMapOutline: 'Markdown アウトラインとしてエクスポート…',
     menuMakeFromDocument: 'この文書から別の文書を作成',
     menuDocumentSources: '資料を表示',
     menuDerivedDocuments: 'この文書から作成した文書',
     menuOpenInDocs: 'Docs 文書に変換して開く',
     menuPrint: '印刷…',
+    menuPreview: '印刷プレビュー…',
     menuOpen: '開く…',
     menuSave: '保存',
     menuSaveAs: '名前を付けて保存…',
+    menuSaveSubmission: '提出用コピーとして保存…',
     menuClose: '閉じる',
     menuEdit: '編集',
     menuView: '表示',
@@ -1482,13 +2060,16 @@ const tMain = createI18n({
     filterPpt: 'PowerPoint プレゼンテーション',
     filterMarkdown: 'テキストファイル (Markdown, TXT, JSON)',
     filterHtml: 'HTML ドキュメント',
-    filterMindmap: 'マインドマップ (XMind ファイル)',
+    filterMindmap: 'マインドマップ (XMind, FreeMind, Freeplane)',
     filterHwp: 'HWP ドキュメント (HWP, HWPX)',
     filterEpub: '電子書籍 (EPUB)',
+    filterDiagram: 'ダイアグラム (draw.io, VSDX)',
+    filterWhiteboard: 'ホワイトボード (.whiteboard, Excalidraw)',
     menuFind: '検索…',
     menuReplace: '置換…',
     menuTranslateBook: '本を翻訳…',
     filterPdf: 'PDF ドキュメント',
+    filterPdfPageImages: 'PNG 画像 (1 ページにつき 1 ファイル)',
     errBadArgs: '引数が無効です',
     errBadName: 'ファイル名が無効です',
     errBadExtension: 'その拡張子はサポートされていないため、ファイルを開けなくなります',
@@ -1499,12 +2080,18 @@ const tMain = createI18n({
     errNewTabFailed: '新規ドキュメントを作成できませんでした',
     errDuplicateFailed: 'ファイルを複製できませんでした',
     errUnsupportedExt: '.{ext} 形式には対応していません',
+    errLegacyConvert: 'この .{ext} ファイルを変換できませんでした',
+    errLegacyConvertDetail:
+      'ファイルが壊れているか、この変換ではまだ読めない形式の可能性があります。作成したプログラムで開いて .{to} として保存し、そのファイルをここで開いてください。',
+    errLegacyEncrypted:
+      'パスワードで保護されたファイルです。作成したプログラムでパスワードを解除するか .{to} として保存してから、ここで開いてください。',
     copySuffix: 'コピー',
     menuHelp: 'ヘルプ',
     menuUserGuide: 'ユーザーガイド',
     thirdPartyNotices: 'サードパーティソフトウェアに関する通知',
     menuExportDocx: 'Word として書き出す…',
     menuExportOdt: 'ODT として書き出す…',
+    menuExportHwp: 'HWP 文書としてエクスポート…',
     btnCancel: 'キャンセル',
     pdfDocxFailedMsg: 'Word への書き出しに失敗しました',
     pdfDocxBusyMsg: 'Word への書き出しが進行中です。完了までお待ちください。',
@@ -1551,6 +2138,9 @@ const tMain = createI18n({
     dlgPickSaveDir: '既定の保存先を選択',
     errSaveDirUnusable:
       '選択したフォルダーは書き込みできないため、既定の保存先として使用できません',
+    saveDirFallbackMsg: 'ドキュメント フォルダーに保存できません',
+    saveDirFallbackDetail:
+      '{blocked} を作成または書き込みできなかったため、新しいファイルは {using} に保存します。Windows セキュリティの「コントロールされたフォルダー アクセス」がブロックしている場合は、「コントロールされたフォルダー アクセスによるアプリの許可」に GenOffice を追加してからアプリを再起動してください。設定 → 一般 → 保存先 で別のフォルダーを選ぶこともできます。',
   },
   ko: {
     menuTabSave: '저장',
@@ -1575,6 +2165,7 @@ const tMain = createI18n({
       '"{title}"이(가) 몇 분 동안 많은 메모리 또는 CPU를 사용하고 있습니다(메모리 {memory} MB, CPU {cpu}%). 계속 기다리거나 이 문서를 닫을 수 있습니다(저장되지 않은 변경 사항이 있으면 먼저 저장 여부를 묻습니다). 진단 정보가 기록되었습니다.',
     watchdogWait: '계속 기다리기',
     watchdogClose: '문서 닫기',
+    watchdogIgnore: '다시 알리지 않기',
     crashTitle: '문서가 예기치 않게 멈췄습니다',
     crashBody:
       '"{title}" 화면이 예기치 않게 꺼졌습니다. 마지막으로 저장한 뒤의 변경은 사라졌을 수 있습니다.',
@@ -1597,27 +2188,37 @@ const tMain = createI18n({
     untitledMarkdown: '제목 없는 Markdown',
     untitledHtml: '제목 없는 HTML',
     untitledMindmap: '제목 없는 마인드맵',
+    untitledDiagram: '제목 없는 다이어그램',
+    untitledWhiteboard: '제목 없는 화이트보드',
     untitledHwp: '제목 없는 한글 문서',
     untitledPdf: '제목 없는 PDF',
     menuNewSlide: 'AI Slides',
     menuNewMarkdown: 'AI Markdown',
     menuNewHtml: 'AI HTML',
     menuNewMindmap: '마인드맵',
+    menuNewDiagram: '다이어그램',
+    menuNewWhiteboard: '화이트보드',
     menuNewHwp: 'AI 한글',
     menuNewPdf: 'AI PDF',
+    menuImportPdf: 'PDF 가져오기…',
     menuExportPdf: 'PDF로 내보내기…',
     menuExportImages: '이미지로 내보내기…',
     menuExportHtml: '단일 파일 HTML로 내보내기…',
     menuExportMapImage: '이미지(PNG)로 내보내기…',
+    menuExportMapSvg: '이미지(SVG)로 내보내기…',
+    menuExportSvg: 'SVG로 내보내기…',
+    menuZoomFit: '창에 맞추기',
     menuExportMapOutline: '마크다운 개요로 내보내기…',
     menuMakeFromDocument: '이 문서로 다른 문서 만들기',
     menuDocumentSources: '자료 보기',
     menuDerivedDocuments: '이 문서로 만든 문서',
     menuOpenInDocs: 'Docs 문서로 변환하여 열기',
     menuPrint: '인쇄…',
+    menuPreview: '미리 보기…',
     menuOpen: '열기…',
     menuSave: '저장',
     menuSaveAs: '다른 이름으로 저장…',
+    menuSaveSubmission: '제출본으로 저장…',
     menuClose: '닫기',
     menuEdit: '편집',
     menuView: '보기',
@@ -1635,13 +2236,16 @@ const tMain = createI18n({
     filterPpt: 'PowerPoint 프레젠테이션',
     filterMarkdown: '텍스트 파일 (Markdown, TXT, JSON)',
     filterHtml: 'HTML 문서',
-    filterMindmap: '마인드맵 (XMind 파일)',
+    filterMindmap: '마인드맵 (XMind, FreeMind, Freeplane)',
     filterHwp: '한글 문서 (HWP, HWPX)',
     filterEpub: '전자책 (EPUB)',
+    filterDiagram: '다이어그램 (draw.io, VSDX)',
+    filterWhiteboard: '화이트보드 (.whiteboard, Excalidraw)',
     menuFind: '찾기…',
     menuReplace: '바꾸기…',
     menuTranslateBook: '책 번역…',
     filterPdf: 'PDF 문서',
+    filterPdfPageImages: 'PNG 이미지 (페이지마다 파일 하나)',
     errBadArgs: '잘못된 인수입니다',
     errBadName: '파일 이름이 잘못되었습니다',
     errBadExtension: '지원하지 않는 확장자이며 파일을 열 수 없게 됩니다',
@@ -1652,12 +2256,18 @@ const tMain = createI18n({
     errNewTabFailed: '새 문서를 만들지 못했습니다',
     errDuplicateFailed: '파일을 복제할 수 없습니다',
     errUnsupportedExt: '.{ext} 형식은 지원되지 않습니다',
+    errLegacyConvert: '.{ext} 파일을 변환하지 못했습니다',
+    errLegacyConvertDetail:
+      '파일이 손상됐거나 아직 읽지 못하는 형식일 수 있습니다. 만든 프로그램에서 열어 .{to}로 저장한 뒤 그 파일을 여기서 열어 주세요.',
+    errLegacyEncrypted:
+      '암호가 걸린 파일입니다. 만든 프로그램에서 암호를 풀거나 .{to}로 저장한 뒤 여기서 열어 주세요.',
     copySuffix: '복사본',
     menuHelp: '도움말',
     menuUserGuide: '사용자 가이드',
     thirdPartyNotices: '타사 소프트웨어 고지',
     menuExportDocx: 'Word로 내보내기…',
     menuExportOdt: 'ODT로 내보내기…',
+    menuExportHwp: '한글 문서로 내보내기…',
     btnCancel: '취소',
     pdfDocxFailedMsg: 'Word로 내보내기 실패',
     pdfDocxBusyMsg: 'Word 내보내기가 이미 진행 중입니다. 완료될 때까지 기다려 주세요.',
@@ -1702,6 +2312,9 @@ const tMain = createI18n({
     pdfDocxLocalCorruptDetail: '파일이 손상되었거나 유효한 PDF가 아니어서 변환할 수 없습니다.',
     dlgPickSaveDir: '기본 저장 위치 선택',
     errSaveDirUnusable: '선택한 폴더에 쓸 수 없어 기본 저장 위치로 사용할 수 없습니다',
+    saveDirFallbackMsg: '문서 폴더에 저장할 수 없습니다',
+    saveDirFallbackDetail:
+      '{blocked} 폴더를 만들거나 쓰지 못해서, 새 파일은 {using}에 저장합니다. Windows 보안의 "제어된 폴더 액세스"가 막은 것이라면 "제어된 폴더 액세스를 통해 앱 허용"에 GenOffice를 추가한 뒤 앱을 다시 시작하세요. 설정 → 일반 → 저장 위치에서 다른 폴더를 고를 수도 있습니다.',
   },
   fr: {
     menuTabSave: 'Enregistrer',
@@ -1726,6 +2339,7 @@ const tMain = createI18n({
       '« {title} » utilise beaucoup de mémoire ou de processeur depuis plusieurs minutes ({memory} Mo, {cpu} % CPU). Vous pouvez continuer à attendre ou fermer ce document (il vous sera d’abord demandé d’enregistrer les modifications non sauvegardées). Les diagnostics ont été enregistrés.',
     watchdogWait: 'Continuer d’attendre',
     watchdogClose: 'Fermer le document',
+    watchdogIgnore: 'Ne plus rappeler',
     crashTitle: 'Un document s’est arrêté de façon inattendue',
     crashBody:
       '« {title} » s’est arrêté de façon inattendue. Les modifications faites depuis le dernier enregistrement ont peut-être été perdues.',
@@ -1748,27 +2362,37 @@ const tMain = createI18n({
     untitledMarkdown: 'Markdown sans titre',
     untitledHtml: 'HTML sans titre',
     untitledMindmap: 'Carte mentale sans titre',
+    untitledDiagram: 'Diagramme sans titre',
+    untitledWhiteboard: 'Tableau blanc sans titre',
     untitledHwp: 'HWP sans titre',
     untitledPdf: 'PDF sans titre',
     menuNewSlide: 'AI Slides',
     menuNewMarkdown: 'AI Markdown',
     menuNewHtml: 'AI HTML',
     menuNewMindmap: 'Carte mentale',
+    menuNewDiagram: 'Diagramme',
+    menuNewWhiteboard: 'Tableau blanc',
     menuNewHwp: 'AI HWP',
     menuNewPdf: 'AI PDF',
+    menuImportPdf: 'Importer un PDF…',
     menuExportPdf: 'Exporter en PDF…',
     menuExportImages: 'Exporter en images…',
     menuExportHtml: 'Exporter en HTML (fichier unique)…',
     menuExportMapImage: 'Exporter en image (PNG)…',
+    menuExportMapSvg: 'Exporter en image (SVG)…',
+    menuExportSvg: 'Exporter en SVG…',
+    menuZoomFit: 'Ajuster à la fenêtre',
     menuExportMapOutline: 'Exporter en plan Markdown…',
     menuMakeFromDocument: 'Créer un autre document à partir de celui-ci',
     menuDocumentSources: 'Voir les sources',
     menuDerivedDocuments: 'Documents créés à partir de celui-ci',
     menuOpenInDocs: 'Convertir et ouvrir dans Docs',
     menuPrint: 'Imprimer…',
+    menuPreview: 'Aperçu avant impression…',
     menuOpen: 'Ouvrir…',
     menuSave: 'Enregistrer',
     menuSaveAs: 'Enregistrer sous…',
+    menuSaveSubmission: 'Enregistrer comme copie de soumission…',
     menuClose: 'Fermer',
     menuEdit: 'Édition',
     menuView: 'Affichage',
@@ -1786,13 +2410,16 @@ const tMain = createI18n({
     filterPpt: 'Présentations PowerPoint',
     filterMarkdown: 'Fichiers texte (Markdown, TXT, JSON)',
     filterHtml: 'Documents HTML',
-    filterMindmap: 'Cartes mentales (fichiers XMind)',
+    filterMindmap: 'Cartes mentales (XMind, FreeMind, Freeplane)',
     filterHwp: 'Documents HWP (HWP, HWPX)',
     filterEpub: 'Livres numériques (EPUB)',
+    filterDiagram: 'Diagrammes (draw.io, VSDX)',
+    filterWhiteboard: 'Tableaux blancs (.whiteboard, Excalidraw)',
     menuFind: 'Rechercher…',
     menuReplace: 'Remplacer…',
     menuTranslateBook: 'Traduire le livre…',
     filterPdf: 'Documents PDF',
+    filterPdfPageImages: 'Images PNG (un fichier par page)',
     errBadArgs: 'Arguments non valides',
     errBadName: 'Nom de fichier non valide',
     errBadExtension: 'Cette extension n’est pas prise en charge et le fichier ne s’ouvrirait plus',
@@ -1803,12 +2430,18 @@ const tMain = createI18n({
     errNewTabFailed: 'Impossible de créer le nouveau document',
     errDuplicateFailed: 'Impossible de dupliquer le fichier',
     errUnsupportedExt: 'les fichiers .{ext} ne sont pas pris en charge',
+    errLegacyConvert: 'Impossible de convertir ce fichier .{ext}',
+    errLegacyConvertDetail:
+      'Le fichier est peut-être endommagé ou dans une forme que ce convertisseur ne lit pas encore. Ouvrez-le dans le programme qui l’a créé, enregistrez-le en .{to}, puis ouvrez ce fichier ici.',
+    errLegacyEncrypted:
+      'Ce fichier est protégé par mot de passe. Retirez le mot de passe dans le programme qui l’a créé, ou enregistrez-le en .{to}, puis ouvrez-le ici.',
     copySuffix: 'copie',
     menuHelp: 'Aide',
     menuUserGuide: "Guide de l'utilisateur",
     thirdPartyNotices: 'Mentions relatives aux logiciels tiers',
     menuExportDocx: 'Exporter en Word…',
     menuExportOdt: 'Exporter en ODT…',
+    menuExportHwp: 'Exporter en document HWP…',
     btnCancel: 'Annuler',
     pdfDocxFailedMsg: "Échec de l'export en Word",
     pdfDocxBusyMsg: "Un export en Word est déjà en cours. Veuillez attendre qu'il se termine.",
@@ -1856,6 +2489,9 @@ const tMain = createI18n({
     dlgPickSaveDir: "Choisir l'emplacement d'enregistrement par défaut",
     errSaveDirUnusable:
       "Le dossier sélectionné n'est pas accessible en écriture et ne peut pas servir d'emplacement d'enregistrement par défaut",
+    saveDirFallbackMsg: "Impossible d'enregistrer dans le dossier Documents",
+    saveDirFallbackDetail:
+      "Impossible de créer ou d'écrire {blocked} ; les nouveaux fichiers sont enregistrés dans {using}. Si l'« Accès contrôlé aux dossiers » de la Sécurité Windows l'a bloqué, ajoutez GenOffice dans « Autoriser une application via l'accès contrôlé aux dossiers », puis redémarrez l'application. Vous pouvez aussi choisir un autre dossier dans Paramètres → Général → Emplacement d'enregistrement.",
   },
   de: {
     menuTabSave: 'Speichern',
@@ -1880,6 +2516,7 @@ const tMain = createI18n({
       '„{title}“ belegt seit mehreren Minuten viel Arbeitsspeicher oder CPU ({memory} MB, {cpu} % CPU). Sie können weiter warten oder das Dokument schließen (bei ungespeicherten Änderungen werden Sie zuerst zum Speichern gefragt). Diagnosedaten wurden aufgezeichnet.',
     watchdogWait: 'Weiter warten',
     watchdogClose: 'Dokument schließen',
+    watchdogIgnore: 'Nicht mehr erinnern',
     crashTitle: 'Ein Dokument wurde unerwartet beendet',
     crashBody:
       '„{title}“ wurde unerwartet beendet. Änderungen seit dem letzten Speichern sind möglicherweise verloren.',
@@ -1902,27 +2539,37 @@ const tMain = createI18n({
     untitledMarkdown: 'Unbenanntes Markdown',
     untitledHtml: 'Unbenanntes HTML',
     untitledMindmap: 'Unbenannte Mindmap',
+    untitledDiagram: 'Unbenanntes Diagramm',
+    untitledWhiteboard: 'Unbenanntes Whiteboard',
     untitledHwp: 'Unbenanntes HWP',
     untitledPdf: 'Unbenanntes PDF',
     menuNewSlide: 'AI Slides',
     menuNewMarkdown: 'AI Markdown',
     menuNewHtml: 'AI HTML',
     menuNewMindmap: 'Mindmap',
+    menuNewDiagram: 'Diagramm',
+    menuNewWhiteboard: 'Whiteboard',
     menuNewHwp: 'AI HWP',
     menuNewPdf: 'AI PDF',
+    menuImportPdf: 'PDF importieren…',
     menuExportPdf: 'Als PDF exportieren…',
     menuExportImages: 'Als Bilder exportieren…',
     menuExportHtml: 'Als Einzeldatei-HTML exportieren…',
     menuExportMapImage: 'Als Bild (PNG) exportieren…',
+    menuExportMapSvg: 'Als Bild (SVG) exportieren…',
+    menuExportSvg: 'Als SVG exportieren…',
+    menuZoomFit: 'An Fenster anpassen',
     menuExportMapOutline: 'Als Markdown-Gliederung exportieren…',
     menuMakeFromDocument: 'Anderes Dokument aus diesem erstellen',
     menuDocumentSources: 'Quellen anzeigen',
     menuDerivedDocuments: 'Aus diesem erstellte Dokumente',
     menuOpenInDocs: 'In Docs umwandeln und öffnen',
     menuPrint: 'Drucken…',
+    menuPreview: 'Druckvorschau…',
     menuOpen: 'Öffnen…',
     menuSave: 'Speichern',
     menuSaveAs: 'Speichern unter…',
+    menuSaveSubmission: 'Als Einreichungskopie speichern…',
     menuClose: 'Schließen',
     menuEdit: 'Bearbeiten',
     menuView: 'Ansicht',
@@ -1940,13 +2587,16 @@ const tMain = createI18n({
     filterPpt: 'PowerPoint-Präsentationen',
     filterMarkdown: 'Textdateien (Markdown, TXT, JSON)',
     filterHtml: 'HTML-Dokumente',
-    filterMindmap: 'Mindmaps (XMind-Dateien)',
+    filterMindmap: 'Mindmaps (XMind, FreeMind, Freeplane)',
     filterHwp: 'HWP-Dokumente (HWP, HWPX)',
     filterEpub: 'E-Books (EPUB)',
+    filterDiagram: 'Diagramme (draw.io, VSDX)',
+    filterWhiteboard: 'Whiteboards (.whiteboard, Excalidraw)',
     menuFind: 'Suchen…',
     menuReplace: 'Ersetzen…',
     menuTranslateBook: 'Buch übersetzen…',
     filterPdf: 'PDF-Dokumente',
+    filterPdfPageImages: 'PNG-Bilder (eine Datei pro Seite)',
     errBadArgs: 'Ungültige Argumente',
     errBadName: 'Ungültiger Dateiname',
     errBadExtension:
@@ -1958,12 +2608,18 @@ const tMain = createI18n({
     errNewTabFailed: 'Neues Dokument konnte nicht erstellt werden',
     errDuplicateFailed: 'Datei konnte nicht dupliziert werden',
     errUnsupportedExt: '.{ext}-Dateien werden nicht unterstützt',
+    errLegacyConvert: 'Diese .{ext}-Datei konnte nicht konvertiert werden',
+    errLegacyConvertDetail:
+      'Die Datei ist möglicherweise beschädigt oder liegt in einer Form vor, die dieser Konverter noch nicht liest. Öffnen Sie sie im Programm, mit dem sie erstellt wurde, speichern Sie sie als .{to} und öffnen Sie dann diese Datei hier.',
+    errLegacyEncrypted:
+      'Diese Datei ist kennwortgeschützt. Entfernen Sie das Kennwort im Programm, mit dem sie erstellt wurde, oder speichern Sie sie dort als .{to} und öffnen Sie sie dann hier.',
     copySuffix: 'Kopie',
     menuHelp: 'Hilfe',
     menuUserGuide: 'Benutzerhandbuch',
     thirdPartyNotices: 'Hinweise zu Drittanbietersoftware',
     menuExportDocx: 'Als Word exportieren…',
     menuExportOdt: 'Als ODT exportieren…',
+    menuExportHwp: 'Als HWP-Dokument exportieren…',
     btnCancel: 'Abbrechen',
     pdfDocxFailedMsg: 'Word-Export fehlgeschlagen',
     pdfDocxBusyMsg: 'Ein Word-Export läuft bereits. Bitte warten Sie, bis er abgeschlossen ist.',
@@ -2010,6 +2666,9 @@ const tMain = createI18n({
     dlgPickSaveDir: 'Standard-Speicherort auswählen',
     errSaveDirUnusable:
       'Der ausgewählte Ordner ist nicht beschreibbar und kann nicht als Standard-Speicherort verwendet werden',
+    saveDirFallbackMsg: 'Speichern im Ordner „Dokumente“ nicht möglich',
+    saveDirFallbackDetail:
+      '{blocked} konnte nicht erstellt oder beschrieben werden, daher werden neue Dateien in {using} gespeichert. Falls der „Überwachte Ordnerzugriff“ der Windows-Sicherheit dies blockiert, fügen Sie GenOffice unter „App durch überwachten Ordnerzugriff zulassen“ hinzu und starten Sie die App neu. Sie können auch unter Einstellungen → Allgemein → Speicherort einen anderen Ordner wählen.',
   },
   es: {
     menuTabSave: 'Guardar',
@@ -2034,6 +2693,7 @@ const tMain = createI18n({
       '«{title}» lleva varios minutos usando mucha memoria o CPU ({memory} MB, {cpu} % de CPU). Puedes seguir esperando o cerrar el documento (antes se te pedirá guardar los cambios sin guardar). Se ha registrado el diagnóstico.',
     watchdogWait: 'Seguir esperando',
     watchdogClose: 'Cerrar documento',
+    watchdogIgnore: 'No recordar de nuevo',
     crashTitle: 'Un documento se detuvo inesperadamente',
     crashBody:
       '«{title}» se detuvo inesperadamente. Es posible que se hayan perdido los cambios hechos desde la última vez que se guardó.',
@@ -2056,27 +2716,37 @@ const tMain = createI18n({
     untitledMarkdown: 'Markdown sin título',
     untitledHtml: 'HTML sin título',
     untitledMindmap: 'Mapa mental sin título',
+    untitledDiagram: 'Diagrama sin título',
+    untitledWhiteboard: 'Pizarra sin título',
     untitledHwp: 'HWP sin título',
     untitledPdf: 'PDF sin título',
     menuNewSlide: 'AI Slides',
     menuNewMarkdown: 'AI Markdown',
     menuNewHtml: 'AI HTML',
     menuNewMindmap: 'Mapa mental',
+    menuNewDiagram: 'Diagrama',
+    menuNewWhiteboard: 'Pizarra',
     menuNewHwp: 'AI HWP',
     menuNewPdf: 'AI PDF',
+    menuImportPdf: 'Importar PDF…',
     menuExportPdf: 'Exportar como PDF…',
     menuExportImages: 'Exportar como imágenes…',
     menuExportHtml: 'Exportar como HTML de archivo único…',
     menuExportMapImage: 'Exportar como imagen (PNG)…',
+    menuExportMapSvg: 'Exportar como imagen (SVG)…',
+    menuExportSvg: 'Exportar como SVG…',
+    menuZoomFit: 'Ajustar a la ventana',
     menuExportMapOutline: 'Exportar como esquema Markdown…',
     menuMakeFromDocument: 'Crear otro documento a partir de este',
     menuDocumentSources: 'Ver fuentes',
     menuDerivedDocuments: 'Documentos creados a partir de este',
     menuOpenInDocs: 'Convertir y abrir en Docs',
     menuPrint: 'Imprimir…',
+    menuPreview: 'Vista previa de impresión…',
     menuOpen: 'Abrir…',
     menuSave: 'Guardar',
     menuSaveAs: 'Guardar como…',
+    menuSaveSubmission: 'Guardar como copia de entrega…',
     menuClose: 'Cerrar',
     menuEdit: 'Edición',
     menuView: 'Ver',
@@ -2094,13 +2764,16 @@ const tMain = createI18n({
     filterPpt: 'Presentaciones de PowerPoint',
     filterMarkdown: 'Archivos de texto (Markdown, TXT, JSON)',
     filterHtml: 'Documentos HTML',
-    filterMindmap: 'Mapas mentales (archivos XMind)',
+    filterMindmap: 'Mapas mentales (XMind, FreeMind, Freeplane)',
     filterHwp: 'Documentos HWP (HWP, HWPX)',
     filterEpub: 'Libros electrónicos (EPUB)',
+    filterDiagram: 'Diagramas (draw.io, VSDX)',
+    filterWhiteboard: 'Pizarras (.whiteboard, Excalidraw)',
     menuFind: 'Buscar…',
     menuReplace: 'Reemplazar…',
     menuTranslateBook: 'Traducir libro…',
     filterPdf: 'Documentos PDF',
+    filterPdfPageImages: 'Imágenes PNG (un archivo por página)',
     errBadArgs: 'Argumentos no válidos',
     errBadName: 'Nombre de archivo no válido',
     errBadExtension: 'Esa extensión no es compatible y el archivo dejaría de abrirse',
@@ -2111,12 +2784,18 @@ const tMain = createI18n({
     errNewTabFailed: 'No se pudo crear el nuevo documento',
     errDuplicateFailed: 'No se pudo duplicar el archivo',
     errUnsupportedExt: 'los archivos .{ext} no son compatibles',
+    errLegacyConvert: 'No se pudo convertir este archivo .{ext}',
+    errLegacyConvertDetail:
+      'Puede que el archivo esté dañado o en una forma que este convertidor aún no lee. Ábralo en el programa que lo creó, guárdelo como .{to} y abra ese archivo aquí.',
+    errLegacyEncrypted:
+      'Este archivo está protegido con contraseña. Quite la contraseña en el programa que lo creó, o guárdelo allí como .{to}, y luego ábralo aquí.',
     copySuffix: 'copia',
     menuHelp: 'Ayuda',
     menuUserGuide: 'Guía del usuario',
     thirdPartyNotices: 'Avisos de software de terceros',
     menuExportDocx: 'Exportar como Word…',
     menuExportOdt: 'Exportar como ODT…',
+    menuExportHwp: 'Exportar como documento HWP…',
     btnCancel: 'Cancelar',
     pdfDocxFailedMsg: 'Error al exportar como Word',
     pdfDocxBusyMsg: 'Ya hay una exportación a Word en curso. Espera a que termine.',
@@ -2164,6 +2843,9 @@ const tMain = createI18n({
     dlgPickSaveDir: 'Elegir ubicación de guardado predeterminada',
     errSaveDirUnusable:
       'La carpeta seleccionada no admite escritura y no puede usarse como ubicación de guardado predeterminada',
+    saveDirFallbackMsg: 'No se puede guardar en la carpeta Documentos',
+    saveDirFallbackDetail:
+      'No se pudo crear ni escribir en {blocked}, así que los archivos nuevos se guardan en {using}. Si lo bloqueó el «Acceso controlado a carpetas» de Seguridad de Windows, agregue GenOffice en «Permitir una aplicación a través del acceso controlado a carpetas» y reinicie la aplicación. También puede elegir otra carpeta en Configuración → General → Ubicación de guardado.',
   },
   th: {
     menuTabSave: 'บันทึก',
@@ -2188,6 +2870,7 @@ const tMain = createI18n({
       '"{title}" ใช้หน่วยความจำหรือ CPU จำนวนมากติดต่อกันหลายนาที (หน่วยความจำ {memory} MB, CPU {cpu}%) คุณสามารถรอต่อไปหรือปิดเอกสารนี้ได้ (หากมีการเปลี่ยนแปลงที่ยังไม่บันทึกจะถามให้บันทึกก่อน) บันทึกข้อมูลวินิจฉัยแล้ว',
     watchdogWait: 'รอต่อไป',
     watchdogClose: 'ปิดเอกสาร',
+    watchdogIgnore: 'ไม่ต้องเตือนอีก',
     crashTitle: 'เอกสารหยุดทำงานโดยไม่คาดคิด',
     crashBody: '"{title}" หยุดทำงานโดยไม่คาดคิด การเปลี่ยนแปลงหลังการบันทึกครั้งล่าสุดอาจสูญหาย',
     crashReopen: 'เปิดอีกครั้ง',
@@ -2209,27 +2892,37 @@ const tMain = createI18n({
     untitledMarkdown: 'Markdown ไม่มีชื่อ',
     untitledHtml: 'HTML ไม่มีชื่อ',
     untitledMindmap: 'แผนที่ความคิดไม่มีชื่อ',
+    untitledDiagram: 'ไดอะแกรมไม่มีชื่อ',
+    untitledWhiteboard: 'ไวท์บอร์ดไม่มีชื่อ',
     untitledHwp: 'HWP ไม่มีชื่อ',
     untitledPdf: 'PDF ไม่มีชื่อ',
     menuNewSlide: 'AI Slides',
     menuNewMarkdown: 'AI Markdown',
     menuNewHtml: 'AI HTML',
     menuNewMindmap: 'แผนที่ความคิด',
+    menuNewDiagram: 'ไดอะแกรม',
+    menuNewWhiteboard: 'ไวท์บอร์ด',
     menuNewHwp: 'AI HWP',
     menuNewPdf: 'AI PDF',
+    menuImportPdf: 'นำเข้า PDF…',
     menuExportPdf: 'ส่งออกเป็น PDF…',
     menuExportImages: 'ส่งออกเป็นรูปภาพ…',
     menuExportHtml: 'ส่งออกเป็น HTML ไฟล์เดียว…',
     menuExportMapImage: 'ส่งออกเป็นรูปภาพ (PNG)…',
+    menuExportMapSvg: 'ส่งออกเป็นรูปภาพ (SVG)…',
+    menuExportSvg: 'ส่งออกเป็น SVG…',
+    menuZoomFit: 'พอดีหน้าต่าง',
     menuExportMapOutline: 'ส่งออกเป็นโครงร่าง Markdown…',
     menuMakeFromDocument: 'สร้างเอกสารอื่นจากเอกสารนี้',
     menuDocumentSources: 'ดูแหล่งข้อมูล',
     menuDerivedDocuments: 'เอกสารที่สร้างจากเอกสารนี้',
     menuOpenInDocs: 'แปลงและเปิดใน Docs',
     menuPrint: 'พิมพ์…',
+    menuPreview: 'ดูตัวอย่างก่อนพิมพ์…',
     menuOpen: 'เปิด…',
     menuSave: 'บันทึก',
     menuSaveAs: 'บันทึกเป็น…',
+    menuSaveSubmission: 'บันทึกเป็นสำเนาสำหรับส่ง…',
     menuClose: 'ปิด',
     menuEdit: 'แก้ไข',
     menuView: 'มุมมอง',
@@ -2247,13 +2940,16 @@ const tMain = createI18n({
     filterPpt: 'งานนำเสนอ PowerPoint',
     filterMarkdown: 'ไฟล์ข้อความ (Markdown, TXT, JSON)',
     filterHtml: 'เอกสาร HTML',
-    filterMindmap: 'แผนที่ความคิด (ไฟล์ XMind)',
+    filterMindmap: 'แผนที่ความคิด (XMind, FreeMind, Freeplane)',
     filterHwp: 'เอกสาร HWP (HWP, HWPX)',
     filterEpub: 'หนังสืออิเล็กทรอนิกส์ (EPUB)',
+    filterDiagram: 'ไดอะแกรม (draw.io, VSDX)',
+    filterWhiteboard: 'ไวท์บอร์ด (.whiteboard, Excalidraw)',
     menuFind: 'ค้นหา…',
     menuReplace: 'แทนที่…',
     menuTranslateBook: 'แปลหนังสือ…',
     filterPdf: 'เอกสาร PDF',
+    filterPdfPageImages: 'รูปภาพ PNG (หนึ่งไฟล์ต่อหน้า)',
     errBadArgs: 'อาร์กิวเมนต์ไม่ถูกต้อง',
     errBadName: 'ชื่อไฟล์ไม่ถูกต้อง',
     errBadExtension: 'ไม่รองรับส่วนขยายนี้ ไฟล์จะเปิดไม่ได้',
@@ -2264,12 +2960,18 @@ const tMain = createI18n({
     errNewTabFailed: 'สร้างเอกสารใหม่ไม่สำเร็จ',
     errDuplicateFailed: 'ไม่สามารถทำสำเนาไฟล์ได้',
     errUnsupportedExt: 'ไม่รองรับไฟล์ .{ext}',
+    errLegacyConvert: 'ไม่สามารถแปลงไฟล์ .{ext} นี้ได้',
+    errLegacyConvertDetail:
+      'ไฟล์อาจเสียหายหรืออยู่ในรูปแบบที่ตัวแปลงนี้ยังอ่านไม่ได้ เปิดไฟล์ในโปรแกรมที่สร้างไฟล์นั้น บันทึกเป็น .{to} แล้วเปิดไฟล์นั้นที่นี่',
+    errLegacyEncrypted:
+      'ไฟล์นี้มีรหัสผ่านป้องกัน ให้เอารหัสผ่านออกในโปรแกรมที่สร้างไฟล์ หรือบันทึกเป็น .{to} ที่นั่น แล้วเปิดที่นี่',
     copySuffix: 'สำเนา',
     menuHelp: 'วิธีใช้',
     menuUserGuide: 'คู่มือผู้ใช้',
     thirdPartyNotices: 'ประกาศเกี่ยวกับซอฟต์แวร์ของบุคคลที่สาม',
     menuExportDocx: 'ส่งออกเป็น Word…',
     menuExportOdt: 'ส่งออกเป็น ODT…',
+    menuExportHwp: 'ส่งออกเป็นเอกสาร HWP…',
     btnCancel: 'ยกเลิก',
     pdfDocxFailedMsg: 'ส่งออกเป็น Word ไม่สำเร็จ',
     pdfDocxBusyMsg: 'กำลังส่งออกเป็น Word อยู่ โปรดรอให้เสร็จสิ้นก่อน',
@@ -2312,6 +3014,9 @@ const tMain = createI18n({
     pdfDocxLocalCorruptDetail: 'ไฟล์เสียหายหรือไม่ใช่ PDF ที่ถูกต้อง จึงไม่สามารถแปลงได้',
     dlgPickSaveDir: 'เลือกตำแหน่งบันทึกเริ่มต้น',
     errSaveDirUnusable: 'โฟลเดอร์ที่เลือกไม่สามารถเขียนได้ จึงใช้เป็นตำแหน่งบันทึกเริ่มต้นไม่ได้',
+    saveDirFallbackMsg: 'บันทึกลงในโฟลเดอร์เอกสารไม่ได้',
+    saveDirFallbackDetail:
+      'สร้างหรือเขียน {blocked} ไม่ได้ ไฟล์ใหม่จึงจะบันทึกไว้ที่ {using} หาก "การเข้าถึงโฟลเดอร์ที่มีการควบคุม" ของความปลอดภัยของ Windows เป็นตัวบล็อก ให้เพิ่ม GenOffice ใน "อนุญาตแอปผ่านการเข้าถึงโฟลเดอร์ที่มีการควบคุม" แล้วเริ่มแอปใหม่ หรือเลือกโฟลเดอร์อื่นได้ที่ การตั้งค่า → ทั่วไป → ตำแหน่งบันทึก',
   },
   id: {
     menuTabSave: 'Simpan',
@@ -2336,6 +3041,7 @@ const tMain = createI18n({
       '"{title}" telah menggunakan banyak memori atau CPU selama beberapa menit ({memory} MB, CPU {cpu}%). Anda dapat terus menunggu atau menutup dokumen ini (perubahan yang belum disimpan akan ditanyakan lebih dulu). Diagnostik telah dicatat.',
     watchdogWait: 'Terus Menunggu',
     watchdogClose: 'Tutup Dokumen',
+    watchdogIgnore: 'Jangan ingatkan lagi',
     crashTitle: 'Dokumen berhenti secara tak terduga',
     crashBody:
       '"{title}" berhenti secara tak terduga. Perubahan sejak terakhir disimpan mungkin hilang.',
@@ -2358,27 +3064,37 @@ const tMain = createI18n({
     untitledMarkdown: 'Markdown tanpa judul',
     untitledHtml: 'HTML tanpa judul',
     untitledMindmap: 'Peta pikiran tanpa judul',
+    untitledDiagram: 'Diagram tanpa judul',
+    untitledWhiteboard: 'Papan Tulis Tanpa Judul',
     untitledHwp: 'HWP tanpa judul',
     untitledPdf: 'PDF tanpa judul',
     menuNewSlide: 'AI Slides',
     menuNewMarkdown: 'AI Markdown',
     menuNewHtml: 'AI HTML',
     menuNewMindmap: 'Peta pikiran',
+    menuNewDiagram: 'Diagram',
+    menuNewWhiteboard: 'Papan Tulis',
     menuNewHwp: 'AI HWP',
     menuNewPdf: 'AI PDF',
+    menuImportPdf: 'Impor PDF…',
     menuExportPdf: 'Ekspor sebagai PDF…',
     menuExportImages: 'Ekspor sebagai gambar…',
     menuExportHtml: 'Ekspor sebagai HTML satu file…',
     menuExportMapImage: 'Ekspor sebagai gambar (PNG)…',
+    menuExportMapSvg: 'Ekspor sebagai gambar (SVG)…',
+    menuExportSvg: 'Ekspor sebagai SVG…',
+    menuZoomFit: 'Paskan ke jendela',
     menuExportMapOutline: 'Ekspor sebagai kerangka Markdown…',
     menuMakeFromDocument: 'Buat dokumen lain dari dokumen ini',
     menuDocumentSources: 'Lihat sumber',
     menuDerivedDocuments: 'Dokumen yang dibuat dari dokumen ini',
     menuOpenInDocs: 'Konversi dan buka di Docs',
     menuPrint: 'Cetak…',
+    menuPreview: 'Pratinjau cetak…',
     menuOpen: 'Buka…',
     menuSave: 'Simpan',
     menuSaveAs: 'Simpan Sebagai…',
+    menuSaveSubmission: 'Simpan sebagai Salinan Penyerahan…',
     menuClose: 'Tutup',
     menuEdit: 'Edit',
     menuView: 'Tampilan',
@@ -2396,13 +3112,16 @@ const tMain = createI18n({
     filterPpt: 'Presentasi PowerPoint',
     filterMarkdown: 'File teks (Markdown, TXT, JSON)',
     filterHtml: 'Dokumen HTML',
-    filterMindmap: 'Peta pikiran (file XMind)',
+    filterMindmap: 'Peta pikiran (XMind, FreeMind, Freeplane)',
     filterHwp: 'Dokumen HWP (HWP, HWPX)',
     filterEpub: 'Buku elektronik (EPUB)',
+    filterDiagram: 'Diagram (draw.io, VSDX)',
+    filterWhiteboard: 'Papan Tulis (.whiteboard, Excalidraw)',
     menuFind: 'Cari…',
     menuReplace: 'Ganti…',
     menuTranslateBook: 'Terjemahkan buku…',
     filterPdf: 'Dokumen PDF',
+    filterPdfPageImages: 'Gambar PNG (satu berkas per halaman)',
     errBadArgs: 'Argumen tidak valid',
     errBadName: 'Nama file tidak valid',
     errBadExtension: 'Ekstensi itu tidak didukung dan berkas tidak akan bisa dibuka',
@@ -2413,12 +3132,18 @@ const tMain = createI18n({
     errNewTabFailed: 'Gagal membuat dokumen baru',
     errDuplicateFailed: 'Tidak dapat menduplikasi berkas',
     errUnsupportedExt: 'file .{ext} tidak didukung',
+    errLegacyConvert: 'File .{ext} ini tidak dapat dikonversi',
+    errLegacyConvertDetail:
+      'File mungkin rusak atau dalam bentuk yang belum dapat dibaca konverter ini. Buka di program yang membuatnya, simpan sebagai .{to}, lalu buka file itu di sini.',
+    errLegacyEncrypted:
+      'File ini dilindungi kata sandi. Hapus kata sandinya di program yang membuatnya, atau simpan di sana sebagai .{to}, lalu buka di sini.',
     copySuffix: 'salinan',
     menuHelp: 'Bantuan',
     menuUserGuide: 'Panduan Pengguna',
     thirdPartyNotices: 'Pemberitahuan Perangkat Lunak Pihak Ketiga',
     menuExportDocx: 'Ekspor sebagai Word…',
     menuExportOdt: 'Ekspor sebagai ODT…',
+    menuExportHwp: 'Ekspor sebagai dokumen HWP…',
     btnCancel: 'Batal',
     pdfDocxFailedMsg: 'Gagal mengekspor sebagai Word',
     pdfDocxBusyMsg: 'Ekspor ke Word sedang berlangsung. Harap tunggu hingga selesai.',
@@ -2465,6 +3190,9 @@ const tMain = createI18n({
     dlgPickSaveDir: 'Pilih Lokasi Penyimpanan Default',
     errSaveDirUnusable:
       'Folder yang dipilih tidak dapat ditulis dan tidak bisa digunakan sebagai lokasi penyimpanan default',
+    saveDirFallbackMsg: 'Tidak dapat menyimpan ke folder Dokumen',
+    saveDirFallbackDetail:
+      '{blocked} tidak dapat dibuat atau ditulisi, jadi file baru disimpan di {using}. Jika "Akses folder terkontrol" di Keamanan Windows yang memblokirnya, tambahkan GenOffice di "Izinkan aplikasi melalui Akses folder terkontrol", lalu mulai ulang aplikasi. Anda juga dapat memilih folder lain di Pengaturan → Umum → Lokasi penyimpanan.',
   },
   ru: {
     menuTabSave: 'Сохранить',
@@ -2489,6 +3217,7 @@ const tMain = createI18n({
       '«{title}» уже несколько минут использует много памяти или процессора ({memory} МБ, {cpu}% CPU). Можно подождать ещё или закрыть документ (при несохранённых изменениях сначала будет предложено сохранить). Диагностика записана.',
     watchdogWait: 'Подождать',
     watchdogClose: 'Закрыть документ',
+    watchdogIgnore: 'Больше не напоминать',
     crashTitle: 'Документ неожиданно остановился',
     crashBody:
       '«{title}» неожиданно остановился. Изменения после последнего сохранения могли быть потеряны.',
@@ -2511,27 +3240,37 @@ const tMain = createI18n({
     untitledMarkdown: 'Markdown без названия',
     untitledHtml: 'HTML без названия',
     untitledMindmap: 'Интеллект-карта без названия',
+    untitledDiagram: 'Диаграмма без названия',
+    untitledWhiteboard: 'Доска без названия',
     untitledHwp: 'HWP без названия',
     untitledPdf: 'PDF без названия',
     menuNewSlide: 'AI Slides',
     menuNewMarkdown: 'AI Markdown',
     menuNewHtml: 'AI HTML',
     menuNewMindmap: 'Интеллект-карта',
+    menuNewDiagram: 'Диаграмма',
+    menuNewWhiteboard: 'Доска',
     menuNewHwp: 'AI HWP',
     menuNewPdf: 'AI PDF',
+    menuImportPdf: 'Импортировать PDF…',
     menuExportPdf: 'Экспортировать в PDF…',
     menuExportImages: 'Экспорт в изображения…',
     menuExportHtml: 'Экспортировать в один файл HTML…',
     menuExportMapImage: 'Экспорт в изображение (PNG)…',
+    menuExportMapSvg: 'Экспорт в изображение (SVG)…',
+    menuExportSvg: 'Экспортировать в SVG…',
+    menuZoomFit: 'По размеру окна',
     menuExportMapOutline: 'Экспорт в структуру Markdown…',
     menuMakeFromDocument: 'Создать другой документ из этого',
     menuDocumentSources: 'Показать источники',
     menuDerivedDocuments: 'Документы, созданные из этого',
     menuOpenInDocs: 'Преобразовать и открыть в Docs',
     menuPrint: 'Печать…',
+    menuPreview: 'Предварительный просмотр печати…',
     menuOpen: 'Открыть…',
     menuSave: 'Сохранить',
     menuSaveAs: 'Сохранить как…',
+    menuSaveSubmission: 'Сохранить копию для подачи…',
     menuClose: 'Закрыть',
     menuEdit: 'Правка',
     menuView: 'Вид',
@@ -2549,13 +3288,16 @@ const tMain = createI18n({
     filterPpt: 'Презентации PowerPoint',
     filterMarkdown: 'Текстовые файлы (Markdown, TXT, JSON)',
     filterHtml: 'Документы HTML',
-    filterMindmap: 'Интеллект-карты (файлы XMind)',
+    filterMindmap: 'Интеллект-карты (XMind, FreeMind, Freeplane)',
     filterHwp: 'Документы HWP (HWP, HWPX)',
     filterEpub: 'Электронные книги (EPUB)',
+    filterDiagram: 'Диаграммы (draw.io, VSDX)',
+    filterWhiteboard: 'Доски (.whiteboard, Excalidraw)',
     menuFind: 'Найти…',
     menuReplace: 'Заменить…',
     menuTranslateBook: 'Перевести книгу…',
     filterPdf: 'Документы PDF',
+    filterPdfPageImages: 'Изображения PNG (по файлу на страницу)',
     errBadArgs: 'Недопустимые аргументы',
     errBadName: 'Недопустимое имя файла',
     errBadExtension: 'Это расширение не поддерживается, и файл больше не откроется',
@@ -2566,12 +3308,18 @@ const tMain = createI18n({
     errNewTabFailed: 'Не удалось создать новый документ',
     errDuplicateFailed: 'Не удалось создать копию файла',
     errUnsupportedExt: 'файлы .{ext} не поддерживаются',
+    errLegacyConvert: 'Не удалось преобразовать этот файл .{ext}',
+    errLegacyConvertDetail:
+      'Файл может быть повреждён или иметь форму, которую этот конвертер пока не читает. Откройте его в программе, в которой он создан, сохраните как .{to} и откройте этот файл здесь.',
+    errLegacyEncrypted:
+      'Файл защищён паролем. Снимите пароль в программе, в которой он создан, или сохраните его там как .{to}, а затем откройте здесь.',
     copySuffix: 'копия',
     menuHelp: 'Справка',
     menuUserGuide: 'Руководство пользователя',
     thirdPartyNotices: 'Уведомления о стороннем ПО',
     menuExportDocx: 'Экспортировать в Word…',
     menuExportOdt: 'Экспортировать в ODT…',
+    menuExportHwp: 'Экспорт в документ HWP…',
     btnCancel: 'Отмена',
     pdfDocxFailedMsg: 'Не удалось экспортировать в Word',
     pdfDocxBusyMsg: 'Экспорт в Word уже выполняется. Дождитесь его завершения.',
@@ -2618,6 +3366,9 @@ const tMain = createI18n({
     dlgPickSaveDir: 'Выбрать папку сохранения по умолчанию',
     errSaveDirUnusable:
       'Выбранная папка недоступна для записи и не может использоваться как папка сохранения по умолчанию',
+    saveDirFallbackMsg: 'Не удаётся сохранить в папку «Документы»',
+    saveDirFallbackDetail:
+      'Не удалось создать папку {blocked} или записать в неё, поэтому новые файлы сохраняются в {using}. Если это заблокировал «Контролируемый доступ к папкам» в Безопасности Windows, добавьте GenOffice в «Разрешить работу приложения через контролируемый доступ к папкам» и перезапустите приложение. Можно также выбрать другую папку в разделе Настройки → Общие → Папка сохранения.',
   },
   ar: {
     menuTabSave: 'حفظ',
@@ -2642,6 +3393,7 @@ const tMain = createI18n({
       'يستهلك "{title}" قدرًا كبيرًا من الذاكرة أو المعالج منذ عدة دقائق (الذاكرة {memory} م.ب، المعالج {cpu}%). يمكنك مواصلة الانتظار أو إغلاق هذا المستند (سيُطلب حفظ التغييرات غير المحفوظة أولًا). تم تسجيل بيانات التشخيص.',
     watchdogWait: 'مواصلة الانتظار',
     watchdogClose: 'إغلاق المستند',
+    watchdogIgnore: 'عدم التذكير مجددًا',
     crashTitle: 'توقف مستند بشكل غير متوقع',
     crashBody: 'توقف "{title}" بشكل غير متوقع. ربما فُقدت التغييرات التي أُجريت منذ آخر حفظ.',
     crashReopen: 'إعادة الفتح',
@@ -2663,27 +3415,37 @@ const tMain = createI18n({
     untitledMarkdown: 'Markdown بدون عنوان',
     untitledHtml: 'HTML بدون عنوان',
     untitledMindmap: 'خريطة ذهنية بدون عنوان',
+    untitledDiagram: 'مخطط بدون عنوان',
+    untitledWhiteboard: 'لوح أبيض بدون عنوان',
     untitledHwp: 'HWP بدون عنوان',
     untitledPdf: 'PDF بدون عنوان',
     menuNewSlide: 'AI Slides',
     menuNewMarkdown: 'AI Markdown',
     menuNewHtml: 'AI HTML',
     menuNewMindmap: 'خريطة ذهنية',
+    menuNewDiagram: 'مخطط',
+    menuNewWhiteboard: 'لوح أبيض',
     menuNewHwp: 'AI HWP',
     menuNewPdf: 'AI PDF',
+    menuImportPdf: 'استيراد PDF…',
     menuExportPdf: 'تصدير بتنسيق PDF…',
     menuExportImages: 'تصدير كصور…',
     menuExportHtml: 'تصدير كملف HTML واحد…',
     menuExportMapImage: 'تصدير كصورة (PNG)…',
+    menuExportMapSvg: 'تصدير كصورة (SVG)…',
+    menuExportSvg: 'تصدير بتنسيق SVG…',
+    menuZoomFit: 'ملاءمة النافذة',
     menuExportMapOutline: 'تصدير كمخطط Markdown…',
     menuMakeFromDocument: 'إنشاء مستند آخر من هذا المستند',
     menuDocumentSources: 'عرض المصادر',
     menuDerivedDocuments: 'المستندات المُنشأة من هذا المستند',
     menuOpenInDocs: 'التحويل والفتح في Docs',
     menuPrint: 'طباعة…',
+    menuPreview: 'معاينة الطباعة…',
     menuOpen: 'فتح…',
     menuSave: 'حفظ',
     menuSaveAs: 'حفظ باسم…',
+    menuSaveSubmission: 'حفظ كنسخة للتقديم…',
     menuClose: 'إغلاق',
     menuEdit: 'تحرير',
     menuView: 'عرض',
@@ -2701,13 +3463,16 @@ const tMain = createI18n({
     filterPpt: 'عروض PowerPoint التقديمية',
     filterMarkdown: 'ملفات نصية (Markdown, TXT, JSON)',
     filterHtml: 'مستندات HTML',
-    filterMindmap: 'خرائط ذهنية (ملفات XMind)',
+    filterMindmap: 'خرائط ذهنية (XMind, FreeMind, Freeplane)',
     filterHwp: 'مستندات HWP (HWP, HWPX)',
     filterEpub: 'كتب إلكترونية (EPUB)',
+    filterDiagram: 'مخططات (draw.io, VSDX)',
+    filterWhiteboard: 'ألواح بيضاء (.whiteboard, Excalidraw)',
     menuFind: 'بحث…',
     menuReplace: 'استبدال…',
     menuTranslateBook: 'ترجمة الكتاب…',
     filterPdf: 'مستندات PDF',
+    filterPdfPageImages: 'صور PNG (ملف لكل صفحة)',
     errBadArgs: 'وسيطات غير صالحة',
     errBadName: 'اسم ملف غير صالح',
     errBadExtension: 'هذه الامتداد غير مدعوم وسيصبح الملف غير قابل للفتح',
@@ -2718,12 +3483,18 @@ const tMain = createI18n({
     errNewTabFailed: 'تعذّر إنشاء المستند الجديد',
     errDuplicateFailed: 'تعذر تكرار الملف',
     errUnsupportedExt: 'ملفات .{ext} غير مدعومة',
+    errLegacyConvert: 'تعذّر تحويل ملف .{ext} هذا',
+    errLegacyConvertDetail:
+      'قد يكون الملف تالفًا أو بصيغة لا يقرؤها هذا المحوّل بعد. افتحه في البرنامج الذي أنشأه واحفظه بصيغة ‎.{to}، ثم افتح ذلك الملف هنا.',
+    errLegacyEncrypted:
+      'هذا الملف محمي بكلمة مرور. أزل كلمة المرور في البرنامج الذي أنشأه، أو احفظه هناك بصيغة ‎.{to}، ثم افتحه هنا.',
     copySuffix: 'نسخة',
     menuHelp: 'تعليمات',
     menuUserGuide: 'دليل المستخدم',
     thirdPartyNotices: 'إشعارات برامج الجهات الخارجية',
     menuExportDocx: 'تصدير كملف Word…',
     menuExportOdt: 'تصدير كملف ODT…',
+    menuExportHwp: 'تصدير كمستند HWP…',
     btnCancel: 'إلغاء',
     pdfDocxFailedMsg: 'فشل التصدير كملف Word',
     pdfDocxBusyMsg: 'يجري حاليًا تصدير إلى Word. يُرجى الانتظار حتى يكتمل.',
@@ -2766,6 +3537,9 @@ const tMain = createI18n({
     pdfDocxLocalCorruptDetail: 'الملف تالف أو ليس ملف PDF صالحًا ولا يمكن تحويله.',
     dlgPickSaveDir: 'اختيار موقع الحفظ الافتراضي',
     errSaveDirUnusable: 'المجلد المحدد غير قابل للكتابة ولا يمكن استخدامه كموقع حفظ افتراضي',
+    saveDirFallbackMsg: 'تعذّر الحفظ في مجلد المستندات',
+    saveDirFallbackDetail:
+      'تعذّر إنشاء {blocked} أو الكتابة فيه، لذا تُحفظ الملفات الجديدة في {using}. إذا كان "الوصول إلى المجلدات الخاضعة للتحكم" في أمان Windows هو ما منعه، فأضف GenOffice في "السماح لتطبيق عبر الوصول إلى المجلدات الخاضعة للتحكم" ثم أعد تشغيل التطبيق. يمكنك أيضًا اختيار مجلد آخر من الإعدادات ← عام ← موقع الحفظ.',
   },
   pt: {
     menuTabSave: 'Salvar',
@@ -2785,11 +3559,12 @@ const tMain = createI18n({
     menuTabCloseAll: 'Fechar todas as abas',
     menuTabReopen: 'Reabrir aba fechada',
     dlgAddFolderRoot: 'Adicionar pasta à página inicial',
-    watchdogTitle: 'O documento está a consumir demasiados recursos',
+    watchdogTitle: 'O documento está consumindo muitos recursos',
     watchdogBody:
-      '"{title}" está a usar muita memória ou CPU há vários minutos ({memory} MB, {cpu}% de CPU). Pode continuar a aguardar ou fechar o documento (será pedido para guardar alterações não guardadas primeiro). O diagnóstico foi registado.',
-    watchdogWait: 'Continuar a aguardar',
+      '"{title}" está usando muita memória ou CPU há vários minutos ({memory} MB, {cpu}% de CPU). Você pode aguardar ou fechar o documento (será solicitado que salve as alterações pendentes primeiro). O diagnóstico foi registrado.',
+    watchdogWait: 'Continuar aguardando',
     watchdogClose: 'Fechar documento',
+    watchdogIgnore: 'Não voltar a lembrar',
     crashTitle: 'Um documento parou inesperadamente',
     crashBody:
       '"{title}" parou inesperadamente. As alterações feitas desde a última gravação podem ter-se perdido.',
@@ -2812,27 +3587,37 @@ const tMain = createI18n({
     untitledMarkdown: 'Markdown sem título',
     untitledHtml: 'HTML sem título',
     untitledMindmap: 'Mapa mental sem título',
+    untitledDiagram: 'Diagrama sem título',
+    untitledWhiteboard: 'Quadro branco sem título',
     untitledHwp: 'HWP sem título',
     untitledPdf: 'PDF sem título',
     menuNewSlide: 'AI Slides',
     menuNewMarkdown: 'AI Markdown',
     menuNewHtml: 'AI HTML',
     menuNewMindmap: 'Mapa mental',
+    menuNewDiagram: 'Diagrama',
+    menuNewWhiteboard: 'Quadro branco',
     menuNewHwp: 'AI HWP',
     menuNewPdf: 'AI PDF',
+    menuImportPdf: 'Importar PDF…',
     menuExportPdf: 'Exportar como PDF…',
     menuExportImages: 'Exportar como imagens…',
     menuExportHtml: 'Exportar como HTML de arquivo único…',
     menuExportMapImage: 'Exportar como imagem (PNG)…',
+    menuExportMapSvg: 'Exportar como imagem (SVG)…',
+    menuExportSvg: 'Exportar como SVG…',
+    menuZoomFit: 'Ajustar à janela',
     menuExportMapOutline: 'Exportar como estrutura de tópicos Markdown…',
     menuMakeFromDocument: 'Criar outro documento a partir deste',
     menuDocumentSources: 'Ver fontes',
     menuDerivedDocuments: 'Documentos criados a partir deste',
     menuOpenInDocs: 'Converter e abrir no Docs',
     menuPrint: 'Imprimir…',
+    menuPreview: 'Visualizar impressão…',
     menuOpen: 'Abrir…',
     menuSave: 'Salvar',
     menuSaveAs: 'Salvar Como…',
+    menuSaveSubmission: 'Salvar como cópia de entrega…',
     menuClose: 'Fechar',
     menuEdit: 'Editar',
     menuView: 'Visualização',
@@ -2850,13 +3635,16 @@ const tMain = createI18n({
     filterPpt: 'Apresentações do PowerPoint',
     filterMarkdown: 'Arquivos de texto (Markdown, TXT, JSON)',
     filterHtml: 'Documentos HTML',
-    filterMindmap: 'Mapas mentais (arquivos XMind)',
+    filterMindmap: 'Mapas mentais (XMind, FreeMind, Freeplane)',
     filterHwp: 'Documentos HWP (HWP, HWPX)',
     filterEpub: 'Livros digitais (EPUB)',
+    filterDiagram: 'Diagramas (draw.io, VSDX)',
+    filterWhiteboard: 'Quadros brancos (.whiteboard, Excalidraw)',
     menuFind: 'Localizar…',
     menuReplace: 'Substituir…',
     menuTranslateBook: 'Traduzir livro…',
     filterPdf: 'Documentos PDF',
+    filterPdfPageImages: 'Imagens PNG (um arquivo por página)',
     errBadArgs: 'Argumentos inválidos',
     errBadName: 'Nome de arquivo inválido',
     errBadExtension: 'Essa extensão não é suportada e o arquivo deixaria de abrir',
@@ -2867,12 +3655,18 @@ const tMain = createI18n({
     errNewTabFailed: 'Falha ao criar o novo documento',
     errDuplicateFailed: 'Não foi possível duplicar o arquivo',
     errUnsupportedExt: 'arquivos .{ext} não são suportados',
+    errLegacyConvert: 'Não foi possível converter este arquivo .{ext}',
+    errLegacyConvertDetail:
+      'O arquivo pode estar danificado ou em uma forma que este conversor ainda não lê. Abra-o no programa que o criou, salve como .{to} e abra esse arquivo aqui.',
+    errLegacyEncrypted:
+      'Este arquivo é protegido por senha. Remova a senha no programa que o criou, ou salve-o lá como .{to}, e depois abra-o aqui.',
     copySuffix: 'cópia',
     menuHelp: 'Ajuda',
     menuUserGuide: 'Guia do Usuário',
     thirdPartyNotices: 'Avisos de software de terceiros',
     menuExportDocx: 'Exportar como Word…',
     menuExportOdt: 'Exportar como ODT…',
+    menuExportHwp: 'Exportar como documento HWP…',
     btnCancel: 'Cancelar',
     pdfDocxFailedMsg: 'Falha ao exportar como Word',
     pdfDocxBusyMsg: 'Já há uma exportação para Word em andamento. Aguarde a conclusão.',
@@ -2919,6 +3713,9 @@ const tMain = createI18n({
     dlgPickSaveDir: 'Escolher local de salvamento padrão',
     errSaveDirUnusable:
       'A pasta selecionada não permite gravação e não pode ser usada como local de salvamento padrão',
+    saveDirFallbackMsg: 'Não é possível salvar na pasta Documentos',
+    saveDirFallbackDetail:
+      'Não foi possível criar ou gravar em {blocked}, por isso os novos arquivos são salvos em {using}. Se o "Acesso controlado a pastas" da Segurança do Windows bloqueou, adicione o GenOffice em "Permitir um aplicativo pelo Acesso controlado a pastas" e reinicie o aplicativo. Você também pode escolher outra pasta em Configurações → Geral → Local de salvamento.',
   },
   it: {
     menuTabSave: 'Salva',
@@ -2943,6 +3740,7 @@ const tMain = createI18n({
       '"{title}" sta usando molta memoria o CPU da diversi minuti ({memory} MB, {cpu}% CPU). Puoi continuare ad attendere o chiudere il documento (ti verrà chiesto prima di salvare le modifiche non salvate). La diagnostica è stata registrata.',
     watchdogWait: 'Continua ad attendere',
     watchdogClose: 'Chiudi documento',
+    watchdogIgnore: 'Non ricordare più',
     crashTitle: 'Un documento si è interrotto inaspettatamente',
     crashBody:
       '"{title}" si è interrotto inaspettatamente. Le modifiche successive all’ultimo salvataggio potrebbero essere andate perse.',
@@ -2965,27 +3763,37 @@ const tMain = createI18n({
     untitledMarkdown: 'Markdown senza titolo',
     untitledHtml: 'HTML senza titolo',
     untitledMindmap: 'Mappa mentale senza titolo',
+    untitledDiagram: 'Diagramma senza titolo',
+    untitledWhiteboard: 'Lavagna senza titolo',
     untitledHwp: 'HWP senza titolo',
     untitledPdf: 'PDF senza titolo',
     menuNewSlide: 'AI Slides',
     menuNewMarkdown: 'AI Markdown',
     menuNewHtml: 'AI HTML',
     menuNewMindmap: 'Mappa mentale',
+    menuNewDiagram: 'Diagramma',
+    menuNewWhiteboard: 'Lavagna',
     menuNewHwp: 'AI HWP',
     menuNewPdf: 'AI PDF',
+    menuImportPdf: 'Importa PDF…',
     menuExportPdf: 'Esporta come PDF…',
     menuExportImages: 'Esporta come immagini…',
     menuExportHtml: 'Esporta come HTML a file singolo…',
     menuExportMapImage: 'Esporta come immagine (PNG)…',
+    menuExportMapSvg: 'Esporta come immagine (SVG)…',
+    menuExportSvg: 'Esporta come SVG…',
+    menuZoomFit: 'Adatta alla finestra',
     menuExportMapOutline: 'Esporta come struttura Markdown…',
     menuMakeFromDocument: 'Crea un altro documento da questo',
     menuDocumentSources: 'Mostra le fonti',
     menuDerivedDocuments: 'Documenti creati da questo',
     menuOpenInDocs: 'Converti e apri in Docs',
     menuPrint: 'Stampa…',
+    menuPreview: 'Anteprima di stampa…',
     menuOpen: 'Apri…',
     menuSave: 'Salva',
     menuSaveAs: 'Salva con nome…',
+    menuSaveSubmission: 'Salva come copia di consegna…',
     menuClose: 'Chiudi',
     menuEdit: 'Modifica',
     menuView: 'Vista',
@@ -3003,13 +3811,16 @@ const tMain = createI18n({
     filterPpt: 'Presentazioni PowerPoint',
     filterMarkdown: 'File di testo (Markdown, TXT, JSON)',
     filterHtml: 'Documenti HTML',
-    filterMindmap: 'Mappe mentali (file XMind)',
+    filterMindmap: 'Mappe mentali (XMind, FreeMind, Freeplane)',
     filterHwp: 'Documenti HWP (HWP, HWPX)',
     filterEpub: 'Libri digitali (EPUB)',
+    filterDiagram: 'Diagrammi (draw.io, VSDX)',
+    filterWhiteboard: 'Lavagne (.whiteboard, Excalidraw)',
     menuFind: 'Trova…',
     menuReplace: 'Sostituisci…',
     menuTranslateBook: 'Traduci libro…',
     filterPdf: 'Documenti PDF',
+    filterPdfPageImages: 'Immagini PNG (un file per pagina)',
     errBadArgs: 'Argomenti non validi',
     errBadName: 'Nome file non valido',
     errBadExtension: 'Questa estensione non è supportata e il file non si aprirebbe più',
@@ -3020,12 +3831,18 @@ const tMain = createI18n({
     errNewTabFailed: 'Impossibile creare il nuovo documento',
     errDuplicateFailed: 'Impossibile duplicare il file',
     errUnsupportedExt: 'i file .{ext} non sono supportati',
+    errLegacyConvert: 'Impossibile convertire questo file .{ext}',
+    errLegacyConvertDetail:
+      'Il file potrebbe essere danneggiato o in una forma che questo convertitore non legge ancora. Aprilo nel programma che lo ha creato, salvalo come .{to} e poi apri qui quel file.',
+    errLegacyEncrypted:
+      'Questo file è protetto da password. Rimuovi la password nel programma che lo ha creato, oppure salvalo lì come .{to}, poi aprilo qui.',
     copySuffix: 'copia',
     menuHelp: 'Aiuto',
     menuUserGuide: "Guida dell'utente",
     thirdPartyNotices: 'Note sul software di terze parti',
     menuExportDocx: 'Esporta come Word…',
     menuExportOdt: 'Esporta come ODT…',
+    menuExportHwp: 'Esporta come documento HWP…',
     btnCancel: 'Annulla',
     pdfDocxFailedMsg: 'Esportazione in Word non riuscita',
     pdfDocxBusyMsg: "Un'esportazione in Word è già in corso. Attendi il completamento.",
@@ -3072,6 +3889,9 @@ const tMain = createI18n({
     dlgPickSaveDir: 'Scegli la posizione di salvataggio predefinita',
     errSaveDirUnusable:
       'La cartella selezionata non è scrivibile e non può essere usata come posizione di salvataggio predefinita',
+    saveDirFallbackMsg: 'Impossibile salvare nella cartella Documenti',
+    saveDirFallbackDetail:
+      'Impossibile creare o scrivere {blocked}, quindi i nuovi file vengono salvati in {using}. Se lo ha bloccato l\'"Accesso alle cartelle controllato" di Sicurezza di Windows, aggiungi GenOffice in "Consenti app tramite Accesso alle cartelle controllato" e riavvia l\'app. Puoi anche scegliere un\'altra cartella in Impostazioni → Generale → Posizione di salvataggio.',
   },
   pl: {
     menuTabSave: 'Zapisz',
@@ -3096,6 +3916,7 @@ const tMain = createI18n({
       '„{title}” od kilku minut zużywa dużo pamięci lub procesora ({memory} MB, {cpu}% CPU). Możesz dalej czekać albo zamknąć dokument (najpierw pojawi się pytanie o zapisanie niezapisanych zmian). Dane diagnostyczne zostały zapisane.',
     watchdogWait: 'Czekaj dalej',
     watchdogClose: 'Zamknij dokument',
+    watchdogIgnore: 'Nie przypominaj ponownie',
     crashTitle: 'Dokument nieoczekiwanie przestał działać',
     crashBody:
       '„{title}” nieoczekiwanie przestał działać. Zmiany wprowadzone od ostatniego zapisu mogły zostać utracone.',
@@ -3118,27 +3939,37 @@ const tMain = createI18n({
     untitledMarkdown: 'Markdown bez tytułu',
     untitledHtml: 'HTML bez tytułu',
     untitledMindmap: 'Mapa myśli bez tytułu',
+    untitledDiagram: 'Diagram bez tytułu',
+    untitledWhiteboard: 'Tablica bez tytułu',
     untitledHwp: 'HWP bez tytułu',
     untitledPdf: 'PDF bez tytułu',
     menuNewSlide: 'AI Slides',
     menuNewMarkdown: 'AI Markdown',
     menuNewHtml: 'AI HTML',
     menuNewMindmap: 'Mapa myśli',
+    menuNewDiagram: 'Diagram',
+    menuNewWhiteboard: 'Tablica',
     menuNewHwp: 'AI HWP',
     menuNewPdf: 'AI PDF',
+    menuImportPdf: 'Importuj PDF…',
     menuExportPdf: 'Eksportuj jako PDF…',
     menuExportImages: 'Eksportuj jako obrazy…',
     menuExportHtml: 'Eksportuj jako pojedynczy plik HTML…',
     menuExportMapImage: 'Eksportuj jako obraz (PNG)…',
+    menuExportMapSvg: 'Eksportuj jako obraz (SVG)…',
+    menuExportSvg: 'Eksportuj jako SVG…',
+    menuZoomFit: 'Dopasuj do okna',
     menuExportMapOutline: 'Eksportuj jako konspekt Markdown…',
     menuMakeFromDocument: 'Utwórz inny dokument z tego',
     menuDocumentSources: 'Pokaż źródła',
     menuDerivedDocuments: 'Dokumenty utworzone z tego',
     menuOpenInDocs: 'Konwertuj i otwórz w Docs',
     menuPrint: 'Drukuj…',
+    menuPreview: 'Podgląd wydruku…',
     menuOpen: 'Otwórz…',
     menuSave: 'Zapisz',
     menuSaveAs: 'Zapisz jako…',
+    menuSaveSubmission: 'Zapisz jako kopię do złożenia…',
     menuClose: 'Zamknij',
     menuEdit: 'Edycja',
     menuView: 'Widok',
@@ -3156,13 +3987,16 @@ const tMain = createI18n({
     filterPpt: 'Prezentacje programu PowerPoint',
     filterMarkdown: 'Pliki tekstowe (Markdown, TXT, JSON)',
     filterHtml: 'Dokumenty HTML',
-    filterMindmap: 'Mapy myśli (pliki XMind)',
+    filterMindmap: 'Mapy myśli (XMind, FreeMind, Freeplane)',
     filterHwp: 'Dokumenty HWP (HWP, HWPX)',
     filterEpub: 'E-booki (EPUB)',
+    filterDiagram: 'Diagramy (draw.io, VSDX)',
+    filterWhiteboard: 'Tablice (.whiteboard, Excalidraw)',
     menuFind: 'Znajdź…',
     menuReplace: 'Zamień…',
     menuTranslateBook: 'Przetłumacz książkę…',
     filterPdf: 'Dokumenty PDF',
+    filterPdfPageImages: 'Obrazy PNG (jeden plik na stronę)',
     errBadArgs: 'Nieprawidłowe argumenty',
     errBadName: 'Nieprawidłowa nazwa pliku',
     errBadExtension: 'To rozszerzenie nie jest obsługiwane i plik przestałby się otwierać',
@@ -3173,12 +4007,18 @@ const tMain = createI18n({
     errNewTabFailed: 'Nie udało się utworzyć nowego dokumentu',
     errDuplicateFailed: 'Nie udało się zduplikować pliku',
     errUnsupportedExt: 'pliki .{ext} nie są obsługiwane',
+    errLegacyConvert: 'Nie udało się przekonwertować tego pliku .{ext}',
+    errLegacyConvertDetail:
+      'Plik może być uszkodzony lub mieć postać, której ten konwerter jeszcze nie czyta. Otwórz go w programie, w którym powstał, zapisz jako .{to}, a potem otwórz ten plik tutaj.',
+    errLegacyEncrypted:
+      'Plik jest chroniony hasłem. Usuń hasło w programie, w którym powstał, albo zapisz go tam jako .{to}, a potem otwórz tutaj.',
     copySuffix: 'kopia',
     menuHelp: 'Pomoc',
     menuUserGuide: 'Podręcznik użytkownika',
     thirdPartyNotices: 'Informacje o oprogramowaniu innych firm',
     menuExportDocx: 'Eksportuj jako Word…',
     menuExportOdt: 'Eksportuj jako ODT…',
+    menuExportHwp: 'Eksportuj jako dokument HWP…',
     btnCancel: 'Anuluj',
     pdfDocxFailedMsg: 'Eksport do formatu Word nie powiódł się',
     pdfDocxBusyMsg: 'Eksport do formatu Word już trwa. Poczekaj na jego zakończenie.',
@@ -3225,6 +4065,9 @@ const tMain = createI18n({
     dlgPickSaveDir: 'Wybierz domyślną lokalizację zapisu',
     errSaveDirUnusable:
       'Wybrany folder nie pozwala na zapis i nie może być domyślną lokalizacją zapisu',
+    saveDirFallbackMsg: 'Nie można zapisać w folderze Dokumenty',
+    saveDirFallbackDetail:
+      'Nie udało się utworzyć folderu {blocked} ani w nim zapisać, więc nowe pliki są zapisywane w {using}. Jeśli zablokował to „Dostęp kontrolowany do folderów” w Zabezpieczeniach Windows, dodaj GenOffice w „Zezwalaj aplikacji na dostęp kontrolowany do folderów” i uruchom aplikację ponownie. Możesz też wybrać inny folder w Ustawienia → Ogólne → Lokalizacja zapisu.',
   },
   cs: {
     menuTabSave: 'Uložit',
@@ -3249,6 +4092,7 @@ const tMain = createI18n({
       '„{title}“ už několik minut využívá hodně paměti nebo procesoru ({memory} MB, {cpu} % CPU). Můžete dál čekat, nebo dokument zavřít (u neuložených změn se nejdřív zeptáme na uložení). Diagnostika byla zaznamenána.',
     watchdogWait: 'Dál čekat',
     watchdogClose: 'Zavřít dokument',
+    watchdogIgnore: 'Znovu nepřipomínat',
     crashTitle: 'Dokument se neočekávaně zastavil',
     crashBody: '„{title}“ se neočekávaně zastavil. Změny od posledního uložení mohly být ztraceny.',
     crashReopen: 'Znovu otevřít',
@@ -3270,27 +4114,37 @@ const tMain = createI18n({
     untitledMarkdown: 'Markdown bez názvu',
     untitledHtml: 'HTML bez názvu',
     untitledMindmap: 'Myšlenková mapa bez názvu',
+    untitledDiagram: 'Diagram bez názvu',
+    untitledWhiteboard: 'Tabule bez názvu',
     untitledHwp: 'HWP bez názvu',
     untitledPdf: 'PDF bez názvu',
     menuNewSlide: 'AI Slides',
     menuNewMarkdown: 'AI Markdown',
     menuNewHtml: 'AI HTML',
     menuNewMindmap: 'Myšlenková mapa',
+    menuNewDiagram: 'Diagram',
+    menuNewWhiteboard: 'Tabule',
     menuNewHwp: 'AI HWP',
     menuNewPdf: 'AI PDF',
+    menuImportPdf: 'Importovat PDF…',
     menuExportPdf: 'Exportovat jako PDF…',
     menuExportImages: 'Exportovat jako obrázky…',
     menuExportHtml: 'Exportovat jako samostatné HTML…',
     menuExportMapImage: 'Exportovat jako obrázek (PNG)…',
+    menuExportMapSvg: 'Exportovat jako obrázek (SVG)…',
+    menuExportSvg: 'Exportovat jako SVG…',
+    menuZoomFit: 'Přizpůsobit oknu',
     menuExportMapOutline: 'Exportovat jako osnovu Markdown…',
     menuMakeFromDocument: 'Vytvořit jiný dokument z tohoto',
     menuDocumentSources: 'Zobrazit zdroje',
     menuDerivedDocuments: 'Dokumenty vytvořené z tohoto',
     menuOpenInDocs: 'Převést a otevřít v Docs',
     menuPrint: 'Tisk…',
+    menuPreview: 'Náhled tisku…',
     menuOpen: 'Otevřít…',
     menuSave: 'Uložit',
     menuSaveAs: 'Uložit jako…',
+    menuSaveSubmission: 'Uložit jako kopii k odevzdání…',
     menuClose: 'Zavřít',
     menuEdit: 'Úpravy',
     menuView: 'Zobrazení',
@@ -3308,13 +4162,16 @@ const tMain = createI18n({
     filterPpt: 'Prezentace PowerPoint',
     filterMarkdown: 'Textové soubory (Markdown, TXT, JSON)',
     filterHtml: 'Dokumenty HTML',
-    filterMindmap: 'Myšlenkové mapy (soubory XMind)',
+    filterMindmap: 'Myšlenkové mapy (XMind, FreeMind, Freeplane)',
     filterHwp: 'Dokumenty HWP (HWP, HWPX)',
     filterEpub: 'E-knihy (EPUB)',
+    filterDiagram: 'Diagramy (draw.io, VSDX)',
+    filterWhiteboard: 'Tabule (.whiteboard, Excalidraw)',
     menuFind: 'Najít…',
     menuReplace: 'Nahradit…',
     menuTranslateBook: 'Přeložit knihu…',
     filterPdf: 'Dokumenty PDF',
+    filterPdfPageImages: 'Obrázky PNG (jeden soubor na stránku)',
     errBadArgs: 'Neplatné argumenty',
     errBadName: 'Neplatný název souboru',
     errBadExtension: 'Toto rozšíření není podporováno a soubor by se neotevíral',
@@ -3325,12 +4182,18 @@ const tMain = createI18n({
     errNewTabFailed: 'Nový dokument se nepodařilo vytvořit',
     errDuplicateFailed: 'Soubor se nepodařilo duplikovat',
     errUnsupportedExt: 'Soubory .{ext} nejsou podporovány',
+    errLegacyConvert: 'Tento soubor .{ext} se nepodařilo převést',
+    errLegacyConvertDetail:
+      'Soubor může být poškozený nebo v podobě, kterou tento převodník zatím nečte. Otevřete ho v programu, ve kterém vznikl, uložte jako .{to} a ten soubor otevřete zde.',
+    errLegacyEncrypted:
+      'Soubor je chráněný heslem. Odstraňte heslo v programu, ve kterém vznikl, nebo ho tam uložte jako .{to} a pak ho otevřete zde.',
     copySuffix: 'kopie',
     menuHelp: 'Nápověda',
     menuUserGuide: 'Uživatelská příručka',
     thirdPartyNotices: 'Informace o softwaru třetích stran',
     menuExportDocx: 'Exportovat jako Word…',
     menuExportOdt: 'Exportovat jako ODT…',
+    menuExportHwp: 'Exportovat jako dokument HWP…',
     btnCancel: 'Zrušit',
     pdfDocxFailedMsg: 'Export do Wordu se nezdařil',
     pdfDocxBusyMsg: 'Export do Wordu už probíhá. Počkejte, až se dokončí.',
@@ -3375,6 +4238,9 @@ const tMain = createI18n({
     dlgPickSaveDir: 'Zvolte výchozí umístění pro ukládání',
     errSaveDirUnusable:
       'Do vybrané složky nelze zapisovat a nelze ji použít jako výchozí umístění pro ukládání',
+    saveDirFallbackMsg: 'Do složky Dokumenty nelze ukládat',
+    saveDirFallbackDetail:
+      'Složku {blocked} se nepodařilo vytvořit ani do ní zapisovat, proto se nové soubory ukládají do {using}. Pokud to zablokoval „Řízený přístup ke složkám“ v Zabezpečení Windows, přidejte GenOffice do „Povolit aplikaci přes řízený přístup ke složkám“ a aplikaci restartujte. Jinou složku můžete zvolit také v Nastavení → Obecné → Umístění pro ukládání.',
   },
   nl: {
     menuTabSave: 'Opslaan',
@@ -3399,6 +4265,7 @@ const tMain = createI18n({
       '"{title}" gebruikt al enkele minuten veel geheugen of CPU ({memory} MB, {cpu}% CPU). U kunt blijven wachten of het document sluiten (bij niet-opgeslagen wijzigingen wordt eerst gevraagd of u wilt opslaan). Diagnostische gegevens zijn vastgelegd.',
     watchdogWait: 'Blijven wachten',
     watchdogClose: 'Document sluiten',
+    watchdogIgnore: 'Niet opnieuw herinneren',
     crashTitle: 'Een document is onverwacht gestopt',
     crashBody:
       '"{title}" is onverwacht gestopt. Wijzigingen sinds de laatste keer opslaan zijn mogelijk verloren gegaan.',
@@ -3421,27 +4288,37 @@ const tMain = createI18n({
     untitledMarkdown: 'Naamloos Markdown',
     untitledHtml: 'Naamloos HTML',
     untitledMindmap: 'Naamloze mindmap',
+    untitledDiagram: 'Naamloos diagram',
+    untitledWhiteboard: 'Naamloos whiteboard',
     untitledHwp: 'Naamloos HWP',
     untitledPdf: 'Naamloze PDF',
     menuNewSlide: 'AI Slides',
     menuNewMarkdown: 'AI Markdown',
     menuNewHtml: 'AI HTML',
     menuNewMindmap: 'Mindmap',
+    menuNewDiagram: 'Diagram',
+    menuNewWhiteboard: 'Whiteboard',
     menuNewHwp: 'AI HWP',
     menuNewPdf: 'AI PDF',
+    menuImportPdf: 'PDF importeren…',
     menuExportPdf: 'Exporteren als PDF…',
     menuExportImages: 'Exporteren als afbeeldingen…',
     menuExportHtml: 'Exporteren als één HTML-bestand…',
     menuExportMapImage: 'Exporteren als afbeelding (PNG)…',
+    menuExportMapSvg: 'Exporteren als afbeelding (SVG)…',
+    menuExportSvg: 'Exporteren als SVG…',
+    menuZoomFit: 'Aan venster aanpassen',
     menuExportMapOutline: 'Exporteren als Markdown-overzicht…',
     menuMakeFromDocument: 'Ander document maken van dit document',
     menuDocumentSources: 'Bronnen weergeven',
     menuDerivedDocuments: 'Documenten gemaakt van dit document',
     menuOpenInDocs: 'Converteren en openen in Docs',
     menuPrint: 'Afdrukken…',
+    menuPreview: 'Afdrukvoorbeeld…',
     menuOpen: 'Openen…',
     menuSave: 'Opslaan',
     menuSaveAs: 'Opslaan als…',
+    menuSaveSubmission: 'Opslaan als inleverkopie…',
     menuClose: 'Sluiten',
     menuEdit: 'Bewerken',
     menuView: 'Weergave',
@@ -3459,13 +4336,16 @@ const tMain = createI18n({
     filterPpt: 'PowerPoint-presentaties',
     filterMarkdown: 'Tekstbestanden (Markdown, TXT, JSON)',
     filterHtml: 'HTML-documenten',
-    filterMindmap: 'Mindmaps (XMind-bestanden)',
+    filterMindmap: 'Mindmaps (XMind, FreeMind, Freeplane)',
     filterHwp: 'HWP-documenten (HWP, HWPX)',
     filterEpub: 'E-boeken (EPUB)',
+    filterDiagram: 'Diagrammen (draw.io, VSDX)',
+    filterWhiteboard: 'Whiteboards (.whiteboard, Excalidraw)',
     menuFind: 'Zoeken…',
     menuReplace: 'Vervangen…',
     menuTranslateBook: 'Boek vertalen…',
     filterPdf: 'PDF-documenten',
+    filterPdfPageImages: 'PNG-afbeeldingen (één bestand per pagina)',
     errBadArgs: 'Ongeldige argumenten',
     errBadName: 'Ongeldige bestandsnaam',
     errBadExtension: 'Die extensie wordt niet ondersteund en het bestand zou niet meer openen',
@@ -3476,12 +4356,18 @@ const tMain = createI18n({
     errNewTabFailed: 'Kan het nieuwe document niet maken',
     errDuplicateFailed: 'Kan het bestand niet dupliceren',
     errUnsupportedExt: '.{ext}-bestanden worden niet ondersteund',
+    errLegacyConvert: 'Dit .{ext}-bestand kon niet worden geconverteerd',
+    errLegacyConvertDetail:
+      'Het bestand is mogelijk beschadigd of in een vorm die deze converter nog niet leest. Open het in het programma waarmee het is gemaakt, sla het op als .{to} en open dat bestand hier.',
+    errLegacyEncrypted:
+      'Dit bestand is met een wachtwoord beveiligd. Verwijder het wachtwoord in het programma waarmee het is gemaakt, of sla het daar op als .{to}, en open het dan hier.',
     copySuffix: 'kopie',
     menuHelp: 'Help',
     menuUserGuide: 'Gebruikershandleiding',
     thirdPartyNotices: 'Kennisgevingen over software van derden',
     menuExportDocx: 'Exporteren als Word…',
     menuExportOdt: 'Exporteren als ODT…',
+    menuExportHwp: 'Exporteren als HWP-document…',
     btnCancel: 'Annuleren',
     pdfDocxFailedMsg: 'Exporteren als Word mislukt',
     pdfDocxBusyMsg: 'Er is al een Word-export bezig. Wacht tot deze is voltooid.',
@@ -3529,6 +4415,9 @@ const tMain = createI18n({
     dlgPickSaveDir: 'Standaard opslaglocatie kiezen',
     errSaveDirUnusable:
       'De geselecteerde map is niet beschrijfbaar en kan niet als standaard opslaglocatie worden gebruikt',
+    saveDirFallbackMsg: 'Kan niet opslaan in de map Documenten',
+    saveDirFallbackDetail:
+      '{blocked} kon niet worden gemaakt of beschreven, dus nieuwe bestanden worden opgeslagen in {using}. Als "Beheerde maptoegang" van Windows-beveiliging dit blokkeerde, voeg GenOffice dan toe bij "Een app toestaan via beheerde maptoegang" en start de app opnieuw. U kunt ook een andere map kiezen via Instellingen → Algemeen → Opslaglocatie.',
   },
   ms: {
     menuTabSave: 'Simpan',
@@ -3553,6 +4442,7 @@ const tMain = createI18n({
       '"{title}" telah menggunakan banyak memori atau CPU selama beberapa minit ({memory} MB, CPU {cpu}%). Anda boleh terus menunggu atau menutup dokumen ini (perubahan yang belum disimpan akan ditanya dahulu). Diagnostik telah direkodkan.',
     watchdogWait: 'Terus Menunggu',
     watchdogClose: 'Tutup Dokumen',
+    watchdogIgnore: 'Jangan ingatkan lagi',
     crashTitle: 'Dokumen berhenti secara tidak dijangka',
     crashBody:
       '"{title}" berhenti secara tidak dijangka. Perubahan sejak simpanan terakhir mungkin telah hilang.',
@@ -3575,27 +4465,37 @@ const tMain = createI18n({
     untitledMarkdown: 'Markdown tanpa tajuk',
     untitledHtml: 'HTML tanpa tajuk',
     untitledMindmap: 'Peta minda tanpa tajuk',
+    untitledDiagram: 'Rajah tanpa tajuk',
+    untitledWhiteboard: 'Papan Putih Tanpa Tajuk',
     untitledHwp: 'HWP tanpa tajuk',
     untitledPdf: 'PDF tanpa tajuk',
     menuNewSlide: 'AI Slides',
     menuNewMarkdown: 'AI Markdown',
     menuNewHtml: 'AI HTML',
     menuNewMindmap: 'Peta minda',
+    menuNewDiagram: 'Rajah',
+    menuNewWhiteboard: 'Papan Putih',
     menuNewHwp: 'AI HWP',
     menuNewPdf: 'AI PDF',
+    menuImportPdf: 'Import PDF…',
     menuExportPdf: 'Eksport sebagai PDF…',
     menuExportImages: 'Eksport sebagai imej…',
     menuExportHtml: 'Eksport sebagai HTML fail tunggal…',
     menuExportMapImage: 'Eksport sebagai imej (PNG)…',
+    menuExportMapSvg: 'Eksport sebagai imej (SVG)…',
+    menuExportSvg: 'Eksport sebagai SVG…',
+    menuZoomFit: 'Muat ke tetingkap',
     menuExportMapOutline: 'Eksport sebagai rangka Markdown…',
     menuMakeFromDocument: 'Buat dokumen lain daripada dokumen ini',
     menuDocumentSources: 'Lihat sumber',
     menuDerivedDocuments: 'Dokumen yang dibuat daripada dokumen ini',
     menuOpenInDocs: 'Tukar dan buka dalam Docs',
     menuPrint: 'Cetak…',
+    menuPreview: 'Pratonton cetak…',
     menuOpen: 'Buka…',
     menuSave: 'Simpan',
     menuSaveAs: 'Simpan Sebagai…',
+    menuSaveSubmission: 'Simpan sebagai Salinan Serahan…',
     menuClose: 'Tutup',
     menuEdit: 'Edit',
     menuView: 'Paparan',
@@ -3613,13 +4513,16 @@ const tMain = createI18n({
     filterPpt: 'Persembahan PowerPoint',
     filterMarkdown: 'Fail teks (Markdown, TXT, JSON)',
     filterHtml: 'Dokumen HTML',
-    filterMindmap: 'Peta minda (fail XMind)',
+    filterMindmap: 'Peta minda (XMind, FreeMind, Freeplane)',
     filterHwp: 'Dokumen HWP (HWP, HWPX)',
     filterEpub: 'Buku elektronik (EPUB)',
+    filterDiagram: 'Rajah (draw.io, VSDX)',
+    filterWhiteboard: 'Papan Putih (.whiteboard, Excalidraw)',
     menuFind: 'Cari…',
     menuReplace: 'Ganti…',
     menuTranslateBook: 'Terjemah buku…',
     filterPdf: 'Dokumen PDF',
+    filterPdfPageImages: 'Imej PNG (satu fail bagi setiap halaman)',
     errBadArgs: 'Argumen tidak sah',
     errBadName: 'Nama fail tidak sah',
     errBadExtension: 'Sambungan itu tidak disokong dan fail tidak akan dibuka',
@@ -3630,12 +4533,18 @@ const tMain = createI18n({
     errNewTabFailed: 'Gagal mencipta dokumen baharu',
     errDuplicateFailed: 'Tidak dapat menduplikasi fail',
     errUnsupportedExt: 'fail .{ext} tidak disokong',
+    errLegacyConvert: 'Fail .{ext} ini tidak dapat ditukar',
+    errLegacyConvertDetail:
+      'Fail mungkin rosak atau dalam bentuk yang belum dapat dibaca oleh penukar ini. Buka dalam program yang menciptanya, simpan sebagai .{to}, kemudian buka fail itu di sini.',
+    errLegacyEncrypted:
+      'Fail ini dilindungi kata laluan. Buang kata laluan dalam program yang menciptanya, atau simpan di sana sebagai .{to}, kemudian buka di sini.',
     copySuffix: 'salinan',
     menuHelp: 'Bantuan',
     menuUserGuide: 'Panduan Pengguna',
     thirdPartyNotices: 'Notis Perisian Pihak Ketiga',
     menuExportDocx: 'Eksport sebagai Word…',
     menuExportOdt: 'Eksport sebagai ODT…',
+    menuExportHwp: 'Eksport sebagai dokumen HWP…',
     btnCancel: 'Batal',
     pdfDocxFailedMsg: 'Gagal mengeksport sebagai Word',
     pdfDocxBusyMsg: 'Eksport ke Word sedang dijalankan. Sila tunggu sehingga selesai.',
@@ -3681,6 +4590,9 @@ const tMain = createI18n({
     dlgPickSaveDir: 'Pilih Lokasi Simpanan Lalai',
     errSaveDirUnusable:
       'Folder yang dipilih tidak boleh ditulis dan tidak dapat digunakan sebagai lokasi simpanan lalai',
+    saveDirFallbackMsg: 'Tidak dapat menyimpan ke folder Dokumen',
+    saveDirFallbackDetail:
+      '{blocked} tidak dapat dicipta atau ditulis, jadi fail baharu disimpan dalam {using}. Jika "Akses folder terkawal" dalam Keselamatan Windows yang menyekatnya, tambah GenOffice dalam "Benarkan apl melalui Akses folder terkawal", kemudian mulakan semula apl. Anda juga boleh memilih folder lain dalam Tetapan → Umum → Lokasi simpanan.',
   },
   he: {
     menuTabSave: 'שמירה',
@@ -3705,6 +4617,7 @@ const tMain = createI18n({
       '"{title}" משתמש בהרבה זיכרון או מעבד כבר כמה דקות (זיכרון {memory} MB, מעבד {cpu}%). אפשר להמשיך לחכות או לסגור את המסמך (אם יש שינויים שלא נשמרו, תתבקשו לשמור קודם). נתוני האבחון נרשמו.',
     watchdogWait: 'להמשיך לחכות',
     watchdogClose: 'סגירת המסמך',
+    watchdogIgnore: 'לא להזכיר שוב',
     crashTitle: 'מסמך נעצר באופן בלתי צפוי',
     crashBody: '"{title}" נעצר באופן בלתי צפוי. ייתכן ששינויים שנעשו מאז השמירה האחרונה אבדו.',
     crashReopen: 'פתיחה מחדש',
@@ -3726,27 +4639,37 @@ const tMain = createI18n({
     untitledMarkdown: 'Markdown ללא שם',
     untitledHtml: 'HTML ללא שם',
     untitledMindmap: 'מפת חשיבה ללא שם',
+    untitledDiagram: 'תרשים ללא שם',
+    untitledWhiteboard: 'לוח לבן ללא כותרת',
     untitledHwp: 'HWP ללא שם',
     untitledPdf: 'PDF ללא שם',
     menuNewSlide: 'AI Slides',
     menuNewMarkdown: 'AI Markdown',
     menuNewHtml: 'AI HTML',
     menuNewMindmap: 'מפת חשיבה',
+    menuNewDiagram: 'תרשים',
+    menuNewWhiteboard: 'לוח לבן',
     menuNewHwp: 'AI HWP',
     menuNewPdf: 'AI PDF',
+    menuImportPdf: 'ייבוא PDF…',
     menuExportPdf: 'ייצוא כ-PDF…',
     menuExportImages: 'ייצוא כתמונות…',
     menuExportHtml: 'ייצוא כ-HTML בקובץ יחיד…',
     menuExportMapImage: 'ייצוא כתמונה (PNG)…',
+    menuExportMapSvg: 'ייצוא כתמונה (SVG)…',
+    menuExportSvg: 'ייצוא כ-SVG…',
+    menuZoomFit: 'התאמה לחלון',
     menuExportMapOutline: 'ייצוא כמתאר Markdown…',
     menuMakeFromDocument: 'יצירת מסמך אחר מהמסמך הזה',
     menuDocumentSources: 'הצגת מקורות',
     menuDerivedDocuments: 'מסמכים שנוצרו מהמסמך הזה',
     menuOpenInDocs: 'המרה ופתיחה ב-Docs',
     menuPrint: 'הדפסה…',
+    menuPreview: 'תצוגה מקדימה של הדפסה…',
     menuOpen: 'פתיחה…',
     menuSave: 'שמירה',
     menuSaveAs: 'שמירה בשם…',
+    menuSaveSubmission: 'שמירה כעותק להגשה…',
     menuClose: 'סגירה',
     menuEdit: 'עריכה',
     menuView: 'תצוגה',
@@ -3764,13 +4687,16 @@ const tMain = createI18n({
     filterPpt: 'מצגות PowerPoint',
     filterMarkdown: 'קובצי טקסט (Markdown, TXT, JSON)',
     filterHtml: 'מסמכי HTML',
-    filterMindmap: 'מפות חשיבה (קובצי XMind)',
+    filterMindmap: 'מפות חשיבה (XMind, FreeMind, Freeplane)',
     filterHwp: 'מסמכי HWP (HWP, HWPX)',
     filterEpub: 'ספרים אלקטרוניים (EPUB)',
+    filterDiagram: 'תרשימים (draw.io, VSDX)',
+    filterWhiteboard: 'לוחות לבנים (.whiteboard, Excalidraw)',
     menuFind: 'חיפוש…',
     menuReplace: 'החלפה…',
     menuTranslateBook: 'תרגום הספר…',
     filterPdf: 'מסמכי PDF',
+    filterPdfPageImages: 'תמונות PNG (קובץ אחד לכל עמוד)',
     errBadArgs: 'ארגומנטים לא חוקיים',
     errBadName: 'שם קובץ לא חוקי',
     errBadExtension: 'הסיומת אינה נתמכת והקובץ לא ייפתח יותר',
@@ -3781,12 +4707,18 @@ const tMain = createI18n({
     errNewTabFailed: 'יצירת המסמך החדש נכשלה',
     errDuplicateFailed: 'לא ניתן לשכפל את הקובץ',
     errUnsupportedExt: 'קובצי .{ext} אינם נתמכים',
+    errLegacyConvert: 'לא ניתן להמיר את קובץ ה-.{ext} הזה',
+    errLegacyConvertDetail:
+      'ייתכן שהקובץ פגום או בצורה שהממיר הזה עדיין לא קורא. פתחו אותו בתוכנה שיצרה אותו, שמרו כ-.{to} ופתחו את הקובץ הזה כאן.',
+    errLegacyEncrypted:
+      'הקובץ מוגן בסיסמה. הסירו את הסיסמה בתוכנה שיצרה אותו, או שמרו אותו שם כ-.{to}, ואז פתחו אותו כאן.',
     copySuffix: 'עותק',
     menuHelp: 'עזרה',
     menuUserGuide: 'מדריך למשתמש',
     thirdPartyNotices: 'הודעות על תוכנות צד שלישי',
     menuExportDocx: 'ייצוא כ-Word…',
     menuExportOdt: 'ייצוא כ-ODT…',
+    menuExportHwp: 'ייצוא כמסמך HWP…',
     btnCancel: 'ביטול',
     pdfDocxFailedMsg: 'הייצוא כ-Word נכשל',
     pdfDocxBusyMsg: 'ייצוא ל-Word כבר מתבצע. נא להמתין לסיומו.',
@@ -3830,6 +4762,9 @@ const tMain = createI18n({
     dlgPickSaveDir: 'בחירת מיקום שמירה כברירת מחדל',
     errSaveDirUnusable:
       'התיקייה שנבחרה אינה ניתנת לכתיבה ולא ניתן להשתמש בה כמיקום שמירה כברירת מחדל',
+    saveDirFallbackMsg: 'לא ניתן לשמור בתיקייה "מסמכים"',
+    saveDirFallbackDetail:
+      'לא ניתן היה ליצור את {blocked} או לכתוב אליה, ולכן קבצים חדשים נשמרים ב-{using}. אם "גישה מבוקרת לתיקיות" באבטחת Windows חסמה זאת, הוסיפו את GenOffice תחת "התר לאפליקציה דרך גישה מבוקרת לתיקיות" והפעילו מחדש את האפליקציה. אפשר גם לבחור תיקייה אחרת בהגדרות ← כללי ← מיקום שמירה.',
   },
   hi: {
     menuTabSave: 'सहेजें',
@@ -3854,6 +4789,7 @@ const tMain = createI18n({
       '"{title}" कई मिनटों से बहुत अधिक मेमोरी या CPU इस्तेमाल कर रहा है (मेमोरी {memory} MB, CPU {cpu}%)। आप इंतज़ार जारी रख सकते हैं या यह दस्तावेज़ बंद कर सकते हैं (बिना सहेजे बदलाव होने पर पहले सहेजने के लिए पूछा जाएगा)। निदान जानकारी दर्ज कर ली गई है।',
     watchdogWait: 'इंतज़ार जारी रखें',
     watchdogClose: 'दस्तावेज़ बंद करें',
+    watchdogIgnore: 'दोबारा याद न दिलाएँ',
     crashTitle: 'दस्तावेज़ अचानक बंद हो गया',
     crashBody:
       '"{title}" अचानक बंद हो गया। पिछली बार सहेजने के बाद किए गए बदलाव खो गए हो सकते हैं।',
@@ -3876,27 +4812,37 @@ const tMain = createI18n({
     untitledMarkdown: 'अनाम Markdown',
     untitledHtml: 'अनाम HTML',
     untitledMindmap: 'अनाम माइंड मैप',
+    untitledDiagram: 'अनाम आरेख',
+    untitledWhiteboard: 'शीर्षकहीन व्हाइटबोर्ड',
     untitledHwp: 'अनाम HWP',
     untitledPdf: 'अनाम PDF',
     menuNewSlide: 'AI Slides',
     menuNewMarkdown: 'AI Markdown',
     menuNewHtml: 'AI HTML',
     menuNewMindmap: 'माइंड मैप',
+    menuNewDiagram: 'आरेख',
+    menuNewWhiteboard: 'व्हाइटबोर्ड',
     menuNewHwp: 'AI HWP',
     menuNewPdf: 'AI PDF',
+    menuImportPdf: 'PDF आयात करें…',
     menuExportPdf: 'PDF के रूप में निर्यात…',
     menuExportImages: 'छवियों के रूप में निर्यात…',
     menuExportHtml: 'एकल-फ़ाइल HTML के रूप में निर्यात…',
     menuExportMapImage: 'छवि (PNG) के रूप में निर्यात…',
+    menuExportMapSvg: 'छवि (SVG) के रूप में निर्यात…',
+    menuExportSvg: 'SVG के रूप में निर्यात…',
+    menuZoomFit: 'विंडो में फ़िट करें',
     menuExportMapOutline: 'Markdown रूपरेखा के रूप में निर्यात…',
     menuMakeFromDocument: 'इस दस्तावेज़ से दूसरा दस्तावेज़ बनाएँ',
     menuDocumentSources: 'स्रोत देखें',
     menuDerivedDocuments: 'इस दस्तावेज़ से बने दस्तावेज़',
     menuOpenInDocs: 'Docs में बदलें और खोलें',
     menuPrint: 'प्रिंट करें…',
+    menuPreview: 'प्रिंट पूर्वावलोकन…',
     menuOpen: 'खोलें…',
     menuSave: 'सहेजें',
     menuSaveAs: 'इस रूप में सहेजें…',
+    menuSaveSubmission: 'जमा करने की प्रति के रूप में सहेजें…',
     menuClose: 'बंद करें',
     menuEdit: 'संपादन',
     menuView: 'व्यू',
@@ -3914,13 +4860,16 @@ const tMain = createI18n({
     filterPpt: 'PowerPoint प्रस्तुतियाँ',
     filterMarkdown: 'पाठ फ़ाइलें (Markdown, TXT, JSON)',
     filterHtml: 'HTML दस्तावेज़',
-    filterMindmap: 'माइंड मैप (XMind फ़ाइलें)',
+    filterMindmap: 'माइंड मैप (XMind, FreeMind, Freeplane)',
     filterHwp: 'HWP दस्तावेज़ (HWP, HWPX)',
     filterEpub: 'ई-बुक (EPUB)',
+    filterDiagram: 'आरेख (draw.io, VSDX)',
+    filterWhiteboard: 'व्हाइटबोर्ड (.whiteboard, Excalidraw)',
     menuFind: 'खोजें…',
     menuReplace: 'बदलें…',
     menuTranslateBook: 'पुस्तक का अनुवाद करें…',
     filterPdf: 'PDF दस्तावेज़',
+    filterPdfPageImages: 'PNG छवियाँ (हर पेज के लिए एक फ़ाइल)',
     errBadArgs: 'अमान्य आर्ग्युमेंट',
     errBadName: 'अमान्य फ़ाइल नाम',
     errBadExtension: 'वह एक्सटेंशन समर्थित नहीं है और फ़ाइल फिर नहीं खुलेगी',
@@ -3931,12 +4880,18 @@ const tMain = createI18n({
     errNewTabFailed: 'नया दस्तावेज़ बनाने में विफल',
     errDuplicateFailed: 'फ़ाइल की प्रतिलिपि नहीं बनाई जा सकी',
     errUnsupportedExt: '.{ext} फ़ाइलें समर्थित नहीं हैं',
+    errLegacyConvert: 'इस .{ext} फ़ाइल को परिवर्तित नहीं किया जा सका',
+    errLegacyConvertDetail:
+      'फ़ाइल क्षतिग्रस्त हो सकती है या ऐसे रूप में हो सकती है जिसे यह कनवर्टर अभी नहीं पढ़ता। इसे बनाने वाले प्रोग्राम में खोलें, .{to} के रूप में सहेजें, फिर वह फ़ाइल यहाँ खोलें।',
+    errLegacyEncrypted:
+      'यह फ़ाइल पासवर्ड से सुरक्षित है। इसे बनाने वाले प्रोग्राम में पासवर्ड हटाएँ या वहाँ .{to} के रूप में सहेजें, फिर इसे यहाँ खोलें।',
     copySuffix: 'प्रतिलिपि',
     menuHelp: 'सहायता',
     menuUserGuide: 'उपयोगकर्ता गाइड',
     thirdPartyNotices: 'तृतीय-पक्ष सॉफ़्टवेयर सूचनाएँ',
     menuExportDocx: 'Word के रूप में निर्यात करें…',
     menuExportOdt: 'ODT के रूप में निर्यात करें…',
+    menuExportHwp: 'HWP दस्तावेज़ के रूप में निर्यात करें…',
     btnCancel: 'रद्द करें',
     pdfDocxFailedMsg: 'Word के रूप में निर्यात विफल रहा',
     pdfDocxBusyMsg: 'Word के रूप में निर्यात पहले से चल रहा है। कृपया पूरा होने तक प्रतीक्षा करें।',
@@ -3983,6 +4938,9 @@ const tMain = createI18n({
     dlgPickSaveDir: 'डिफ़ॉल्ट सहेजने का स्थान चुनें',
     errSaveDirUnusable:
       'चयनित फ़ोल्डर में लिखा नहीं जा सकता, इसलिए इसे डिफ़ॉल्ट सहेजने के स्थान के रूप में उपयोग नहीं किया जा सकता',
+    saveDirFallbackMsg: 'दस्तावेज़ फ़ोल्डर में सहेजा नहीं जा सकता',
+    saveDirFallbackDetail:
+      '{blocked} बनाया या उसमें लिखा नहीं जा सका, इसलिए नई फ़ाइलें {using} में सहेजी जाएँगी। अगर Windows सुरक्षा के "नियंत्रित फ़ोल्डर पहुँच" ने इसे रोका है, तो "नियंत्रित फ़ोल्डर पहुँच के ज़रिए किसी ऐप को अनुमति दें" में GenOffice जोड़ें और ऐप को फिर से शुरू करें। आप सेटिंग्स → सामान्य → सहेजने का स्थान में कोई दूसरा फ़ोल्डर भी चुन सकते हैं।',
   },
   'zh-TW': {
     menuTabSave: '儲存',
@@ -4007,6 +4965,7 @@ const tMain = createI18n({
       '「{title}」已持續數分鐘佔用大量記憶體或 CPU（記憶體 {memory} MB，CPU {cpu}%）。可以繼續等待，或關閉這個文件（有未儲存的變更會先詢問是否儲存）。診斷資訊已記錄。', // public-hygiene: allow
     watchdogWait: '繼續等待',
     watchdogClose: '關閉文件',
+    watchdogIgnore: '本次不再提醒',
     crashTitle: '文件意外停止',
     crashBody: '「{title}」意外停止。上次儲存後的變更可能已遺失。',
     crashReopen: '重新開啟',
@@ -4028,27 +4987,37 @@ const tMain = createI18n({
     untitledMarkdown: '未命名 Markdown',
     untitledHtml: '未命名 HTML',
     untitledMindmap: '未命名心智圖',
+    untitledDiagram: '未命名圖表',
+    untitledWhiteboard: '未命名白板',
     untitledHwp: '未命名 HWP',
     untitledPdf: '未命名 PDF',
     menuNewSlide: 'AI Slides',
     menuNewMarkdown: 'AI Markdown',
     menuNewHtml: 'AI HTML',
     menuNewMindmap: '心智圖',
+    menuNewDiagram: '圖表',
+    menuNewWhiteboard: '白板',
     menuNewHwp: 'AI HWP',
     menuNewPdf: 'AI PDF',
+    menuImportPdf: '匯入 PDF…',
     menuExportPdf: '匯出為 PDF…',
     menuExportImages: '匯出為圖片…',
     menuExportHtml: '匯出為單檔 HTML…',
     menuExportMapImage: '匯出為圖片 (PNG)…',
+    menuExportMapSvg: '匯出為圖片 (SVG)…',
+    menuExportSvg: '匯出為 SVG…',
+    menuZoomFit: '符合視窗',
     menuExportMapOutline: '匯出為 Markdown 大綱…',
     menuMakeFromDocument: '用此文件新增其他文件',
     menuDocumentSources: '檢視資料',
     menuDerivedDocuments: '用此文件新增的文件',
     menuOpenInDocs: '轉換為 Docs 文件並開啟',
     menuPrint: '列印…',
+    menuPreview: '列印預覽…',
     menuOpen: '開啟…',
     menuSave: '儲存',
     menuSaveAs: '另存新檔…',
+    menuSaveSubmission: '另存為提交版…',
     menuClose: '關閉',
     menuEdit: '編輯',
     menuView: '檢視',
@@ -4066,13 +5035,16 @@ const tMain = createI18n({
     filterPpt: 'PowerPoint 簡報',
     filterMarkdown: '文字檔 (Markdown, TXT, JSON)',
     filterHtml: 'HTML 文件',
-    filterMindmap: '心智圖 (XMind 檔案)',
+    filterMindmap: '心智圖 (XMind, FreeMind, Freeplane)',
     filterHwp: 'HWP 文件 (HWP, HWPX)',
     filterEpub: '電子書 (EPUB)',
+    filterDiagram: '圖表 (draw.io, VSDX)',
+    filterWhiteboard: '白板 (.whiteboard, Excalidraw)',
     menuFind: '尋找…',
     menuReplace: '取代…',
     menuTranslateBook: '翻譯書籍…',
     filterPdf: 'PDF 文件',
+    filterPdfPageImages: 'PNG 圖片（每頁一個檔案）',
     errBadArgs: '參數無效',
     errBadName: '檔案名稱不合法',
     errBadExtension: '這個副檔名不受支援，改了檔案就打不開了',
@@ -4083,12 +5055,18 @@ const tMain = createI18n({
     errNewTabFailed: '新建文件失敗',
     errDuplicateFailed: '複製檔案失敗',
     errUnsupportedExt: '暫不支援 .{ext} 類型',
+    errLegacyConvert: '無法轉換此 .{ext} 檔案',
+    errLegacyConvertDetail:
+      '檔案可能已損毀，或採用了此轉換器尚不支援的格式。請在建立它的程式中開啟並另存為 .{to}，再在這裡開啟該檔案。',
+    errLegacyEncrypted:
+      '此檔案受密碼保護。請在建立它的程式中移除密碼，或另存為 .{to}，再在這裡開啟。',
     copySuffix: '副本',
     menuHelp: '說明',
     menuUserGuide: '使用手冊',
     thirdPartyNotices: '第三方軟體聲明',
     menuExportDocx: '匯出為 Word…',
     menuExportOdt: '匯出為 ODT…',
+    menuExportHwp: '匯出為 HWP 文件…',
     btnCancel: '取消',
     pdfDocxFailedMsg: '匯出為 Word 失敗',
     pdfDocxBusyMsg: '正在轉換中，請等待目前的匯出完成。',
@@ -4126,11 +5104,29 @@ const tMain = createI18n({
     pdfDocxLocalCorruptDetail: '檔案已損壞或不是有效的 PDF，無法轉換。',
     dlgPickSaveDir: '選擇預設儲存位置',
     errSaveDirUnusable: '所選資料夾無法寫入，無法作為預設儲存位置',
+    saveDirFallbackMsg: '無法儲存到「文件」資料夾',
+    saveDirFallbackDetail:
+      '無法建立或寫入 {blocked}，新檔案將儲存到 {using}。如果是 Windows 安全性的「受控資料夾存取」封鎖了它，請在「允許應用程式通過受控資料夾存取」中加入 GenOffice，然後重新啟動應用程式。也可以在 設定 → 一般 → 預設儲存位置 中選擇其他資料夾。',
   },
 })
 
 const tm = (key: Parameters<typeof tMain>[1], params?: Parameters<typeof tMain>[2]) =>
   tMain(currentLang(), key, params)
+
+let saveDirFallbackNoticed = false
+
+/** once per run: tell the user new files land outside <Documents>/<product>, and why */
+function noticeSaveDirFallback(): void {
+  const fallback = defaultSaveDirFallback()
+  if (!fallback || saveDirFallbackNoticed) return
+  saveDirFallbackNoticed = true
+  const options = {
+    type: 'warning' as const,
+    message: tm('saveDirFallbackMsg'),
+    detail: tm('saveDirFallbackDetail', fallback),
+  }
+  void (shellWindow ? dialog.showMessageBox(shellWindow, options) : dialog.showMessageBox(options))
+}
 
 // ---- the shell window + its tab manager (recreated if the user closes it on macOS) ----
 
@@ -4191,6 +5187,29 @@ function allBrowsableRootPaths(): string[] {
 
 function insideAnyRoot(path: string): boolean {
   return allBrowsableRootPaths().some((root) => isInsideRoot(root, path))
+}
+
+/** Whether the home UI can legitimately be showing this path: the folder
+ *  tree's roots (save folder + added roots) plus the exact recent and starred
+ *  files, which may live anywhere. The reveal channel opens Finder at the
+ *  path a renderer names, so it stays limited to that set. */
+function isRevealablePath(path: string): boolean {
+  if (insideAnyRoot(path)) return true
+  if (projectFolderRoots(APP_SETTINGS_PATH()).some((root) => isInsideRoot(root, path))) return true
+  const key = resolve(path)
+  return [...readRecentFiles(), ...readStarredFiles()].some((p) => resolve(p) === key)
+}
+
+/** Wiki links resolve beside the document that holds them, and a wiki note
+ *  commonly opens a sibling — or a note in a subfolder ([[sub/Note]]) — the
+ *  user never opened alone. A directory the user has a document open in,
+ *  including its subdirectories, therefore counts as revealed for the open
+ *  channel: still the user's own active workspace, not the disk. A document
+ *  in a detached window counts the same. */
+function isBesideOpenDocument(path: string): boolean {
+  const resolved = resolve(path)
+  const openPaths = [...(tabManager?.openFilePaths() ?? []), ...detachedFilePaths()]
+  return openPaths.some((open) => isBesideDocument(open, resolved))
 }
 
 function isAnyRoot(path: string): boolean {
@@ -4292,6 +5311,8 @@ function afterFileMoved(oldPath: string, newPath: string): void {
     else if (t.kind === 'mindmap') mindmapFileRenamed(t.webContents, oldPath, newPath)
     else if (t.kind === 'hwp') hwpFileRenamed(t.webContents, oldPath, newPath)
     else if (t.kind === 'epub') epubFileRenamed(t.webContents, oldPath, newPath)
+    else if (t.kind === 'diagram') diagramFileRenamed(t.webContents, oldPath, newPath)
+    else if (t.kind === 'whiteboard') whiteboardNotifyFileRenamed(t.webContents, newPath)
     else if (t.kind === 'pdf') pdfFileRenamed(t.webContents, oldPath, newPath)
   }
 }
@@ -4357,19 +5378,31 @@ function ensureFileIndexer(): FileIndexer | null {
     return null
   }
   fileIndexer = new FileIndexer(fileIndexStore, extractWorkerPath, {
-    roots: () => folderRootPaths().filter((root) => existsSync(root)),
+    // the listed project folders join the walk (not the home folder list, spec 5.9)
+    roots: () =>
+      mergeIndexRoots(
+        folderRootPaths().filter((root) => existsSync(root)),
+        projectFolderRoots(APP_SETTINGS_PATH()),
+      ),
     extraPaths: () => [...readRecentFiles(), ...readStarredFiles()],
+    // inside a project folder a file that is not on this PC is indexed by name only (spec 5.8)
+    nameOnly: createProjectNameOnly({
+      projectRoots: () => projectFolderRoots(APP_SETTINGS_PATH()),
+    }),
   })
   return fileIndexer
 }
 
 const SEARCH_EXT_FAMILY: Record<string, readonly string[]> = {
-  docx: ['docx', 'doc', 'odt'],
-  xlsx: ['xlsx', 'xlsm', 'xls', 'csv', 'tsv'],
+  docx: ['docx', 'doc', 'dot', 'odt'],
+  xlsx: ['xlsx', 'xlsm', 'xls', 'csv', 'tsv', 'ods'],
   pptx: ['pptx', 'ppt'],
   md: ['md', 'markdown', 'txt', 'json'],
   html: ['html', 'htm'],
   hwp: ['hwp', 'hwpx'],
+  xmind: ['xmind', 'mm'],
+  drawio: ['drawio', 'dio', 'drawio.svg', 'drawio.png', 'vsdx'],
+  whiteboard: ['whiteboard', 'excalidraw', 'excalidraw.png', 'excalidraw.svg'],
 }
 
 /** one recursive watcher per tree root; follows the save-folder setting and the added folders */
@@ -4514,11 +5547,18 @@ function applyMenuFor(kind: TabKind): void {
     case 'epub':
       buildEpubMenu()
       break
+    case 'diagram':
+      buildDiagramMenu()
+      break
+    case 'whiteboard':
+      buildWhiteboardMenu()
+      break
     default:
       buildHomeMenu()
   }
   withHelpItems()
   withViewMenu()
+  withFilePanelMenuItem(kind)
 }
 
 /**
@@ -4526,23 +5566,32 @@ function applyMenuFor(kind: TabKind): void {
  * tab. CmdOrCtrl+Alt (not Shift): Shift+= is Sheets insert-cells and Docs
  * superscript, and the View menu now exists on editor tabs too, where those
  * accelerators are taken.
+ *
+ * On macOS it is Cmd+Ctrl instead: Sheets binds Cmd+Opt+- / Cmd+Opt+0 to the
+ * Excel-for-Mac border chords and the sheet swallows Cmd+Opt+= as well, so the
+ * Option chords never reached this menu on the one tab the scale applies to.
  */
+const UI_ZOOM_ACCEL =
+  process.platform === 'darwin'
+    ? { in: 'Cmd+Ctrl+=', out: 'Cmd+Ctrl+-', reset: 'Cmd+Ctrl+0' }
+    : { in: 'CmdOrCtrl+Alt+=', out: 'CmdOrCtrl+Alt+-', reset: 'CmdOrCtrl+Alt+0' }
+
 function uiScaleMenuItems(): MenuItemConstructorOptions[] {
   return [
     {
       label: tm('menuUiZoomIn'),
-      accelerator: 'CmdOrCtrl+Alt+=',
+      accelerator: UI_ZOOM_ACCEL.in,
       click: () => changeUiScale(APP_SETTINGS_PATH(), 1),
     },
     {
       label: tm('menuUiZoomOut'),
-      accelerator: 'CmdOrCtrl+Alt+-',
+      accelerator: UI_ZOOM_ACCEL.out,
       click: () => changeUiScale(APP_SETTINGS_PATH(), -1),
     },
     { type: 'separator' },
     {
       label: tm('menuUiZoomReset'),
-      accelerator: 'CmdOrCtrl+Alt+0',
+      accelerator: UI_ZOOM_ACCEL.reset,
       click: () => changeUiScale(APP_SETTINGS_PATH(), 0),
     },
   ]
@@ -4565,7 +5614,7 @@ function withViewMenu(): void {
   const menu = Menu.getApplicationMenu()
   if (!menu) return
   const hasScale = menu.items.some((item) =>
-    item.submenu?.items.some((i) => i.accelerator === 'CmdOrCtrl+Alt+='),
+    item.submenu?.items.some((i) => i.accelerator === UI_ZOOM_ACCEL.in),
   )
   if (hasScale) return
   const view = menu.items.find((item) => item.label === tm('menuView'))
@@ -4576,12 +5625,18 @@ function withViewMenu(): void {
       .items) {
       view.submenu.append(item)
     }
+    // Items appended to the live application menu stay in the Electron model
+    // but never reach the native macOS bar (Sheets: View showed only the system
+    // "Full Screen"). Setting the menu again rebuilds the bar from the model.
+    Menu.setApplicationMenu(menu)
     return
   }
   const viewItem = Menu.buildFromTemplate([viewMenuTemplate()]).items[0]!
   const helpIdx = menu.items.findIndex((item) => item.role === 'help')
   if (helpIdx === -1) menu.append(viewItem)
   else menu.insert(helpIdx, viewItem)
+  // Same as above: rebuild the native bar from the updated model.
+  Menu.setApplicationMenu(menu)
 }
 
 /// Interface scale (genoffice#1913). Read once at boot, then replaced by the View menu.
@@ -4596,6 +5651,15 @@ let currentUiScale = 1
  * window. Each gets it on `did-finish-load`, because a stylesheet inserted
  * before the document exists is thrown away.
  */
+/** Grants die with the view: a webContents id is never reused, and a closed
+ *  view's ledger entries would otherwise keep paths readable for the whole
+ *  process life (the ledger comment promises this wiring; here it is). */
+function installGrantRelease(): void {
+  app.on('web-contents-created', (_event, contents) => {
+    contents.once('destroyed', () => sharedPathGrants().release(contents.id))
+  })
+}
+
 function installUiScale(): void {
   currentUiScale = readUiScale(APP_SETTINGS_PATH())
   app.on('web-contents-created', (_event, contents) => {
@@ -4607,6 +5671,7 @@ function installUiScale(): void {
   onUiScaleChanged((scale) => {
     currentUiScale = scale
     tabManager?.layout()
+    filePanelScaleChanged()
     refreshTitleBarOverlay()
   })
 }
@@ -4621,18 +5686,179 @@ function installUiScale(): void {
  * well, with preventDefault, keeps one press from closing two tabs; Home falls
  * through to its File > Close, which still closes the window.
  */
+const QUICK_SWITCHER_SKIP_DIRS = new Set(['node_modules', '.git', 'dist', 'out', 'build', '.cache'])
+
+function collectProjectFilesForQuickSwitcher(
+  roots: readonly string[],
+  query: string,
+  limit = 40,
+): Array<{ path: string; relPath: string; name: string }> {
+  const q = query.trim().toLowerCase()
+  const out: Array<{ path: string; relPath: string; name: string }> = []
+  const walk = (root: string, rootLabel: string, dir: string, depth: number): void => {
+    if (out.length >= limit || depth > 3) return
+    let entries: Dirent[]
+    try {
+      entries = readdirSync(dir, { withFileTypes: true })
+    } catch {
+      return
+    }
+    for (const entry of entries) {
+      if (out.length >= limit) return
+      if (entry.name.startsWith('.')) continue
+      const full = join(dir, entry.name)
+      if (entry.isDirectory()) {
+        if (!QUICK_SWITCHER_SKIP_DIRS.has(entry.name)) walk(root, rootLabel, full, depth + 1)
+        continue
+      }
+      if (!entry.isFile()) continue
+      const rel = `${rootLabel}/${relative(root, full).replace(/\\/g, '/')}`
+      if (q && !entry.name.toLowerCase().includes(q) && !rel.toLowerCase().includes(q)) continue
+      out.push({ path: full, relPath: rel, name: entry.name })
+    }
+  }
+  for (const root of roots) {
+    if (out.length >= limit) break
+    walk(root, basename(root), root, 0)
+  }
+  return out
+}
+
+const HOME_KIND_TO_EDITOR: Record<Exclude<HomeKind, 'pdfTools'>, string> = {
+  docx: 'docs',
+  xlsx: 'sheets',
+  pptx: 'slides',
+  md: 'markdown',
+  html: 'html',
+  xmind: 'mindmap',
+  drawio: 'diagram',
+  whiteboard: 'whiteboard',
+  hwp: 'hwp',
+  pdf: 'pdf',
+}
+
+/**
+ * Install keyboard shortcuts for tab switching across every WebContents.
+ */
 function installTabShortcuts(): void {
   app.on('web-contents-created', (_event, contents) => {
+    contents.on('focus', () => {
+      if (tabManager?.tabIdForWebContents(contents.id)) {
+        handleEditorFocusForQuickLook()
+      }
+    })
     contents.on('before-input-event', (event, input) => {
       const manager = tabManager
       if (!manager) return
+      // Ctrl+Shift+E (⇧⌘E): the files panel beside editor tabs. The shell's own
+      // strip and the tab views only; Home has its own sidebar.
+      if (
+        manager.tabIdForWebContents(contents.id) ||
+        (!!shellWindow && !shellWindow.isDestroyed() && shellWindow.webContents.id === contents.id)
+      ) {
+        const action = filePanelKeyAction(
+          contents.id,
+          input,
+          manager.describeWebContents(contents.id)?.kind === 'hwp',
+        )
+        if (action !== 'pass' && manager.list().find((tab) => tab.active)?.kind !== 'home') {
+          event.preventDefault()
+          if (action === 'toggle') toggleFilePanel()
+          return
+        }
+      }
+      // Global Quick Switcher (Ctrl+Shift+P / Cmd+Shift+P), preserving Ctrl+K hyperlink in editors
+      if (
+        input.type === 'keyDown' &&
+        input.shift &&
+        !input.alt &&
+        (process.platform === 'darwin'
+          ? input.meta && !input.control
+          : input.control && !input.meta) &&
+        input.key.toLowerCase() === 'p'
+      ) {
+        event.preventDefault()
+        openQuickSwitcherWindow(BrowserWindow.getFocusedWindow() ?? shellWindow, {
+          isAiVisible: () => editorChoiceService?.effective().aiFeatures ?? true,
+          isEditorEnabled: (kind) =>
+            !(editorChoiceService?.effective().off ?? []).includes(kind as never),
+          getLang: () => currentLang(),
+          getTheme: () => currentTheme(),
+          listOpenTabs: () =>
+            manager.list().map((tab) => ({
+              id: tab.id,
+              title: tab.title,
+              path: tab.filePath ?? undefined,
+              editorKind: tab.kind,
+              activate: () => manager.activateTab(tab.id),
+            })),
+          listRecentFiles: () =>
+            readRecentFiles()
+              .slice(0, 20)
+              .map((filePath) => ({ path: filePath, title: basename(filePath) })),
+          listProjectFiles: async (q) =>
+            collectProjectFilesForQuickSwitcher(projectFolderRoots(APP_SETTINGS_PATH()), q),
+          openFile: (filePath) => {
+            void openMadeDocument(filePath)
+          },
+          listCommands: () => {
+            const lang = currentLang()
+            const newDocCommands = visibleHomeKinds(readHomeKinds()).flatMap((kind) => {
+              if (kind === 'pdfTools') return []
+              const entry = NEW_KIND_MENU[kind]
+              return [
+                {
+                  id: `new-${kind}`,
+                  title: tm(entry.label),
+                  editorKind: HOME_KIND_TO_EDITOR[kind],
+                  run: entry.open,
+                },
+              ]
+            })
+            return [
+              {
+                id: 'settings',
+                title: quickSwitcherCommandText(lang, 'cmdSettings'),
+                run: () => openHomeSettings({ section: 'general' }),
+              },
+              {
+                id: 'ai-settings',
+                title: quickSwitcherCommandText(lang, 'cmdAiSettings'),
+                aiOnly: true,
+                run: () => openHomeSettings({ section: 'aiModel' }),
+              },
+              ...newDocCommands,
+            ]
+          },
+        })
+        return
+      }
+      // Ctrl+Tab in a Hangul table cell inserts a tab and Ctrl+Shift+Tab lines the paragraph
+      // up at the caret, as Hancom does; elsewhere the shell keeps them for cycling tabs. The
+      // editor answers from its own key map.
+      if (
+        input.type === 'keyDown' &&
+        input.key === 'Tab' &&
+        input.control &&
+        !input.alt &&
+        !input.meta &&
+        manager.describeWebContents(contents.id)?.kind === 'hwp'
+      ) {
+        event.preventDefault()
+        void editorTakes(contents, input.shift ? 'ctrl-shift-tab' : 'ctrl-tab').then((taken) => {
+          if (!taken) manager.cycleTab(input.shift ? -1 : 1)
+        })
+        return
+      }
       const handled = handleTabShortcut(input, contents.id, {
         isShellContents: (id) =>
           !!shellWindow && !shellWindow.isDestroyed() && shellWindow.webContents.id === id,
         hasTab: (id) => !!manager.tabIdForWebContents(id),
         activeKind: () => manager.list().find((tab) => tab.active)?.kind,
+        kindOf: (id) => manager.describeWebContents(id)?.kind,
         cycle: (direction) => manager.cycleTab(direction),
         closeActive: () => manager.closeActiveTab(),
+        openSettings: () => openHomeSettings({ section: 'general' }),
       })
       if (handled) event.preventDefault()
     })
@@ -4708,6 +5934,14 @@ function closeSplashWindow(): void {
   }, wait)
 }
 
+/** name the active document in the taskbar and Alt+Tab (shellWindowTitle) */
+function syncShellWindowTitle(): void {
+  const win = shellWindow
+  if (!win || win.isDestroyed() || !tabManager) return
+  const title = shellWindowTitle(tabManager.list(), productName(currentLang()))
+  if (win.getTitle() !== title) win.setTitle(title)
+}
+
 function createShellWindow(): void {
   // Last session's geometry, when a display can still show it (issue #2049).
   // A saved position on an unplugged monitor falls back to the default
@@ -4731,6 +5965,13 @@ function createShellWindow(): void {
     // dev runs the stock electron.exe, whose icon wins on the taskbar unless
     // the window declares its own; packaged builds already use build/icon.ico
     icon: join(__dirname, '../../build/icon.png'),
+    // Paint the theme's surface before the renderer's first frame so the window
+    // does not flash white in dark mode. nativeTheme.themeSource is already set
+    // from the saved theme in app.whenReady, before this window is created.
+    // macOS uses vibrancy below, which must stay transparent.
+    ...(process.platform === 'darwin'
+      ? {}
+      : { backgroundColor: shellWindowBackground(nativeTheme.shouldUseDarkColors) }),
     // vibrancy: editor modules punch translucent regions (e.g. the slides
     // thumbnail pane) through to the desktop
     ...(process.platform === 'darwin'
@@ -4754,6 +5995,9 @@ function createShellWindow(): void {
   // reopens maximized instead of as a screen-sized ordinary window
   if (restored?.maximized) win.maximize()
   shellWindow = win
+  // the title follows the active tab (syncShellWindowTitle); the renderer's
+  // <title> and its language-change rewrite must not put the product name back
+  win.on('page-title-updated', (event) => event.preventDefault())
   nativeTheme.on('updated', refreshTitleBarOverlay)
   win.once('closed', () => nativeTheme.off('updated', refreshTitleBarOverlay))
   // dragging the window by the tab strip's blank (draggable) area produces no
@@ -4774,6 +6018,7 @@ function createShellWindow(): void {
     win,
     () => {
       win.webContents.send(TABS_CHANNELS.changed, manager.list())
+      syncShellWindowTitle()
       publishOpenDocumentsIfOwner([...manager.openFilePaths(), ...detachedFilePaths()])
       refreshDocumentLinkMenu()
       pushHwpRecoveryTitles(manager)
@@ -4797,7 +6042,11 @@ function createShellWindow(): void {
                   ? tm('untitledMindmap')
                   : kind === 'hwp'
                     ? tm('untitledHwp')
-                    : tm('untitledSheet'),
+                    : kind === 'diagram'
+                      ? tm('untitledDiagram')
+                      : kind === 'whiteboard'
+                        ? tm('untitledWhiteboard')
+                        : tm('untitledSheet'),
     // the tab strip is interface chrome, so its height follows the scale
     () => currentUiScale,
     // every split change: remember it, re-role the pane views, tell the strip
@@ -4805,6 +6054,27 @@ function createShellWindow(): void {
   )
   tabManager = manager
   manager.setClosedListener((closed) => recentlyClosed.push(closed))
+  // the file panel beside editor views: applied before any view is shown so a
+  // panel left open does not shift the first document after launch
+  installFilePanel({
+    settingsPath: APP_SETTINGS_PATH,
+    readSetting: (path) => readAppSettings(path)[FILE_PANEL_SETTINGS_KEY],
+    writeSetting: (path, value) => writeAppSetting(path, FILE_PANEL_SETTINGS_KEY, value),
+    shellWindow: () => shellWindow,
+    applyLayout: (choice) => manager.setFilePanel(choice),
+    uiScale: () => currentUiScale,
+    lang: currentLang,
+    viewMenuLabel: () => tm('menuView'),
+    openFilePaths: () => [...manager.openFilePaths(), ...detachedFilePaths()],
+    listFolder: (dir) => listFolder(dir, new Set(readStarredFiles())),
+    isRevealable: (path) => isRevealablePath(path) || isBesideOpenDocument(path),
+    openQuickLook: (path, nav) => showFilePanelQuickLook(path, nav),
+    closeQuickLook: () => closeFilePanelQuickLook(),
+  })
+  win.on('blur', () => handleShellWindowBlurForQuickLook())
+  win.on('minimize', () => closeFilePanelQuickLook({ restoreFocus: false }))
+  win.on('hide', () => closeFilePanelQuickLook({ restoreFocus: false }))
+  win.on('closed', () => closeFilePanelQuickLook({ restoreFocus: false }))
 
   // Docking: a detached window dragged over this window's tab strip hands its
   // document back. The strip reports the insertion slot for each preview
@@ -4859,6 +6129,15 @@ function createShellWindow(): void {
     openTab: (openPath, options) => ensureTabManager().openDocsTab(openPath, options),
     openAiDocTab: (content) =>
       ensureTabManager().openDocsTab(undefined, { newBlank: true, aiContent: content }),
+    // the AI's new Word document follows the project of the panel that asked (spec 6)
+    openAiDocTabFor: (content, owner) => {
+      const manager = ensureTabManager()
+      const tabId = manager.openDocsTab(undefined, { newBlank: true, aiContent: content })
+      const contents = manager.webContentsForTab(tabId)
+      if (contents) followOpenerProject(contents, { kind: 'window', webContentsId: owner })
+    },
+    newDocumentDir: (id) => newDocumentFolderFor(id),
+    writeNewDocument: (id, fileName, bytes) => writeProjectNewDocument(id, fileName, bytes),
     listTabs: () =>
       (tabManager?.list() ?? [])
         .filter((t) => t.kind === 'docs')
@@ -4891,6 +6170,8 @@ function createShellWindow(): void {
     detachedSetFileFor(wc.id, path)
     recordRecentFile(path)
   })
+  // a .ppt picked inside a slides tab opens as a converted copy, like one from Home
+  setSlidesLegacyOpenHook((path) => void openDocumentPath(path))
   setSlidesOpenedHook((wc, path) => {
     manager.setTabFileFor(wc.id, path)
     detachedSetFileFor(wc.id, path)
@@ -4982,6 +6263,33 @@ function createShellWindow(): void {
     detachedSetFileFor(wc.id, path)
     recordRecentFile(path)
   })
+  // a diagram's first save / Save As lands on a new path (an imported Visio
+  // drawing's first save gives the untitled tab its file)
+  setDiagramFileSavedHook((wc, path) => {
+    manager.setTabFileFor(wc.id, path)
+    detachedSetFileFor(wc.id, path)
+    recordRecentFile(path)
+    applyPendingDir(wc.id, path)
+  })
+  // draw.io's Help opens the app's own manual at the diagram topic
+  setDiagramHelpHook(() => {
+    revealShellWindow()
+    tabManager?.openHelpTab('diagram')
+  })
+  // a tab whose file did not open after all (a Visio drawing draw.io could not
+  // import): the tab goes and the reason shows as an app warning (spec 3.5)
+  setDiagramOpenFailedHook((wc, message) => {
+    const tabId = manager.tabIdForWebContents(wc.id)
+    const detachedId = tabId === undefined ? detachedDocumentFor(wc.id)?.id : undefined
+    if (tabId === undefined && detachedId === undefined) return false
+    // after the answer reaches the editor: closing the tab ends its page
+    setImmediate(() => {
+      if (tabId !== undefined) manager.closeTabWithoutPrompt(tabId)
+      else if (detachedId !== undefined) closeDetachedWithoutPrompt(detachedId)
+      showAppWarning(message)
+    })
+    return true
+  })
   setHtmlProvisionalTitleHook((wc, title) => {
     manager.setTabTitleFor(wc.id, title)
     detachedSetTitleFor(wc.id, title)
@@ -4989,6 +6297,20 @@ function createShellWindow(): void {
   setMindmapProvisionalTitleHook((wc, title) => {
     manager.setTabTitleFor(wc.id, title)
     detachedSetTitleFor(wc.id, title)
+  })
+  setDiagramProvisionalTitleHook((wc, title) => {
+    manager.setTabTitleFor(wc.id, title)
+    detachedSetTitleFor(wc.id, title)
+  })
+  setWhiteboardFileSavedHook((wc, path) => {
+    manager.setTabFileFor(wc.id, path)
+    detachedSetFileFor(wc.id, path)
+    recordRecentFile(path)
+    applyPendingDir(wc.id, path)
+  })
+  setWhiteboardProvisionalTitleHook((wcId, title) => {
+    manager.setTabTitleFor(wcId, title)
+    detachedSetTitleFor(wcId, title)
   })
   // A redacted copy becomes this tab's document; the source still exists.
   setPdfRedactionSavedHook((wc, path) => {
@@ -5007,7 +6329,13 @@ function createShellWindow(): void {
   })
   // markdown "convert & open in Docs" → route the fresh .docx to a docs tab
   setMarkdownDocxExportedHook((path) => {
-    openDocumentPath(path)
+    openMadeDocument(path)
+  })
+  // markdown → Hangul: the Word editor's converter with the look of a Hangul
+  // document, since the bytes the Markdown editor hands over have no Word layout
+  setMarkdownHwpExport({
+    convert: (docx, format) => hwpCopy.convert(docx, format, 'hangul'),
+    confirm: hwpCopy.confirm,
   })
   // Word export to a path already open in a docs tab: close that tab before the file is
   // written (its unsaved-changes prompt applies, and a later save of the stale document
@@ -5021,7 +6349,7 @@ function createShellWindow(): void {
     return !manager.findDocsTabByPath(path)
   })
   setHtmlDocxExportedHook((path) => {
-    openDocumentPath(path)
+    openMadeDocument(path)
   })
 
   // Closing the whole window walks every dirty sheets/pdf/slides/docs tab through
@@ -5032,6 +6360,8 @@ function createShellWindow(): void {
     onVetoed: () => {
       appQuitting = false
       resetAppShuttingDown()
+      // a "Restart & Install" that met a cancelled prompt is off as well
+      cancelUpdateRestart()
       // tabs that answered "Don't Save" before another tab cancelled stay open
       // with their edits, so their recovery copies resume now (the PDF editor
       // also keeps a flag of its own)
@@ -5084,19 +6414,20 @@ function createShellWindow(): void {
 // ---- routing: one dispatch function for every open path ----
 
 /**
- * Single source of truth for the open-dialog filter. Includes the
- * legacy .doc/.ppt binaries so they are selectable and surface the explicit
- * "not supported" dialog via openDocumentPath instead of being grayed out.
+ * Single source of truth for the open-dialog filter. The legacy .doc/.dot/.ppt
+ * binaries open as converted copies (openLegacyCopyTab).
  */
 const OPEN_DIALOG_EXTENSIONS = [
   'docx',
   'doc',
+  'dot',
   'odt',
   'xlsx',
   'xlsm',
   'xls',
   'csv',
   'tsv',
+  'ods',
   'pptx',
   'ppt',
   'pdf',
@@ -5107,9 +6438,20 @@ const OPEN_DIALOG_EXTENSIONS = [
   'html',
   'htm',
   'xmind',
+  'mm',
   'hwp',
   'hwpx',
   'epub',
+  'drawio',
+  'dio',
+  // a draw.io picture by its double extension (a plain picture is no document)
+  'drawio.svg',
+  'drawio.png',
+  'vsdx',
+  'whiteboard',
+  'excalidraw',
+  'excalidraw.png',
+  'excalidraw.svg',
 ]
 
 function notifyUnsupportedFile(filePath: string): void {
@@ -5118,8 +6460,8 @@ function notifyUnsupportedFile(filePath: string): void {
 }
 
 /** shell-hosted warning box; focused when a shell window exists, standalone otherwise */
-function showAppWarning(message: string): void {
-  const options = { type: 'warning' as const, message }
+function showAppWarning(message: string, detail?: string): void {
+  const options = { type: 'warning' as const, message, ...(detail ? { detail } : {}) }
   if (shellWindow) {
     shellWindow.show()
     shellWindow.focus()
@@ -5133,22 +6475,138 @@ function showAppWarning(message: string): void {
  * Files dropped from the OS into any renderer arrive via installDropOpenBridge
  * and route through the normal File > Open pipeline; detached editor windows
  * can host the drop target, so the shell must reveal itself after opening.
+ * A skill file (a SKILL.md, a skill zip) goes to Settings ▸ Skills' preview,
+ * and a zip that holds no skill to the same page's "no skill found" notice.
  */
-const droppedFilesDeps = () => ({
+const droppedFilesDeps = (): DroppedFilesDeps => ({
   openDocumentPath,
+  openPaths: (paths) => requestOpenPaths(paths),
+  aiFeaturesOn,
+  askAiOnForSkills: () => openGate.askAiOnForSkills(),
   revealShellWindow,
   showWarning: showAppWarning,
   unsupportedMessage: (exts: string[]) => tm('errUnsupportedExt', { ext: exts.join(', ') }),
+  skillSourceOf: (path) => droppedSkillSourceOf(path, homedir()),
+  importSkills: (source) => {
+    userSkillsIpc.queueDropped(source)
+    openSkillsSettings()
+  },
+  noSkillsFound: () => {
+    userSkillsIpc.queueDropped({ kind: 'no-skills' })
+    openSkillsSettings()
+  },
 })
 
 function registerDroppedFilesIpc(): void {
-  ipcMain.on(DROP_OPEN_CHANNEL, (_event, raw: unknown) =>
-    handleDroppedFiles(raw, droppedFilesDeps()),
-  )
+  ipcMain.on(DROP_OPEN_CHANNEL, (event, raw: unknown) => {
+    // the drop itself is the user action: grant the paths for this view so
+    // editor reads of what was just dropped verify against the ledger
+    sharedPathGrants().grant(event.sender.id, seenFilePaths(raw))
+    void handleDroppedFiles(raw, droppedFilesDeps())
+  })
+  // the grant-ledger feed for page-handled drops (AI attachment panels,
+  // image inserts) and clipboard file pastes: the preload bridge records
+  // every OS file drop/paste it resolves, claimed or not
+  ipcMain.on(USER_FILE_PATHS_SEEN_CHANNEL, (event, raw: unknown) => {
+    sharedPathGrants().grant(event.sender.id, seenFilePaths(raw))
+  })
 }
 
-/** the single router: extension decides which module owns the file; false = nothing opened */
-function openDocumentPath(filePath: string): boolean {
+/** which item's editor opens a file: the router's own answer (a legacy file opens as a copy) */
+function editorItemOfPath(filePath: string): EditorItemId | null {
+  const kind = legacyEditorFor(filePath) ?? appForPath(filePath)
+  return kind ? editorItemOfTabKind(kind) : null
+}
+
+/** the file is in a tab or a detached window now (no unloaded tab is loaded to find out) */
+function isDocumentOpen(filePath: string): boolean {
+  const wanted = canonicalPath(filePath)
+  const open = [...(tabManager?.openFilePaths() ?? []), ...detachedFilePaths()]
+  if (open.some((path) => canonicalPath(path) === wanted)) return true
+  const legacyTab = legacyCopyTabs.get(resolve(filePath).toLowerCase())
+  return !!legacyTab && !!tabManager?.webContentsForTab(legacyTab)
+}
+
+/** set once the choice service is registered (lifecycle below) */
+let editorChoiceService: EditorChoiceService | null = null
+
+/**
+ * Editors turned off in Settings → Editors and AI ask before a file opens
+ * with them (spec 7.2, 7.5); the questions, the grouping and "turn on" live
+ * in editor-gate.ts. The PDF tools and generate windows reach it through
+ * editorGate().
+ */
+const openGate = createEditorGate({
+  choice: () => editorChoiceService?.effective() ?? appChoice(),
+  setChoice: (patch) => editorChoiceService?.set(patch) ?? appChoice(),
+  itemOfPath: editorItemOfPath,
+  isOpen: isDocumentOpen,
+  showMessageBox: async (box) => {
+    const focused = BrowserWindow.getFocusedWindow()
+    const parent = focused && !focused.isDestroyed() ? focused : shellWindow
+    const options = { type: 'question' as const, noLink: true, ...box }
+    const { response } =
+      parent && !parent.isDestroyed()
+        ? await dialog.showMessageBox(parent, options)
+        : await dialog.showMessageBox(options)
+    return response
+  },
+  lang: () => currentLang(),
+})
+installEditorGate(openGate)
+
+/**
+ * Entrances inside other features (a PDF conversion, the generate and PDF
+ * tools windows, a PDF's note…) ask before their work when the editor they
+ * need is off, and an export whose editor is off is shown in its folder
+ * (spec 7.3, editor-entrances.ts). The editor mains ask through the asker.
+ */
+const entrances = createEditorEntrances({
+  gate: () => openGate,
+  isOff: (item) => (editorChoiceService?.effective() ?? appChoice()).off.includes(item),
+  itemOfPath: editorItemOfPath,
+  isOpen: isDocumentOpen,
+  reveal: (path) => shell.showItemInFolder(path),
+  lang: () => currentLang(),
+})
+setEditorEntranceAsker(entrances)
+
+/** "create the file only": into the default save folder under a free name; its path */
+async function writeInDefaultSaveFolder(fileName: string, bytes: Uint8Array): Promise<string> {
+  const dir = defaultSaveDir()
+  mkdirSync(dir, { recursive: true })
+  const target = uniquePathIn(dir, fileName)
+  await atomicWriteFile(target, Buffer.from(bytes))
+  return target
+}
+
+/** a file a feature just made: its tab, or its folder while its editor is off (no question) */
+function openMadeDocument(filePath: string): boolean {
+  return entrances.openOrReveal(filePath, (path) => openDocumentPath(path))
+}
+
+/**
+ * Several files a person opened at once (a launch, a drop, File → Open): one
+ * question per turned-off editor. True = anything opened.
+ */
+function requestOpenPaths(paths: readonly string[], origin: OpenOrigin = 'user'): Promise<boolean> {
+  return openGate.openMany(paths, origin, (path) => openDocumentPath(path, origin))
+}
+
+/** one file, waiting for the answer when its editor is off (callers that need the tab) */
+function openDocumentPathAnswered(filePath: string, origin: OpenOrigin = 'user'): Promise<boolean> {
+  return openGate.openOne(filePath, origin, (path) => openDocumentPath(path, origin))
+}
+
+/**
+ * The single router: extension decides which module owns the file; false =
+ * nothing opened. `origin` says who asked (editor-gate.ts): with no origin it
+ * is a person, whose file of a turned-off editor asks first; while the
+ * question is up the answer is true (handled), so no caller falls back.
+ */
+function openDocumentPath(filePath: string, origin: OpenOrigin = 'user'): boolean {
+  const gated = openGate.check(filePath, origin, (path) => openDocumentPath(path, origin))
+  if (gated !== null) return gated
   // a copy of a Drive file (from Recent, say) reopens through Drive, so a copy
   // older than the file in Drive is refreshed first unless it holds unsent edits
   const viaDrive = driveService?.reopen(filePath)
@@ -5168,6 +6626,8 @@ function openDocumentPath(filePath: string): boolean {
  * overwrite the file we just exported.
  */
 function openGeneratedDocument(filePath: string): boolean {
+  // an export into a turned-off editor is not asked about: false = the editor shows its folder
+  if (!entrances.opensInTab(filePath)) return false
   if (tabManager && PDF_RE.test(filePath)) {
     const existing = tabManager.findPdfTabByPath(filePath)
     if (existing) {
@@ -5184,6 +6644,12 @@ function routeDocumentPath(filePath: string): boolean {
   // a detached editor window already shows this file — focus it, never a second copy
   if (focusDetachedByPath(filePath)) return true
   if (!tabManager) return false
+  // a legacy .doc/.dot/.ppt opens as a converted, untitled .docx/.pptx copy
+  if (legacyEditorFor(filePath)) {
+    recordRecentFile(filePath)
+    void openLegacyCopyTab(filePath)
+    return true
+  }
   if (DOCX_RE.test(filePath) || ODT_RE.test(filePath)) {
     recordRecentFile(filePath)
     const existing = tabManager.findDocsTabByPath(filePath)
@@ -5255,8 +6721,123 @@ function routeDocumentPath(filePath: string): boolean {
     else tabManager.openEpubTab(filePath)
     return true
   }
+  // a Visio drawing opens as a new diagram made from it; opening it again
+  // comes back to that tab (findDiagramTabByPath asks the editor). A file that
+  // does not open gets no tab, only the reason (spec 3.1, 3.5).
+  if (DIAGRAM_RE.test(filePath)) {
+    const existing = tabManager.findDiagramTabByPath(filePath)
+    if (existing) {
+      recordRecentFile(filePath)
+      tabManager.activateTab(existing)
+      return true
+    }
+    return openDiagramChecked(filePath, {
+      refusal: (path) => diagramOpenRefusal(path, { hasRecoveryCopy: diagramHasRecoveryCopy }),
+      visioRefusal: (path) => visioOpenRefusal(path),
+      open: (path) => {
+        if (!tabManager) return
+        // the check of a .vsdx took a moment: the same file may have a tab by now
+        const opened = tabManager.findDiagramTabByPath(path)
+        recordRecentFile(path)
+        if (opened) tabManager.activateTab(opened)
+        else tabManager.openDiagramTab(path)
+      },
+      warn: (message, path) => showAppWarning(message, basename(path)),
+    })
+  }
+  if (WHITEBOARD_RE.test(filePath)) {
+    const existing = tabManager.findWhiteboardTabByPath(filePath)
+    if (existing) {
+      recordRecentFile(filePath)
+      tabManager.activateTab(existing)
+      return true
+    }
+    return openWhiteboardChecked(filePath, {
+      refusal: (path) => whiteboardOpenRefusal(path),
+      excalidrawRefusal: (path) => excalidrawOpenRefusal(path),
+      open: (path) => {
+        if (!tabManager) return
+        const opened = tabManager.findWhiteboardTabByPath(path)
+        recordRecentFile(path)
+        if (opened) tabManager.activateTab(opened)
+        else tabManager.openWhiteboardTab(path)
+      },
+      warn: (message, path) => showAppWarning(message, basename(path)),
+    })
+  }
   notifyUnsupportedFile(filePath)
   return false
+}
+
+/** the tab each opened legacy file's copy went to: opening the file again comes back to it */
+const legacyCopyTabs = new Map<string, string>()
+
+/**
+ * A legacy .doc/.dot/.ppt: converted here, then opened like a skill template's
+ * copy, as a new untitled document whose first save suggests the converted
+ * name beside the original. The original is only read. A file the converter
+ * refuses gets the reason, and no tab.
+ */
+async function openLegacyCopyTab(filePath: string): Promise<void> {
+  const key = resolve(filePath).toLowerCase()
+  const known = legacyCopyTabs.get(key)
+  if (known && tabManager?.webContentsForTab(known)) {
+    tabManager.activateTab(known)
+    return
+  }
+  const result = await convertLegacyFile(filePath)
+  if (!result) return
+  if (!result.ok) {
+    console.warn('[shell] legacy import failed:', result.error)
+    showAppWarning(
+      tm('errLegacyConvert', { ext: result.from }),
+      tm(result.reason === 'encrypted' ? 'errLegacyEncrypted' : 'errLegacyConvertDetail', {
+        to: result.to,
+      }),
+    )
+    return
+  }
+  const manager = tabManager
+  if (!manager) return
+  const { copy } = result
+  // the Word tab reads an untitled copy from a file once, as it boots
+  let tempDir: string | null = null
+  let path = filePath
+  if (copy.editor === 'docs') {
+    tempDir = join(app.getPath('temp'), 'genoffice-imports', randomUUID())
+    path = join(tempDir, copy.fileName)
+    try {
+      mkdirSync(tempDir, { recursive: true })
+      await atomicWriteFile(path, Buffer.from(copy.bytes))
+    } catch (err) {
+      rmSync(tempDir, { recursive: true, force: true })
+      showAppWarning(
+        tm('errLegacyConvert', { ext: copy.importedFrom }),
+        err instanceof Error ? err.message : String(err),
+      )
+      return
+    }
+  }
+  const opened = manager.openTemplateCopy({
+    editor: copy.editor,
+    path,
+    bytes: copy.bytes,
+    fileName: copy.fileName,
+    title: copy.fileName,
+    saveAsDefaultPath: copy.saveAsDefaultPath,
+    importedFrom: copy.importedFrom,
+  })
+  const dir = tempDir
+  if (!opened) {
+    if (dir) rmSync(dir, { recursive: true, force: true })
+    return
+  }
+  legacyCopyTabs.set(key, opened.tabId)
+  opened.contents.once('destroyed', () => {
+    if (legacyCopyTabs.get(key) === opened.tabId) legacyCopyTabs.delete(key)
+    if (dir) rmSync(dir, { recursive: true, force: true })
+  })
+  manager.activateTab(opened.tabId)
 }
 
 /**
@@ -5459,6 +7040,22 @@ function newMindmapTab(): void {
   }
 }
 
+function newDiagramTab(): void {
+  try {
+    bindPendingDir('diagram', tabManager?.openDiagramTab())
+  } catch (err) {
+    surfaceNewTabError(err)
+  }
+}
+
+function newWhiteboardTab(): void {
+  try {
+    bindPendingDir('whiteboard', tabManager?.openWhiteboardTab())
+  } catch (err) {
+    surfaceNewTabError(err)
+  }
+}
+
 function newHwpTab(): void {
   try {
     bindPendingDir('hwp', tabManager?.openHwpTab())
@@ -5513,16 +7110,260 @@ function startQueuedWorkbookNudge(): void {
   }, 700)
 }
 
+// ---- project folders (decision 0088) ----
+//
+// One project guide, one chat store and one set of project tools for the whole
+// app, made on first use (the guide needs the final app data folder). The tools
+// hold their own run scopes, so editor runs never evict the home ask's group
+// scopes. Every request is judged by the window that sent it (project-ipc.ts).
+
+interface ProjectFolderRuntime {
+  guide: ProjectGuide
+  chats: ProjectChatStore
+  tools: ProjectFolderTools
+  scopes: KbRunScopes
+}
+
+let projectFolderRuntime: ProjectFolderRuntime | null = null
+let projectFolderIpc: ProjectIpcController | null = null
+/** webContents whose close and reload the project layer already follows */
+const projectTrackedContents = new Set<number>()
+
+/**
+ * The "not on this PC" check for lists that are read often (the context file
+ * names of every send, the project screen): a verdict is reused for a short
+ * while instead of starting the detector each time. Reads never use it.
+ */
+const projectListCloudOnly = createCachedCloudResolver((paths) => resolveCloudOnly(paths))
+
+/**
+ * One project's AI-visible file walk, reused for a few seconds by the context
+ * file names, the `@` list and the list tool. An `ignore` edit is a new key;
+ * a change to the list or a new document in a folder drops the walks.
+ */
+const projectFileLister = createCachedFileLister()
+
+function projectFolderServices(): ProjectFolderRuntime {
+  if (projectFolderRuntime) return projectFolderRuntime
+  const guide = new ProjectGuide({
+    settingsPath: APP_SETTINGS_PATH(),
+    homeDir: homedir(),
+    userData: app.getPath('userData'),
+    defaultParentDir: () => defaultSaveDir(),
+    language: () => currentLang(),
+    contextFiles: createContextFiles({
+      resolveCloudOnly: projectListCloudOnly,
+      list: projectFileLister,
+    }),
+  })
+  const chats = new ProjectChatStore({ guide, trash: (path) => shell.trashItem(path) })
+  const scopes = new KbRunScopes()
+  const tools = new ProjectFolderTools({
+    guide,
+    scopes,
+    store: () => {
+      ensureFileIndexer()?.refreshIfStale(60_000)
+      return fileIndexStore
+    },
+    // list and search marks may reuse recent verdicts; a read always asks afresh
+    listCloudOnly: projectListCloudOnly,
+    listFiles: projectFileLister,
+    askDownload: (ask) => askProjectDownload(ask),
+  })
+  projectFolderRuntime = { guide, chats, tools, scopes }
+  return projectFolderRuntime
+}
+
+// New documents the AI makes go into the panel's project folder (spec 6). The
+// placer reads a window's chosen project from the request layer and writes
+// through the project guide's write guard only.
+const newDocuments = new NewDocumentPlacer({
+  guide: {
+    projectRoot: (id) => projectFolderServices().guide.projectRoot(id),
+    writeNewDocument: (id, target, data) =>
+      projectFolderServices().guide.writeNewDocument(id, target, data),
+  },
+  windowProject: async (id) => (projectFolderIpc ? projectFolderIpc.windowProject(id) : null),
+  documentOf: (id) => {
+    const win = projectWindowOf(id)
+    return win?.kind === 'editor' ? win.docPath : null
+  },
+})
+
+/** The folder an untitled document's save dialog opens in (spec 6); null: the default folder */
+function newDocumentFolderFor(webContentsId: number): Promise<string | null> {
+  return newDocuments.saveDialogFolder(webContentsId).catch(() => null)
+}
+
+/** A new document the AI made in this window, into its panel's project; null without one */
+async function writeProjectNewDocument(
+  webContentsId: number,
+  fileName: string,
+  bytes: Uint8Array,
+): Promise<string | null> {
+  const written = await newDocuments.writeFor(webContentsId, fileName, bytes)
+  // the new file belongs in the next file list right away
+  if (written) projectFileLister.invalidate()
+  return written
+}
+
+/** The home renderer's webContents id, when the shell window is up */
+function homeContentsId(): number | null {
+  return shellWindow && !shellWindow.isDestroyed() ? shellWindow.webContents.id : null
+}
+
+/**
+ * A create flow opened `contents` for `opener` (spec 5.2, 6): the new tab's AI
+ * panel starts in the opener's project and its new document goes into the
+ * opener's folder. Nothing changes when the opener has no project.
+ */
+function followOpenerProject(
+  contents: {
+    readonly id: number
+    isDestroyed(): boolean
+    once(e: 'destroyed', f: () => void): unknown
+  },
+  opener: NewDocumentOpener | null,
+): void {
+  if (!opener || contents.isDestroyed()) return
+  const id = contents.id
+  newDocuments.preset(id, newDocuments.placementOfOpener(opener, homeContentsId()))
+  contents.once('destroyed', () => newDocuments.forget(id))
+}
+
+/** The window a project dialog belongs to: the detached window of `owner`, else the shell */
+function projectDialogParent(owner: number): BrowserWindow | null {
+  const parent = detachedWindowForWebContents(owner) ?? shellWindow
+  return parent && !parent.isDestroyed() ? parent : null
+}
+
+async function projectMessageBox(owner: number, options: MessageBoxOptions): Promise<number> {
+  const parent = projectDialogParent(owner)
+  const result = parent
+    ? await dialog.showMessageBox(parent, options)
+    : await dialog.showMessageBox(options)
+  return result.response
+}
+
+/** "'<file>' is not on this PC; download it?" over the asking window (spec 5.8) */
+async function askProjectDownload(ask: DownloadAsk): Promise<boolean> {
+  const response = await projectMessageBox(
+    ask.owner,
+    downloadPromptOptions(currentLang(), ask.fileName),
+  )
+  return response === 0
+}
+
+const PROJECT_EDITOR_KINDS = new Set<string>(PROJECT_EDITORS.filter((kind) => kind !== 'home'))
+
+/** The AI window behind a webContents: the home renderer, an editor tab, or a detached editor */
+function projectWindowOf(id: number): ProjectWindow | null {
+  if (shellWindow && !shellWindow.isDestroyed() && shellWindow.webContents.id === id) {
+    return { kind: 'home' }
+  }
+  const doc = tabManager?.describeWebContents(id) ?? detachedDocumentFor(id)
+  if (!doc || !PROJECT_EDITOR_KINDS.has(doc.kind)) return null
+  return {
+    kind: 'editor',
+    editor: doc.kind as Exclude<ProjectEditor, 'home'>,
+    docPath: doc.filePath ?? null,
+  }
+}
+
+/** Follows a window's close (forget it) and page loads (its listeners are gone) */
+function trackProjectContents(contents: WebContents): void {
+  const id = contents.id
+  if (projectTrackedContents.has(id) || contents.isDestroyed()) return
+  projectTrackedContents.add(id)
+  contents.once('destroyed', () => {
+    projectTrackedContents.delete(id)
+    projectFolderIpc?.forget(id)
+  })
+  contents.on('did-start-navigation', (details) => {
+    if (details.isMainFrame && !details.isSameDocument) projectFolderIpc?.reset(id)
+  })
+}
+
+function registerProjectFolderChannels(): void {
+  projectFolderIpc = registerProjectFolderIpc({
+    services: projectFolderServices,
+    handle: (channel, handler) =>
+      ipcMain.handle(channel, (event, args: unknown) => {
+        trackProjectContents(event.sender)
+        return handler(event.sender.id, args)
+      }),
+    windowOf: projectWindowOf,
+    send: (target, channel, payload) => {
+      const contents = webContents.fromId(target)
+      if (!contents || contents.isDestroyed()) return false
+      contents.send(channel, payload)
+      return true
+    },
+    dialogs: {
+      pickFolder: async (owner, purpose) => {
+        const options = folderPickerOptions(currentLang(), purpose)
+        const parent = projectDialogParent(owner)
+        const result = parent
+          ? await dialog.showOpenDialog(parent, options)
+          : await dialog.showOpenDialog(options)
+        return result.canceled ? null : (result.filePaths[0] ?? null)
+      },
+      confirmUseExisting: async (owner, folderPath) =>
+        (await projectMessageBox(owner, useExistingPromptOptions(currentLang(), folderPath))) === 0,
+      askTrust: async (owner, prompt) =>
+        trustChoiceOf(await projectMessageBox(owner, trustPromptOptions(currentLang(), prompt))),
+      waitForReturn: async (owner) => {
+        const contents = webContents.fromId(owner)
+        return contents ? waitForPageReturn(contents) : false
+      },
+    },
+    legacyChatFor: (docPath) => legacyDocumentChatFor(docPath),
+    openFolder: async (path) => {
+      await shell.openPath(path)
+    },
+    openDocument: async (path) => {
+      if (!(await openDocumentPathAnswered(path))) return null
+      const found = tabManager?.findTabByPath(path) ?? findDetachedTabByPath(path)
+      if (!found) return null
+      trackProjectContents(found.webContents)
+      return found.webContents.id
+    },
+    showHome: () => {
+      revealShellWindow()
+      tabManager?.openHomeTab()
+      const contents = shellWindow?.webContents
+      if (!contents || contents.isDestroyed()) return null
+      trackProjectContents(contents)
+      return contents.id
+    },
+    // the index walks the listed project folders: follow additions, removals and moves
+    projectsChanged: () => {
+      projectFileLister.invalidate()
+      fileIndexer?.refresh()
+    },
+    resolveCloudOnly: projectListCloudOnly,
+    presetProjectOf: (sender) => newDocuments.presetProjectOf(sender),
+  })
+  ipcMain.on(PROJECT_FOLDER_LISTEN_CHANNEL, (event, message: unknown) => {
+    trackProjectContents(event.sender)
+    const { method, listening } = (message && typeof message === 'object' ? message : {}) as {
+      method?: unknown
+      listening?: unknown
+    }
+    projectFolderIpc?.listen(event.sender.id, method, listening)
+  })
+}
+
 // ---- home IPC ----
 
-function statEntries(paths: string[]): RecentEntry[] {
-  return statPathEntries(paths, new Set(readStarredFiles()))
+function statEntries(paths: string[]): Promise<RecentEntry[]> {
+  return statPathEntriesAsync(paths, new Set(readStarredFiles()))
 }
 
 function registerHomeIpc(): void {
   ipcMain.handle(HOME_CHANNELS.getAppVersion, (): string => app.getVersion())
 
-  ipcMain.handle(HOME_CHANNELS.recents, (_event, query: unknown): RecentPage =>
+  ipcMain.handle(HOME_CHANNELS.recents, (_event, query: unknown): Promise<RecentPage> =>
     pageRecentPaths(readRecentFiles(), query, new Set(readStarredFiles())),
   )
 
@@ -5555,10 +7396,18 @@ function registerHomeIpc(): void {
   // A home ask narrowed to one starred group (spec 8.8) carries a scope main
   // minted for that run; main resolves the group's members itself on every
   // call (see KbRunScopes). A call without a scope is an unscoped ask.
+  // A home ask with a project chosen (spec 5.5) also reads that project folder:
+  // the scope then covers the project plus the starred part (all, or one group).
   const kbRunScopes = new KbRunScopes()
-  ipcMain.handle('kb:open-scope', (event, group: unknown): string =>
-    kbRunScopes.open(event.sender.id, group, readStarredGroupMap()),
-  )
+  ipcMain.handle('kb:open-scope', async (event, raw: unknown): Promise<string> => {
+    const { group, projectId } = parseKbOpenScope(raw)
+    if (projectId === null) return kbRunScopes.open(event.sender.id, group, readStarredGroupMap())
+    if (!(await projectFolderServices().tools.isAvailable(projectId))) {
+      throw new Error(PROJECT_UNAVAILABLE)
+    }
+    const starred = group === null ? 'all' : { group: group as string }
+    return kbRunScopes.openProject(event.sender.id, projectId, starred, readStarredGroupMap())
+  })
   ipcMain.handle('kb:close-scope', (event, scope: unknown): void =>
     kbRunScopes.close(event.sender.id, scope),
   )
@@ -5586,11 +7435,14 @@ function registerHomeIpc(): void {
     const starred = store.pathsIndexedAsOnDisk(readStarredFiles())
     // a group-scoped ask searches its group only: a further filter on the set above, never a wider one
     const inScope = kbRunScopes.narrow(event.sender.id, raw, starred, readStarredGroupMap)
+    // a scope that also holds a project searches that folder's AI-visible files too
+    const projectId = kbRunScopes.projectOf(event.sender.id, raw)
+    const within = projectId ? await projectFolderServices().tools.visibleTest(projectId) : null
     // a starred file open with unsaved changes is left out: its excerpt would
     // be the text as last saved, before any withholding mark still in the editor
-    const hits = await searchSavedKnowledgeBase(
-      (qq, pool) =>
-        store.search(qq, { limit: pool }).hits.map((h) => ({
+    const hits = await searchSavedKnowledgeWithProject(
+      (qq, pool, inside) =>
+        store.search(qq, { limit: pool, ...(inside ? { within: inside } : {}) }).hits.map((h) => ({
           path: h.path,
           name: h.name,
           ext: h.ext,
@@ -5599,6 +7451,8 @@ function registerHomeIpc(): void {
       q,
       inScope,
       Math.min(limit, 20),
+      within,
+      (paths) => store.pathsIndexedAsOnDisk(paths),
     )
     return hits
   })
@@ -5611,18 +7465,30 @@ function registerHomeIpc(): void {
     const path = typeof req.path === 'string' ? req.path : ''
     const offsetRaw = Number(req.offset)
     const offset = Number.isFinite(offsetRaw) ? Math.floor(offsetRaw) : 0
-    if (!path || !readStarredFiles().includes(path)) {
-      throw new Error('path is not in the knowledge base')
-    }
-    // a group-scoped ask reads its group only: the same refusal, on top of the check above
-    if (!kbRunScopes.narrow(event.sender.id, raw, [path], readStarredGroupMap).includes(path)) {
-      throw new Error(KB_NOT_IN_BASE)
-    }
-    return readKnowledgeFilePage(path, offset)
+    if (!path) throw new Error(KB_NOT_IN_BASE)
+    const owner = event.sender.id
+    // the project this run's scope also reads (a scope main does not hold is refused here)
+    const projectId = kbRunScopes.projectOf(owner, raw)
+    // a starred file reads as before when the scope allows it (a group-scoped ask reads its group only)
+    const starredAllowed =
+      readStarredFiles().includes(path) &&
+      kbRunScopes.narrow(owner, raw, [path], readStarredGroupMap).includes(path)
+    // anything else is read only as a file of the run's project: visibility,
+    // unsaved changes, size and the "not on this PC" question all apply there
+    return readKnowledgeOrProjectPage(
+      path,
+      offset,
+      starredAllowed,
+      projectId
+        ? (target, at) => projectFolderServices().tools.readPath(owner, projectId, target, at)
+        : null,
+    )
   })
 
-  ipcMain.handle('kb:create-document', async (_event, raw: unknown): Promise<unknown> => {
+  ipcMain.handle('kb:create-document', async (event, raw: unknown): Promise<unknown> => {
     const req = parseKbCreateRequest(raw)
+    // a project chosen at home: the new document goes to its folder's top (spec 6)
+    const placement = await newDocuments.placementFor(event.sender.id)
     return createKnowledgeDocument(
       {
         dir: defaultSaveDir,
@@ -5637,6 +7503,15 @@ function registerHomeIpc(): void {
           })
         },
         recordRecent: recordRecentFile,
+        ...(placement
+          ? {
+              project: {
+                write: (fileName: string, bytes: Uint8Array) =>
+                  newDocuments.write(placement, fileName, bytes),
+                docxBytes: (markdown: string) => markdownDocxBytes(markdown),
+              },
+            }
+          : {}),
       },
       req,
     )
@@ -5646,14 +7521,20 @@ function registerHomeIpc(): void {
     HOME_CHANNELS.rerankSearch,
     async (_event, raw: unknown): Promise<FileSearchRerank | null> => {
       const settings = readFileSearchSettings()
-      if (!settings.rerank) return null
+      // the reordering is AI work: none while AI features are off (editor choice spec 8.3)
+      if (!settings.rerank || !aiFeaturesOn()) return null
       const query = (raw && typeof raw === 'object' ? raw : {}) as { q?: unknown; paths?: unknown }
       const q = typeof query.q === 'string' ? query.q.trim().slice(0, 200) : ''
       const paths = Array.isArray(query.paths)
         ? query.paths.filter((p): p is string => typeof p === 'string').slice(0, 20)
         : []
       if (!q || paths.length < 2 || !ensureFileIndexer() || !fileIndexStore) return null
-      searchReranker ??= new SearchReranker(fileIndexStore)
+      // what a project's `ignore` lists stays out of the excerpts sent out (spec 5.9)
+      searchReranker ??= new SearchReranker(
+        fileIndexStore,
+        undefined,
+        createRerankIgnoreFilter({ guide: projectFolderServices().guide }),
+      )
       // excerpts leave the machine here: only from files indexed as they are on disk
       return searchReranker.rerank(q, fileIndexStore.pathsIndexedAsOnDisk(paths), settings)
     },
@@ -5683,7 +7564,7 @@ function registerHomeIpc(): void {
   )
 
   // Starred files sort by mtime, which requires stat-ing them all first; they are hand-picked and few, so this is fine
-  ipcMain.handle(HOME_CHANNELS.starred, (_event, query: unknown): RecentPage => {
+  ipcMain.handle(HOME_CHANNELS.starred, async (_event, query: unknown): Promise<RecentPage> => {
     const { offset, limit, ext } = normalizeRecentQuery(query)
     // the Starred view's group pills scope the whole query (totals included)
     const raw = (query && typeof query === 'object' ? query : {}) as { group?: unknown }
@@ -5691,7 +7572,7 @@ function registerHomeIpc(): void {
     const groupOf = readStarredGroupMap()
     const paths = readStarredFiles()
     const scoped = group ? paths.filter((p) => groupOf.get(p) === group) : paths
-    const all = statEntries(scoped)
+    const all = (await statEntries(scoped))
       .sort((a, b) => b.mtimeMs - a.mtimeMs)
       .map((entry) => {
         const g = groupOf.get(entry.path)
@@ -5711,7 +7592,7 @@ function registerHomeIpc(): void {
     setStarredGroup(stringPaths(paths), typeof group === 'string' && group ? group : null)
   })
 
-  ipcMain.handle(HOME_CHANNELS.statPaths, (_event, paths: unknown): RecentEntry[] =>
+  ipcMain.handle(HOME_CHANNELS.statPaths, (_event, paths: unknown): Promise<RecentEntry[]> =>
     statEntries(capStatPaths(stringPaths(paths))),
   )
 
@@ -5719,8 +7600,25 @@ function registerHomeIpc(): void {
     if (typeof path === 'string') toggleStarredFile(path)
   })
 
-  ipcMain.handle(HOME_CHANNELS.openPath, (_event, path: unknown) => {
+  ipcMain.handle(HOME_CHANNELS.openPath, (event, path: unknown) => {
     if (typeof path !== 'string' || !path || path.length > 4096) return
+    // Renderer-facing open channel: the path must be one the home UI can
+    // legitimately show (folder tree, project folders, recents, starred, save
+    // folder), one beside a document the view has open (wiki links resolve
+    // there), or one this view's user physically handed over (OS drop /
+    // clipboard file / attachment picker — recorded in the shared grant
+    // ledger). Without the check the channel is an open-any-file primitive for
+    // a compromised renderer; e2e drives it with fixture paths and skips it.
+    if (
+      process.env.GENOFFICE_E2E !== '1' &&
+      !isRevealablePath(path) &&
+      !isBesideOpenDocument(path) &&
+      !sharedPathGrants().has(event.sender.id, path)
+    )
+      return
+    // no grant here: opening is its own authority, and a grant to the calling
+    // view would let any view read anything beside a folder root or a recent
+    // through files:read without ever opening it
     openDocumentPath(path)
     fileIndexer?.refresh()
   })
@@ -5732,20 +7630,32 @@ function registerHomeIpc(): void {
       title: tm('dlgOpenTitle'),
       filters: [
         { name: tm('filterSupported'), extensions: OPEN_DIALOG_EXTENSIONS },
-        { name: tm('filterWord'), extensions: ['docx', 'doc'] },
+        { name: tm('filterWord'), extensions: ['docx', 'doc', 'dot'] },
         { name: tm('filterOdt'), extensions: ['odt'] },
-        { name: tm('filterExcel'), extensions: ['xlsx', 'xlsm', 'xls', 'csv', 'tsv'] },
+        { name: tm('filterExcel'), extensions: ['xlsx', 'xlsm', 'xls', 'csv', 'tsv', 'ods'] },
         { name: tm('filterPpt'), extensions: ['pptx', 'ppt'] },
         { name: tm('filterPdf'), extensions: ['pdf'] },
         { name: tm('filterMarkdown'), extensions: ['md', 'markdown', 'txt', 'json'] },
         { name: tm('filterHtml'), extensions: ['html', 'htm'] },
-        { name: tm('filterMindmap'), extensions: ['xmind'] },
+        { name: tm('filterMindmap'), extensions: ['xmind', 'mm'] },
         { name: tm('filterHwp'), extensions: ['hwp', 'hwpx'] },
         { name: tm('filterEpub'), extensions: ['epub'] },
+        {
+          name: tm('filterDiagram'),
+          extensions: ['drawio', 'dio', 'drawio.svg', 'drawio.png', 'vsdx'],
+        },
+        {
+          name: tm('filterWhiteboard'),
+          extensions: ['whiteboard', 'excalidraw', 'excalidraw.png', 'excalidraw.svg'],
+        },
       ],
       properties: ['openFile', 'multiSelections'],
     })
-    if (!result.canceled) for (const path of result.filePaths) openDocumentPath(path)
+    if (!result.canceled && result.filePaths.length > 0) {
+      // user picked them through the dialog: grant for this view's reads
+      sharedPathGrants().grant(event.sender.id, result.filePaths)
+      void requestOpenPaths(result.filePaths)
+    }
   })
 
   ipcMain.handle(HOME_CHANNELS.newDoc, (_event, opts?: NewFileOpts) => {
@@ -5778,6 +7688,16 @@ function registerHomeIpc(): void {
     newMindmapTab()
   })
 
+  ipcMain.handle(HOME_CHANNELS.newDiagram, (_event, opts?: NewFileOpts) => {
+    rememberPendingDir('diagram', opts)
+    newDiagramTab()
+  })
+
+  ipcMain.handle(HOME_CHANNELS.newWhiteboard, (_event, opts?: NewFileOpts) => {
+    rememberPendingDir('whiteboard', opts)
+    newWhiteboardTab()
+  })
+
   ipcMain.handle(HOME_CHANNELS.newHwp, (_event, opts?: NewFileOpts) => {
     rememberPendingDir('hwp', opts)
     newHwpTab()
@@ -5805,7 +7725,8 @@ function registerHomeIpc(): void {
   })
 
   ipcMain.handle(HOME_CHANNELS.revealPath, (_event, path: unknown) => {
-    if (typeof path === 'string' && existsSync(path)) shell.showItemInFolder(path)
+    if (typeof path === 'string' && isRevealablePath(path) && existsSync(path))
+      shell.showItemInFolder(path)
   })
 
   ipcMain.handle(
@@ -5866,14 +7787,8 @@ function registerHomeIpc(): void {
     removeStarredFiles(list)
   })
 
-  ipcMain.handle(HOME_CHANNELS.openTrash, () => {
-    if (process.platform === 'darwin') {
-      void shell.openPath(join(app.getPath('home'), '.Trash'))
-    } else if (process.platform === 'win32') {
-      spawn('explorer.exe', ['shell:RecycleBin'], { detached: true }).unref()
-    } else {
-      void shell.openPath(join(app.getPath('home'), '.local', 'share', 'Trash', 'files'))
-    }
+  ipcMain.handle(HOME_CHANNELS.openTrash, async () => {
+    await openTrash()
   })
 
   ipcMain.handle(HOME_CHANNELS.openHelp, (_event, topic: unknown) => {
@@ -5890,6 +7805,7 @@ function registerHomeIpc(): void {
     installDockMenu()
     installBackToHomeItems()
     notifyQuickLookLangOrThemeChanged()
+    syncShellWindowTitle()
     for (const wc of webContents.getAllWebContents()) wc.send('app:language-changed', lang)
   })
 
@@ -5900,6 +7816,14 @@ function registerHomeIpc(): void {
     cachedUpdateChannel = channel
     writeAppSetting(APP_SETTINGS_PATH(), 'updateChannel', channel)
     applyUpdateChannel(channel)
+  })
+
+  ipcMain.handle(HOME_CHANNELS.getAutoUpdateCheck, () => autoUpdateCheckEnabled())
+
+  ipcMain.handle(HOME_CHANNELS.setAutoUpdateCheck, (_event, on: unknown) => {
+    if (typeof on !== 'boolean') return
+    writeAppSetting(APP_SETTINGS_PATH(), 'autoUpdateCheck', on)
+    cachedAutoUpdateCheck = on
   })
 
   ipcMain.handle(
@@ -6084,6 +8008,7 @@ function registerHomeIpc(): void {
     }))
     const roots = [saveRoot, ...systemExplorerRoots(), ...extras]
     ensureFolderWatchers()
+    noticeSaveDirFallback()
     return roots
   })
 
@@ -6122,7 +8047,7 @@ function registerHomeIpc(): void {
       const root = addFolderRoot(path)
       if (root) added.push(root)
     }
-    if (files.length > 0) handleDroppedFiles(files, droppedFilesDeps())
+    if (files.length > 0) void handleDroppedFiles(files, droppedFilesDeps())
     return added
   })
 
@@ -6239,6 +8164,8 @@ function registerHomeIpc(): void {
     exePath: app.getPath('exe'),
     run: execFileRunner,
     openExternal: (url) => shell.openExternal(url),
+    // a turned-off editor's types are neither checked nor claimed (spec 7.1)
+    editorsOff: () => appChoice().off,
   })
   ipcMain.handle(HOME_CHANNELS.getDefaultAppStatus, () => defaultApp.status())
   ipcMain.handle(HOME_CHANNELS.setDefaultApp, () => defaultApp.set())
@@ -6258,6 +8185,43 @@ function registerHomeIpc(): void {
     writeAppSetting(APP_SETTINGS_PATH(), DEFAULT_SAVE_DIR_KEY, picked)
     ensureFolderWatchers()
     return picked
+  })
+
+  ipcMain.handle(HOME_CHANNELS.getHwpDefaultFormat, () => readHwpDefaultFormat(app))
+
+  ipcMain.handle(HOME_KINDS_CHANNELS.get, () => readHomeKinds())
+
+  ipcMain.handle(HOME_KINDS_CHANNELS.set, (_event, raw: unknown) => {
+    writeAppSetting(
+      APP_SETTINGS_PATH(),
+      HOME_KINDS_SETTING_KEY,
+      storedHomeKinds(normalizeHomeKinds(raw)),
+    )
+    const next = readHomeKinds()
+    // the setting lives on the home page, so the home menu is the active one
+    applyMenuFor('home')
+    installDockMenu()
+    for (const wc of webContents.getAllWebContents()) wc.send(HOME_KINDS_CHANNELS.changed, next)
+    return next
+  })
+
+  ipcMain.handle(HOME_CHANNELS.setHwpDefaultFormat, (_event, format: unknown) => {
+    const next = normalizeHwpDefaultFormat(format)
+    writeAppSetting(APP_SETTINGS_PATH(), HWP_DEFAULT_FORMAT_KEY, next)
+    return next
+  })
+
+  // the slides editor reads the same key for each generation (apps/slides/src/main/ai-default-fonts.ts)
+  ipcMain.handle(HOME_CHANNELS.getSlidesAiFonts, () =>
+    normalizeSlidesAiFonts(
+      readAppSettings(APP_SETTINGS_PATH())[SLIDES_AI_FONTS_KEY],
+      currentLang(),
+    ),
+  )
+  ipcMain.handle(HOME_CHANNELS.setSlidesAiFonts, (_event, fonts: unknown) => {
+    const next = normalizeSlidesAiFonts(fonts, currentLang())
+    writeAppSetting(APP_SETTINGS_PATH(), SLIDES_AI_FONTS_KEY, next)
+    return next
   })
 
   ipcMain.handle(HOME_CHANNELS.openGitHubRepo, () => {
@@ -6287,7 +8251,10 @@ function registerHomeIpc(): void {
   // the page is the vendor's fixed install guide; the renderer only names the provider
   ipcMain.handle(SHELL_SUBSCRIPTION_CHANNELS.openInstallHelp, (_event, provider: unknown) => {
     if (!isSubscriptionProviderId(provider)) return
-    const url = safeExternalUrl(SUBSCRIPTION_INSTALL_URLS[provider])
+    // ChatGPT installs nothing: its page is where the user sees and limits the app's use of the plan
+    const url = safeExternalUrl(
+      provider === 'chatgpt' ? SUBSCRIPTION_CHATGPT_USAGE_URL : SUBSCRIPTION_INSTALL_URLS[provider],
+    )
     if (!url) return
     shell.openExternal(url).catch(() => {
       // no browser handler available; nothing actionable for the user here
@@ -6327,21 +8294,45 @@ interface MenuIconSet {
   mindmap: NativeImage
   hwp: NativeImage
   epub: NativeImage
+  diagram: NativeImage
+  whiteboard: NativeImage
   home: NativeImage
 }
+const MENU_ICON_PATHS: Record<keyof MenuIconSet, readonly [string, string]> = {
+  docx: [menuDocxIcon1x, menuDocxIcon2x],
+  xlsx: [menuXlsxIcon1x, menuXlsxIcon2x],
+  pptx: [menuPptxIcon1x, menuPptxIcon2x],
+  pdf: [menuPdfIcon1x, menuPdfIcon2x],
+  md: [menuMdIcon1x, menuMdIcon2x],
+  html: [menuHtmlIcon1x, menuHtmlIcon2x],
+  mindmap: [menuMindmapIcon1x, menuMindmapIcon2x],
+  hwp: [menuHwpIcon1x, menuHwpIcon2x],
+  epub: [menuEpubIcon1x, menuEpubIcon2x],
+  diagram: [menuDiagramIcon1x, menuDiagramIcon2x],
+  whiteboard: [menuWhiteboardIcon1x, menuWhiteboardIcon2x],
+  home: [menuHomeIcon1x, menuHomeIcon2x],
+}
+// Decode each icon on first demand rather than all 24 PNGs when e.g. only the tray icon is read.
+const menuIconEntries: Partial<MenuIconSet> = {}
 let menuIconCache: MenuIconSet | null = null
 function menuIcons(): MenuIconSet {
-  menuIconCache ??= {
-    docx: loadMenuIcon(menuDocxIcon1x, menuDocxIcon2x),
-    xlsx: loadMenuIcon(menuXlsxIcon1x, menuXlsxIcon2x),
-    pptx: loadMenuIcon(menuPptxIcon1x, menuPptxIcon2x),
-    pdf: loadMenuIcon(menuPdfIcon1x, menuPdfIcon2x),
-    md: loadMenuIcon(menuMdIcon1x, menuMdIcon2x),
-    html: loadMenuIcon(menuHtmlIcon1x, menuHtmlIcon2x),
-    mindmap: loadMenuIcon(menuMindmapIcon1x, menuMindmapIcon2x),
-    hwp: loadMenuIcon(menuHwpIcon1x, menuHwpIcon2x),
-    epub: loadMenuIcon(menuEpubIcon1x, menuEpubIcon2x),
-    home: loadMenuIcon(menuHomeIcon1x, menuHomeIcon2x),
+  if (!menuIconCache) {
+    const view = {} as MenuIconSet
+    for (const key of Object.keys(MENU_ICON_PATHS) as Array<keyof MenuIconSet>) {
+      Object.defineProperty(view, key, {
+        enumerable: true,
+        get() {
+          let icon = menuIconEntries[key]
+          if (!icon) {
+            const [p1, p2] = MENU_ICON_PATHS[key]
+            icon = loadMenuIcon(p1, p2)
+            menuIconEntries[key] = icon
+          }
+          return icon
+        },
+      })
+    }
+    menuIconCache = view
   }
   return menuIconCache
 }
@@ -6357,7 +8348,70 @@ const TAB_MENU_ICON: Record<TabKind, keyof MenuIconSet> = {
   mindmap: 'mindmap',
   hwp: 'hwp',
   epub: 'epub',
+  diagram: 'diagram',
+  whiteboard: 'whiteboard',
   help: 'home',
+}
+
+function readHomeKinds(): HomeKindsSettings {
+  return normalizeHomeKinds(readAppSettings(APP_SETTINGS_PATH())[HOME_KINDS_SETTING_KEY])
+}
+
+/** what each new-document entry is called and opens in the shell's menus */
+const NEW_KIND_MENU: Record<
+  Exclude<HomeKind, 'pdfTools'>,
+  { label: Parameters<typeof tm>[0]; icon: keyof MenuIconSet; open: () => void }
+> = {
+  docx: { label: 'menuNewDoc', icon: 'docx', open: () => newDocTab() },
+  xlsx: { label: 'menuNewSheet', icon: 'xlsx', open: () => void newSheetTab() },
+  pptx: { label: 'menuNewSlide', icon: 'pptx', open: () => newSlideTab() },
+  md: { label: 'menuNewMarkdown', icon: 'md', open: () => newMarkdownTab() },
+  html: { label: 'menuNewHtml', icon: 'html', open: () => newHtmlTab() },
+  xmind: { label: 'menuNewMindmap', icon: 'mindmap', open: () => newMindmapTab() },
+  drawio: { label: 'menuNewDiagram', icon: 'diagram', open: () => newDiagramTab() },
+  whiteboard: { label: 'menuNewWhiteboard', icon: 'whiteboard', open: () => newWhiteboardTab() },
+  hwp: { label: 'menuNewHwp', icon: 'hwp', open: () => newHwpTab() },
+  pdf: { label: 'menuNewPdf', icon: 'pdf', open: () => void newPdfTab() },
+}
+
+/**
+ * The new-document entries in home's order, without the kinds the person hid
+ * (Settings → General). `only` keeps a menu to its own shorter list; `section`
+ * puts the "New" header above and a separator below, both left out when every
+ * kind is hidden; `accelerator` goes on the first entry.
+ */
+function newDocumentMenuItems(opts: {
+  icons?: boolean
+  only?: readonly HomeKind[]
+  section?: boolean
+  accelerator?: string
+}): MenuItemConstructorOptions[] {
+  const homeKinds = readHomeKinds()
+  // a turned-off editor's kind leaves every "new" menu (Settings → Editors and AI)
+  const offKinds = hiddenNewDocumentKinds(homeKinds, appChoice())
+  const kinds = visibleHomeKinds(homeKinds).filter((kind) => !offKinds.includes(kind))
+  const items = kinds.flatMap((kind): MenuItemConstructorOptions[] => {
+    if (kind === 'pdfTools' || (opts.only && !opts.only.includes(kind))) return []
+    const entry = NEW_KIND_MENU[kind]
+    return [
+      {
+        label: tm(entry.label),
+        ...(opts.icons ? { icon: menuIcons()[entry.icon] } : {}),
+        click: entry.open,
+      },
+    ]
+  })
+  if (items.length > 0 && opts.accelerator) {
+    items[0] = { ...items[0], accelerator: opts.accelerator }
+  }
+  if (!opts.section || items.length === 0) return items
+  return [
+    // enabled:false so pre-Sonoma macOS / Windows (no 'header' support) degrade
+    // to an inert label instead of a clickable no-op item
+    { label: tm('menuSectionNew'), type: 'header', enabled: false },
+    ...items,
+    { type: 'separator' },
+  ]
 }
 
 // tab views see neither DOM events nor a focus change when the user clicks the
@@ -6522,11 +8576,13 @@ function updateSplitHint(screenX: number, screenY: number): void {
   // the hint marks the b-side pane the drop would land in — the same window
   // content coordinates the pane views are laid out in (bounding the space
   // below the strip, like TabManager.contentBounds)
+  // the open file panel keeps the left of the window, so the panes start after it
+  const inset = currentFilePanelInset(bounds.width)
   const rects = paneRects(
     {
-      x: 0,
+      x: inset,
       y: TAB_STRIP_HEIGHT,
-      width: bounds.width,
+      width: Math.max(0, bounds.width - inset),
       height: Math.max(0, bounds.height - TAB_STRIP_HEIGHT),
     },
     zone,
@@ -6669,13 +8725,41 @@ function notifySplitRoles(manager: TabManager): void {
 }
 
 /**
- * A launch with no file argument: reopen the remembered arrangement when its
- * documents are still on disk, else the home screen as always. A remembered
+ * A launch with no file argument, first asking about a remembered document
+ * whose editor is turned off (spec 7.5). A declined one leaves the memory, so
+ * no later launch asks again; the rest is placed as before.
+ */
+function restoreSplitMemoryOrHome(): void {
+  const memory = readRememberedSplit()
+  const paths = [fileOnDisk(memory?.a), fileOnDisk(memory?.b)].filter(
+    (path): path is string => path !== undefined,
+  )
+  const refusal = openGate.askRestore(
+    paths.map((path) => ({ key: path, item: editorItemOfPath(path) })),
+  )
+  whenReady(refusal, (refused) => {
+    if (refused.size > 0) {
+      try {
+        forgetSplitMemoryPaths([...refused], {
+          settingsPath: APP_SETTINGS_PATH,
+          same: (a, b) => canonicalPath(a) === canonicalPath(b),
+        })
+      } catch (error) {
+        console.warn('[split] the declined documents could not leave the memory:', error)
+      }
+    }
+    placeSplitMemoryOrHome()
+  })
+}
+
+/**
+ * Reopen the remembered arrangement when its documents are still on disk,
+ * else the home screen as always. A remembered
  * path that is gone is skipped — one remaining document opens alone, both gone
  * falls back to home. The memory is left untouched: the next split change
  * rewrites it.
  */
-function restoreSplitMemoryOrHome(): void {
+function placeSplitMemoryOrHome(): void {
   const manager = ensureTabManager()
   const memory = readRememberedSplit()
   const aPath = fileOnDisk(memory?.a)
@@ -6774,6 +8858,13 @@ function activeHtmlTarget() {
 }
 function activeMindmapTarget() {
   return activeEditorTarget('mindmap', () => tabManager?.activeMindmapTab())
+}
+function activeDiagramTarget() {
+  return activeEditorTarget('diagram', () => tabManager?.activeDiagramTab())
+}
+
+function activeWhiteboardTarget() {
+  return activeEditorTarget('whiteboard', () => tabManager?.activeWhiteboardTab())
 }
 
 /** the document a kind's File menu acts on, for the provenance entries (spec 8.2, 9) */
@@ -6907,6 +8998,15 @@ function tabMenuActions(): TabMenuActions {
           void requestHtmlSave(contents, mode)
         },
         printHtml: sendHtmlPrintRequest,
+        saveMindmap: (contents, mode) => {
+          void requestMindmapSave(contents, mode)
+        },
+        printMindmap: sendMindmapPrintRequest,
+        saveHwp: (contents, mode) => {
+          void requestHwpSave(contents, mode)
+        },
+        // the same as File > Print and Ctrl+P: the preview opens, and prints from there
+        printHwp: (contents) => requestHwpPreview(contents, 'print'),
       },
       id,
       action,
@@ -6968,8 +9068,8 @@ function registerTabsIpc(): void {
   })
   // "all tabs" overflow menu — native popup because the editors' WebContentsView
   // would cover any DOM dropdown the shell renderer draws below the tab strip
-  // the ☰ button is the Windows/Linux menu: the window's menus, then the update
-  // check as an item of its own (Help keeps it only on macOS)
+  // the ☰ button is the Windows/Linux menu: the window's menus, then Settings…
+  // and the update check as items of their own (macOS has them in the app menu)
   ipcMain.handle(TABS_CHANNELS.showAppMenu, (_event, x: unknown, y: unknown) => {
     if (!shellWindow) return
     const appMenu = Menu.getApplicationMenu()
@@ -6981,7 +9081,12 @@ function registerTabsIpc(): void {
           ? { type: 'separator' }
           : { label: item.label, enabled: item.enabled, click: () => item.click() },
     )
-    Menu.buildFromTemplate(appMenuPopupTemplate(menus, appMenuLabels(currentLang()))).popup({
+    // Ctrl+, is subscript in the Word tab, so the chord is not printed there
+    const activeKind = tabManager?.list().find((tab) => tab.active)?.kind
+    const settingsShortcut = activeKind === 'docs' ? 'none' : 'show'
+    Menu.buildFromTemplate(
+      appMenuPopupTemplate(menus, appMenuLabels(currentLang()), settingsShortcut),
+    ).popup({
       window: shellWindow,
       ...(typeof x === 'number' && typeof y === 'number'
         ? { x: Math.round(x), y: Math.round(y) }
@@ -7102,50 +9207,7 @@ function registerTabsIpc(): void {
   ipcMain.handle(TABS_CHANNELS.showNewMenu, (_event, x: unknown, y: unknown) => {
     if (!tabManager || !shellWindow) return
     const menu = Menu.buildFromTemplate([
-      // enabled:false so pre-Sonoma macOS / Windows (no 'header' support) degrade
-      // to an inert label instead of a clickable no-op item
-      { label: tm('menuSectionNew'), type: 'header', enabled: false },
-      {
-        label: tm('menuNewDoc'),
-        icon: menuIcons().docx,
-        click: () => newDocTab(),
-      },
-      {
-        label: tm('menuNewSheet'),
-        icon: menuIcons().xlsx,
-        click: () => void newSheetTab(),
-      },
-      {
-        label: tm('menuNewSlide'),
-        icon: menuIcons().pptx,
-        click: () => newSlideTab(),
-      },
-      {
-        label: tm('menuNewMarkdown'),
-        icon: menuIcons().md,
-        click: () => newMarkdownTab(),
-      },
-      {
-        label: tm('menuNewHtml'),
-        icon: menuIcons().html,
-        click: () => newHtmlTab(),
-      },
-      {
-        label: tm('menuNewMindmap'),
-        icon: menuIcons().mindmap,
-        click: () => newMindmapTab(),
-      },
-      {
-        label: tm('menuNewHwp'),
-        icon: menuIcons().hwp,
-        click: () => newHwpTab(),
-      },
-      {
-        label: tm('menuNewPdf'),
-        icon: menuIcons().pdf,
-        click: () => void newPdfTab(),
-      },
-      { type: 'separator' },
+      ...newDocumentMenuItems({ icons: true, section: true }),
       { label: tm('menuOpen'), click: () => void openFileViaDialog() },
     ])
     menu.popup({
@@ -7166,33 +9228,18 @@ async function openFileViaDialog(): Promise<void> {
     filters: [{ name: tm('filterSupported'), extensions: OPEN_DIALOG_EXTENSIONS }],
     properties: ['openFile', 'multiSelections'],
   })
-  if (!result.canceled) for (const path of result.filePaths) openDocumentPath(path)
+  if (!result.canceled) void requestOpenPaths(result.filePaths)
 }
 
 function buildHomeMenu(): void {
   const isMac = process.platform === 'darwin'
   const template: MenuItemConstructorOptions[] = [
-    ...(isMac ? [{ role: 'appMenu' as const }] : []),
+    ...(isMac ? [macAppMenuTemplate(appMenuLabels(currentLang()))] : []),
     {
       label: tm('menuFile'),
       submenu: [
-        { label: tm('menuSectionNew'), type: 'header', enabled: false },
-        {
-          label: tm('menuNewDoc'),
-          accelerator: 'CmdOrCtrl+N',
-          click: () => newDocTab(),
-        },
-        {
-          label: tm('menuNewSheet'),
-          click: () => void newSheetTab(),
-        },
-        { label: tm('menuNewSlide'), click: () => newSlideTab() },
-        { label: tm('menuNewMarkdown'), click: () => newMarkdownTab() },
-        { label: tm('menuNewHtml'), click: () => newHtmlTab() },
-        { label: tm('menuNewMindmap'), click: () => newMindmapTab() },
-        { label: tm('menuNewHwp'), click: () => newHwpTab() },
-        { label: tm('menuNewPdf'), click: () => void newPdfTab() },
-        { type: 'separator' },
+        // Ctrl+N makes the first entry home lists
+        ...newDocumentMenuItems({ section: true, accelerator: 'CmdOrCtrl+N' }),
         {
           label: tm('menuOpen'),
           accelerator: 'CmdOrCtrl+O',
@@ -7226,7 +9273,7 @@ function buildHomeMenu(): void {
 function buildPdfMenu(): void {
   const isMac = process.platform === 'darwin'
   const template: MenuItemConstructorOptions[] = [
-    ...(isMac ? [{ role: 'appMenu' as const }] : []),
+    ...(isMac ? [macAppMenuTemplate(appMenuLabels(currentLang()))] : []),
     {
       label: tm('menuFile'),
       submenu: [
@@ -7275,7 +9322,7 @@ function buildPdfMenu(): void {
         // Markdown / EPUB: the pdf tab's conversion dialog (page range, save location, progress)
         {
           label: tm('menuExportMd'),
-          click: () => requestPdfConvertDialog(activePdfTarget()?.webContents, 'md'),
+          click: () => void askThenRequestPdfConvertDialog(activePdfTarget(), 'md'),
         },
         {
           label: tm('menuExportEpub'),
@@ -7319,7 +9366,7 @@ function buildPdfMenu(): void {
 function buildMarkdownMenu(): void {
   const isMac = process.platform === 'darwin'
   const template: MenuItemConstructorOptions[] = [
-    ...(isMac ? [{ role: 'appMenu' as const }] : []),
+    ...(isMac ? [macAppMenuTemplate(appMenuLabels(currentLang()))] : []),
     {
       label: tm('menuFile'),
       submenu: [
@@ -7365,6 +9412,13 @@ function buildMarkdownMenu(): void {
           click: () => {
             const tab = activeMarkdownTarget()
             if (tab) sendMarkdownExportRequest(tab.webContents, 'odt')
+          },
+        },
+        {
+          label: tm('menuExportHwp'),
+          click: () => {
+            const tab = activeMarkdownTarget()
+            if (tab) sendMarkdownExportRequest(tab.webContents, 'hwp')
           },
         },
         {
@@ -7426,7 +9480,7 @@ function buildMarkdownMenu(): void {
 function buildHwpMenu(): void {
   const isMac = process.platform === 'darwin'
   const template: MenuItemConstructorOptions[] = [
-    ...(isMac ? [{ role: 'appMenu' as const }] : []),
+    ...(isMac ? [macAppMenuTemplate(appMenuLabels(currentLang()))] : []),
     {
       label: tm('menuFile'),
       submenu: [
@@ -7435,6 +9489,7 @@ function buildHwpMenu(): void {
           accelerator: 'CmdOrCtrl+O',
           click: () => void openFileViaDialog(),
         },
+        { label: tm('menuImportPdf'), click: () => void importPdfAsHwp() },
         { type: 'separator' },
         {
           label: tm('backToHome'),
@@ -7460,6 +9515,13 @@ function buildHwpMenu(): void {
             if (tab) void requestHwpSave(tab.webContents, 'saveAs')
           },
         },
+        {
+          label: tm('menuSaveSubmission'),
+          click: () => {
+            const tab = activeHwpTarget()
+            if (tab) void requestHwpSubmissionSave(tab.webContents)
+          },
+        },
         { type: 'separator' },
         {
           label: tm('menuExportPdf'),
@@ -7469,10 +9531,17 @@ function buildHwpMenu(): void {
           },
         },
         {
+          label: tm('menuPreview'),
+          click: () => {
+            const tab = activeHwpTarget()
+            if (tab) requestHwpPreview(tab.webContents, 'open')
+          },
+        },
+        {
           label: tm('menuPrint'),
           click: () => {
             const tab = activeHwpTarget()
-            if (tab) requestHwpPrint(tab.webContents, 'print')
+            if (tab) requestHwpPreview(tab.webContents, 'print')
           },
         },
         { type: 'separator' },
@@ -7524,7 +9593,7 @@ function buildEpubMenu(): void {
     click: toBook(command),
   })
   const template: MenuItemConstructorOptions[] = [
-    ...(isMac ? [{ role: 'appMenu' as const }] : []),
+    ...(isMac ? [macAppMenuTemplate(appMenuLabels(currentLang()))] : []),
     {
       label: tm('menuFile'),
       submenu: [
@@ -7556,8 +9625,13 @@ function buildEpubMenu(): void {
             if (tab) void requestEpubSave(tab.webContents, 'saveAs')
           },
         },
-        { type: 'separator' },
-        { label: tm('menuTranslateBook'), click: toBook('translate-book') },
+        // book translation runs AI: gone while AI is off (the menu is rebuilt on the switch)
+        { type: 'separator', visible: aiFeaturesOn() },
+        {
+          label: tm('menuTranslateBook'),
+          click: toBook('translate-book'),
+          visible: aiFeaturesOn(),
+        },
         { type: 'separator' },
         {
           label: tm('menuClose'),
@@ -7613,7 +9687,7 @@ function buildEpubMenu(): void {
 function buildHtmlMenu(): void {
   const isMac = process.platform === 'darwin'
   const template: MenuItemConstructorOptions[] = [
-    ...(isMac ? [{ role: 'appMenu' as const }] : []),
+    ...(isMac ? [macAppMenuTemplate(appMenuLabels(currentLang()))] : []),
     {
       label: tm('menuFile'),
       submenu: [
@@ -7708,13 +9782,280 @@ function buildHtmlMenu(): void {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template))
 }
 
+// ---- diagram menu (diagram-main has no menu of its own; the shell owns diagram tabs) ----
+
+function buildDiagramMenu(): void {
+  const isMac = process.platform === 'darwin'
+  const labels = appMenuLabels(currentLang())
+  /** a command for the diagram in the active tab or the focused detached window */
+  const toDiagram = (command: DiagramMenuCommand) => () => {
+    const tab = activeDiagramTarget()
+    if (tab) sendDiagramMenuCommand(tab.webContents, command)
+  }
+  // Undo, redo, find and zoom go to the diagram: its history and its view are
+  // draw.io's own, so the page roles would not reach them. draw.io takes these
+  // keys itself; the shortcut is shown but not registered, or one press would
+  // run twice.
+  const diagramKey = (
+    label: string,
+    accelerator: string,
+    command: DiagramMenuCommand,
+  ): MenuItemConstructorOptions => ({
+    label,
+    accelerator,
+    registerAccelerator: false,
+    click: toDiagram(command),
+  })
+  /** the editor asks which pages, then exports them */
+  const exportItem = (
+    label: string,
+    format: 'png' | 'svg' | 'pdf',
+  ): MenuItemConstructorOptions => ({
+    label,
+    click: () => {
+      const tab = activeDiagramTarget()
+      if (tab) sendDiagramExportRequest(tab.webContents, format)
+    },
+  })
+  const template: MenuItemConstructorOptions[] = [
+    ...(isMac ? [macAppMenuTemplate(appMenuLabels(currentLang()))] : []),
+    {
+      label: tm('menuFile'),
+      submenu: [
+        {
+          label: tm('menuSectionNew'),
+          accelerator: 'CmdOrCtrl+N',
+          click: () => newDiagramTab(),
+        },
+        {
+          label: tm('menuOpen'),
+          accelerator: 'CmdOrCtrl+O',
+          click: () => void openFileViaDialog(),
+        },
+        { type: 'separator' },
+        {
+          label: tm('backToHome'),
+          accelerator: 'Shift+CmdOrCtrl+H',
+          click: () => tabManager?.openHomeTab(),
+        },
+        { type: 'separator' },
+        {
+          label: tm('menuSave'),
+          accelerator: 'CmdOrCtrl+S',
+          click: () => {
+            const tab = activeDiagramTarget()
+            if (tab) void requestDiagramSave(tab.webContents, 'save')
+          },
+        },
+        {
+          label: tm('menuSaveAs'),
+          accelerator: 'CmdOrCtrl+Shift+S',
+          click: () => {
+            const tab = activeDiagramTarget()
+            if (tab) void requestDiagramSave(tab.webContents, 'saveAs')
+          },
+        },
+        { type: 'separator' },
+        exportItem(tm('menuExportMapImage'), 'png'),
+        exportItem(tm('menuExportSvg'), 'svg'),
+        exportItem(tm('menuExportPdf'), 'pdf'),
+        { type: 'separator' },
+        {
+          label: tm('menuPrint'),
+          accelerator: 'CmdOrCtrl+P',
+          click: () => {
+            const tab = activeDiagramTarget()
+            if (tab) sendDiagramPrintRequest(tab.webContents)
+          },
+        },
+        { type: 'separator' },
+        {
+          label: tm('menuClose'),
+          accelerator: 'CmdOrCtrl+W',
+          click: () => closeFocusedEditor(),
+        },
+      ],
+    },
+    {
+      label: labels.edit,
+      submenu: [
+        diagramKey(labels.undo, 'CmdOrCtrl+Z', 'undo'),
+        diagramKey(labels.redo, isMac ? 'Shift+Cmd+Z' : 'Ctrl+Y', 'redo'),
+        { type: 'separator' },
+        { role: 'cut', label: labels.cut },
+        { role: 'copy', label: labels.copy },
+        { role: 'paste', label: labels.paste },
+        { role: 'delete', label: labels.delete },
+        { type: 'separator' },
+        { role: 'selectAll', label: labels.selectAll },
+        { type: 'separator' },
+        diagramKey(tm('menuFind'), 'CmdOrCtrl+F', 'find'),
+      ],
+    },
+    {
+      label: labels.view,
+      submenu: [
+        { label: labels.actualSize, click: toDiagram('zoom-reset') },
+        diagramKey(labels.zoomIn, 'CmdOrCtrl+=', 'zoom-in'),
+        diagramKey(labels.zoomOut, 'CmdOrCtrl+-', 'zoom-out'),
+        { label: tm('menuZoomFit'), click: toDiagram('zoom-fit') },
+        { type: 'separator' },
+        { role: 'togglefullscreen', label: labels.fullscreen },
+      ],
+    },
+    windowMenuTemplate(process.platform, appMenuLabels(currentLang())),
+    {
+      role: 'help',
+      label: tm('menuHelp'),
+      submenu: [
+        { label: tm('thirdPartyNotices'), click: () => void openThirdPartyNotices() },
+        { type: 'separator' },
+        ...helpCheckUpdatesItems(appMenuLabels(currentLang())),
+        aboutMenuItem(appMenuLabels(currentLang())),
+      ],
+    },
+  ]
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template))
+}
+
+function buildWhiteboardMenu(): void {
+  const isMac = process.platform === 'darwin'
+  const labels = appMenuLabels(currentLang())
+  const toBoard = (command: WhiteboardMenuCommand) => () => {
+    const tab = activeWhiteboardTarget()
+    if (tab) whiteboardSendMenuCommand(tab.webContents, command)
+  }
+  const exportItem = (
+    label: string,
+    format: 'png' | 'svg' | 'pdf',
+  ): MenuItemConstructorOptions => ({
+    label,
+    click: () => {
+      const tab = activeWhiteboardTarget()
+      if (tab) whiteboardTriggerExport(tab.webContents, format)
+    },
+  })
+  const template: MenuItemConstructorOptions[] = [
+    ...(isMac ? [macAppMenuTemplate(appMenuLabels(currentLang()))] : []),
+    {
+      label: tm('menuFile'),
+      submenu: [
+        {
+          label: tm('menuSectionNew'),
+          accelerator: 'CmdOrCtrl+N',
+          click: () => newWhiteboardTab(),
+        },
+        {
+          label: tm('menuOpen'),
+          accelerator: 'CmdOrCtrl+O',
+          click: () => void openFileViaDialog(),
+        },
+        { type: 'separator' },
+        {
+          label: tm('backToHome'),
+          accelerator: 'Shift+CmdOrCtrl+H',
+          click: () => tabManager?.openHomeTab(),
+        },
+        { type: 'separator' },
+        {
+          label: tm('menuSave'),
+          accelerator: 'CmdOrCtrl+S',
+          click: () => {
+            const tab = activeWhiteboardTarget()
+            if (tab) void whiteboardTriggerSave(tab.webContents, 'save')
+          },
+        },
+        {
+          label: tm('menuSaveAs'),
+          accelerator: 'CmdOrCtrl+Shift+S',
+          click: () => {
+            const tab = activeWhiteboardTarget()
+            if (tab) void whiteboardTriggerSave(tab.webContents, 'save-as')
+          },
+        },
+        { type: 'separator' },
+        exportItem(tm('menuExportMapImage'), 'png'),
+        exportItem(tm('menuExportSvg'), 'svg'),
+        exportItem(tm('menuExportPdf'), 'pdf'),
+        { type: 'separator' },
+        {
+          label: tm('menuPrint'),
+          accelerator: 'CmdOrCtrl+P',
+          click: () => {
+            const tab = activeWhiteboardTarget()
+            if (tab) whiteboardTriggerPrint(tab.webContents)
+          },
+        },
+        { type: 'separator' },
+        { label: tm('menuClose'), accelerator: 'CmdOrCtrl+W', click: () => closeFocusedEditor() },
+      ],
+    },
+    {
+      label: labels.edit,
+      submenu: [
+        {
+          label: labels.undo,
+          accelerator: 'CmdOrCtrl+Z',
+          registerAccelerator: false,
+          click: toBoard('undo'),
+        },
+        {
+          label: labels.redo,
+          accelerator: isMac ? 'Shift+Cmd+Z' : 'Ctrl+Y',
+          registerAccelerator: false,
+          click: toBoard('redo'),
+        },
+        { type: 'separator' },
+        { role: 'cut', label: labels.cut },
+        { role: 'copy', label: labels.copy },
+        { role: 'paste', label: labels.paste },
+        { role: 'delete', label: labels.delete },
+        { type: 'separator' },
+        { role: 'selectAll', label: labels.selectAll },
+      ],
+    },
+    {
+      label: labels.view,
+      submenu: [
+        {
+          label: labels.zoomIn,
+          accelerator: 'CmdOrCtrl+=',
+          registerAccelerator: false,
+          click: toBoard('zoom-in'),
+        },
+        {
+          label: labels.zoomOut,
+          accelerator: 'CmdOrCtrl+-',
+          registerAccelerator: false,
+          click: toBoard('zoom-out'),
+        },
+        { label: tm('menuZoomFit'), click: toBoard('zoom-fit') },
+        { type: 'separator' },
+        { role: 'togglefullscreen', label: labels.fullscreen },
+      ],
+    },
+    windowMenuTemplate(process.platform, appMenuLabels(currentLang())),
+    {
+      role: 'help',
+      label: tm('menuHelp'),
+      submenu: [
+        { label: tm('thirdPartyNotices'), click: () => void openThirdPartyNotices() },
+        { type: 'separator' },
+        ...helpCheckUpdatesItems(appMenuLabels(currentLang())),
+        aboutMenuItem(appMenuLabels(currentLang())),
+      ],
+    },
+  ]
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template))
+}
+
 // ---- mind map menu (mindmap-main has no menu of its own; the shell owns mind map tabs) ----
 
 function buildMindmapMenu(): void {
   const isMac = process.platform === 'darwin'
   const labels = appMenuLabels(currentLang())
   const template: MenuItemConstructorOptions[] = [
-    ...(isMac ? [{ role: 'appMenu' as const }] : []),
+    ...(isMac ? [macAppMenuTemplate(appMenuLabels(currentLang()))] : []),
     {
       label: tm('menuFile'),
       submenu: [
@@ -7758,6 +10099,13 @@ function buildMindmapMenu(): void {
           click: () => {
             const tab = activeMindmapTarget()
             if (tab) sendMindmapExportRequest(tab.webContents, 'png')
+          },
+        },
+        {
+          label: tm('menuExportMapSvg'),
+          click: () => {
+            const tab = activeMindmapTarget()
+            if (tab) sendMindmapExportRequest(tab.webContents, 'svg')
           },
         },
         {
@@ -7842,8 +10190,14 @@ function buildMindmapMenu(): void {
 
 /**
  * Save As for pdf tabs: write pending edits to the picked path only, then open the copy.
- * Non-destructive: the original file is never written, and a cancelled dialog changes
- * nothing on disk (dialog first, no flush into the source).
+ * Non-destructive: the original file is never written with the copy, and a cancelled
+ * dialog changes nothing on disk (dialog first, no flush into the source). The dialog
+ * also lists every conversion (pdf-save-as-formats.ts); a converted name never replaces
+ * the open PDF's path, title or unsaved state. Markdown and EPUB targets are granted to
+ * the view's conversion dialog, which saves pending edits first and then writes there
+ * (the File menu's conversions do the same); PNG page images are drawn by the view and
+ * written beside the picked name, one per page; Word / PowerPoint / Excel run the File
+ * menu's local conversion with the picked name once this flow has ended.
  */
 /** In-flight guard (same pattern as exportPdfAsDocxLocal): a re-trigger while the dialog
     or write is active must not start a second flow that overwrites the first one's
@@ -7851,6 +10205,13 @@ function buildMindmapMenu(): void {
 let savingPdfAs = false
 
 async function savePdfAs(tab = activePdfTarget()): Promise<void> {
+  const convert = await savePdfAsPick(tab)
+  // after the Save As flow: the conversion saves pending edits, prompts and
+  // shows progress on its own, like the File menu item
+  if (convert) await convert()
+}
+
+async function savePdfAsPick(tab = activePdfTarget()): Promise<(() => Promise<void>) | undefined> {
   const host = pdfHostWindow(tab)
   if (!tab?.filePath || !host || savingPdfAs) return
   savingPdfAs = true
@@ -7859,11 +10220,47 @@ async function savePdfAs(tab = activePdfTarget()): Promise<void> {
   setPdfSaveAsInFlight(tab.webContents, true)
   try {
     const picked = await showSaveDialogWithMemory(dialog, host, {
-      defaultPath: tab.filePath,
-      filters: [{ name: tm('filterPdf'), extensions: ['pdf'] }],
+      // No extension in the suggestion: the file type chosen in the dialog supplies
+      // it. A typed name keeps the extension it was given.
+      defaultPath: pdfSaveAsDefaultPath(tab.filePath),
+      // PDF first, then every conversion; a name with an unknown extension stays
+      // a plain PDF copy
+      filters: pdfSaveAsFilters(tm),
     })
-    const target = pdfSaveAsTarget(picked, tab.filePath)
+    if (picked.canceled || !picked.filePath) return
+    // A dialog that does not add the chosen type's extension (some Linux desktops)
+    // leaves a bare name: the default type is PDF
+    const pickedPath = pdfSaveAsPickedPath(picked.filePath)
+    const target = pdfSaveAsTarget({ canceled: false, filePath: pickedPath }, tab.filePath)
     if (!target) return
+    const format = pdfSaveAsFormatOf(target)
+    if (format === 'md' || format === 'epub') {
+      // The path came from this dialog, never from the renderer: grant it to the
+      // view's own conversion dialog, which then writes exactly there
+      if (!grantPdfStructureTarget(tab.webContents, tab.filePath, target, format)) {
+        console.error(`[shell] pdf save as ${format}: target was not granted`)
+        await dialog.showMessageBox(host, { type: 'error', message: tm('errPdfSaveAsFailed') })
+        return
+      }
+      requestPdfConvertDialog(tab.webContents, format, target)
+      return
+    }
+    if (format === 'png') {
+      // granted in the pdf main process; the view draws the pages and the
+      // export writes one file per page beside this name, then reveals them
+      if (!requestPdfPageImages(tab.webContents, target)) {
+        await dialog.showMessageBox(host, { type: 'error', message: tm('errPdfSaveAsFailed') })
+      }
+      return
+    }
+    if (format === 'docx' || format === 'pptx' || format === 'xlsx') {
+      const preset = { tab, target }
+      return format === 'docx'
+        ? () => exportPdfAsDocxLocal(preset)
+        : format === 'pptx'
+          ? () => exportPdfAsPptxLocal(preset)
+          : () => exportPdfAsXlsxLocal(preset)
+    }
     // Always ask the renderer: it shows the annotation choices for the copy and,
     // with no pending edits and annotations kept, asks the pdf main process for a
     // byte-identical copy instead of rewriting the file here.
@@ -7879,7 +10276,7 @@ async function savePdfAs(tab = activePdfTarget()): Promise<void> {
       })
       return
     }
-    openDocumentPath(target)
+    openMadeDocument(target)
   } catch (err) {
     console.error('[shell] pdf save as failed:', err)
     showErrorDialog(host, tm('errPdfSaveAsFailed'), err)
@@ -7895,13 +10292,20 @@ async function savePdfAs(tab = activePdfTarget()): Promise<void> {
  */
 let exportingPdfDocx = false
 
+/** Save As › Word / PowerPoint / Excel: the tab and the name its dialog already picked */
+interface PdfExportPreset {
+  tab: { id: string; webContents: WebContents; filePath?: string }
+  target: string
+}
+
 /**
  * Export as Word for pdf tabs, fully local (pdf2docx P4): flush pending
- * edits, pick the destination, convert in-process via PDFium wasm, write the
- * file and open it in a Docs tab. No login, no credits.
+ * edits, pick the destination, convert in the pdf-structure utilityProcess so
+ * PDFium and the sync OCR helper never stall the shell main process, and open
+ * the file in a Docs tab. No login, no credits.
  */
-async function exportPdfAsDocxLocal(): Promise<void> {
-  const tab = activePdfTarget()
+async function exportPdfAsDocxLocal(preset?: PdfExportPreset): Promise<void> {
+  const tab = preset?.tab ?? activePdfTarget()
   const host = pdfHostWindow(tab)
   if (!tab?.filePath || !host) return
   if (exportingPdfDocx) {
@@ -7913,11 +10317,17 @@ async function exportPdfAsDocxLocal(): Promise<void> {
   }
   exportingPdfDocx = true
   try {
+    // the File menu and the converter ask first while the docs editor is off (spec 7.3)
+    if (!preset && (await entrances.makeAndOpen('docs', { fileName: tab.filePath })) === 'cancel')
+      return
     if (!(await flushPdfSave(tab.webContents, true))) return
-    const picked = await showSaveDialogWithMemory(dialog, host, {
-      defaultPath: tab.filePath.replace(/\.pdf$/i, '.docx'),
-      filters: [{ name: tm('filterWord'), extensions: ['docx'] }],
-    })
+    // Save As already picked the name: no second dialog
+    const picked = preset
+      ? { canceled: false, filePath: preset.target }
+      : await showSaveDialogWithMemory(dialog, host, {
+          defaultPath: tab.filePath.replace(/\.pdf$/i, '.docx'),
+          filters: [{ name: tm('filterWord'), extensions: ['docx'] }],
+        })
     if (picked.canceled || !picked.filePath) return
     // If the destination is already open in a docs tab, close it first (its
     // normal unsaved-changes guard applies) so the converted file opens fresh
@@ -7930,10 +10340,14 @@ async function exportPdfAsDocxLocal(): Promise<void> {
     }
     host.setProgressBar(2)
     // encrypted PDFs prompt for the password (P23), looping on wrong entries;
-    // null result = user cancelled the prompt → abort silently
+    // null result = user cancelled the prompt or tab closed → abort silently
     const pdfPath = tab.filePath
-    const result = await convertPdfFileToDocxLocalWithPrompt(
+    const result = await convertPdfFileViaJobWithPrompt(
+      (job, onProgress) =>
+        runWindowJob(tab.webContents, `pdf-export-docx-${randomUUID()}`, job, onProgress),
+      'docx',
       pdfPath,
+      picked.filePath,
       (retry) =>
         promptPdfPassword(host, {
           fileName: basename(pdfPath),
@@ -7960,7 +10374,6 @@ async function exportPdfAsDocxLocal(): Promise<void> {
       },
     )
     if (result === null) return
-    await atomicWriteFile(picked.filePath, result.docx)
 
     // degrade transparency (plan §7.6 dual-track split): whole scan → say so
     // once; individual image-fallback pages → name them;
@@ -8000,7 +10413,7 @@ async function exportPdfAsDocxLocal(): Promise<void> {
         detail: tm('pdfDocxLocalOcrDetail', { pages: ocrPages.join(', ') }),
       })
     }
-    openDocumentPath(picked.filePath)
+    openMadeDocument(picked.filePath)
   } catch (err) {
     if (host && !host.isDestroyed()) {
       // structured load failures (P22): password-protected / damaged PDFs get
@@ -8035,13 +10448,13 @@ async function exportPdfAsDocxLocal(): Promise<void> {
 
 /**
  * Export as PowerPoint for pdf tabs, fully local (pdf2pptx P25): flush
- * pending edits, pick the destination, convert in-process via PDFium wasm,
- * write the file and open it in a Slides tab. No login, no credits. Shares
- * the in-flight guard with the Word exports so pdfium never runs two
- * conversions at once.
+ * pending edits, pick the destination, convert in the pdf-structure
+ * utilityProcess so PDFium never stalls the shell main process, and open the
+ * file in a Slides tab. No login, no credits. Shares the in-flight guard with
+ * the Word exports so only one office export runs at a time.
  */
-async function exportPdfAsPptxLocal(): Promise<void> {
-  const tab = activePdfTarget()
+async function exportPdfAsPptxLocal(preset?: PdfExportPreset): Promise<void> {
+  const tab = preset?.tab ?? activePdfTarget()
   const host = pdfHostWindow(tab)
   if (!tab?.filePath || !host) return
   if (exportingPdfDocx) {
@@ -8053,11 +10466,17 @@ async function exportPdfAsPptxLocal(): Promise<void> {
   }
   exportingPdfDocx = true
   try {
+    // the File menu and the converter ask first while the slides editor is off (spec 7.3)
+    if (!preset && (await entrances.makeAndOpen('slides', { fileName: tab.filePath })) === 'cancel')
+      return
     if (!(await flushPdfSave(tab.webContents, true))) return
-    const picked = await showSaveDialogWithMemory(dialog, host, {
-      defaultPath: tab.filePath.replace(/\.pdf$/i, '.pptx'),
-      filters: [{ name: tm('filterPpt'), extensions: ['pptx'] }],
-    })
+    // Save As already picked the name: no second dialog
+    const picked = preset
+      ? { canceled: false, filePath: preset.target }
+      : await showSaveDialogWithMemory(dialog, host, {
+          defaultPath: tab.filePath.replace(/\.pdf$/i, '.pptx'),
+          filters: [{ name: tm('filterPpt'), extensions: ['pptx'] }],
+        })
     if (picked.canceled || !picked.filePath) return
     // same stale-tab handling as the Word export (see exportPdfAsDocxLocal),
     // against the slides tab that may already show the destination file
@@ -8069,10 +10488,14 @@ async function exportPdfAsPptxLocal(): Promise<void> {
     }
     host.setProgressBar(2)
     // encrypted PDFs prompt for the password (P23), looping on wrong entries;
-    // null result = user cancelled the prompt → abort silently
+    // null result = user cancelled the prompt or tab closed → abort silently
     const pdfPath = tab.filePath
-    const result = await convertPdfFileToPptxLocalWithPrompt(
+    const result = await convertPdfFileViaJobWithPrompt(
+      (job, onProgress) =>
+        runWindowJob(tab.webContents, `pdf-export-pptx-${randomUUID()}`, job, onProgress),
+      'pptx',
       pdfPath,
+      picked.filePath,
       (retry) =>
         promptPdfPassword(host, {
           fileName: basename(pdfPath),
@@ -8099,7 +10522,6 @@ async function exportPdfAsPptxLocal(): Promise<void> {
       },
     )
     if (result === null) return
-    await atomicWriteFile(picked.filePath, result.pptx)
 
     // degrade transparency (same split as the Word export): whole scan vs
     // individual image-fallback pages
@@ -8117,7 +10539,7 @@ async function exportPdfAsPptxLocal(): Promise<void> {
         detail: tm('pdfDocxLocalDegradedDetail', { pages: imagePages.join(', ') }),
       })
     }
-    openDocumentPath(picked.filePath)
+    openMadeDocument(picked.filePath)
   } catch (err) {
     if (host && !host.isDestroyed()) {
       // structured load failures (P22): same explanations as the Word export
@@ -8146,13 +10568,13 @@ async function exportPdfAsPptxLocal(): Promise<void> {
 
 /**
  * Export as Excel for pdf tabs, fully local (pdf2xlsx P26): flush pending
- * edits, pick the destination, convert in-process via PDFium wasm, write the
- * file and open it in a Sheets tab. No login, no credits. Shares the
- * in-flight guard with the Word/PowerPoint exports so pdfium never runs two
- * conversions at once.
+ * edits, pick the destination, convert in the pdf-structure utilityProcess so
+ * PDFium never stalls the shell main process, and open the file in a Sheets
+ * tab. No login, no credits. Shares the in-flight guard with the
+ * Word/PowerPoint exports so only one office export runs at a time.
  */
-async function exportPdfAsXlsxLocal(): Promise<void> {
-  const tab = activePdfTarget()
+async function exportPdfAsXlsxLocal(preset?: PdfExportPreset): Promise<void> {
+  const tab = preset?.tab ?? activePdfTarget()
   const host = pdfHostWindow(tab)
   if (!tab?.filePath || !host) return
   if (exportingPdfDocx) {
@@ -8164,11 +10586,17 @@ async function exportPdfAsXlsxLocal(): Promise<void> {
   }
   exportingPdfDocx = true
   try {
+    // the File menu and the converter ask first while the sheets editor is off (spec 7.3)
+    if (!preset && (await entrances.makeAndOpen('sheets', { fileName: tab.filePath })) === 'cancel')
+      return
     if (!(await flushPdfSave(tab.webContents, true))) return
-    const picked = await showSaveDialogWithMemory(dialog, host, {
-      defaultPath: tab.filePath.replace(/\.pdf$/i, '.xlsx'),
-      filters: [{ name: tm('filterExcel'), extensions: ['xlsx'] }],
-    })
+    // Save As already picked the name: no second dialog
+    const picked = preset
+      ? { canceled: false, filePath: preset.target }
+      : await showSaveDialogWithMemory(dialog, host, {
+          defaultPath: tab.filePath.replace(/\.pdf$/i, '.xlsx'),
+          filters: [{ name: tm('filterExcel'), extensions: ['xlsx'] }],
+        })
     if (picked.canceled || !picked.filePath) return
     // same stale-tab handling as the Word export (see exportPdfAsDocxLocal),
     // against the sheets tab that may already show the destination file
@@ -8180,10 +10608,14 @@ async function exportPdfAsXlsxLocal(): Promise<void> {
     }
     host.setProgressBar(2)
     // encrypted PDFs prompt for the password (P23), looping on wrong entries;
-    // null result = user cancelled the prompt → abort silently
+    // null result = user cancelled the prompt or tab closed → abort silently
     const pdfPath = tab.filePath
-    const result = await convertPdfFileToXlsxLocalWithPrompt(
+    const result = await convertPdfFileViaJobWithPrompt(
+      (job, onProgress) =>
+        runWindowJob(tab.webContents, `pdf-export-xlsx-${randomUUID()}`, job, onProgress),
+      'xlsx',
       pdfPath,
+      picked.filePath,
       (retry) =>
         promptPdfPassword(host, {
           fileName: basename(pdfPath),
@@ -8210,7 +10642,6 @@ async function exportPdfAsXlsxLocal(): Promise<void> {
       },
     )
     if (result === null) return
-    await atomicWriteFile(picked.filePath, result.xlsx)
 
     // degrade transparency: pages that could not become cells got a notice
     // row on their worksheet instead of an image (a spreadsheet has none)
@@ -8228,7 +10659,7 @@ async function exportPdfAsXlsxLocal(): Promise<void> {
         detail: tm('pdfXlsxLocalSkippedDetail', { pages: noticePages.join(', ') }),
       })
     }
-    openDocumentPath(picked.filePath)
+    openMadeDocument(picked.filePath)
   } catch (err) {
     if (host && !host.isDestroyed()) {
       // structured load failures (P22): same explanations as the Word export
@@ -8263,7 +10694,104 @@ ipcMain.handle(PDF_CHANNELS.convertOffice, async (e, format: unknown) => {
   if (format === 'docx') await exportPdfAsDocxLocal()
   else if (format === 'xlsx') await exportPdfAsXlsxLocal()
   else if (format === 'pptx') await exportPdfAsPptxLocal()
+  else if (format === 'hwp') await openPdfAsHwp()
 })
+
+/**
+ * Converter › HWP (decision 0116): the PDF opens in a new, untitled Hangul tab, where
+ * the editor's own PDF import asks how to lay it out and converts it in the tab. The
+ * PDF is copied first (pending edits flushed) so the tab reads a file of its own; the
+ * copy goes with the tab, and the first save asks where to put the .hwp/.hwpx.
+ */
+async function openPdfAsHwp(): Promise<void> {
+  const tab = activePdfTarget()
+  if (!tab?.filePath || !tabManager) return
+  // the Hangul editor converts the PDF in its tab: it has to be on (spec 7.3)
+  if (!(await entrances.editorEntrance('hwp', { fileName: tab.filePath }))) return
+  if (!(await flushPdfSave(tab.webContents, true))) return
+  openPdfCopyAsHwp(tab.filePath)
+}
+
+/**
+ * The Hangul AI panel's import_attachment (hwp-import.ts): the bundled command
+ * line converts the Markdown file, the copy opens as a new, untitled Hangul tab
+ * and the person's request is queued for that tab's AI panel.
+ */
+const markdownImportDeps: MarkdownImportDeps = {
+  defaultFormat: () => readHwpDefaultFormat(app),
+  makeDir: () => {
+    const dir = join(app.getPath('temp'), 'ieumoffice-hwp-imports', randomUUID())
+    mkdirSync(dir, { recursive: true })
+    return dir
+  },
+  removeDir: (dir) => rmSync(dir, { recursive: true, force: true }),
+  convert: async (input, format, out) => {
+    // the command line loads the Markdown editor's parser first: allow it more than the default
+    const outcome = await bundledCliRunner().run(
+      ['convert', input, '--to', format, '--out', out, '--force'],
+      { timeoutMs: 300_000 },
+    )
+    if (outcome.ok && existsSync(out)) return { ok: true }
+    const failed = outcome.json?.status === 'error' ? outcome.json : undefined
+    const reason = failed?.detail?.reason
+    return {
+      ok: false,
+      error: failed?.message ?? (outcome.stderr.trim() || 'the conversion failed'),
+      ...(typeof reason === 'string' ? { reason } : {}),
+    }
+  },
+  openCopy: (path, title) => {
+    if (!tabManager) return null
+    const tabId = tabManager.openHwpTab(path, { untitledCopy: { title } })
+    return tabManager.webContentsForTab(tabId) ?? null
+  },
+  queueHandoff: (contents, handoff) => queueSkillHandoffFor(contents, handoff),
+  newId: () => randomUUID(),
+  now: () => Date.now(),
+}
+
+/** The copy of `pdfPath` as a new, untitled Hangul tab that imports it; the copy goes with the tab. */
+function openPdfCopyAsHwp(pdfPath: string): void {
+  if (!tabManager) return
+  const dir = join(app.getPath('temp'), 'ieumoffice-pdf-imports', randomUUID())
+  const baseName = basename(pdfPath).replace(/\.pdf$/i, '')
+  let tabId: string
+  try {
+    mkdirSync(dir, { recursive: true })
+    const copy = join(dir, basename(pdfPath))
+    copyFileSync(pdfPath, copy)
+    tabId = tabManager.openHwpTab(copy, { untitledCopy: { title: baseName, importedPdf: true } })
+  } catch (err) {
+    rmSync(dir, { recursive: true, force: true })
+    throw err
+  }
+  const contents = tabManager.webContentsForTab(tabId)
+  if (contents) contents.once('destroyed', () => rmSync(dir, { recursive: true, force: true }))
+  else rmSync(dir, { recursive: true, force: true })
+}
+
+/**
+ * Hangul editor › File › Import PDF (decision 0116): the same conversion started from
+ * the Hangul side. The embedded editor's own Open is off, so the shell asks for the PDF
+ * and opens it as the converter does: a new, untitled Hangul tab imports a copy, and the
+ * document of the tab the menu was used in stays as it is. The PDF on disk is what is
+ * read, as with any file picked in Open.
+ */
+async function importPdfAsHwp(): Promise<void> {
+  const win = shellWindow ?? BrowserWindow.getFocusedWindow()
+  if (!win || !tabManager) return
+  const result = await showOpenDialogWithMemory(dialog, win, {
+    filters: [{ name: tm('filterPdf'), extensions: ['pdf'] }],
+    properties: ['openFile'],
+  })
+  const pdfPath = result.canceled ? undefined : result.filePaths[0]
+  if (!pdfPath) return
+  try {
+    openPdfCopyAsHwp(pdfPath)
+  } catch (err) {
+    dialog.showErrorBox(basename(pdfPath), err instanceof Error ? err.message : String(err))
+  }
+}
 
 function openThirdPartyNotices(): Promise<string> {
   const path = app.isPackaged
@@ -8296,17 +10824,7 @@ function installDockMenu(): void {
   app.dock?.setMenu(
     Menu.buildFromTemplate([
       { label: tm('menuHome'), click: () => tabManager?.openHomeTab() },
-      {
-        label: tm('menuNewDoc'),
-        click: () => newDocTab(),
-      },
-      {
-        label: tm('menuNewSheet'),
-        click: () => void newSheetTab(),
-      },
-      { label: tm('menuNewSlide'), click: () => newSlideTab() },
-      { label: tm('menuNewMarkdown'), click: () => newMarkdownTab() },
-      { label: tm('menuNewPdf'), click: () => void newPdfTab() },
+      ...newDocumentMenuItems({ only: ['docx', 'xlsx', 'pptx', 'md', 'pdf'] }),
     ]),
   )
 }
@@ -8363,9 +10881,10 @@ function revealShellWindow(): void {
 }
 
 function openLaunchPaths(paths: readonly string[]): void {
-  let opened = false
-  for (const filePath of paths) opened = openDocumentPath(filePath) || opened
-  if (!opened) tabManager?.openHomeTab()
+  // files of turned-off editors ask first; Home shows when nothing opened
+  void requestOpenPaths(paths).then((opened) => {
+    if (!opened) tabManager?.openHomeTab()
+  })
 }
 
 // On macOS a file opened from Finder is not in argv; it arrives via the open-file event (before ready).
@@ -8394,7 +10913,8 @@ app.on('second-instance', (_event, argv, _cwd, additionalData) => {
 installNavigationGuard(app)
 installContextMenu(app, () => contextMenuLabels(currentLang()))
 registerAiIpc()
-ipcMain.handle('ai:open-model-settings', (_event, requestedSection?: unknown) => {
+/** Settings live on Home: bring the shell window forward, show Home, open the section. */
+function openHomeSettings(target: { section: string; field?: string }): void {
   const win = shellWindow
   if (!win || win.isDestroyed()) return
   // the request may come from a detached window or while the shell is minimized
@@ -8402,13 +10922,43 @@ ipcMain.handle('ai:open-model-settings', (_event, requestedSection?: unknown) =>
   win.show()
   win.focus()
   tabManager?.openHomeTab()
-  win.webContents.send(HOME_CHANNELS.openSettings, {
-    section: requestedSection === 'ollama' ? 'ollama' : 'aiModel',
-  })
-})
+  win.webContents.send(HOME_CHANNELS.openSettings, target)
+}
+ipcMain.handle('ai:open-model-settings', (_event, requestedSection?: unknown) =>
+  openHomeSettings({ section: requestedSection === 'ollama' ? 'ollama' : 'aiModel' }),
+)
+// the slides template gallery's "Change" beside the default fonts (decision 0115)
+ipcMain.handle('slides:open-font-settings', () =>
+  openHomeSettings({ section: 'general', field: 'slidesAiFonts' }),
+)
 registerProjectIpc()
 registerDocsIpc()
 registerHomeIpc()
+// editors and AI on or off (the source the editor mains read, the "ai-off" run check)
+const editorChoice = registerEditorChoiceIpc({
+  settingsPath: APP_SETTINGS_PATH,
+  // only Home and its Settings in the main window change the choice or stop every AI job
+  isShellSender: (event) =>
+    !!shellWindow && !shellWindow.isDestroyed() && event.sender === shellWindow.webContents,
+  aiOffRefusal: () => aiOffRefusalText(currentLang()),
+})
+editorChoiceService = editorChoice
+// AI off closes the agent window and ends running logins; back on, the held-back checks run
+// once (spec 8.5)
+watchAiFeatures({
+  choice: editorChoice,
+  turnedOff: () => {
+    closeAgentWindow()
+    stopAiBackgroundWork()
+  },
+  turnedOn: resumeAiBackgroundWork,
+})
+// a turned-off editor's kind leaves the "new" menus at once (the cards follow by IPC)
+editorChoice.onChange(() => {
+  applyMenuFor(linkMenuKind() ?? 'home')
+  installDockMenu()
+})
+registerProjectFolderChannels()
 registerIntegrationsIpc({
   settingsPath: APP_SETTINGS_PATH,
   window: () => shellWindow,
@@ -8423,8 +10973,72 @@ registerIntegrationsIpc({
     : join(APPS_ROOT, '..', 'packages', 'cli', 'package.json'),
 })
 registerResultStoreIpc(ipcMain, () => app.getPath('userData'))
+registerVersionTimelineIpc(ipcMain, new VersionTimelineStore({ baseDir: app.getPath('userData') }))
+registerDiagnosticsIpc(ipcMain, {
+  userDataDir: () => app.getPath('userData'),
+  collectInput: () => {
+    const rawSubs = sharedSubscriptionStatuses() as Record<
+      string,
+      { state?: unknown; version?: unknown } | undefined
+    >
+    const subscriptions: Record<string, { state: string; version?: string }> = {}
+    for (const [provider, status] of Object.entries(rawSubs)) {
+      if (!status || typeof status.state !== 'string') continue
+      subscriptions[provider] = {
+        state: status.state,
+        ...(typeof status.version === 'string' ? { version: status.version } : {}),
+      }
+    }
+    return {
+      appVersion: app.getVersion(),
+      platform: process.platform,
+      arch: process.arch,
+      osRelease: release(),
+      uiLang: currentLang(),
+      subscriptions,
+    }
+  },
+  pickSavePath: async (defaultName) => {
+    const parent = BrowserWindow.getFocusedWindow() ?? shellWindow ?? undefined
+    const opts = {
+      defaultPath: defaultName,
+      filters: [{ name: 'ZIP', extensions: ['zip'] }],
+    }
+    const res = parent
+      ? await dialog.showSaveDialog(parent, opts)
+      : await dialog.showSaveDialog(opts)
+    return res.canceled || !res.filePath ? null : res.filePath
+  },
+})
+registerQuickSwitcherIpc(ipcMain)
+registerGenerateEditorIpc(ipcMain, {
+  resolveTabForSender: (senderId) => {
+    const tabId = tabManager?.tabIdForWebContents(senderId)
+    if (tabId) {
+      const list = tabManager?.list() ?? []
+      const found = list.find((t) => t.id === tabId)
+      if (!found) return null
+      return {
+        webContentsId: senderId,
+        filePath: found.filePath ?? undefined,
+        title: found.title,
+        parent: shellWindow,
+      }
+    }
+    const detached = detachedDocumentFor(senderId)
+    if (!detached) return null
+    return {
+      webContentsId: senderId,
+      filePath: detached.filePath ?? undefined,
+      title: detached.title,
+      parent: detachedWindowForWebContents(senderId) ?? shellWindow,
+    }
+  },
+  openForDocument: (doc) => openGenerateWindowForDocument(doc),
+})
 registerTabsIpc()
 registerSplitIpc()
+registerFilePanelIpc(insideAnyRoot)
 registerDroppedFilesIpc()
 registerPdfStructureIpc()
 registerPdfConvertUiIpc({
@@ -8436,7 +11050,11 @@ registerPdfConvertUiIpc({
     const tabId = tabManager?.tabIdForWebContents(viewId)
     if (tabId) tabManager?.activateTab(tabId)
   },
-  openDocument: (path) => openDocumentPath(path),
+  openDocument: (path) => openMadeDocument(path),
+  askBeforeConvert: (format, source) =>
+    format === 'md'
+      ? entrances.makeAndOpen('markdown', { fileName: source })
+      : Promise.resolve('open'),
 })
 
 // The person's skills (settings → skills, the AI windows' `/` list and skill
@@ -8451,13 +11069,29 @@ const builtinSkillsDir = (): string =>
 const userSkills = createUserSkillsService({
   homeDir: () => homedir(),
   builtinDir: builtinSkillsDir,
+  builtinCraftDir: () =>
+    builtinCraftDirFor({
+      isPackaged: app.isPackaged,
+      resourcesPath: process.resourcesPath,
+      appPath: app.getAppPath(),
+    }),
   settingsPath: APP_SETTINGS_PATH,
   tempDir: () => join(tmpdir(), 'ieumoffice-skills'),
   trash: (path) => shell.trashItem(path),
   // Node's fetch: no browser cookies; the core sets no-redirect and no-credentials per request
   fetch: (url, init) => fetch(url, init),
 })
-registerUserSkillsIpc({
+/** Bring the main window forward with the settings open on the skills page */
+function openSkillsSettings(): void {
+  const win = shellWindow
+  if (!win || win.isDestroyed()) return
+  if (win.isMinimized()) win.restore()
+  win.show()
+  win.focus()
+  tabManager?.openHomeTab()
+  win.webContents.send(HOME_CHANNELS.openSettings, { section: 'skills' })
+}
+const userSkillsIpc = registerUserSkillsIpc({
   service: userSkills,
   // the settings screen; the agent window only for the install preview a session proposed
   canManage: userSkillsManageGate({
@@ -8465,15 +11099,7 @@ registerUserSkillsIpc({
       !!shellWindow && !shellWindow.isDestroyed() && sender === shellWindow.webContents,
     isAgentWindow: (sender) => isAgentWindowContents(sender),
   }),
-  openSettings: () => {
-    const win = shellWindow
-    if (!win || win.isDestroyed()) return
-    if (win.isMinimized()) win.restore()
-    win.show()
-    win.focus()
-    tabManager?.openHomeTab()
-    win.webContents.send(HOME_CHANNELS.openSettings, { section: 'skills' })
-  },
+  openSettings: openSkillsSettings,
   agentNoticeDue: () => agentSkillNoticeDue(APP_SETTINGS_PATH()),
   markAgentNoticeSeen: () => markAgentSkillNoticeSeen(APP_SETTINGS_PATH()),
 })
@@ -8493,6 +11119,18 @@ const templateTabs = createTemplateTabs({
   removeDir: async (dir) => rmSync(dir, { recursive: true, force: true }),
   templateFileOf: (id) => userSkills.templateFile(id),
   openCopy: (copy) => openTemplateCopyTab(copy),
+  // a skill template's copy follows the project of the panel that asked (spec 6)
+  copyOpenedFor: (contents, openerId) =>
+    followOpenerProject(contents, { kind: 'window', webContentsId: openerId }),
+  // "Open a new document from the template" in a document with content: the
+  // asking tab's file goes along only when it is saved without unsaved changes
+  // (docs/security.md "저장하지 않은 파일은 읽지 않는다")
+  currentDocumentOf: async (openerId) => {
+    const filePath =
+      tabManager?.describeWebContents(openerId)?.filePath ?? detachedDocumentFor(openerId)?.filePath
+    if (!filePath) return 'unsaved'
+    return (await fileHasUnsavedChanges(filePath)) ? 'unsaved' : { path: filePath }
+  },
   focusTab: (tabId) => {
     const manager = tabManager
     if (!manager || !manager.list().some((tab) => tab.id === tabId)) return false
@@ -8550,11 +11188,23 @@ const devPidFile = () => join(app.getPath('userData'), 'dev-instance.pid')
 
 /** Hidden-window exporters, one per editor module (HEADLESS_TARGETS says which formats each takes). */
 const headlessExporters: HeadlessExporters = {
-  docs: exportDocsHeadless,
+  // the request stays with the diagram exporter: docs and html take a timeout fourth
+  docs: (input, outPath, format, request) =>
+    runExporterWithLegacyConversion(input, outPath, format, request, (p, o, f) =>
+      exportDocsHeadless(p, o, f),
+    ),
   sheets: (input, outPath) => exportSheetsPdfHeadless(input, outPath),
-  slides: (input, outPath) => exportSlidesPdfHeadless(input, outPath),
+  slides: (input, outPath, format, request) =>
+    runExporterWithLegacyConversion(input, outPath, format, request, (p, o) =>
+      exportSlidesPdfHeadless(p, o),
+    ),
   markdown: (input, outPath) => exportMarkdownPdfHeadless(input, outPath),
-  html: exportHtmlHeadless,
+  html: (input, outPath, format) => exportHtmlHeadless(input, outPath, format),
+  hwp: (input, outPath) => exportHwpPdfHeadless(input, outPath),
+  diagram: exportDiagramHeadless,
+  whiteboard: (_input, _outPath, _format, request) => exportWhiteboardHeadless(request),
+  mindmap: (input, outPath) => exportMindmapPdfHeadless(input, outPath),
+  epub: (input, outPath) => exportEpubPdfHeadless(input, outPath),
 }
 
 /**
@@ -8609,12 +11259,17 @@ app.whenReady().then(async () => {
     mindmap: join(MINDMAP_OUT, 'renderer'),
     hwp: join(HWP_OUT, 'renderer'),
     epub: join(EPUB_OUT, 'renderer'),
+    // the diagram tab's own partition gets the same root from the editor (diagram-session.ts)
+    diagram: join(DIAGRAM_OUT, 'renderer'),
+    whiteboard: join(WHITEBOARD_OUT, 'renderer'),
     // the manual shares the shell's own renderer bundle (help mode)
     help: join(__dirname, '../renderer'),
   })
   // the open books' pictures, styles and fonts (only entries of a book a tab has open)
   registerEpubAssetProtocol()
   if (headlessArgv.kind !== 'none') {
+    // Headless renderers use the same shared language as editor tabs.
+    currentLang()
     await runHeadlessExportEntry(headlessArgv)
     return
   }
@@ -8704,15 +11359,35 @@ app.whenReady().then(async () => {
     userData: () => app.getPath('userData'),
     settingsPath: APP_SETTINGS_PATH,
     lang: () => currentLang(),
+    theme: () => currentTheme(),
     window: () => shellWindow,
-    // a Drive copy opens like any local file; the Drive service already chose the copy
-    openPath: (path) => routeDocumentPath(path),
+    // a Drive copy opens like any local file; the Drive service already chose the
+    // copy. A pick of a turned-off editor's file asks first (spec 7.2).
+    openPath: (path) =>
+      openGate.check(path, 'user', (picked) => routeDocumentPath(picked)) ??
+      routeDocumentPath(path),
     isOpen: (path) =>
       (tabManager?.openFilePaths() ?? []).some(
         (open) => resolve(open).toLowerCase() === resolve(path).toLowerCase(),
       ),
     parse: (path) => parseFileToText(path),
-    theme: () => currentTheme(),
+    freeAi: () => freeAiInUse(readStoredAiSettings()),
+    documentOf: (id) => tabManager?.describeWebContents(id)?.filePath ?? null,
+  })
+  // The person's own MCP servers: one connection per server for every window;
+  // Settings changes them through a channel only the shell window may use.
+  mcpHub = startMcpHub({
+    lang: () => currentLang(),
+    shellWindow: () => shellWindow,
+    openIntegrations: () => {
+      const win = shellWindow
+      if (!win || win.isDestroyed()) return
+      if (win.isMinimized()) win.restore()
+      win.show()
+      win.focus()
+      tabManager?.openHomeTab()
+      win.webContents.send(HOME_CHANNELS.openSettings, { section: 'integrations' })
+    },
   })
   // The "Attach documents" window: an editor's AI panel asks the shell for the
   // documents it already knows, and the shell hands back the paths it ticked.
@@ -8743,8 +11418,16 @@ app.whenReady().then(async () => {
       },
       recent: async () =>
         readRecentFiles().map((path) => ({ path, title: basename(path), missing: false })),
+      // spec 5.13: the newest AI-visible files of the asking panel's project
+      projectFiles: async (asker) => {
+        if (asker.webContentsId === undefined || !projectFolderIpc) return []
+        const projectId = await projectFolderIpc.windowProject(asker.webContentsId)
+        if (!projectId) return []
+        const visibility = await projectFolderServices().guide.aiVisibility(projectId)
+        return visibility ? projectMentionFiles(visibility, undefined, projectFileLister) : []
+      },
       stat: async (path) => {
-        const entry = statPathEntries([path], new Set<string>())[0]
+        const entry = (await statPathEntriesAsync([path], new Set<string>()))[0]
         return entry && !entry.missing ? { sizeBytes: entry.sizeBytes } : null
       },
       attachable: {
@@ -8752,10 +11435,41 @@ app.whenReady().then(async () => {
         ATTACHABLE_IMAGE_EXTS,
         ATTACHABLE_MAX_BYTES,
         ATTACHABLE_IMAGE_MAX_BYTES,
+        attachableMaxBytes,
+        diagramPictureExtOfName,
       },
     }),
     lang: () => currentLang(),
     theme: () => currentTheme(),
+  })
+  // Direct attachment picker for Obsidian vault notes, Notion pages, and Canva designs.
+  createConnectorPicker({
+    hub: mcpHub,
+    openIntegrations: () => {
+      const win = shellWindow
+      if (!win || win.isDestroyed()) return
+      if (win.isMinimized()) win.restore()
+      win.show()
+      win.focus()
+      tabManager?.openHomeTab()
+      win.webContents.send(HOME_CHANNELS.openSettings, { section: 'integrations' })
+    },
+    lang: () => currentLang(),
+    theme: () => currentTheme(),
+    tempDir: app.getPath('temp'),
+    isUnsaved: (absPath) => fileHasUnsavedChanges(absPath),
+    openGeneratedPath: (path) => openGeneratedDocument(path),
+    fetchUrlBytes: async (url, signal) => {
+      const res = await net.fetch(url, signal ? { signal } : undefined)
+      if (!res.ok) throw new Error(`Download failed (${res.status})`)
+      return new Uint8Array(await res.arrayBuffer())
+    },
+    convertWebpToPng: (bytes) => {
+      const img = nativeImage.createFromBuffer(Buffer.from(bytes))
+      if (img.isEmpty()) return null
+      const png = img.toPNG()
+      return png.byteLength > 0 ? new Uint8Array(png.buffer, png.byteOffset, png.byteLength) : null
+    },
   })
   // Which open documents have unsaved changes, for the attachment readers of the
   // editor mains and the knowledge base: a file being edited is not read as
@@ -8809,9 +11523,20 @@ app.whenReady().then(async () => {
       }
       return openGeneratedDocument(path)
     },
+    askBeforeOpenResult: (path, open) => entrances.openExisting(path, open),
+    askEditorOn: (item) => entrances.editorEntrance(item),
     openForEditing: (path) => {
       revealShellWindow()
       return openDocumentPath(path)
+    },
+    openSplitInEditor: (path) => {
+      revealShellWindow()
+      const opened = openDocumentPath(path)
+      const tab = tabManager?.findTabByPath(path) ?? findDetachedTabByPath(path)
+      if (tab && !tab.webContents.isDestroyed()) {
+        requestPdfSplitDialog(tab.webContents)
+      }
+      return opened
     },
     runJob: runWindowJob,
     cancelJob: cancelWindowJob,
@@ -8840,6 +11565,16 @@ app.whenReady().then(async () => {
       stopQuickLookRuntime()
       app.quit()
     },
+    filePanelLayout: () => {
+      if (!shellWindow || shellWindow.isDestroyed()) return null
+      const contentWidth = shellWindow.getContentBounds().width
+      return {
+        panelInset: currentFilePanelInset(contentWidth),
+        topInset: tabStripHeight(currentUiScale),
+      }
+    },
+    onFilePanelStateChanged: (state) => notifyFilePanelQuickLookChanged(state),
+    onFilePanelStep: (delta) => notifyFilePanelQuickLookStep(delta),
   })
   // The generate window ("make a new document from these files"): Home's entry
   // points open it; "make" opens a new untitled tab with the request queued
@@ -8849,13 +11584,28 @@ app.whenReady().then(async () => {
     parentWindow: () => shellWindow,
     lang: () => currentLang(),
     theme: () => currentTheme(),
-    openTargetTab: (handoff) => {
+    // the new tab follows the project of the window the create window was opened from (spec 6)
+    openTargetTab: (handoff, opener) => {
       revealShellWindow()
-      ensureTabManager().openGenerateTargetTab(handoff)
+      const manager = ensureTabManager()
+      const contents = manager.webContentsForTab(manager.openGenerateTargetTab(handoff))
+      if (contents) followOpenerProject(contents, opener)
     },
-    openConvertedTab: (doc) => {
+    askEditor: (item, withFileOnly, source) =>
+      withFileOnly
+        ? entrances.makeAndOpen(item, { fileName: source })
+        : entrances.editorEntrance(item).then((on) => (on ? 'open' : 'cancel')),
+    aiOn: () => (editorChoiceService?.effective() ?? appChoice()).aiFeatures,
+    saveConvertedFile: async (fileName, bytes) => {
+      const target = await writeInDefaultSaveFolder(fileName, bytes)
+      shell.showItemInFolder(target)
+      return target
+    },
+    openConvertedTab: (doc, opener) => {
       revealShellWindow()
-      ensureTabManager().openConversionResult(doc)
+      const manager = ensureTabManager()
+      const contents = manager.webContentsForTab(manager.openConversionResult(doc))
+      if (contents) followOpenerProject(contents, opener)
     },
     starredGroupPaths: (group) => {
       const groupOf = readStarredGroupMap()
@@ -8949,6 +11699,14 @@ app.whenReady().then(async () => {
         read: epubReadText,
         save: epubSaveToPath,
       },
+      diagram: { read: diagramReadText, save: diagramSaveToPath },
+      whiteboard: {
+        read: whiteboardReadText,
+        save: async (contents, filePath) => {
+          const ok = await whiteboardSaveToPath(contents, filePath)
+          if (!ok) throw new Error('whiteboard save failed')
+        },
+      },
     }),
     // the headless create_*/read_* tools delegate to the bundled genoffice CLI
     // (the same engines, no second implementation); it runs on the app's own
@@ -8971,6 +11729,43 @@ app.whenReady().then(async () => {
         if (!isDetachedTabId(tabId)) revealShellWindow()
       },
     }),
+    // read_diagram / apply_diagram_ops: the diagram editor's own read table and executor
+    diagramControl: createDiagramControl({
+      list: async () => {
+        const tabs = tabManager ? await tabManager.openDocuments() : []
+        return [...tabs, ...(await detachedOpenDocuments())]
+      },
+      webContentsFor: (tabId) => liveDocumentContents(tabId),
+      isDetached: (tabId) => isDetachedTabId(tabId),
+      activate: (tabId) => {
+        if (!activateDetached(tabId)) tabManager?.activateTab(tabId)
+      },
+      revealWindow: (tabId) => {
+        if (!isDetachedTabId(tabId)) revealShellWindow()
+      },
+      readPage: diagramReadPage,
+      applyOps: diagramApplyOps,
+    }),
+    whiteboardControl: createWhiteboardControl({
+      list: async () => {
+        const tabs = tabManager ? await tabManager.openDocuments() : []
+        return [...tabs, ...(await detachedOpenDocuments())]
+      },
+      webContentsFor: (tabId) => liveDocumentContents(tabId),
+      isDetached: (tabId) => isDetachedTabId(tabId),
+      activate: (tabId) => {
+        if (!activateDetached(tabId)) tabManager?.activateTab(tabId)
+      },
+      revealWindow: (tabId) => {
+        if (!isDetachedTabId(tabId)) revealShellWindow()
+      },
+      readPage: (contents, page) => whiteboardReadPage(contents, page),
+      applyOps: (contents, payload) =>
+        whiteboardApplyOps(contents, payload.ops ?? [], {
+          ...(payload.template ? { template: payload.template } : {}),
+          ...(payload.defaultPageId ? { defaultPageId: payload.defaultPageId } : {}),
+        }),
+    }),
     logFilePath: join(app.getPath('userData'), 'mcp-log.txt'),
   })
   // Agent mode (decision 0032): the person's Claude Code or Codex with its own tools in a
@@ -8984,19 +11779,27 @@ app.whenReady().then(async () => {
     aiSettings: () => readStoredAiSettings(),
     readPrefs: () => normalizeAgentPrefs(readAppSettings(APP_SETTINGS_PATH()).agent),
     writePrefs: (prefs) => writeAgentPrefs(APP_SETTINGS_PATH(), prefs),
-    openPath: (path) => routeDocumentPath(path),
+    // the person pressed "Open" by a file the agent wrote: a turned-off editor asks first
+    // (editor choice spec 7.2); the agent itself opens files through its MCP server (7.6)
+    openPath: (path) =>
+      openGate.check(path, 'user', (picked) => routeDocumentPath(picked)) ??
+      routeDocumentPath(path),
     openDocuments: () => [...(tabManager?.openFilePaths() ?? []), ...detachedFilePaths()],
     userData: app.getPath('userData'),
     runners: {
       claude: (options, onEvent) => startClaudeAgentSession(options, onEvent),
       codex: (options, onEvent) => startCodexAgentSession(options, onEvent),
+      antigravity: (options, onEvent) => startAntigravityAgentSession(options, onEvent),
     },
     // the session's skill tools only show a card or an install proposal in the agent window
-    startAppMcp: (projectRoot, { skillTools }) => {
+    startAppMcp: async (projectRoot, { skillTools }) => {
       const mcp = currentMcpRuntimeDeps()
       if (!mcp) throw new Error('the MCP runtime is not configured')
+      const { startAgentMcpServer } = await import('./agent/agent-mcp')
       return startAgentMcpServer({ ...mcp, skillTools }, projectRoot)
     },
+    // the person's MCP servers reach a session through relays the app opens (user MCP spec 9)
+    userMcp: () => mcpHub,
     listSkills: () => userSkills.list(),
     openTemplatePreview: (owner, input) => templateTabs.openPreview(owner, input),
     // the enabled skills (settings → skills), and the project's only while the person has
@@ -9018,10 +11821,14 @@ app.whenReady().then(async () => {
         setProjectSkills(APP_SETTINGS_PATH(), folder, await userSkills.enabledForAgent(folder), on),
     },
   })
+  // session folders a run that did not quit normally left; after the start, so it never slows it
+  setTimeout(() => void sweepAgentSessionFolders(), 10_000).unref()
   void startMcpFromSettings(currentMcpSettings()).catch((error) => {
     console.error('[mcp] failed to start on boot:', error)
   })
+  installGrantRelease()
   installUiScale()
+  installPointerSize(app)
   installTabShortcuts()
   createShellWindow()
   // deferred to ready: labels need currentLang(), which reads app.getLocale()
@@ -9032,6 +11839,8 @@ app.whenReady().then(async () => {
   // no invoker is registered and initAutoUpdater is never called, so the
   // updater stays inactive (applyUpdateChannel then no-ops on channel changes)
   setUpdateCheckInvoker(null)
+  // Settings… in the macOS app menu and the ☰ popup, and ⌘, / Ctrl+,
+  setOpenSettingsInvoker(() => openHomeSettings({ section: 'general' }))
   // crash record on this PC (crash-log.jsonl in userData) and, outside
   // headless runs, a prompt when the renderer of an open document dies
   const crashMemory = () =>
@@ -9061,7 +11870,8 @@ app.whenReady().then(async () => {
       const detachedId = detachedDocumentFor(wc.id)?.id
       return detachedId ? closeDetachedWithoutPrompt(detachedId) : false
     },
-    reopen: (filePath) => void openDocumentPath(filePath),
+    // a crashed tab coming back never asks, even when its editor is off now
+    reopen: (filePath) => void openDocumentPath(filePath, 'automation'),
     // an untitled document comes back from its recovery copy (spec 8); its
     // identity is read while the editor still knows the crashed view
     untitledCopyOf: (wc) => {
@@ -9083,8 +11893,17 @@ app.whenReady().then(async () => {
     },
     t: (key, params) => tm(key, params),
   })
-  // a PC that runs short of memory during an AI request leaves a line too
-  startLowMemoryWatch({ aiStreams: activeAiStreamCount, memory: crashMemory })
+  // a PC (or the main process's heap) that runs short of memory leaves a line too
+  startLowMemoryWatch({ memory: crashMemory })
+  // a main process that dies leaves no line of its own: its last heartbeat
+  // is reported at the next launch (headless exports are short and unattended)
+  if (headlessArgv.kind === 'none') {
+    mainHeartbeat = startHeartbeat({
+      userDataDir: app.getPath('userData'),
+      logPath: crashLogPath(),
+      memory: crashMemory,
+    })
+  }
   // resource watchdog: a renderer that stays hot for minutes gets diagnostics
   // recorded and the user an offer to close the document (headless exports
   // are short-lived and unattended)
@@ -9117,6 +11936,13 @@ app.whenReady().then(async () => {
     restoreSplitMemoryOrHome,
     afterSheetsOpen: restoredTabDeps.afterSheetsOpen,
     sessionChanged: noteLiveSession,
+    reopenedByInstaller: reopenedByInstaller(),
+    // restored tabs of turned-off editors ask before the strip is rebuilt (spec 7.5)
+    askRestore: (tabs, { fromList }) =>
+      openGate.askRestore(
+        tabs.map((tab) => ({ key: tab.key, item: editorItemOfTabKind(tab.kind) })),
+        { askAgain: fromList },
+      ),
     settled: () => {
       const paths = deferredLaunchPaths
       deferredLaunchPaths = []
@@ -9135,7 +11961,8 @@ app.whenReady().then(async () => {
     app.getPath('userData'),
     controlHandler({
       reveal: revealShellWindow,
-      openDocument: openDocumentPath,
+      // the terminal command never asks, even for a turned-off editor (spec 7.6)
+      openDocument: (path) => openDocumentPath(path, 'automation'),
       activateTab: (id) => {
         if (!activateDetached(id)) tabManager?.activateTab(id)
       },
@@ -9162,6 +11989,9 @@ app.on('window-all-closed', () => {
 })
 
 app.on('before-quit', () => {
+  // "Restart & Install": the tabs as they are now come back after the update,
+  // whatever the closing windows report on the way out
+  if (updateRestartRequested()) holdSessionTabsForUpdateRestart()
   // No close prompt may fall through to "Save" during shutdown, and from here
   // on no editor clean-up may delete a recovery copy (a vetoed close resets both)
   appQuitting = true
@@ -9171,32 +12001,54 @@ app.on('before-quit', () => {
   // release the MCP port synchronously (macOS keeps the process alive after
   // the last window closes, so window-all-closed is not enough)
   stopMcpSync()
+  // the person's MCP servers: calls end, servers stop, a runtime download stops
+  void mcpHub?.stopAll()
 })
 
 // after every window has closed, so the shell window's own 'closed' republish cannot revive the file
 app.on('will-quit', () => {
   // the quit path completed: the next launch is a normal one (a no-op in a
-  // second instance or a headless export, which never started a record)
-  markSessionCleanExit()
+  // second instance or a headless export, which never started a record),
+  // unless it is the restart into an update, which brings the tabs back.
+  // This runs before the updater's own will-quit (registered later), which
+  // reads the same request to start the installer.
+  if (updateRestartRequested()) markSessionUpdateRestart()
+  else markSessionCleanExit()
+  mainHeartbeat?.markEnded('quit')
   releaseAppResources()
 })
 
 /** what every way out of a normal run releases (will-quit, and an OS session end) */
 function releaseAppResources(): void {
+  // project use times held back to spare the settings file (written once a minute)
+  try {
+    projectFolderRuntime?.guide.flushTouches()
+  } catch {
+    // the settings file is not writable now; the list order is only a convenience
+  }
   fileIndexer?.stop()
+  stopParseSidecar()
   fileIndexStore?.close()
   for (const watcher of folderWatchers.values()) watcher.close()
   controlServer?.close()
   // a second instance that lost the lock quits too; it must not delete the running editor's list
   if (ownsOpenDocumentsRegistry) clearOpenDocuments(OPEN_DOCUMENTS_PATH())
   stopAgentSessions()
+  void closeAllAntigravityPanelSessions()
   driveService?.stop()
+  void mcpHub?.stopAll()
   stopQuickLookRuntime()
+  cleanupPdfToolsOnQuit()
   shutdownSubscriptionChildren()
 }
 
 // app.exit() and process.exit() skip before-quit / will-quit (the headless
 // export ends that way, and so does an exit on a fatal error); 'exit' is the
-// one event every such way out still emits, so no subscription CLI outlives
+// one event every such way out still emits, so no child process outlives
 // the app. A process killed outright runs nothing: the next start cleans up.
-process.on('exit', () => shutdownSubscriptionChildren())
+process.on('exit', () => {
+  fileIndexer?.stop()
+  stopParseSidecar()
+  cleanupPdfToolsOnQuit()
+  shutdownSubscriptionChildren()
+})

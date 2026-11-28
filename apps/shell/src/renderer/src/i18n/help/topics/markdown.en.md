@@ -8,6 +8,7 @@ The Markdown editor opens .md / .markdown — and .txt / .json, straight into so
 - **Saving**: byte-faithful — BOM, CRLF and the presence of a trailing newline are preserved; an unmodified save does not rewrite the file.
 - **Find & replace**: ctrl+F searches the source; Replace All writes back.
 - **AI**: preset buttons let the assistant rewrite, extend or translate the document. A selection can be hidden from the AI (see the AI panel chapter).
+- **Opening links**: while editing, Ctrl+click a link (⌘ on a Mac) to open it in your browser; a plain click puts the cursor in the link text so you can edit it. In presentation mode (F5) a plain click opens the link.
 
 ## The toolbar
 
@@ -36,6 +37,7 @@ File menu, all local and all asking where to put the result:
 
 - **Export as Word…** and **Export as PDF…** write a real .docx or .pdf.
 - **Export as ODT…** writes an .odt (OpenDocument text) through the same conversion as the Word export; if something changes or is dropped on the way, you see the list and confirm first.
+- **Export as HWP Document…** writes a Hangul document (.hwp or .hwpx) through the same conversion; headings, lists and tables arrive as Hangul ones, and a long table continues on the next page. If something cannot be carried over, you see the list and confirm first.
 - **Export as Images…** writes a PNG per content element into a directory you pick.
 - **Convert and Open in Docs** converts to .docx and opens it in the built-in Docs tab here in the app — it is not a hand-off to anything in the cloud, and the converted copy lives in a cache folder that is cleaned up after about a week.
 
@@ -43,6 +45,7 @@ File menu, all local and all asking where to put the result:
 
 The ribbon carries a **Source** toggle (localized with the app). Turn it on and the editor is replaced by the raw Markdown: exactly the text a save writes, nothing prettified, nothing normalised underneath you.
 
+- **Keyboard**: Ctrl+E (⌘E on a Mac) switches between source view and the rendered editing canvas. Press F5 to read it full screen.
 - **Editing is byte-faithful.** A save from source view produces the same bytes a save from the editor does — BOM, CRLF and the presence of a trailing newline all survive.
 - **It is the same document.** Toggle back and forth freely; the source is the editor's own text, not a copy that has to be merged.
 - **The formatting toolbar is unavailable** while it is open, because most of those buttons insert editor constructs that only mean something in the rendered side. It comes back when you close the view.

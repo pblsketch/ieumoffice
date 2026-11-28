@@ -35,24 +35,32 @@ html.genoffice-popover-open .tab-bar {
   -webkit-app-region: no-drag;
 }
 
-/* room for the macOS traffic lights (titleBarStyle: hiddenInset) */
+/* room for the macOS traffic lights (titleBarStyle: hiddenInset).
+ * The strip is `zoom`ed but the traffic lights are not, so below 100% the
+ * spacer is divided back up to keep its 78px on screen; at or above 100% it
+ * keeps growing with the strip as before. */
 .tab-bar-drag-spacer {
-  width: 78px;
+  width: calc(78px / min(var(--ui-scale), 1));
   flex-shrink: 0;
 }
 
 /* desktops that put the window controls on the leading edge (some Linux
-   layouts) report them as titlebar-area-x; keep the menu button clear */
+   layouts) report them as titlebar-area-x; keep the menu button clear.
+   Divided back below 100% like the macOS spacer: the strip is zoomed, the
+   caption buttons are not. */
 body.overlay-title-bar .tab-bar-drag-spacer {
-  width: max(8px, env(titlebar-area-x, 0px));
+  width: calc(max(8px, env(titlebar-area-x, 0px)) / min(var(--ui-scale), 1));
 }
 
 /* Windows/Linux caption buttons are drawn over the strip's right end
    (titleBarOverlay); the Window Controls Overlay env vars give their width,
-   and resolve to 0 where the overlay is absent */
+   and resolve to 0 where the overlay is absent. Divided back below 100% so
+   the reserve stays the width of the unzoomed buttons. */
 .tab-bar-caption-spacer {
   flex-shrink: 0;
-  width: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw));
+  width: calc(
+    (100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw)) / min(var(--ui-scale), 1)
+  );
 }
 
 .tab-app-menu-btn {
@@ -94,7 +102,7 @@ body.overlay-title-bar .tab-bar-drag-spacer {
   border-radius: 10px 10px 0 0;
   cursor: pointer;
   color: var(--tabstrip-text);
-  font-size: 12.5px;
+  font-size: 13px;
   user-select: none;
 }
 
@@ -169,7 +177,7 @@ body.overlay-title-bar .tab-bar-drag-spacer {
   position: absolute;
   /* hover shape: flush with the tab top, 28px tall, 9px radius */
   inset: 0 3px 6px;
-  border-radius: 9px;
+  border-radius: 8px;
   z-index: -1;
   pointer-events: none;
 }
@@ -468,7 +476,7 @@ body.overlay-title-bar .tab-bar-drag-spacer {
   bottom: 8px;
   width: 14px;
   height: 2px;
-  border-radius: 1px;
+  border-radius: 2px;
   background: var(--accent);
   pointer-events: none;
 }
@@ -507,4 +515,36 @@ body.overlay-title-bar .tab-bar-drag-spacer {
 .tab-split-hint.for-stack {
   left: 50%;
   transform: translate(-50%, -50%);
+}
+
+/* files panel toggle (left of the tabs, editor tabs only) */
+.tab-file-panel-btn {
+  -webkit-app-region: no-drag;
+  flex-shrink: 0;
+  align-self: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  margin-left: 2px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--tabstrip-text);
+  cursor: pointer;
+}
+
+.tab-file-panel-btn:hover {
+  background: var(--bg-hover-strong);
+}
+
+.tab-file-panel-btn.active {
+  color: var(--tabstrip-text-active);
+}
+
+.tab-file-panel-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }

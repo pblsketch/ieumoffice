@@ -6,7 +6,7 @@ GenOffice parla il Model Context Protocol, così un agente di programmazione pu�
 
 È in **Impostazioni ▸ Integrazioni** che si fa questa cosa. Il pannello ha due metà, e puoi usare una sola o entrambe.
 
-**La skill.** Una riga per ogni agente di programmazione trovato su questa macchina — Claude Code, Codex, Cursor, Gemini CLI, Copilot CLI, OpenCode, Windsurf —, ognuna con **Installa**, **Aggiorna** e **Disinstalla**, più **Installa in un'altra cartella…**, **Scarica skill (zip)** e **Copia percorso**. Se il tuo assistente non è in elenco, indica a GenOffice una cartella da cui legge `SKILL.md`, oppure salva lo zip e lascia che lo installi l'assistente. Skill e MCP possono stare fianco a fianco: l'assistente sceglie uno dei due, e fanno esattamente le stesse cose.
+**La skill.** Una riga per ogni agente di programmazione trovato su questa macchina — Claude Code, la cartella condivisa `~/.agents` (letta da Codex, Cursor, Gemini CLI, Copilot CLI e OpenCode), Windsurf —, ognuna con **Installa**, **Aggiorna** e **Disinstalla**, più **Installa in un'altra cartella…**, **Scarica skill (zip)** e **Copia percorso**. Se il tuo assistente non è in elenco, indica a GenOffice una cartella da cui legge `SKILL.md`, oppure salva lo zip e lascia che lo installi l'assistente. Skill e MCP possono stare fianco a fianco: l'assistente sceglie uno dei due, e fanno esattamente le stesse cose. Una copia installata in precedenza nella cartella di uno di questi cinque strumenti resta elencata sotto la riga della cartella condivisa e continua a essere aggiornata; quando la cartella condivisa ha la skill, puoi rimuovere quella copia.
 
 **MCP.** Sono offerti due percorsi: **Avviato dall'assistente (consigliato)**, dove aggiungi la configurazione mostrata al tuo client e l'assistente avvia da solo il server, e il **Server HTTP locale**, che l'app esegue al posto tuo. In entrambi i casi l'assistente finisce per parlare con GenOffice e tu non digiti mai un comando.
 
@@ -58,7 +58,7 @@ Ogni comando è uno strumento. Quelli più interessanti:
 Una richiesta che arriva dal comando `ieumoffice` o da un client MCP non l'hai digitata tu nell'app, quindi GenOffice la tratta con cautela.
 
 - **La ricerca** funziona sempre ed è gratuita per impostazione predefinita. La chiave di un provider di ricerca viene usata solo se ne hai selezionata una.
-- **Generare un'immagine** richiede la chiave di un provider di immagini. In questa versione un abbonamento non genera immagini.
+- **Generare un'immagine** segue la scelta per la generazione di immagini nelle impostazioni. Quella predefinita, Piano ChatGPT (programma Codex), usa il tuo piano ChatGPT tramite il programma Codex e **non viene usata a meno che tu non lo consenta** (vedi sotto). Altrimenti si usa la chiave di un provider di immagini configurato. Un modello indicato dall’agente viene usato quando quella via lo offre.
 - **Descrivere un'immagine** usa un provider con chiave quando ce n'è uno configurato. Il tuo abbonamento Claude o Codex **non viene usato a meno che tu non lo consenta**.
 - **Video e audio** richiedono un provider con chiave che supporta i video.
 

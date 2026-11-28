@@ -57,6 +57,50 @@ describe('createDocList', () => {
     ])
   })
 
+  it('puts the asker project files between open and recent documents, for the @ list only', async () => {
+    const config = deps({
+      openDocuments: async () => [
+        { id: 'a', path: 'C:/p/a.docx', title: 'a.docx', dirty: false },
+        { id: 'me', path: 'C:/p/me.docx', title: 'me.docx', dirty: false },
+      ],
+      recent: async () => [
+        { path: 'C:/p/b.pdf', title: 'b.pdf', missing: false },
+        { path: 'C:/old/c.txt', title: 'c.txt', missing: false },
+      ],
+      projectFiles: async (asker) =>
+        asker.webContentsId === 7
+          ? [
+              { path: 'C:/p/b.pdf', title: 'b.pdf' },
+              { path: 'C:/p/a.docx', title: 'a.docx' },
+              { path: 'C:/p/me.docx', title: 'me.docx' },
+              { path: 'C:/p/sheet.xlsx', title: 'sheet.xlsx' },
+            ]
+          : [],
+    })
+    const asker: DocAsker = { webContentsId: 7, tabId: 'me', path: 'C:/p/me.docx' }
+    const mention = await createDocList(config)(asker, { projectFiles: true })
+    expect(mention.ok && mention.items.map((i) => [i.group, i.title])).toEqual([
+      ['open', 'a.docx'],
+      // an open one stays in its group, the asker's own is left out, other formats too
+      ['project', 'b.pdf'],
+      ['recent', 'c.txt'],
+    ])
+    // the attach window keeps today's groups
+    const picker = await createDocList(config)(asker)
+    expect(picker.ok && picker.items.map((i) => i.group)).toEqual(['open', 'recent', 'recent'])
+  })
+
+  it('shows no project group when the project files cannot be listed', async () => {
+    const config = deps({
+      projectFiles: async () => {
+        throw new Error('folder gone')
+      },
+      recent: async () => [{ path: 'C:/p/b.pdf', title: 'b.pdf', missing: false }],
+    })
+    const got = await createDocList(config)({ webContentsId: 7 }, { projectFiles: true })
+    expect(got.ok && got.items.map((i) => i.group)).toEqual(['recent'])
+  })
+
   it('gives a saved open document the path id with the file folder for display', async () => {
     const items = await itemsOf(
       deps({
@@ -151,6 +195,35 @@ describe('createDocList', () => {
       }),
     )
     expect(items.map((i) => i.title)).toEqual(['ok.docx', 'pic.png'])
+  })
+
+  it('knows a draw.io picture by its double extension, at the document cap', async () => {
+    const sizes: Record<string, number> = {
+      'C:/docs/flow.drawio.svg': MAX,
+      'C:/docs/flow.drawio.png': IMG_MAX + 1,
+      'C:/docs/plain.svg': 1,
+      'C:/docs/photo.png': IMG_MAX + 1,
+    }
+    const pictureExt = (name: string): string | null =>
+      /\.drawio\.(svg|png)$/i.exec(name)?.[0].slice(1).toLowerCase() ?? null
+    const items = await itemsOf(
+      deps({
+        openDocuments: async () =>
+          Object.keys(sizes).map((path, i) => ({
+            id: `t${i}`,
+            path,
+            title: path.slice(path.lastIndexOf('/') + 1),
+            dirty: false,
+          })),
+        stat: async (path) => ({ sizeBytes: sizes[path] ?? 0 }),
+        attachable: {
+          ...attachable,
+          ATTACHABLE_EXTS: new Set([...attachable.ATTACHABLE_EXTS, 'drawio.svg', 'drawio.png']),
+          diagramPictureExtOfName: pictureExt,
+        },
+      }),
+    )
+    expect(items.map((i) => i.title)).toEqual(['flow.drawio.svg', 'flow.drawio.png'])
   })
 
   it('marks a missing recent file, and one that cannot be stat-ed, as missing', async () => {

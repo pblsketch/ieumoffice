@@ -1,10 +1,11 @@
 import { dirname, join } from 'node:path'
 import {
-  AI_SUBSCRIPTION_PROVIDERS,
+  AI_BRAIN_SUBSCRIPTION_PROVIDERS,
   headlessSubscriptionOn,
   isSubscriptionProvider,
   normalizeAiSettings,
   providerSelectionOf,
+  setCodexImageGenerationAvailable,
   type AiSettings,
   type AiSubscriptionProviderId,
   type AiSubscriptionStatus,
@@ -21,7 +22,9 @@ import {
 import {
   aiToolCapabilities,
   codexImageRouteOffered,
+  createCodexImageGenerator,
   readAiSettingsFile,
+  registerCodexImageGenerator,
   type AiToolCallContext,
   type MediaToolFailure,
 } from '@genoffice/ai-search'
@@ -48,6 +51,26 @@ export function aiSettingsPath(env: NodeJS.ProcessEnv): string {
  */
 export function aiDataDir(env: NodeJS.ProcessEnv): string {
   return dirname(aiSettingsPath(env))
+}
+
+/**
+ * The Codex image route of one command (spec E): the generator that draws
+ * through the ChatGPT plan's Codex program, reading the settings file this
+ * command reads, and the availability turned on. Registering starts no
+ * program; Codex starts only when an image request resolves to the Codex
+ * route, and then under the automatic-call rules every route here keeps (the
+ * switch with the current consent, the data-folder lock, the ledger, no
+ * subscription without a data folder). Codex turned off in the app is
+ * honoured by the routing and by the generator; the app's "AI off" is not a
+ * command-line setting (decision 0143). Done at the start of every command,
+ * so a free plan that hides the route hides it for that one command only.
+ * No usage callback: the command line keeps to its ledger.
+ */
+export function registerCodexImageRoute(env: NodeJS.ProcessEnv): void {
+  registerCodexImageGenerator(
+    createCodexImageGenerator({ settingsPath: () => aiSettingsPath(env) }),
+  )
+  setCodexImageGenerationAvailable(true)
 }
 
 /** First http(s) proxy in the usual environment variables, as the app's main process reads them. */
@@ -110,10 +133,12 @@ export function subscriptionProvidersInPlay(
       !aiToolCapabilities(settings, { path: 'headless', dataDir }).imageAnalysis.available)
   ) {
     const selection = providerSelectionOf(settings)
-    if (isSubscriptionProvider(selection)) wanted.add(selection)
-    else if (selection === 'auto' && on) for (const id of AI_SUBSCRIPTION_PROVIDERS) wanted.add(id)
+    if (isSubscriptionProvider(selection) && selection !== 'antigravity') wanted.add(selection)
+    else if (selection === 'auto' && on) {
+      for (const id of AI_BRAIN_SUBSCRIPTION_PROVIDERS) wanted.add(id)
+    }
   }
-  return AI_SUBSCRIPTION_PROVIDERS.filter((id) => wanted.has(id))
+  return AI_BRAIN_SUBSCRIPTION_PROVIDERS.filter((id) => wanted.has(id))
 }
 
 /**
@@ -233,17 +258,27 @@ const NEXT_STEP: Record<NonNullable<MediaToolFailure['errorCode']>, string> = {
     'retry once: an older version reported its limit of automatic subscription requests, which no longer exists',
   'rate-limit': "do not retry now: the usage limit of the user's subscription is reached",
   'free-limit': `do not retry now: today's free allowance of the free AI connection is used up (detail.resetsAt says when it frees again); the user can choose another AI under Settings > AI in ${PRODUCT_NAME}`,
+  'free-tier-model': `do not retry: the chosen model is not on the free tier of the user's key; the user can pick a model the free tier covers under Settings > AI > Advanced in ${PRODUCT_NAME}, or turn on billing with the provider`,
   'not-connected': `do not retry: ask the user to connect Claude Code or Codex under Settings > AI in ${PRODUCT_NAME}, or to select a provider key under Settings > AI > Advanced`,
   'not-installed': `do not retry: ask the user to install the CLI named in the message (Settings > AI in ${PRODUCT_NAME} shows how)`,
   'signed-out': `do not retry: ask the user to sign in again under Settings > AI in ${PRODUCT_NAME}`,
   'metered-not-accepted': `do not retry: this login is billed by usage and the user has not accepted that under Settings > AI in ${PRODUCT_NAME}`,
   'needs-update': 'do not retry: ask the user to update the CLI named in the message',
+  'off-in-app': `do not retry: the user turned this subscription CLI off in ${PRODUCT_NAME}; it comes back on only from Settings > AI there`,
   'unsafe-tools':
     'do not retry: the subscription CLI came up with tools it must not have, so nothing was run; tell the user',
   credits: 'do not retry: the provider account is out of credit, tell the user',
   network: 'check the network connection (HTTPS_PROXY is honoured), then retry once',
+  'proxy-error':
+    'check HTTPS_PROXY / HTTP_PROXY environment settings or corporate proxy rules, then retry once',
+  'cert-error':
+    'check the TLS / corporate CA certificate configuration (NODE_EXTRA_CA_CERTS), then retry once',
+  'network-unreachable':
+    'check that the device is online and the provider endpoint is reachable, then retry once',
   overloaded: 'the provider is busy: retry once in a minute',
   timeout: 'retry once; if it times out again, continue without it',
+  'context-limit':
+    'do not retry the same request: the prompt is larger than the model context; ask the user to choose a model with more context or shorten the request',
 }
 
 /** The next step for a run error code, when it is one the cloud commands know. */

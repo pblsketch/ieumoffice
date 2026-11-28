@@ -8,6 +8,7 @@ import { headlessCall } from '../cloud'
 import { pdfAiFeature, resolvePdfAiRoute } from '../pdf-ai'
 import type { CommandDef } from '../registry'
 import { appLaunch } from '../resources'
+import { wasmAvailability } from '../wasm'
 
 /** `media_analysis` repeats one of the two analysis entries, so the summary leaves it out */
 const SUMMARIZED = [
@@ -18,6 +19,7 @@ const SUMMARIZED = [
   'video_analysis',
   'pdf_ai_read',
   'pdf_translation',
+  'wasm',
   'app',
 ] as const
 
@@ -42,6 +44,7 @@ export const capabilitiesCommand: CommandDef = {
     const usage = subscription ? headlessSubscriptionUsage(context.dataDir) : null
     const imageAnalysis = feature(caps.imageAnalysis)
     const videoAnalysis = feature(caps.videoAnalysis)
+    const wasm = wasmAvailability()
     const detail = {
       search: feature(caps.webSearch),
       image_search: feature(caps.imageSearch),
@@ -60,6 +63,13 @@ export const capabilitiesCommand: CommandDef = {
         ...(usage ? { used: usage.used, limit: null, remaining: null } : {}),
       },
       app: { available: appLaunch(ctx.env) !== null },
+      // what the PDF, Hangul and network engines need; a virtual-memory cap that
+      // cannot host a WebAssembly memory turns them off for the whole process
+      wasm: {
+        available: wasm.available,
+        ...(wasm.reason ? { reason: wasm.reason } : {}),
+        ...(wasm.limit_bytes ? { limit_bytes: wasm.limit_bytes } : {}),
+      },
       settings_path: settingsPath,
     }
     const on = SUMMARIZED.filter((name) => detail[name].available)

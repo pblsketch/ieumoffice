@@ -58,3 +58,11 @@ A meta de viewport está deliberadamente ausente: isto é renderizado num painel
 O `lang` segue o idioma da interface da aplicação, por isso o esqueleto que insere é aquele para o qual as suas ferramentas já estão preparadas. Edite-o livremente depois.
 
 O item só aparece no modo de edição, e apenas enquanto o documento está vazio — não há nada para inserir um esqueleto _dentro_ quando já há conteúdo.
+
+## Editar equação
+
+Digite visualmente ou edite LaTeX. O HTML mantém o código para edições futuras.
+
+Escolha Inserir equação na barra, use o campo visual, os modelos ou LaTeX e aplique. Clique em uma equação salva na prévia para editá-la. Para inserir no texto, selecione um parágrafo e desative a linha separada; a equação será adicionada ao final dele.
+
+Uma expressão que o compositor não aceita não se perde: a equação mantém o código LaTeX e mostra o texto bruto na página, para reabrir e corrigir.

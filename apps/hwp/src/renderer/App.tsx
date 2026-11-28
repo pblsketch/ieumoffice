@@ -2,33 +2,117 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createEditor } from '@rhwp/editor'
 import type { ChromeVisibility, RhwpEditor } from '@rhwp/editor'
 import type { Params } from '@genoffice/i18n'
+import { IconClose } from '@genoffice/ui/icons'
 import {
   aiPanelInitiallyOpen,
+  aiVisible,
+  printLayoutText,
+  QuickPrintButton,
   rememberAiPanelOpen,
-  presentationKeyOf,
   skillTemplateText,
   templateDocumentOf,
+  useAppChoice,
+  useAutoSavePref,
   useSplitPaneFocusPing,
   type TemplateDocument,
 } from '@genoffice/ui'
+import { createDefaultOptions } from '@genoffice/print-layout/plan'
 import { HwpAiDock } from './ai/AiDock'
+import { DocCheckPanel } from './check/DocCheckPanel'
 import { createAgentBridge } from './ai/agent-bridge'
-import { DIRTY_EVENT, FILE_COMMAND_EVENT } from '../../studio-plugin/agent-plugin.mjs'
+import { afterPrefillTaken, easyWordsRequest, type AiPrefill } from './ai/easy-words'
+import {
+  DIRTY_EVENT,
+  EASY_WORDS_EVENT,
+  FILE_COMMAND_EVENT,
+  MARKS_EVENT,
+  MEMO_NOT_COPIED_EVENT,
+  MEMO_REMOVED_EVENT,
+  MISSING_FONTS_EVENT,
+} from '../../studio-plugin/agent-plugin.mjs'
+import {
+  BIBLIOGRAPHY_COMMAND_EVENT,
+  MACRO_COMMAND_EVENT,
+  MACRO_RECORDING_EVENT,
+  WORKPANE_COMMAND_EVENT,
+  type BibliographyCommandAction,
+  type MacroCommandDetail,
+  type MacroRecordingEventDetail,
+} from '../../studio-plugin/workpane-menu.mjs'
 import blankHwpUrl from './assets/blank.hwp?url'
-import { useI18n, type StringKey } from './i18n/locale'
+import { bibliographyMenuLabelsFor, translateBiblio } from './i18n/biblio'
+import { t as translateNow, useI18n, type StringKey } from './i18n/locale'
+import { localizeSkippedCommandLabel, macroMenuLabelsFor, translateMacro } from './i18n/macro'
+import { translateSubmission } from './i18n/submission'
+import { tocDialogLabelsFor } from './i18n/toc'
+import { translateWorkpane } from './i18n/workpane'
+import {
+  MacroEditorModal,
+  MacroManagerModal,
+  formatMacroRunOutcome,
+  shortcutLabelForSlot,
+  type MacroEditorRequest,
+  type MacroEditorSavePayload,
+  type MacroNearLimitInfo,
+  type MacroStoreErrorInfo,
+} from './macro'
+import { formatMacroRunException } from './macro/MacroManagerModal'
+import { StalenessModal, type StalenessModalState } from './StalenessModal'
+import { MEMO_INSERT_EVENT, memoNoticeOf, type MemoNotice } from './MemoPanel'
+import { MemoSide, MemoToggle, memoPanelInitiallyOpen, rememberMemoPanelOpen } from './MemoSide'
+import {
+  BibliographyTab,
+  FindTab,
+  OutlineTab,
+  WorkpaneSide,
+  WorkpaneToggle,
+  isWorkpaneFindShortcut,
+  loadWorkpaneOpen,
+  loadWorkpaneTab,
+  parseWorkpaneCommand,
+  saveWorkpaneOpen,
+  saveWorkpaneTab,
+  type BibliographyCommandRequest,
+  type WorkpaneTabId,
+} from './workpane'
+import type { BibLibraryErrorInfo, BibNearLimitInfo } from './workpane/BibliographyTab'
 import { openDocumentsDroppedOn } from './editor-drop'
-import { gatherPrintJob } from './print-flow'
+import { hwpPresentationKeyOf } from './presentation-keys'
+import { checkStalenessBeforePrint, gatherPrintJob, runWithPrintStalenessCheck } from './print-flow'
+import { PrintPreview } from './preview/PrintPreview'
 import {
   RECOVERY_TICK_MS,
   createRecoveryCopier,
   withChangeNotes,
   type RecoveryCopier,
 } from './recovery-flow'
-import { runSave, type SaveEditorPort } from './save-flow'
+import {
+  checkStalenessBeforeAction,
+  runSave,
+  runSubmissionSave,
+  type SaveEditorPort,
+  type StaleCheckReport,
+  type StalenessAction,
+  type StalenessPromptChoice,
+  type SubmissionSaveEditorPort,
+} from './save-flow'
+import { AUTOSAVE_IDLE_MS, startAutosave } from './autosave-flow'
 import { PASSWORD_FLAG } from '../../scripts/rhwp-patches.mjs'
 import { STUDIO_SETTINGS_KEY, seededStudioSettings, studioUrl } from './studio-settings'
 import { hwpFormatOfPath } from '../shared/ipc'
-import type { HwpFormat, SaveMode, UiTheme } from '../shared/ipc'
+import type {
+  BeginSaveMode,
+  BibEntry,
+  BibKeyRenameInfo,
+  HwpFormat,
+  MacroRecord,
+  OutlineStyleMap,
+  PreviewAction,
+  PrintJob,
+  PrintMode,
+  PrintResult,
+  UiTheme,
+} from '../shared/ipc'
 
 /**
  * booting: the editor itself is starting. loading: the editor is up and working
@@ -45,6 +129,8 @@ interface Notice {
   params?: Params
   /** untranslated cause from the engine or the file system, shown under the message */
   detail?: string
+  /** direct follow-up action shown beside the close button */
+  action?: 'saveAsHwpx'
   /** an information that stays until dismissed, as errors do */
   sticky?: true
 }
@@ -58,8 +144,10 @@ const DIRTY_POLL_MS = 2000
 const ARRIVAL_POLL_MS = 1000
 /** How long a confirmation stays up; errors stay until dismissed. */
 const INFO_NOTICE_MS = 8000
-/** Where the open / collapsed state of the AI panel is remembered. */
+/** Where the open / collapsed state of the AI dock is remembered. */
 const AI_OPEN_KEY = 'hwpapp.showAi'
+/** A pause after typing before the memo panel is told the document may have changed. */
+const MEMO_TICK_MS = 500
 
 const fileNameOf = (path: string) => path.split(/[\\/]/).pop() ?? path
 /** the name the editor holds a new document under; the user names the file at its first save */
@@ -72,6 +160,8 @@ const detailOf = (error: unknown) => (error instanceof Error ? error.message : S
  */
 const isBridgeTimeout = (error: unknown) =>
   error instanceof Error && error.message.startsWith('Request timeout')
+/** The user closed the editor's PDF import dialog (a PDF opened to be converted, decision 0116). */
+const isPdfImportCancelled = (error: unknown) => detailOf(error).includes('PDF_IMPORT_CANCELLED')
 
 function savePortOf(editor: RhwpEditor): SaveEditorPort {
   const agent = createAgentBridge(() => editor)
@@ -86,9 +176,53 @@ function savePortOf(editor: RhwpEditor): SaveEditorPort {
     exportHwp: () => editor.exportHwp(),
     exportHwpx: () => editor.exportHwpx(),
     exportHwpVerify: () => editor.exportHwpVerify(),
+    listMemos: async () => {
+      const listed = await agent.listMemos()
+      return listed.memos.map((memo) => ({
+        author: memo.author,
+        date: memo.date,
+        text: memo.text,
+        place: memo.place,
+        sectionIndex: memo.sectionIndex,
+        paraIndex: memo.paraIndex,
+        startCharIdx: memo.startCharIdx,
+        endCharIdx: memo.endCharIdx,
+        path: memo.path,
+      }))
+    },
+    setMemoLock: (locked) => agent.setMemoLock(locked),
     measureTabs: async (spots) => (await agent.measureTabs(spots)).tabs,
+    savePreview: async () => {
+      const made = await agent.savePreview()
+      return { text: made.text, image: made.png === null ? null : bytesOfBase64(made.png) }
+    },
     notifySaved: (fileName) => editor.notifySaved(fileName),
   }
+}
+
+function submissionPortOf(editor: RhwpEditor): SubmissionSaveEditorPort {
+  const agent = createAgentBridge(() => editor)
+  return {
+    isPasswordProtected: async () => {
+      const flag = (await editor.commands.context())[PASSWORD_FLAG]
+      if (typeof flag !== 'boolean')
+        throw new Error('the editor did not report password protection')
+      return flag
+    },
+    exportSubmissionCopy: (format) => agent.exportSubmissionCopy(format),
+    measureTabs: async (spots) => (await agent.measureTabs(spots)).tabs,
+    savePreview: async () => {
+      const made = await agent.savePreview()
+      return { text: made.text, image: made.png === null ? null : bytesOfBase64(made.png) }
+    },
+  }
+}
+
+function bytesOfBase64(text: string): Uint8Array {
+  const raw = atob(text)
+  const bytes = new Uint8Array(raw.length)
+  for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i)
+  return bytes
 }
 
 export default function App() {
@@ -96,31 +230,135 @@ export default function App() {
   const hostRef = useRef<HTMLDivElement>(null)
   const editorRef = useRef<RhwpEditor | null>(null)
   const savingRef = useRef(false)
+  /** resolved when the save in flight finishes, so a manual save can queue behind an autosave */
+  const savingDoneRef = useRef<Promise<void> | null>(null)
+  /** last key, click or paste in the editor (autosave waits for a pause) */
+  const lastInputAtRef = useRef(0)
   /** the format the document was opened in: what it is exported as when it is read */
   const formatRef = useRef<HwpFormat>('hwp')
+  /** the same format for the screen: the check panel passes it to the rules */
+  const [docFormat, setDocFormat] = useState<HwpFormat>('hwp')
   const [phase, setPhase] = useState<Phase>('booting')
-  /** F5: the document alone in fullscreen, with the editor's own chrome hidden */
+  /** Ctrl+F5: the document alone in fullscreen, with the editor's own chrome hidden */
   const [presenting, setPresenting] = useState(false)
   const presentingRef = useRef(false)
+  /** the print preview covers the editor; 0-based page it opens on */
+  const [preview, setPreview] = useState<{
+    open: boolean
+    initialPage: number
+    initialDestination?: string
+  }>({
+    open: false,
+    initialPage: 0,
+  })
+  const previewRef = useRef(false)
+  /** bumped when Print / Ctrl+P arrives while the preview is already open */
+  const [printSignal, setPrintSignal] = useState(0)
   const prePresentChromeRef = useRef<ChromeVisibility | null>(null)
   const [notice, setNotice] = useState<Notice | null>(null)
   const [aiOpen, setAiOpen] = useState(() => aiPanelInitiallyOpen(AI_OPEN_KEY))
+  /**
+   * AI turned off in Settings takes every AI entrance away: the dock and its rail, the
+   * editor's right-click 쉬운 말로 풀기, the check panel's hand-off and the marks of the AI's
+   * changes on the pages. Turned on, they come back.
+   */
+  const aiOn = aiVisible(useAppChoice(window.aiOfficeEditorChoice))
+  const [checkOpen, setCheckOpen] = useState(false)
+  /**
+   * a request for the AI panel; `nonce` says it is a new one. The check panel's waits in the
+   * input box, the editor's 쉬운 말로 풀기 runs at once (`autoRun`)
+   */
+  const [aiPrefill, setAiPrefill] = useState<AiPrefill | null>(null)
+  // a request sent at once runs once: the dock unmounts under the print preview and mounts
+  // again after it, and must not find the same request waiting there
+  const takeAiPrefill = useCallback(
+    (taken: AiPrefill) => setAiPrefill((current) => afterPrefillTaken(current, taken)),
+    [],
+  )
+  /** the pages carry marks of the AI's changes, as the plugin says (a user edit takes them off) */
+  const [marksOnPage, setMarksOnPage] = useState(false)
+  /** counts changes made through the bridge, so the check panel can read the document again */
+  const [docRevision, setDocRevision] = useState(0)
+  /** the memo column beside the document: out or not, independent of the AI dock */
+  const [memoOpen, setMemoOpen] = useState(memoPanelInitiallyOpen)
+  /** the left workpane (Outline / Find) beside the document: independent of AI and Memo */
+  const [workpaneOpen, setWorkpaneOpen] = useState(loadWorkpaneOpen)
+  const [workpaneTab, setWorkpaneTab] = useState<WorkpaneTabId>(() => loadWorkpaneTab())
+  const workpaneTabRef = useRef<WorkpaneTabId>(workpaneTab)
+  workpaneTabRef.current = workpaneTab
+  /** bumped when Ctrl+F or View > Workpane > Find asks the Find tab to focus its input */
+  const [focusFindTick, setFocusFindTick] = useState(0)
+  const openWorkpane = useCallback((tab?: WorkpaneTabId, focus = false) => {
+    if (tab) setWorkpaneTab(tab)
+    setWorkpaneOpen(true)
+    if (focus && (tab === 'find' || (!tab && workpaneTabRef.current === 'find'))) {
+      setFocusFindTick((tick) => tick + 1)
+    }
+  }, [])
+  /** a memo editor is open here or in another tab: save, close and quit must wait */
+  const [memoBlocked, setMemoBlocked] = useState(false)
+  const memoBlockedRef = useRef(false)
+  memoBlockedRef.current = memoBlocked
+  /** bumped when the document may have changed: the memo list reads it again */
+  const [docTick, setDocTick] = useState(0)
+  /** bumped by the editor's Insert > Memo menu: the memo panel opens its add dialog */
+  const [memoInsertTick, setMemoInsertTick] = useState(0)
+  const [autoSave, setAutoSave] = useAutoSavePref('hwpapp.autoSave', window.hwpApi)
   /** the file the document is in: the AI conversation is kept with it */
   const [filePath, setFilePath] = useState<string | null>(null)
   /** an untitled copy's name (a skill template's): the title it has until its first save */
   const copyNameRef = useRef<string | null>(null)
+  /** the editor holds a document read from a file, not the blank one a new document starts as */
+  const openedFileRef = useRef(false)
+  /** the notice of the fonts not on this PC was given; a new language marks them again only */
+  const missingToldRef = useRef(false)
   /** crash-recovery copies of the document (recovery-flow.ts), once it is in the editor */
   const copierRef = useRef<RecoveryCopier | null>(null)
   /** the editor holds a restored recovery copy that has not been saved since */
   const restoredRef = useRef(false)
-  /** the AI panel's way into the document: the app's plugin inside the editor */
+  /** true when this view runs as a hidden `--headless-export` window (never prompts) */
+  const headlessRef = useRef(false)
+  /** app-wide outline style-to-level mapping shared with TOC/Index dialogs and staleness checks */
+  const [outlineStyleMap, setOutlineStyleMap] = useState<OutlineStyleMap | null>(null)
+  const outlineStyleMapRef = useRef<OutlineStyleMap | null>(null)
+  outlineStyleMapRef.current = outlineStyleMap
+  /** app-wide bibliography library shared with the Bibliography tab and staleness checks */
+  const [bibEntries, setBibEntries] = useState<BibEntry[]>([])
+  const bibEntriesRef = useRef<BibEntry[]>([])
+  bibEntriesRef.current = bibEntries
+  /** non-null when the bibliography library file is corrupt, oversized, or unreadable */
+  const [bibLibraryError, setBibLibraryError] = useState<BibLibraryErrorInfo | null>(null)
+  /** non-null when the bibliography library file size is nearing its limit */
+  const [bibNearLimit, setBibNearLimit] = useState<BibNearLimitInfo | null>(null)
+  /** external command from Tool > References menu forwarded to the Bibliography tab */
+  const [bibCommand, setBibCommand] = useState<BibliographyCommandRequest | null>(null)
+  const bibCommandNonceRef = useRef(0)
+  /** pending citation-key rename banner when the open document cites `oldKey` */
+  const [pendingKeyRename, setPendingKeyRename] = useState<BibKeyRenameInfo | null>(null)
+  /** modal state for pre-save / pre-print staleness confirmation */
+  const [staleModal, setStaleModal] = useState<StalenessModalState | null>(null)
+  const stalePromptActiveRef = useRef(false)
+  /** app-wide macros shared across Hangul tabs */
+  const [macros, setMacros] = useState<MacroRecord[]>([])
+  const macrosRef = useRef<MacroRecord[]>([])
+  macrosRef.current = macros
+  const [macroStoreError, setMacroStoreError] = useState<MacroStoreErrorInfo | null>(null)
+  const [macroNearLimit, setMacroNearLimit] = useState<MacroNearLimitInfo | null>(null)
+  const [macroRecording, setMacroRecording] = useState(false)
+  const macroRecordingRef = useRef(false)
+  macroRecordingRef.current = macroRecording
+  const [macroManagerOpen, setMacroManagerOpen] = useState(false)
+  const [macroEditor, setMacroEditor] = useState<MacroEditorRequest | null>(null)
+  /** the app's plugin inside the editor, for the calls that change no document */
+  const pluginBridge = useMemo(() => createAgentBridge(() => editorRef.current), [])
+  /** the AI panel's way into the document: the same plugin, telling of each possible change */
   const agentBridge = useMemo(
     () =>
-      withChangeNotes(
-        createAgentBridge(() => editorRef.current),
-        () => copierRef.current?.noteChange(),
-      ),
-    [],
+      withChangeNotes(pluginBridge, () => {
+        copierRef.current?.noteChange()
+        setDocRevision((revision) => revision + 1)
+      }),
+    [pluginBridge],
   )
 
   // the shell's split panes: tell it whenever this pane gains focus
@@ -130,6 +368,18 @@ export default function App() {
     rememberAiPanelOpen(AI_OPEN_KEY, aiOpen)
   }, [aiOpen])
 
+  useEffect(() => {
+    rememberMemoPanelOpen(memoOpen)
+  }, [memoOpen])
+
+  useEffect(() => {
+    saveWorkpaneOpen(workpaneOpen)
+  }, [workpaneOpen])
+
+  useEffect(() => {
+    saveWorkpaneTab(workpaneTab)
+  }, [workpaneTab])
+
   // boot the editor once and load the file queued for this view
   useEffect(() => {
     let disposed = false
@@ -137,17 +387,22 @@ export default function App() {
     let stopDrop: (() => void) | null = null
     void (async () => {
       try {
-        const [path, theme, lang] = await Promise.all([
+        const [path, theme, lang, fontReads, headless] = await Promise.all([
           window.hwpApi.consumePending(),
           window.hwpApi.getTheme().catch((): UiTheme => 'system'),
           window.hwpApi.getLanguage(),
+          (window.hwpApi.fontFileReads?.() ?? Promise.resolve(null)).catch(() => null),
+          (window.hwpApi.isHeadlessExport?.() ?? Promise.resolve(false)).catch(() => false),
         ])
+        headlessRef.current = headless === true
         // the studio reads its settings before first paint, so they are seeded before it exists
         localStorage.setItem(
           STUDIO_SETTINGS_KEY,
           seededStudioSettings(localStorage.getItem(STUDIO_SETTINGS_KEY), theme),
         )
-        editor = await createEditor(hostRef.current!, { studioUrl: studioUrl(lang) })
+        editor = await createEditor(hostRef.current!, {
+          studioUrl: studioUrl(lang, fontReads, headless),
+        })
         if (disposed) {
           editor.destroy()
           return
@@ -165,12 +420,15 @@ export default function App() {
           if (!disposed) setPhase('ready')
           return
         }
+        openedFileRef.current = true
         formatRef.current = hwpFormatOfPath(path) ?? 'hwp'
+        setDocFormat(formatRef.current)
         // an untitled copy (a skill template's, spec 5.7) is read from its temp file but
         // has no file of its own: the AI conversation and the first save treat it as new
         const copy = (await window.hwpApi.untitledCopy?.().catch(() => null)) ?? null
         if (copy) {
           formatRef.current = copy.format
+          setDocFormat(copy.format)
           copyNameRef.current = copy.name
         } else setFilePath(path)
         const bytes = await window.hwpApi.readFile(path)
@@ -186,6 +444,10 @@ export default function App() {
         if (disposed) return
         if (editor && isBridgeTimeout(error)) return
         setPhase('failed')
+        if (editor && isPdfImportCancelled(error)) {
+          setNotice({ tone: 'info', key: 'pdfImportCancelled', sticky: true })
+          return
+        }
         setNotice({
           tone: 'error',
           key: editor ? 'openFailed' : 'editorFailed',
@@ -249,11 +511,26 @@ export default function App() {
       }
     }
     const frame = editor.element.contentWindow
+    /** one bump after the typing stops, not one per key: the memo list reads it again */
+    let memoTick: ReturnType<typeof setTimeout> | null = null
     const onChange = (event: Event) => {
       changes += 1
+      // the memo list may have gained or lost a memo (a paste adds one)
+      if (memoTick) clearTimeout(memoTick)
+      memoTick = setTimeout(() => setDocTick((tick) => tick + 1), MEMO_TICK_MS)
       report((event as CustomEvent<unknown>).detail === true || restoredRef.current)
     }
+    // one-time news the plugin sends when an edit took memos away or a paste left them behind
+    const onMemoEvent = (event: Event) => {
+      const mapped = memoNoticeOf(event.type, (event as CustomEvent<unknown>).detail)
+      if (!mapped) return
+      setNotice({ tone: 'info', key: mapped.key, params: mapped.params })
+      // the list changed even if the dirty notice for the same edit was missed
+      setDocTick((tick) => tick + 1)
+    }
     frame?.addEventListener(DIRTY_EVENT, onChange)
+    frame?.addEventListener(MEMO_REMOVED_EVENT, onMemoEvent)
+    frame?.addEventListener(MEMO_NOT_COPIED_EVENT, onMemoEvent)
     // an edit before the plugin is up has no event: ask once it is
     void agentBridge
       .foreignChanges()
@@ -262,55 +539,665 @@ export default function App() {
     const timer = setInterval(() => void check(), DIRTY_POLL_MS)
     return () => {
       clearInterval(timer)
+      if (memoTick) clearTimeout(memoTick)
       frame?.removeEventListener(DIRTY_EVENT, onChange)
+      frame?.removeEventListener(MEMO_REMOVED_EVENT, onMemoEvent)
+      frame?.removeEventListener(MEMO_NOT_COPIED_EVENT, onMemoEvent)
     }
   }, [phase, agentBridge])
 
-  const save = useCallback(
-    async (mode: SaveMode): Promise<boolean> => {
-      const editor = editorRef.current
-      if (!editor || savingRef.current) return false
-      savingRef.current = true
+  /** Save, close and quit wait for the memo editor (spec 3.2): say so, do not discard its text. */
+  const showMemoBlocked = useCallback(() => {
+    setNotice({ tone: 'error', key: 'memoSaveBlocked' })
+  }, [])
+
+  // main refuses a save, close or quit while a memo editor is open; say why, do not discard
+  useEffect(() => window.hwpApi.onMemoBlocked(showMemoBlocked), [showMemoBlocked])
+
+  const showMemoNotice = useCallback((notice: MemoNotice) => {
+    setNotice({ tone: notice.tone ?? 'info', key: notice.key, params: notice.params })
+  }, [])
+
+  // Save As > PDF: the PDF export, set once it exists below (it is made after the save)
+  const pdfCopyRef = useRef<(path: string, skipStaleCheck?: boolean) => Promise<void>>(
+    async () => {},
+  )
+
+  // Keep the app-wide outline style map in sync for TOC dialogs and staleness checks.
+  useEffect(() => {
+    let active = true
+    void window.hwpApi
+      .getOutlineStyleMap?.()
+      .then((map) => {
+        if (active) setOutlineStyleMap(map)
+      })
+      .catch(() => {})
+    const off = window.hwpApi.onOutlineStyleMapChanged?.((map) => {
+      if (active) setOutlineStyleMap(map)
+    })
+    return () => {
+      active = false
+      off?.()
+    }
+  }, [])
+
+  const bibMountedRef = useRef(true)
+  useEffect(() => {
+    bibMountedRef.current = true
+    return () => {
+      bibMountedRef.current = false
+    }
+  }, [])
+
+  const refreshBibLibraryState = useCallback(async () => {
+    try {
+      if (window.hwpApi.bibReadState) {
+        const res = await window.hwpApi.bibReadState()
+        if (!bibMountedRef.current) return
+        if (res.ok) {
+          setBibEntries(res.entries)
+          setBibLibraryError(null)
+          setBibNearLimit(
+            res.nearLimit ? { sizeBytes: res.sizeBytes, maxBytes: res.maxBytes } : null,
+          )
+        } else if (
+          res.reason === 'library_corrupt' ||
+          res.reason === 'library_too_large' ||
+          res.reason === 'library_read_error'
+        ) {
+          setBibEntries([])
+          setBibLibraryError({
+            reason: res.reason,
+            error: res.error,
+            corruptBackupPath: res.corruptBackupPath,
+            sizeBytes: res.sizeBytes,
+            maxBytes: res.maxBytes,
+          })
+          setBibNearLimit(null)
+        }
+        return
+      }
+      const res = await window.hwpApi.bibList?.()
+      if (!bibMountedRef.current || !res) return
+      if (res.ok) {
+        setBibEntries(res.entries)
+        setBibLibraryError(null)
+        setBibNearLimit(
+          res.nearLimit && res.sizeBytes !== undefined && res.maxBytes !== undefined
+            ? { sizeBytes: res.sizeBytes, maxBytes: res.maxBytes }
+            : null,
+        )
+      } else if (
+        res.reason === 'library_corrupt' ||
+        res.reason === 'library_too_large' ||
+        res.reason === 'library_read_error'
+      ) {
+        setBibEntries([])
+        setBibLibraryError({
+          reason: res.reason,
+          error: res.error,
+          corruptBackupPath: res.corruptBackupPath,
+          sizeBytes: res.sizeBytes,
+          maxBytes: res.maxBytes,
+        })
+        setBibNearLimit(null)
+      }
+    } catch {
+      // Ignore transient IPC read errors.
+    }
+  }, [])
+
+  // Keep the app-wide bibliography library in sync across Hangul tabs.
+  useEffect(() => {
+    let active = true
+    void refreshBibLibraryState()
+    const off = window.hwpApi.onBibChanged?.((entries) => {
+      if (!active) return
+      setBibEntries(entries)
+      setBibLibraryError(null)
+      if (window.hwpApi.bibReadState) {
+        void refreshBibLibraryState()
+      }
+    })
+    return () => {
+      active = false
+      off?.()
+    }
+  }, [refreshBibLibraryState])
+
+  const refreshMacroStoreState = useCallback(async () => {
+    try {
+      const res = await window.hwpApi.macrosReadState?.()
+      if (!bibMountedRef.current || !res) return
+      if (res.ok) {
+        setMacros(res.macros)
+        setMacroStoreError(null)
+        setMacroNearLimit(
+          res.nearLimit ? { sizeBytes: res.sizeBytes, maxBytes: res.maxBytes } : null,
+        )
+      } else if (
+        res.reason === 'library_corrupt' ||
+        res.reason === 'library_too_large' ||
+        res.reason === 'library_read_error'
+      ) {
+        setMacros([])
+        setMacroStoreError({
+          reason: res.reason,
+          error: res.error,
+          corruptBackupPath: res.corruptBackupPath,
+          sizeBytes: res.sizeBytes,
+          maxBytes: res.maxBytes,
+        })
+        setMacroNearLimit(null)
+      }
+    } catch {
+      // Ignore transient IPC read errors.
+    }
+  }, [])
+
+  // Keep the app-wide macro store in sync across Hangul tabs.
+  useEffect(() => {
+    let active = true
+    void refreshMacroStoreState()
+    const off = window.hwpApi.onMacrosChanged?.((nextMacros) => {
+      if (!active) return
+      setMacros(nextMacros)
+      setMacroStoreError(null)
+      if (window.hwpApi.macrosReadState) {
+        void refreshMacroStoreState()
+      }
+    })
+    return () => {
+      active = false
+      off?.()
+    }
+  }, [refreshMacroStoreState])
+
+  // Sync assigned macro shortcut slots to the editor plugin so unassigned Alt+slots
+  // pass through undisturbed.
+  useEffect(() => {
+    if (phase !== 'ready') return
+    const sync = (pluginBridge as { syncMacroSlots?: (slots: number[]) => Promise<unknown> })
+      .syncMacroSlots
+    if (typeof sync !== 'function') return
+    const assignedSlots = macros
+      .map((item) => item.slot)
+      .filter((slot): slot is number => typeof slot === 'number')
+    void sync(assignedSlots).catch(() => {})
+  }, [phase, pluginBridge, macros])
+
+  const runMacroInEditor = useCallback(
+    async (macro: { name: string; script: string }) => {
+      const result = await agentBridge.runMacro(macro.script, {
+        appStyleMap: outlineStyleMapRef.current,
+        bibEntries: bibEntriesRef.current,
+      })
+      if (result.ok && result.changed) {
+        setDocTick((tick) => tick + 1)
+      }
+      return result
+    },
+    [agentBridge],
+  )
+
+  const stopRecordingAndOpenEditor = useCallback(async (): Promise<void> => {
+    try {
+      const stopped = await pluginBridge.stopMacroRecording()
+      setMacroRecording(false)
+      setMacroEditor({
+        mode: 'recorded',
+        draft: {
+          origin: 'recorded',
+          script: stopped.script,
+          skipped: stopped.skipped,
+        },
+      })
+    } catch (error) {
+      setMacroRecording(false)
+      setNotice({
+        tone: 'error',
+        text: translateMacro(lang, 'errorActionFailed', { error: detailOf(error) }),
+      })
+    }
+  }, [lang, pluginBridge])
+
+  const toggleMacroRecording = useCallback(async (): Promise<void> => {
+    if (macroRecordingRef.current) {
+      await stopRecordingAndOpenEditor()
+      return
+    }
+    try {
+      const res = (await pluginBridge.startMacroRecording()) as
+        { ok?: boolean; recording?: boolean; reason?: string; error?: string } | undefined
+      if (res && res.ok === false) {
+        setNotice({
+          tone: 'error',
+          text:
+            res.reason === 'unsupported_place'
+              ? translateMacro(lang, 'noticeMacroOutsideBody')
+              : translateMacro(lang, 'errorActionFailed', { error: res.error || 'start_failed' }),
+        })
+        return
+      }
+      setMacroRecording(true)
+      setNotice({ tone: 'info', text: translateMacro(lang, 'noticeRecordingStarted') })
+    } catch (error) {
+      setNotice({
+        tone: 'error',
+        text: translateMacro(lang, 'errorActionFailed', { error: detailOf(error) }),
+      })
+    }
+  }, [lang, pluginBridge, stopRecordingAndOpenEditor])
+
+  const saveMacroFromEditor = useCallback(
+    async (payload: MacroEditorSavePayload): Promise<{ ok: boolean; error?: string }> => {
+      const res = payload.id
+        ? await window.hwpApi.macrosUpdate?.(payload.id, {
+            name: payload.name,
+            description: payload.description || null,
+            script: payload.script,
+            slot: payload.slot,
+          })
+        : await window.hwpApi.macrosAdd?.({
+            name: payload.name,
+            ...(payload.description ? { description: payload.description } : {}),
+            script: payload.script,
+            slot: payload.slot,
+            origin: payload.origin,
+          })
+      if (!res) {
+        return { ok: false, error: 'Macro store API is not available.' }
+      }
+      if (res.ok) {
+        setMacros(res.macros)
+        setMacroStoreError(null)
+        setMacroNearLimit(
+          res.nearLimit ? { sizeBytes: res.sizeBytes, maxBytes: res.maxBytes } : null,
+        )
+        setMacroEditor(null)
+        setNotice({
+          tone: 'info',
+          text: translateMacro(lang, 'noticeMacroSaved', { name: res.macro.name }),
+        })
+        return { ok: true }
+      }
+      if (
+        res.reason === 'library_corrupt' ||
+        res.reason === 'library_too_large' ||
+        res.reason === 'library_read_error'
+      ) {
+        setMacroStoreError({
+          reason: res.reason,
+          error: res.error,
+          corruptBackupPath: res.corruptBackupPath,
+          sizeBytes: res.sizeBytes,
+          maxBytes: res.maxBytes,
+        })
+        setMacroNearLimit(null)
+      }
+      return { ok: false, error: res.error }
+    },
+    [lang],
+  )
+
+  // Offer to rewrite citation marks in the open document when a library citation key is renamed.
+  useEffect(() => {
+    if (phase !== 'ready') return
+    let active = true
+    const off = window.hwpApi.onBibKeyRenamed?.((info) => {
+      void pluginBridge
+        .listCitationMarks(bibEntriesRef.current)
+        .then((res) => {
+          if (!active || !res?.ok) return
+          const cited = res.marks.some((mark) => mark.keys.includes(info.oldKey))
+          if (cited) setPendingKeyRename(info)
+        })
+        .catch(() => {})
+    })
+    return () => {
+      active = false
+      off?.()
+    }
+  }, [phase, pluginBridge])
+
+  // Pre-action staleness check for manual save, print, PDF export, and submission copy.
+  // Skipped automatically in headless export mode and never called by auto-save.
+  const runStalePrompt = useCallback(
+    async (action: StalenessAction): Promise<'continue' | 'cancel'> => {
+      if (headlessRef.current || phase !== 'ready') return 'continue'
+      if (stalePromptActiveRef.current) return 'cancel'
+      stalePromptActiveRef.current = true
       try {
-        const outcome = await runSave(savePortOf(editor), window.hwpApi, mode)
+        let latestManualEdits: Awaited<
+          ReturnType<typeof agentBridge.checkStaleItems>
+        >['manualEdits'] = []
+        const checkStale = async () => {
+          const report = await agentBridge.checkStaleItems({
+            appStyleMap: outlineStyleMapRef.current ?? undefined,
+            bibEntries: bibEntriesRef.current,
+          })
+          latestManualEdits = Array.isArray(report.manualEdits) ? report.manualEdits : []
+          return report
+        }
+
+        const promptUser = (
+          report: StaleCheckReport,
+          act: StalenessAction,
+        ): Promise<StalenessPromptChoice> =>
+          new Promise((resolve) => {
+            setStaleModal({
+              phase: 'stale',
+              action: act,
+              items: report.items,
+              initialManualEdits: latestManualEdits,
+              busy: false,
+              onChoice: (choice) => {
+                if (choice === 'refresh') {
+                  if (latestManualEdits.length === 0) {
+                    setStaleModal((cur) => (cur ? { ...cur, busy: true } : cur))
+                  }
+                } else {
+                  setStaleModal(null)
+                }
+                resolve(choice)
+              },
+            })
+          })
+
+        const confirmManualOverwrite = (manualItems: typeof latestManualEdits): Promise<boolean> =>
+          new Promise<boolean>((resolve) => {
+            setStaleModal({
+              phase: 'manual',
+              action,
+              manualItems,
+              busy: false,
+              onDecide: (decision) => {
+                if (decision) {
+                  setStaleModal((cur) => (cur ? { ...cur, busy: true } : cur))
+                } else {
+                  setStaleModal(null)
+                }
+                resolve(decision)
+              },
+            })
+          })
+
+        const refreshAll = async (): Promise<'continue' | 'cancel'> => {
+          const appStyleMap = outlineStyleMapRef.current ?? undefined
+          let allowOverwriteManual = false
+
+          // When read-only check already detected manual edits, confirm before calling
+          // refreshAllStale so refreshing produces strictly one undo step (or zero on skip).
+          if (latestManualEdits.length > 0) {
+            const overwrite = await confirmManualOverwrite(latestManualEdits)
+            if (!overwrite) {
+              setStaleModal(null)
+              return 'continue'
+            }
+            allowOverwriteManual = true
+          }
+
+          let res = await agentBridge.refreshAllStale({
+            appStyleMap,
+            bibEntries: bibEntriesRef.current,
+            allowOverwriteManual,
+          })
+
+          // Fallback if a manual edit occurred between checkStaleItems and the user's click:
+          // the first attempt rolled back atomically (0 undo steps), so a confirmed retry is still 1 step.
+          if (
+            !allowOverwriteManual &&
+            res.ok === false &&
+            res.reason === 'manual_edits' &&
+            res.manualEdits.length > 0
+          ) {
+            const overwrite = await confirmManualOverwrite(res.manualEdits)
+            if (!overwrite) {
+              setStaleModal(null)
+              return 'continue'
+            }
+            res = await agentBridge.refreshAllStale({
+              appStyleMap,
+              bibEntries: bibEntriesRef.current,
+              allowOverwriteManual: true,
+            })
+          }
+
+          setStaleModal(null)
+          if (res.ok === false) {
+            if (res.reason === 'has_objects' || res.reason === 'memo_removal_requires_approval') {
+              setNotice({
+                tone: 'error',
+                text: translateSubmission(lang, 'staleRefreshBlockedObjects'),
+              })
+            } else {
+              const errText =
+                (res.failed ?? []).map((entry) => entry.error).join('; ') || (res.reason ?? '')
+              setNotice({
+                tone: 'error',
+                text: translateSubmission(lang, 'staleRefreshFailed', {
+                  error: errText,
+                }),
+              })
+            }
+            return 'cancel'
+          }
+
+          if (res.refreshed > 0) {
+            setDocTick((tick) => tick + 1)
+            setNotice({
+              tone: 'info',
+              text: translateSubmission(lang, 'staleRefreshDone', { count: res.refreshed }),
+            })
+          }
+          return 'continue'
+        }
+
+        if (action === 'print' || action === 'pdf') {
+          return await checkStalenessBeforePrint(action, checkStale, promptUser, { refreshAll })
+        }
+        return await checkStalenessBeforeAction(action, checkStale, promptUser, { refreshAll })
+      } finally {
+        setStaleModal(null)
+        stalePromptActiveRef.current = false
+      }
+    },
+    [phase, agentBridge, lang],
+  )
+
+  const save = useCallback(
+    async (mode: BeginSaveMode, automatic = false): Promise<boolean> => {
+      const editor = editorRef.current
+      if (!editor) return false
+      // a memo editor is open: its text is not in the document yet; an autosave waits quietly
+      if (memoBlockedRef.current) {
+        if (!automatic) showMemoBlocked()
+        return false
+      }
+      if (!editor) return false
+      // a manual save waits for an autosave already running; an automatic one lets the
+      // save in flight stand for it (no second export, and no backoff)
+      while (savingRef.current) {
+        if (automatic) return true
+        const done = savingDoneRef.current
+        if (!done) break
+        await done
+      }
+      if (savingRef.current || editorRef.current !== editor) return false
+      savingRef.current = true
+      let release!: () => void
+      const done = new Promise<void>((resolve) => (release = resolve))
+      savingDoneRef.current = done
+      try {
+        const outcome = await runSave(
+          savePortOf(editor),
+          window.hwpApi,
+          mode,
+          automatic,
+          automatic
+            ? undefined
+            : { onStaleCheck: () => runStalePrompt(mode === 'save' ? 'save' : 'saveAs') },
+        )
+        if (outcome.kind === 'export') {
+          // a copy, as File > Export as PDF writes it; nothing about the document changes
+          await pdfCopyRef.current(outcome.path, true)
+          return false
+        }
         if (outcome.kind === 'saved') {
           restoredRef.current = false
           copierRef.current?.saved()
           setFilePath(outcome.path)
+          const savedFormat = hwpFormatOfPath(outcome.path)
+          if (savedFormat) {
+            formatRef.current = savedFormat
+            setDocFormat(savedFormat)
+          }
           const backup = outcome.backupPath ? { name: fileNameOf(outcome.backupPath) } : null
-          if (outcome.tailsLost) {
+          if (outcome.memosLost) {
+            // stays until dismissed: the file is written, but some memos are not in it
+            setNotice({
+              tone: 'error',
+              key: 'memoHwpxLost',
+              params: { count: outcome.memosLost },
+              ...(backup ? { detail: t('backupKept', backup) } : {}),
+            })
+          } else if (outcome.tailsLost) {
             // stays until dismissed: the file is written, but may not open in Hangul
             setNotice({
               tone: 'error',
               key: 'savedTailsLost',
               ...(backup ? { detail: t('backupKept', backup) } : {}),
             })
-          } else {
+          } else if (!automatic) {
             setNotice(backup ? { tone: 'info', key: 'backupKept', params: backup } : null)
           }
           return true
         }
         if (outcome.kind === 'failed') {
-          setNotice({
-            tone: 'error',
-            key:
-              outcome.reason === 'protected'
-                ? 'saveProtected'
-                : outcome.reason === 'tracked'
-                  ? 'saveTracked'
-                  : outcome.reason === 'verify'
-                    ? 'saveVerifyFailed'
-                    : 'saveFailed',
-            ...(outcome.detail ? { detail: outcome.detail } : {}),
-          })
+          // a protected or tracked document cannot be saved by this path at all;
+          // the manual save explains that once instead of every autosave backoff
+          const propertyFailure = outcome.reason === 'protected' || outcome.reason === 'tracked'
+          if (!automatic || !propertyFailure) {
+            const verifyDetail =
+              outcome.reason === 'verify'
+                ? outcome.verify && outcome.verify.pageCountBefore !== outcome.verify.pageCountAfter
+                  ? `${t('saveVerifyPages', {
+                      before: outcome.verify.pageCountBefore,
+                      after: outcome.verify.pageCountAfter,
+                    })} · ${t('saveVerifyHint')}`
+                  : t('saveVerifyHint')
+                : undefined
+            setNotice({
+              tone: 'error',
+              key:
+                outcome.reason === 'protected'
+                  ? 'saveProtected'
+                  : outcome.reason === 'tracked'
+                    ? 'saveTracked'
+                    : outcome.reason === 'verify'
+                      ? 'saveVerifyFailed'
+                      : 'saveFailed',
+              ...(verifyDetail
+                ? { detail: verifyDetail, action: 'saveAsHwpx' as const }
+                : outcome.detail
+                  ? { detail: outcome.detail }
+                  : {}),
+            })
+          }
         }
         return false
       } finally {
         savingRef.current = false
+        release()
+        if (savingDoneRef.current === done) savingDoneRef.current = null
       }
     },
-    [t],
+    [t, showMemoBlocked, runStalePrompt],
   )
+
+  const saveSubmission = useCallback(async (): Promise<boolean> => {
+    const editor = editorRef.current
+    if (!editor) {
+      window.hwpApi.abortSubmissionSave()
+      return false
+    }
+    if (memoBlockedRef.current) {
+      showMemoBlocked()
+      window.hwpApi.abortSubmissionSave()
+      return false
+    }
+    while (savingRef.current) {
+      const done = savingDoneRef.current
+      if (!done) break
+      await done
+    }
+    if (savingRef.current || editorRef.current !== editor) {
+      window.hwpApi.abortSubmissionSave()
+      return false
+    }
+    savingRef.current = true
+    let release!: () => void
+    const done = new Promise<void>((resolve) => (release = resolve))
+    savingDoneRef.current = done
+    try {
+      const outcome = await runSubmissionSave(submissionPortOf(editor), window.hwpApi, {
+        onStaleCheck: () => runStalePrompt('submission'),
+      })
+      if (outcome.kind === 'saved') {
+        const name = fileNameOf(outcome.path)
+        const backupDetail = outcome.backupPath
+          ? translateSubmission(lang, 'submissionBackupKept', {
+              name: fileNameOf(outcome.backupPath),
+            })
+          : undefined
+        if (outcome.tailsLost) {
+          setNotice({
+            tone: 'error',
+            text: translateSubmission(lang, 'submissionSavedTailsLost', { name }),
+            ...(backupDetail ? { detail: backupDetail } : {}),
+          })
+        } else {
+          setNotice({
+            tone: 'info',
+            text: translateSubmission(lang, 'submissionSaved', { name }),
+            ...(backupDetail ? { detail: backupDetail } : {}),
+          })
+        }
+        return true
+      }
+      if (outcome.kind === 'failed') {
+        const text =
+          outcome.reason === 'protected'
+            ? translateSubmission(lang, 'submissionFailedProtected')
+            : outcome.reason === 'tracked'
+              ? translateSubmission(lang, 'submissionFailedTracked')
+              : outcome.reason === 'same_as_open'
+                ? translateSubmission(lang, 'submissionFailedSameAsOpen')
+                : outcome.reason === 'strip_failed'
+                  ? translateSubmission(lang, 'submissionFailedStrip', {
+                      marks: (outcome.failedMarks ?? []).join(', '),
+                    })
+                  : outcome.reason === 'verify'
+                    ? translateSubmission(lang, 'submissionFailedVerify', {
+                        before: outcome.verify?.pageCountBefore ?? 0,
+                        after: outcome.verify?.pageCountAfter ?? 0,
+                      })
+                    : outcome.reason === 'export'
+                      ? translateSubmission(lang, 'submissionFailedExport', {
+                          error: outcome.detail ?? '',
+                        })
+                      : translateSubmission(lang, 'submissionFailedWrite', {
+                          error: outcome.detail ?? '',
+                        })
+        setNotice({ tone: 'error', text })
+      }
+      return false
+    } finally {
+      savingRef.current = false
+      release()
+      if (savingDoneRef.current === done) savingDoneRef.current = null
+    }
+  }, [lang, showMemoBlocked, runStalePrompt])
 
   // the embedded editor drops its own Save and Print, so its File menu gets the app's: they
   // go to the main process and come back as the requests Ctrl+S and Ctrl+P make
@@ -320,21 +1207,133 @@ export default function App() {
     if (!frame) return
     void agentBridge
       .installFileMenu({
+        open: t('fileOpen'),
         save: t('fileSave'),
         saveAs: t('fileSaveAs'),
+        saveSubmission: translateSubmission(lang, 'submissionMenuLabel'),
+        importPdf: t('fileImportPdf'),
         pdf: t('fileExportPdf'),
+        preview: t('filePreview'),
         print: t('filePrint'),
       })
       .catch(() => {})
     const onCommand = (event: Event) => {
       const command = (event as CustomEvent<unknown>).detail
-      if (command === 'save' || command === 'saveAs' || command === 'pdf' || command === 'print') {
+      if (
+        command === 'open' ||
+        command === 'save' ||
+        command === 'saveAs' ||
+        command === 'saveSubmission' ||
+        command === 'importPdf' ||
+        command === 'pdf' ||
+        command === 'preview' ||
+        command === 'print'
+      ) {
         window.hwpApi.requestFileCommand(command)
       }
     }
+    // the editor's Insert > Memo menu (T4): bring the memo column out and start adding
+    const onMemoInsert = () => {
+      setMemoOpen(true)
+      setMemoInsertTick((tick) => tick + 1)
+    }
     frame.addEventListener(FILE_COMMAND_EVENT, onCommand)
-    return () => frame.removeEventListener(FILE_COMMAND_EVENT, onCommand)
-  }, [phase, agentBridge, t])
+    frame.addEventListener(MEMO_INSERT_EVENT, onMemoInsert)
+    return () => {
+      frame.removeEventListener(FILE_COMMAND_EVENT, onCommand)
+      frame.removeEventListener(MEMO_INSERT_EVENT, onMemoInsert)
+    }
+  }, [phase, agentBridge, t, lang])
+
+  // Tool menu > Table of Contents / Index entries and context-menu probes.
+  useEffect(() => {
+    if (phase !== 'ready') return
+    void pluginBridge
+      .installTocIndexMenu(tocDialogLabelsFor(lang), { appStyleMap: outlineStyleMap })
+      .catch(() => {})
+  }, [phase, pluginBridge, lang, outlineStyleMap])
+
+  // the editor's right-click 쉬운 말로 풀기 (studio-easy-words-context-menu): named in the app's
+  // language, it hands the selected text over, and the AI panel explains it in plain words at
+  // once, through its usual gate. Naming it changes no document, so it skips the change notes
+  useEffect(() => {
+    if (phase !== 'ready') return
+    const frame = editorRef.current?.element.contentWindow
+    if (!frame) return
+    if (!aiOn) {
+      // AI is off: the item leaves the menus, and the AI's marks leave the pages with its panel
+      void pluginBridge.removeEasyWords().catch(() => {})
+      void pluginBridge.clearMarks().catch(() => {})
+      return
+    }
+    void pluginBridge.installEasyWords(t('easyWordsLabel')).catch(() => {})
+    const onEasyWords = (event: Event) => {
+      const request = easyWordsRequest((event as CustomEvent<unknown>).detail, t, Date.now())
+      if (!request) return
+      setAiPrefill(request)
+      setAiOpen(true)
+    }
+    frame.addEventListener(EASY_WORDS_EVENT, onEasyWords)
+    return () => frame.removeEventListener(EASY_WORDS_EVENT, onEasyWords)
+  }, [phase, pluginBridge, t, aiOn])
+
+  // the plugin tells when the pages come to carry marks of the AI's changes or lose them: the
+  // AI panel's button to clear them is there only while they are
+  useEffect(() => {
+    if (phase !== 'ready') return
+    const frame = editorRef.current?.element.contentWindow
+    if (!frame) return
+    const onMarks = (event: Event) => {
+      setMarksOnPage((event as CustomEvent<{ shown?: unknown }>).detail?.shown === true)
+    }
+    frame.addEventListener(MARKS_EVENT, onMarks)
+    return () => frame.removeEventListener(MARKS_EVENT, onMarks)
+  }, [phase])
+
+  // fonts that are not on this PC are drawn with others while the file keeps their names
+  // (a document from Hancom Office on a PC without it): the editor's font menu and font box
+  // mark them, and a document read from a file says which of its fonts are drawn that way.
+  // The blank new document is left alone: its fonts are marked in the font box
+  useEffect(() => {
+    if (phase !== 'ready') return
+    const frame = editorRef.current?.element.contentWindow
+    if (!frame) return
+    const onMissing = (event: Event) => {
+      const fonts = (event as CustomEvent<{ fonts?: unknown }>).detail?.fonts
+      if (missingToldRef.current || !openedFileRef.current) return
+      if (!Array.isArray(fonts) || fonts.length === 0) return
+      missingToldRef.current = true
+      const missing: Notice = {
+        tone: 'info',
+        key: 'missingFonts',
+        params: { fonts: fonts.join(', ') },
+      }
+      setNotice((current) => current ?? missing)
+    }
+    frame.addEventListener(MISSING_FONTS_EVENT, onMissing)
+    void pluginBridge
+      .watchMissingFonts({
+        tag: translateNow('missingFontTag'),
+        hint: translateNow('missingFontHint'),
+      })
+      .catch(() => {})
+    return () => frame.removeEventListener(MISSING_FONTS_EVENT, onMissing)
+  }, [phase, pluginBridge, lang])
+
+  // the characters of the block and of the document in the editor's status bar (issue #295),
+  // counted as 문서 정보 counts them once typing or the selection rests
+  useEffect(() => {
+    if (phase !== 'ready') return
+    void pluginBridge
+      .showCharCount({
+        total: translateNow('charCountTotal'),
+        selected: translateNow('charCountSelected'),
+        hint: translateNow('charCountHint'),
+        hintSelected: translateNow('charCountHintSelected'),
+        locale: lang,
+      })
+      .catch(() => {})
+  }, [phase, pluginBridge, lang])
 
   // crash-recovery copies while the document has unsaved changes; typing never waits on one
   useEffect(() => {
@@ -362,8 +1361,14 @@ export default function App() {
       if (opened.notice) setNotice({ tone: 'info', text: opened.notice, sticky: true })
     })()
     const frame = editor.element.contentWindow
-    const inEditor = () => copier.noteInput()
-    const elsewhere = () => copier.noteInput(false)
+    const inEditor = () => {
+      lastInputAtRef.current = Date.now()
+      copier.noteInput()
+    }
+    const elsewhere = () => {
+      lastInputAtRef.current = Date.now()
+      copier.noteInput(false)
+    }
     const editorEvents = [
       'keydown',
       'input',
@@ -398,10 +1403,16 @@ export default function App() {
 
   // saves asked for by the menu, the shortcut and the close prompt
   useEffect(() => {
-    const canSave = () => phase === 'ready' && !savingRef.current
+    const ready = () => phase === 'ready'
     const offSave = window.hwpApi.onSaveRequest((mode) => {
+      // a memo editor is open: do not discard its text, and tell the user why not
+      if (memoBlockedRef.current) {
+        showMemoBlocked()
+        window.hwpApi.abortSave()
+        return
+      }
       // the main process is waiting on this request; decline it rather than leave it hanging
-      if (!canSave()) {
+      if (!ready()) {
         window.hwpApi.abortSave()
         return
       }
@@ -414,51 +1425,289 @@ export default function App() {
             .context()
             .then((context) => context.isDirty !== false || restoredRef.current)
             .catch(() => true))
+        // save() queues behind an autosave already running; the main process is answered
+        // when that one (and this save) finish
         if (dirty) await save(mode)
         else window.hwpApi.abortSave()
       })()
     })
+    const offSubmissionSave = window.hwpApi.onSubmissionSaveRequest(() => {
+      if (memoBlockedRef.current) {
+        showMemoBlocked()
+        window.hwpApi.abortSubmissionSave()
+        return
+      }
+      if (!ready()) {
+        window.hwpApi.abortSubmissionSave()
+        return
+      }
+      void saveSubmission()
+    })
     const offClose = window.hwpApi.onCloseSaveRequest(() => {
-      if (!canSave()) window.hwpApi.sendCloseSaveResult(false)
-      else void save('save').then((ok) => window.hwpApi.sendCloseSaveResult(ok))
+      if (memoBlockedRef.current) {
+        showMemoBlocked()
+        window.hwpApi.sendCloseSaveResult(false)
+        return
+      }
+      if (!ready()) {
+        window.hwpApi.sendCloseSaveResult(false)
+        return
+      }
+      void (async () => {
+        // an autosave already running may be exactly what the close prompt is about
+        const running = savingDoneRef.current
+        if (savingRef.current && running) await running
+        const dirty = await editorRef.current?.commands
+          .context()
+          .then((context) => context.isDirty !== false || restoredRef.current)
+          .catch(() => true)
+        window.hwpApi.sendCloseSaveResult(dirty ? await save('save') : true)
+      })()
     })
     return () => {
       offSave()
+      offSubmissionSave()
       offClose()
     }
-  }, [phase, save])
+  }, [phase, save, saveSubmission, showMemoBlocked])
 
-  // PDF and print asked for by the menu and Ctrl+P: the pages are gathered here, and the
-  // main process makes the PDF or opens the print dialog
+  // Print and PDF: the pages are gathered here, and the main process makes the PDF or
+  // opens the print dialog. Print now goes through the preview, which calls runPrint.
   const printingRef = useRef(false)
+  const runPrint = useCallback(
+    async (
+      mode: PrintMode,
+      onProgress: (done: number, total: number) => void = () => {},
+      /** the PDF path Save As picked: no dialog then */
+      path?: string,
+    ): Promise<PrintResult> => {
+      if (phase !== 'ready') return { ok: false, error: 'the editor is not ready' }
+      if (printingRef.current) return { ok: false, error: 'already printing' }
+      printingRef.current = true
+      try {
+        const job = await gatherPrintJob(agentBridge, mode, onProgress)
+        return await (path === undefined
+          ? window.hwpApi.printPages(job)
+          : window.hwpApi.printPages(job, { path }))
+      } catch (error) {
+        return { ok: false, error: detailOf(error) }
+      } finally {
+        printingRef.current = false
+      }
+    },
+    [phase, agentBridge],
+  )
+
+  /** The preview's advanced print layout: the job's pages as the PDF export gathers them. */
+  const gatherLayoutJob = useCallback(
+    (onProgress: (done: number, total: number) => void): Promise<PrintJob> =>
+      phase === 'ready'
+        ? gatherPrintJob(agentBridge, 'pdf', onProgress)
+        : Promise.reject(new Error('the editor is not ready')),
+    [phase, agentBridge],
+  )
+
+  useEffect(() => {
+    previewRef.current = preview.open
+  }, [preview.open])
+
+  const openPreview = useCallback(
+    async (initialDestination?: string): Promise<void> => {
+      if (phase !== 'ready' || previewRef.current || printingRef.current) return
+      if (!headlessRef.current) {
+        const verdict = await runStalePrompt('print')
+        if (verdict === 'cancel') return
+        if (previewRef.current || printingRef.current) return
+      }
+      let page = 1
+      try {
+        const context = await editorRef.current?.getSelectionContext()
+        if (context && Number.isInteger(context.page) && context.page > 0) page = context.page
+      } catch {
+        // no caret yet: open at the first page
+      }
+      previewRef.current = true
+      setPreview({ open: true, initialPage: page - 1, initialDestination })
+    },
+    [phase, runStalePrompt],
+  )
+
+  const runQuickPrintHwp = useCallback(
+    async (printerLabel: string): Promise<void> => {
+      if (phase !== 'ready' || printingRef.current) return
+      if (!headlessRef.current) {
+        const verdict = await runStalePrompt('print')
+        if (verdict === 'cancel') return
+        if (printingRef.current) return
+      }
+      printingRef.current = true
+      setNotice({
+        tone: 'info',
+        text: printLayoutText(lang, 'quickPrintSending', { printer: printerLabel }),
+        sticky: true,
+      })
+      try {
+        const job = await gatherLayoutJob(() => {})
+        const result = await window.hwpApi.printLayout.print({
+          options: createDefaultOptions(),
+          editor: job,
+          job: { deviceName: '', copies: 1, collate: true, duplex: 'simplex' },
+        })
+        if (result.ok) {
+          setNotice({
+            tone: 'info',
+            text: printLayoutText(lang, 'quickPrintSent', { printer: printerLabel }),
+          })
+        } else if (!('aborted' in result)) {
+          setNotice({ tone: 'error', key: 'printFailed', detail: result.error })
+        } else {
+          setNotice(null)
+        }
+      } catch (error) {
+        setNotice({ tone: 'error', key: 'printFailed', detail: detailOf(error) })
+      } finally {
+        printingRef.current = false
+      }
+    },
+    [phase, lang, gatherLayoutJob, runStalePrompt],
+  )
+
+  const getHwpPageCount = useCallback(async (): Promise<number | null> => {
+    if (phase !== 'ready') return null
+    try {
+      const batch = await agentBridge.printPageSizes(0)
+      return typeof batch.pageCount === 'number' ? batch.pageCount : null
+    } catch {
+      return null
+    }
+  }, [phase, agentBridge])
+
+  const closePreview = useCallback((): void => {
+    previewRef.current = false
+    setPreview({ open: false, initialPage: 0 })
+  }, [])
+
+  /** Ctrl+Enter in the preview: put the caret on the page's first paragraph and close. */
+  const editPage = useCallback(
+    async (page: number): Promise<boolean> => {
+      try {
+        const target = await agentBridge.pageTarget(page)
+        if (!target.ok) return false
+        const focused = await editorRef.current?.focusTarget(target.target)
+        if (!focused?.focused) return false
+        closePreview()
+        return true
+      } catch {
+        return false
+      }
+    },
+    [agentBridge, closePreview],
+  )
+
+  // File > Print / Preview and Ctrl+P: open the preview, or print from it if it is open.
   useEffect(
     () =>
-      window.hwpApi.onPrintRequest((mode) => {
+      window.hwpApi.onPreviewRequest((action: PreviewAction) => {
         if (phase !== 'ready' || printingRef.current) return
-        printingRef.current = true
-        void (async () => {
-          const failed = mode === 'pdf' ? 'pdfFailed' : 'printFailed'
-          try {
-            const job = await gatherPrintJob(agentBridge, mode, (done, total) =>
+        if (previewRef.current) {
+          if (action === 'print') setPrintSignal((value) => value + 1)
+          return
+        }
+        void openPreview()
+      }),
+    [phase, openPreview],
+  )
+
+  /** File > Export as PDF, and Save As with PDF picked (`path`: no second dialog). */
+  const exportPdf = useCallback(
+    async (path?: string, skipStaleCheck = false): Promise<void> => {
+      const outcome = await runWithPrintStalenessCheck(
+        !skipStaleCheck && !headlessRef.current ? () => runStalePrompt('pdf') : undefined,
+        () =>
+          runPrint(
+            'pdf',
+            (done, total) =>
               setNotice({
                 tone: 'info',
                 key: 'printPreparing',
                 params: { done, total },
                 sticky: true,
               }),
-            )
-            setNotice({ tone: 'info', key: 'printSending', sticky: true })
-            const result = await window.hwpApi.printPages(job)
-            setNotice(result.ok ? null : { tone: 'error', key: failed, detail: result.error })
-          } catch (error) {
-            setNotice({ tone: 'error', key: failed, detail: detailOf(error) })
-          } finally {
-            printingRef.current = false
-          }
-        })()
-      }),
-    [phase, agentBridge],
+            path,
+          ),
+      )
+      if (outcome.canceled) return
+      const result = outcome.value
+      setNotice(result.ok ? null : { tone: 'error', key: 'pdfFailed', detail: result.error })
+    },
+    [runPrint, runStalePrompt],
   )
+
+  useEffect(() => {
+    pdfCopyRef.current = exportPdf
+  }, [exportPdf])
+
+  // Headless export mode (--headless-export): this view lives in a hidden window whose
+  // only job is the File menu's PDF export to the path the command line gave, then a
+  // report so the main process can exit. A document that did not open is reported, not
+  // exported as a blank page.
+  const headlessStartedRef = useRef(false)
+  useEffect(() => {
+    if (phase !== 'ready' && phase !== 'failed') return
+    if (headlessStartedRef.current) return
+    headlessStartedRef.current = true
+    void (async () => {
+      const outPath = await window.hwpApi.consumeHeadlessExport().catch(() => null)
+      if (!outPath) return
+      if (phase === 'failed') {
+        window.hwpApi.headlessExportDone({ ok: false, error: 'the input document did not open' })
+        return
+      }
+      const result = await runPrint('pdf', undefined, outPath)
+      window.hwpApi.headlessExportDone(
+        result.ok && !result.canceled
+          ? { ok: true }
+          : { ok: false, error: result.ok ? 'the PDF export was canceled' : result.error },
+      )
+    })()
+  }, [phase, runPrint])
+
+  // PDF still exports without a preview; the preview's PDF button uses runPrint directly.
+  useEffect(
+    () =>
+      window.hwpApi.onPrintRequest((mode) => {
+        if (mode !== 'pdf' || printingRef.current) return
+        void exportPdf()
+      }),
+    [exportPdf],
+  )
+
+  // autosave to the document's own file: 30 s and window blur, after the user has
+  // paused (exporting a whole HWP document costs more than the other editors' saves)
+  useEffect(() => {
+    if (!autoSave || phase !== 'ready' || !filePath) return
+    const editor = editorRef.current
+    if (!editor) return
+    const handle = startAutosave({
+      shouldSave: async () => {
+        if (
+          savingRef.current ||
+          memoBlockedRef.current ||
+          printingRef.current ||
+          presentingRef.current ||
+          copierRef.current?.busy()
+        )
+          return false
+        if (Date.now() - lastInputAtRef.current < AUTOSAVE_IDLE_MS) return false
+        return editor.commands
+          .context()
+          .then((context) => context.isDirty === true || restoredRef.current)
+          .catch(() => false)
+      },
+      save: () => save('save', true),
+    })
+    return () => handle.stop()
+  }, [autoSave, phase, filePath, save])
 
   // the document as it is now, for a reader outside the editor (the MCP tool that reads
   // open documents): exported in its own format, never written anywhere
@@ -488,8 +1737,9 @@ export default function App() {
     [],
   )
 
-  // F5: the document alone in fullscreen; the editor's menu/toolbar/status bar hide
-  // with its own chrome API and come back exactly as they were when the show ends.
+  // Ctrl+F5: the document alone in fullscreen; F5 and Shift+F5 stay with Hancom's
+  // cell blocks. The editor's menu/toolbar/status bar hide with its own chrome API
+  // and come back exactly as they were when the show ends.
   useEffect(() => {
     const enter = async (): Promise<void> => {
       const editor = editorRef.current
@@ -519,13 +1769,15 @@ export default function App() {
       if (document.fullscreenElement) void document.exitFullscreen().catch(() => {})
     }
     const onKey = (event: KeyboardEvent): void => {
-      const action = presentationKeyOf(event, presentingRef.current)
+      // the preview owns the screen (and its own F5/ Esc handling)
+      if (previewRef.current) return
+      const action = hwpPresentationKeyOf(event, presentingRef.current)
       if (!action) return
       event.preventDefault()
-      if (action === 'exit') {
-        event.stopPropagation()
-        exit()
-      } else void enter()
+      // the editor reads any F5 as a cell block: a key the show takes is not its key
+      event.stopPropagation()
+      if (action === 'exit') exit()
+      else void enter()
     }
     // The document lives inside rhwp's own frame, so keys pressed there never
     // reach this window: listen on both. A cross-origin frame simply gets none.
@@ -564,6 +1816,168 @@ export default function App() {
     return () => document.removeEventListener('fullscreenchange', onFullScreenChange)
   }, [presenting])
 
+  // Left workpane: register View-menu and Tool-menu bibliography entries when supported,
+  // listen for editor-frame commands (View > Workpane > Outline/Find/References, Tool >
+  // References actions, and Ctrl+F inside the iframe), and handle Ctrl+F / Cmd+F when
+  // focus is outside the editor iframe.
+  useEffect(() => {
+    if (phase !== 'ready') return
+    const frame = editorRef.current?.element.contentWindow
+    if (frame) {
+      void pluginBridge
+        .installWorkpaneMenu({
+          outline: translateWorkpane(lang, 'workpaneMenuOutline'),
+          find: translateWorkpane(lang, 'workpaneMenuFind'),
+          bibliography: translateWorkpane(lang, 'workpaneMenuBibliography'),
+        })
+        .catch(() => {})
+      void pluginBridge.installBibliographyMenu(bibliographyMenuLabelsFor(lang)).catch(() => {})
+      void pluginBridge.installMacroMenu(macroMenuLabelsFor(lang)).catch(() => {})
+    }
+    const onWorkpaneCommand = (event: Event): void => {
+      if (presentingRef.current || previewRef.current) return
+      const command = parseWorkpaneCommand((event as CustomEvent<unknown>).detail)
+      if (!command) return
+      if (command.action === 'close') {
+        setWorkpaneOpen(false)
+        return
+      }
+      if (command.action === 'toggle') {
+        if (command.tab) setWorkpaneTab(command.tab)
+        setWorkpaneOpen((open) => !open)
+        return
+      }
+      openWorkpane(command.tab, command.focus === true)
+    }
+    const onBibliographyCommand = (event: Event): void => {
+      if (presentingRef.current || previewRef.current) return
+      const action = (event as CustomEvent<{ action?: unknown }>).detail?.action
+      if (
+        action !== 'insert-citation' &&
+        action !== 'insert-bibliography' &&
+        action !== 'refresh-bibliography' &&
+        action !== 'open-tab'
+      ) {
+        return
+      }
+      openWorkpane('bibliography', true)
+      bibCommandNonceRef.current += 1
+      setBibCommand({
+        action: action as BibliographyCommandAction,
+        nonce: bibCommandNonceRef.current,
+      })
+    }
+    const onMacroCommand = (event: Event): void => {
+      if (presentingRef.current || previewRef.current) return
+      const detail = (event as CustomEvent<MacroCommandDetail | undefined>).detail
+      if (!detail || typeof detail.action !== 'string') return
+      if (detail.action === 'toggle-record') {
+        void toggleMacroRecording()
+        return
+      }
+      if (detail.action === 'stop-record') {
+        if (macroRecordingRef.current) {
+          void stopRecordingAndOpenEditor()
+        }
+        return
+      }
+      if (detail.action === 'open-manager') {
+        setMacroManagerOpen(true)
+        return
+      }
+      if (detail.action === 'run-slot' && typeof detail.slot === 'number') {
+        const slot = detail.slot
+        const macro = macrosRef.current.find((item) => item.slot === slot)
+        if (!macro) {
+          setNotice({
+            tone: 'info',
+            text: translateMacro(lang, 'noticeSlotEmpty', {
+              shortcut: shortcutLabelForSlot(slot),
+            }),
+          })
+          return
+        }
+        const wasRecording = macroRecordingRef.current
+        void runMacroInEditor(macro)
+          .then((result) => {
+            const outcome = formatMacroRunOutcome(lang, macro.name, result, {
+              whileRecording: wasRecording || macroRecordingRef.current,
+            })
+            setNotice({ tone: outcome.tone, text: outcome.text })
+          })
+          .catch((error) => {
+            setNotice(
+              formatMacroRunException(lang, error, {
+                whileRecording: wasRecording || macroRecordingRef.current,
+              }),
+            )
+          })
+      }
+    }
+    const onMacroRecordingEvent = (event: Event): void => {
+      const detail = (event as CustomEvent<MacroRecordingEventDetail | undefined>).detail
+      if (!detail || typeof detail !== 'object') return
+      if ('state' in detail) {
+        if (detail.state === 'started') {
+          setMacroRecording(true)
+        } else if (detail.state === 'stopped') {
+          setMacroRecording(false)
+        }
+        return
+      }
+      if (detail.kind === 'unsupported_command') {
+        setNotice({
+          tone: 'info',
+          text: translateMacro(lang, 'noticeUnsupportedCommand', {
+            label: localizeSkippedCommandLabel(lang, detail.commandId, detail.label),
+          }),
+        })
+      } else if (detail.kind === 'mouse_ignored') {
+        setNotice({
+          tone: 'info',
+          text: translateMacro(lang, 'noticeMouseIgnored'),
+        })
+      } else if (detail.kind === 'outside_body_ignored') {
+        setNotice({
+          tone: 'info',
+          text: translateMacro(lang, 'noticeOutsideBodyIgnored'),
+        })
+      } else if (detail.kind === 'slot_run_ignored') {
+        setNotice({
+          tone: 'info',
+          text: translateMacro(lang, 'noticeMacroRunNotRecorded'),
+        })
+      }
+    }
+    const onWorkpaneKeyDown = (event: KeyboardEvent): void => {
+      if (presentingRef.current || previewRef.current) return
+      if (!isWorkpaneFindShortcut(event)) return
+      event.preventDefault()
+      event.stopPropagation()
+      openWorkpane('find', true)
+    }
+    frame?.addEventListener(WORKPANE_COMMAND_EVENT, onWorkpaneCommand)
+    frame?.addEventListener(BIBLIOGRAPHY_COMMAND_EVENT, onBibliographyCommand)
+    frame?.addEventListener(MACRO_COMMAND_EVENT, onMacroCommand)
+    frame?.addEventListener(MACRO_RECORDING_EVENT, onMacroRecordingEvent)
+    window.addEventListener('keydown', onWorkpaneKeyDown, true)
+    return () => {
+      frame?.removeEventListener(WORKPANE_COMMAND_EVENT, onWorkpaneCommand)
+      frame?.removeEventListener(BIBLIOGRAPHY_COMMAND_EVENT, onBibliographyCommand)
+      frame?.removeEventListener(MACRO_COMMAND_EVENT, onMacroCommand)
+      frame?.removeEventListener(MACRO_RECORDING_EVENT, onMacroRecordingEvent)
+      window.removeEventListener('keydown', onWorkpaneKeyDown, true)
+    }
+  }, [
+    phase,
+    pluginBridge,
+    lang,
+    openWorkpane,
+    runMacroInEditor,
+    stopRecordingAndOpenEditor,
+    toggleMacroRecording,
+  ])
+
   useEffect(() => {
     if (notice?.tone !== 'info' || notice.sticky) return
     const timer = setTimeout(() => setNotice(null), INFO_NOTICE_MS)
@@ -594,21 +2008,205 @@ export default function App() {
     [phase, filePath, lang],
   )
 
+  const loadGeneratedHwpx = useCallback(
+    async (
+      path: string,
+    ): Promise<
+      { ok: true; mode: 'current' | 'new-tab'; title: string } | { ok: false; error: string }
+    > => {
+      const loader = window.hwpApi.loadGeneratedHwpx
+      if (!loader) return { ok: false, error: 'Opening generated HWP files is not available here.' }
+      const editor = editorRef.current
+      let isBlank = false
+      if (editor && !filePath && !openedFileRef.current) {
+        try {
+          const [ctx, text] = await Promise.all([editor.commands.context(), agentBridge.readText()])
+          isBlank = ctx.isDirty !== true && text.trim() === ''
+        } catch {
+          isBlank = false
+        }
+      }
+      const res = await loader(path, isBlank)
+      if (!res.ok) return res
+      if (res.mode === 'current') {
+        if (!editor) return { ok: false, error: 'The editor is not ready.' }
+        await editor.loadFile(res.bytes, res.name, { skipUnsavedGuard: true })
+        formatRef.current = res.format
+        setDocFormat(res.format)
+        copyNameRef.current = res.name
+        restoredRef.current = true
+        window.hwpApi.setDirty(true)
+        setDocTick((tick) => tick + 1)
+      }
+      return { ok: true, mode: res.mode, title: res.name }
+    },
+    [agentBridge, filePath],
+  )
+
   return (
     <div className={`hwp-app${presenting ? ' hwp-presenting' : ''}`} data-phase={phase}>
+      {phase === 'ready' && (
+        <div className="hwp-topbar">
+          <WorkpaneToggle open={workpaneOpen} onToggle={() => setWorkpaneOpen((open) => !open)} />
+          <button
+            type="button"
+            className="hwp-topbar-button"
+            aria-pressed={checkOpen}
+            onClick={() => setCheckOpen((open) => !open)}
+          >
+            {t('checkTitle')}
+          </button>
+          <MemoToggle open={memoOpen} onToggle={() => setMemoOpen((open) => !open)} />
+          {macroRecording && (
+            <div className="hwp-macro-recording-badge" data-testid="macro-recording-badge">
+              <span className="hwp-macro-recording-dot" aria-hidden="true" />
+              <span>{translateMacro(lang, 'recordingBadge')}</span>
+              <button
+                type="button"
+                className="hwp-macro-recording-stop"
+                data-testid="macro-recording-stop-btn"
+                onClick={() => void stopRecordingAndOpenEditor()}
+              >
+                {translateMacro(lang, 'recordingStopBtn')}
+              </button>
+            </div>
+          )}
+          <QuickPrintButton
+            lang={lang}
+            align="right"
+            disabled={preview.open}
+            listPrinters={window.hwpApi?.printLayout?.listPrinters}
+            prefStore={window.hwpApi?.printLayout}
+            getPageCount={getHwpPageCount}
+            onOpenDialog={(dest) => void openPreview(dest)}
+            onQuickPrint={runQuickPrintHwp}
+            onNoPrinter={(text) => setNotice({ tone: 'info', text })}
+          />
+          <label className={`autosave-toggle${autoSave ? ' on' : ''}`} data-tip={t('autoSaveTip')}>
+            <span className="autosave-knob" />
+            <span className="autosave-text">{t('autoSave')}</span>
+            <input
+              type="checkbox"
+              checked={autoSave}
+              onChange={(e) => setAutoSave(e.target.checked)}
+            />
+          </label>
+        </div>
+      )}
       <div className="app-main">
-        {/* the assistant works on an open document, so it appears with one */}
-        {phase === 'ready' && (
+        {/* the AI dock, then the memo column beside the document (as the PDF editor's notes);
+            both can be out at once, and both need an open document. The preview covers both. */}
+        {phase === 'ready' && !preview.open && aiOn && (
           <HwpAiDock
             open={aiOpen}
             setOpen={setAiOpen}
             bridge={agentBridge}
             filePath={filePath}
             templateDocument={templateDocument}
+            prefill={aiPrefill}
+            onPrefillTaken={takeAiPrefill}
+            marksOnPage={marksOnPage}
+            loadGeneratedHwpx={loadGeneratedHwpx}
+          />
+        )}
+        {phase === 'ready' && (
+          <MemoSide
+            open={memoOpen}
+            bridge={agentBridge}
+            changeTick={docTick}
+            insertTick={memoInsertTick}
+            onCollapse={() => setMemoOpen(false)}
+            onModalOpenChange={setMemoBlocked}
+            onNotice={showMemoNotice}
+          />
+        )}
+        {phase === 'ready' && !preview.open && (
+          <WorkpaneSide
+            open={workpaneOpen}
+            activeTab={workpaneTab}
+            onSelectTab={setWorkpaneTab}
+            onClose={() => setWorkpaneOpen(false)}
+            focusFindTick={focusFindTick}
+            layoutHint={`${aiOn ? (aiOpen ? 'a1' : 'a0') : 'ax'}-${memoOpen ? 'm1' : 'm0'}`}
+            renderTab={(tab, ctx) => {
+              if (tab === 'outline') {
+                return (
+                  <OutlineTab
+                    bridge={agentBridge}
+                    changeTick={docTick}
+                    visible={ctx.visible && ctx.activeTab === 'outline'}
+                  />
+                )
+              }
+              if (tab === 'find') {
+                return (
+                  <FindTab
+                    bridge={agentBridge}
+                    changeTick={docTick}
+                    focusTick={ctx.focusFindTick}
+                    visible={ctx.visible && ctx.activeTab === 'find'}
+                  />
+                )
+              }
+              if (tab === 'bibliography') {
+                return (
+                  <BibliographyTab
+                    bridge={agentBridge}
+                    entries={bibEntries}
+                    changeTick={docTick}
+                    visible={ctx.visible && ctx.activeTab === 'bibliography'}
+                    aiEnabled={aiOn}
+                    onRequestAiParseLines={
+                      aiOn
+                        ? (lines) => {
+                            if (lines.length === 0) return
+                            const safeLines = lines
+                              .map(
+                                (line, index) => `${index + 1}. ${line.replace(/```/g, '` ` `')}`,
+                              )
+                              .join('\n')
+                            const prompt =
+                              `${translateBiblio(lang, 'importAiPromptPrefix')}\n\n` +
+                              '```text\n' +
+                              `${safeLines}\n` +
+                              '```'
+                            setAiPrefill({ text: prompt, nonce: Date.now() })
+                            setAiOpen(true)
+                          }
+                        : undefined
+                    }
+                    command={bibCommand}
+                    pendingKeyRename={pendingKeyRename}
+                    onDismissKeyRename={() => setPendingKeyRename(null)}
+                    libraryError={bibLibraryError}
+                    nearLimit={bibNearLimit}
+                    onReloadLibrary={() => void refreshBibLibraryState()}
+                    onDocumentChanged={() => setDocTick((tick) => tick + 1)}
+                  />
+                )
+              }
+              return undefined
+            }}
           />
         )}
         <div className="hwp-stage">
           <div ref={hostRef} className="hwp-editor-host" />
+          {phase === 'ready' && checkOpen && (
+            <DocCheckPanel
+              bridge={agentBridge}
+              format={docFormat}
+              revision={docRevision}
+              onClose={() => setCheckOpen(false)}
+              onHandOff={
+                aiOn
+                  ? (request) => {
+                      setAiPrefill({ text: request, nonce: Date.now() })
+                      setAiOpen(true)
+                    }
+                  : undefined
+              }
+            />
+          )}
           {phase === 'booting' && <div className="hwp-cover">{t('loading')}</div>}
           {notice && (
             <div
@@ -619,18 +2217,83 @@ export default function App() {
                 <span>{notice.text ?? (notice.key ? t(notice.key, notice.params) : '')}</span>
                 {notice.detail && <span className="hwp-notice-detail">{notice.detail}</span>}
               </div>
+              {notice.action === 'saveAsHwpx' && (
+                <button
+                  type="button"
+                  className="hwp-notice-action"
+                  onClick={() => void save('saveAsHwpx')}
+                >
+                  {t('saveAsHwpx')}
+                </button>
+              )}
               <button
                 type="button"
                 className="hwp-notice-close"
                 aria-label={t('dismiss')}
                 onClick={() => setNotice(null)}
               >
-                ×
+                <IconClose size={14} />
               </button>
             </div>
           )}
         </div>
       </div>
+      {preview.open && (
+        <PrintPreview
+          bridge={agentBridge}
+          initialPage={preview.initialPage}
+          initialDestination={preview.initialDestination}
+          printSignal={printSignal}
+          onClose={closePreview}
+          onPrint={runPrint}
+          onEditPage={editPage}
+          printLayout={window.hwpApi.printLayout}
+          gatherJob={gatherLayoutJob}
+        />
+      )}
+      {staleModal && <StalenessModal lang={lang} state={staleModal} dismissLabel={t('dismiss')} />}
+      {macroManagerOpen && (
+        <MacroManagerModal
+          macros={macros}
+          recording={macroRecording}
+          storeError={macroStoreError}
+          nearLimit={macroNearLimit}
+          onReloadStore={() => refreshMacroStoreState()}
+          onMacrosUpdated={setMacros}
+          onRunMacro={runMacroInEditor}
+          onToggleRecording={toggleMacroRecording}
+          onOpenEditor={(request) => setMacroEditor(request)}
+          onClose={() => setMacroManagerOpen(false)}
+        />
+      )}
+      {macroEditor && (
+        <MacroEditorModal
+          mode={macroEditor.mode}
+          initialMacro={macroEditor.macro}
+          initialDraft={macroEditor.draft}
+          existingMacros={macros}
+          aiEnabled={aiOn}
+          disabled={macroStoreError !== null}
+          onSave={saveMacroFromEditor}
+          onRun={async (script, name) => {
+            const wasRecording = macroRecordingRef.current
+            try {
+              const result = await runMacroInEditor({ name, script })
+              const outcome = formatMacroRunOutcome(lang, name, result, {
+                whileRecording: wasRecording || macroRecordingRef.current,
+              })
+              setNotice({ tone: outcome.tone, text: outcome.text })
+            } catch (error) {
+              setNotice(
+                formatMacroRunException(lang, error, {
+                  whileRecording: wasRecording || macroRecordingRef.current,
+                }),
+              )
+            }
+          }}
+          onClose={() => setMacroEditor(null)}
+        />
+      )}
     </div>
   )
 }

@@ -30,13 +30,30 @@ import { queueHtmlSeedFor } from '../../../html/src/main/seed-main'
 import { queueMarkdownSeedFor } from '../../../markdown/src/main/seed-main'
 import { queueMindmapSeedFor } from '../../../mindmap/src/main/seed-main'
 import { queueSlidesSeedFor } from '../../../slides/src/main/seed-queue'
-import { createHwpView, hwpIsDirty, requestHwpClose } from '../../../hwp/src/main/hwp-main'
+import {
+  createHwpView,
+  hwpIsDirty,
+  hwpMemoModalOpen,
+  requestHwpClose,
+} from '../../../hwp/src/main/hwp-main'
 import {
   createMindmapView,
   mindmapIsDirty,
   requestMindmapClose,
 } from '../../../mindmap/src/main/mindmap-main'
 import { createEpubView, epubIsDirty, requestEpubClose } from '../../../epub/src/main/epub-main'
+import {
+  createDiagramView,
+  diagramIsDirty,
+  diagramTabIdentity,
+  requestDiagramClose,
+} from '../../../diagram/src/main/diagram-main'
+import {
+  createWhiteboardView,
+  requestWhiteboardClose,
+  whiteboardIsDirty,
+  whiteboardTabIdentity,
+} from '../../../whiteboard/src/main/whiteboard-main'
 import {
   createPdfView,
   clearPdfDirty,
@@ -62,6 +79,11 @@ import {
 import { rendererUrl, safeExternalUrl } from '@genoffice/electron-utils'
 import type { DocumentTabKind, OpenDocumentTab, TabKind, TabSummary } from '../shared/tabs-api'
 import { isSettledRect, tabStripHeight } from '../shared/tab-drag-geometry'
+import {
+  DEFAULT_FILE_PANEL_CHOICE,
+  filePanelInset,
+  type FilePanelChoice,
+} from '../shared/file-panel-api'
 import type {
   SplitDropIntent,
   SplitOrientation,
@@ -233,6 +255,8 @@ export class TabManager {
   private promptActiveIdSnapshot: string | null = null
   /** unloaded tabs whose opener is running (an opener that activates its own tab must not recurse) */
   private readonly loadingIds = new Set<string>()
+  /** the file panel beside editor views; closed until the shell applies the stored choice */
+  private filePanel: FilePanelChoice = { ...DEFAULT_FILE_PANEL_CHOICE }
 
   constructor(
     private readonly shellWindow: BrowserWindow,
@@ -323,6 +347,17 @@ export class TabManager {
     return { x: 0, y: 0, width, height }
   }
 
+  /**
+   * Open or close the file panel, or change its width. The panel is shell DOM
+   * painted left of the views, so the views make room for it here.
+   */
+  setFilePanel(choice: FilePanelChoice): void {
+    const prev = this.filePanel
+    if (prev.open === choice.open && prev.width === choice.width) return
+    this.filePanel = { ...choice }
+    this.layout()
+  }
+
   /** the layout space normal tab views live in: the window below the strip */
   private contentBounds(): Rectangle {
     const { width, height } = this.shellWindow.getContentBounds()
@@ -330,7 +365,15 @@ export class TabManager {
     // grows with it — positioning the view at the unscaled constant would
     // paint the document underneath a taller tab strip.
     const strip = tabStripHeight(this.uiScale())
-    return { x: 0, y: strip, width, height: Math.max(0, height - strip) }
+    // Home paints itself and has no view, so the inset only ever moves editor
+    // views; the shell hides the panel while Home is on screen.
+    const inset = filePanelInset({ ...this.filePanel, scale: this.uiScale() }, width)
+    return {
+      x: inset,
+      y: strip,
+      width: Math.max(0, width - inset),
+      height: Math.max(0, height - strip),
+    }
   }
 
   /** the tab whose view covers the whole window right now (HTML fullscreen / slides show) */
@@ -511,6 +554,10 @@ export class TabManager {
         return mindmapIsDirty(wc.id)
       case 'epub':
         return epubIsDirty(wc.id)
+      case 'diagram':
+        return diagramIsDirty(wc.id)
+      case 'whiteboard':
+        return whiteboardIsDirty(wc.id)
       default:
         return false
     }
@@ -712,6 +759,76 @@ export class TabManager {
   }
 
   /**
+   * Opens a diagram, or with no path a new one-page diagram that has no file
+   * until it is saved (its first save proposes `.drawio`). A Visio drawing
+   * opens as a new, untitled diagram made from it: the tab keeps no file (the
+   * `.vsdx` is never written) and finds it again through the editor's
+   * `diagramTabIdentity` (findDiagramTabByPath).
+   */
+  openDiagramTab(openPath?: string): string {
+    const view = createDiagramView(openPath)
+    const id = `t${this.nextId++}`
+    this.shellWindow.contentView.addChildView(view)
+    view.setVisible(false)
+    this.trackHtmlFullScreen(view)
+    this.trackPaneFocus(view)
+    const identity = openPath ? diagramTabIdentity(view.webContents.id) : null
+    const imported = identity?.imported !== undefined
+    this.tabs.push({
+      id,
+      kind: 'diagram',
+      view,
+      title: imported
+        ? identity!.title
+        : openPath
+          ? basename(openPath)
+          : this.untitled('diagram', 'Diagram'),
+      filePath: imported ? undefined : openPath,
+    })
+    this.activateTab(id)
+    return id
+  }
+
+  /**
+   * Opens a whiteboard (`.whiteboard`) or imports an Excalidraw scene
+   * (`.excalidraw`, `.excalidraw.png`, `.excalidraw.svg`) as an untitled board.
+   */
+  openWhiteboardTab(
+    openPath?: string,
+    options?: {
+      restoredCopy?: { bytes: Uint8Array; originalPath?: string | null }
+      title?: string
+    },
+  ): string {
+    const view = createWhiteboardView({
+      filePath: openPath,
+      restoredCopy: options?.restoredCopy,
+    })
+    const id = `t${this.nextId++}`
+    this.shellWindow.contentView.addChildView(view)
+    view.setVisible(false)
+    this.trackHtmlFullScreen(view)
+    this.trackPaneFocus(view)
+    const identity = openPath ? whiteboardTabIdentity(view.webContents.id) : null
+    const imported = identity?.imported !== undefined
+    this.tabs.push({
+      id,
+      kind: 'whiteboard',
+      view,
+      title: options?.title
+        ? options.title
+        : imported
+          ? identity!.title
+          : openPath
+            ? basename(openPath)
+            : this.untitled('whiteboard', 'Whiteboard'),
+      filePath: imported ? undefined : openPath,
+    })
+    this.activateTab(id)
+    return id
+  }
+
+  /**
    * The generate window's "make": a new untitled tab of the target kind, with
    * the request queued for that tab's webContents to take once. The view is
    * created and the request queued in the same tick, before its renderer can
@@ -723,7 +840,9 @@ export class TabManager {
         ? this.openSlidesTab()
         : handoff.target === 'html'
           ? this.openHtmlTab()
-          : this.openMindmapTab()
+          : handoff.target === 'whiteboard'
+            ? this.openWhiteboardTab()
+            : this.openMindmapTab()
     const contents = this.webContentsForTab(id)
     if (!contents) throw new Error('the new tab could not be opened')
     queueGenerateHandoffFor(contents, handoff)
@@ -751,9 +870,14 @@ export class TabManager {
   }
 
   /** Opens an HWP/HWPX file, or with no path a new blank document that has no file until it is saved */
-  openHwpTab(openPath?: string, options?: { untitledCopy?: { title: string } }): string {
+  openHwpTab(
+    openPath?: string,
+    options?: { untitledCopy?: { title: string; importedPdf?: boolean } },
+  ): string {
     const copy = options?.untitledCopy
-    const view = createHwpView(openPath, { untitledCopy: !!copy })
+    const view = createHwpView(openPath, {
+      untitledCopy: copy?.importedPdf ? { baseName: copy.title } : !!copy,
+    })
     const id = `t${this.nextId++}`
     this.shellWindow.contentView.addChildView(view)
     view.setVisible(false)
@@ -780,11 +904,25 @@ export class TabManager {
    * has no untitled document, so an EPUB copy is not opened either.
    */
   openTemplateCopy(copy: {
-    editor: 'docs' | 'sheets' | 'slides' | 'pdf' | 'markdown' | 'html' | 'mindmap' | 'hwp' | 'epub'
+    editor:
+      | 'docs'
+      | 'sheets'
+      | 'slides'
+      | 'pdf'
+      | 'markdown'
+      | 'html'
+      | 'mindmap'
+      | 'hwp'
+      | 'epub'
+      | 'whiteboard'
     path: string
     bytes: Uint8Array
     fileName: string
     title: string
+    /** where the first save suggests writing (a converted legacy file: beside the original) */
+    saveAsDefaultPath?: string
+    /** the legacy format the copy was converted from: the editor tells the person once */
+    importedFrom?: string
   }): { tabId: string; contents: WebContents } | null {
     let id: string
     switch (copy.editor) {
@@ -810,6 +948,12 @@ export class TabManager {
         markPdfUntitledCopy(copy.path)
         id = this.openPdfTab(copy.path)
         break
+      case 'whiteboard':
+        id = this.openWhiteboardTab(undefined, {
+          restoredCopy: { bytes: copy.bytes, originalPath: copy.saveAsDefaultPath ?? null },
+          title: copy.title,
+        })
+        break
       default:
         return null
     }
@@ -817,14 +961,21 @@ export class TabManager {
     if (!contents) return null
     // the decoder drops a leading byte order mark
     const text = () => new TextDecoder('utf-8').decode(copy.bytes)
-    if (copy.editor === 'docs') queueDocsCopy(contents.id, { path: copy.path, name: copy.fileName })
-    else if (copy.editor === 'markdown') queueMarkdownSeedFor(contents, text())
+    if (copy.editor === 'docs') {
+      queueDocsCopy(contents.id, {
+        path: copy.path,
+        name: copy.fileName,
+        saveAsDefaultPath: copy.saveAsDefaultPath,
+        importedFrom: copy.importedFrom,
+      })
+    } else if (copy.editor === 'markdown') queueMarkdownSeedFor(contents, text())
     else if (copy.editor === 'html') queueHtmlSeedFor(contents, text())
     else if (copy.editor === 'mindmap') queueMindmapSeedFor(contents, { bytes: copy.bytes })
     else if (copy.editor === 'slides') {
       queueSlidesSeedFor(contents, copy.bytes, {
         askPathOnFirstSave: true,
-        suggestedName: copy.fileName,
+        suggestedName: copy.saveAsDefaultPath ?? copy.fileName,
+        importedFrom: copy.importedFrom,
       })
     }
     // a tab without a file takes the copy's title (one with the copy's path shows its name)
@@ -1387,6 +1538,10 @@ export class TabManager {
         return this.openHwpTab(path)
       case 'epub':
         return path ? this.openEpubTab(path) : null
+      case 'diagram':
+        return this.openDiagramTab(path)
+      case 'whiteboard':
+        return this.openWhiteboardTab(path)
       default:
         return null
     }
@@ -1544,10 +1699,39 @@ export class TabManager {
       .map((t) => ({ id: t.id, webContents: t.view!.webContents }))
   }
 
+  /**
+   * hwp tabs the shell must ask before closing: unsaved edits, or an open memo
+   * editor whose text would otherwise be discarded (shell-close and quit guard).
+   */
+  dirtyOrMemoHwpTabs(): Array<{ id: string; webContents: WebContents }> {
+    return this.tabs
+      .filter(
+        (t) =>
+          t.kind === 'hwp' &&
+          t.view &&
+          (hwpIsDirty(t.view.webContents.id) || hwpMemoModalOpen(t.view.webContents.id)),
+      )
+      .map((t) => ({ id: t.id, webContents: t.view!.webContents }))
+  }
+
   /** book tabs with unsaved edits, in the main process or still in the renderer (shell-close guard) */
   dirtyEpubTabs(): Array<{ id: string; webContents: WebContents }> {
     return this.tabs
       .filter((t) => t.kind === 'epub' && t.view && epubIsDirty(t.view.webContents.id))
+      .map((t) => ({ id: t.id, webContents: t.view!.webContents }))
+  }
+
+  /** diagram tabs whose renderer reports unsaved edits (shell-close guard) */
+  dirtyDiagramTabs(): Array<{ id: string; webContents: WebContents }> {
+    return this.tabs
+      .filter((t) => t.kind === 'diagram' && t.view && diagramIsDirty(t.view.webContents.id))
+      .map((t) => ({ id: t.id, webContents: t.view!.webContents }))
+  }
+
+  /** whiteboard tabs whose renderer reports unsaved edits (shell-close guard) */
+  dirtyWhiteboardTabs(): Array<{ id: string; webContents: WebContents }> {
+    return this.tabs
+      .filter((t) => t.kind === 'whiteboard' && t.view && whiteboardIsDirty(t.view.webContents.id))
       .map((t) => ({ id: t.id, webContents: t.view!.webContents }))
   }
 
@@ -1598,7 +1782,8 @@ export class TabManager {
             ? requestMarkdownClose
             : tab.kind === 'html' && htmlIsDirty(tab.view.webContents.id)
               ? requestHtmlClose
-              : tab.kind === 'hwp' && hwpIsDirty(tab.view.webContents.id)
+              : tab.kind === 'hwp' &&
+                  (hwpIsDirty(tab.view.webContents.id) || hwpMemoModalOpen(tab.view.webContents.id))
                 ? requestHwpClose
                 : tab.kind === 'slides' && slidesIsDirty(tab.view.webContents.id)
                   ? requestSlidesClose
@@ -1608,6 +1793,12 @@ export class TabManager {
     }
     if (!closeGuard && tab.kind === 'epub' && tab.view) {
       if (epubIsDirty(tab.view.webContents.id)) closeGuard = requestEpubClose
+    }
+    if (!closeGuard && tab.kind === 'diagram' && tab.view) {
+      if (diagramIsDirty(tab.view.webContents.id)) closeGuard = requestDiagramClose
+    }
+    if (!closeGuard && tab.kind === 'whiteboard' && tab.view) {
+      if (whiteboardIsDirty(tab.view.webContents.id)) closeGuard = requestWhiteboardClose
     }
     // docs dirty state lives in the renderer and needs an async query; skip the guard when clean (avoids a flash activation)
     if (!closeGuard && tab.kind === 'docs' && tab.view) {
@@ -1647,6 +1838,16 @@ export class TabManager {
     if (id === HOME_ID) return false
     const tab = this.tabs.find((t) => t.id === id)
     if (!tab || this.closingIds.has(id)) return false
+    // a memo editor's text is not in the document yet: a promptless close (an
+    // agent's close, or a launch-recovery replacement) must not drop it
+    if (
+      tab.kind === 'hwp' &&
+      tab.view &&
+      !tab.view.webContents.isDestroyed() &&
+      hwpMemoModalOpen(tab.view.webContents.id)
+    ) {
+      return false
+    }
     this.removeTab(id)
     return true
   }
@@ -1868,6 +2069,54 @@ export class TabManager {
       : undefined
   }
 
+  /**
+   * The diagram tab showing this file: its own file, or the Visio drawing an
+   * untitled tab was made from (the editor's tab identity), so opening the
+   * same `.vsdx` again comes back to that tab.
+   */
+  findDiagramTabByPath(path?: string): string | undefined {
+    const own = this.findTabOfKindByPath('diagram', path)
+    if (own) return own
+    const wanted = canonicalPath(path)
+    if (wanted === undefined) return undefined
+    return this.tabs.find((t) => {
+      if (t.kind !== 'diagram' || !t.view || t.present) return false
+      const contents = t.view.webContents
+      if (contents.isDestroyed()) return false
+      const source = diagramTabIdentity(contents.id)?.sourcePath
+      return !!source && canonicalPath(source) === wanted
+    })?.id
+  }
+
+  /** the active tab's diagram view, if the active tab is a diagram (diagram menu target) */
+  activeDiagramTab(): { id: string; webContents: WebContents; filePath?: string } | undefined {
+    const tab = this.tabs.find((t) => t.id === this.activeId)
+    return tab?.kind === 'diagram' && tab.view
+      ? { id: tab.id, webContents: tab.view.webContents, filePath: tab.filePath }
+      : undefined
+  }
+
+  findWhiteboardTabByPath(path?: string): string | undefined {
+    const own = this.findTabOfKindByPath('whiteboard', path)
+    if (own) return own
+    const wanted = canonicalPath(path)
+    if (wanted === undefined) return undefined
+    return this.tabs.find((t) => {
+      if (t.kind !== 'whiteboard' || !t.view || t.present) return false
+      const contents = t.view.webContents
+      if (contents.isDestroyed()) return false
+      const source = whiteboardTabIdentity(contents.id)?.sourcePath
+      return !!source && canonicalPath(source) === wanted
+    })?.id
+  }
+
+  activeWhiteboardTab(): { id: string; webContents: WebContents; filePath?: string } | undefined {
+    const tab = this.tabs.find((t) => t.id === this.activeId)
+    return tab?.kind === 'whiteboard' && tab.view
+      ? { id: tab.id, webContents: tab.view.webContents, filePath: tab.filePath }
+      : undefined
+  }
+
   findHwpTabByPath(path?: string): string | undefined {
     return this.findTabOfKindByPath('hwp', path)
   }
@@ -1948,6 +2197,10 @@ export function createPlainEditorView(kind: DocumentTabKind, filePath?: string):
     case 'epub':
       if (!filePath) throw new Error('an EPUB tab needs its file')
       return createEpubView(filePath)
+    case 'diagram':
+      return createDiagramView(filePath)
+    case 'whiteboard':
+      return createWhiteboardView({ filePath })
   }
 }
 

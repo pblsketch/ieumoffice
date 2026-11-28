@@ -2,6 +2,7 @@ import React from 'react'
 import { createRoot } from 'react-dom/client'
 import { htmlDir, htmlLang, type Lang } from '@genoffice/i18n'
 import { App } from './App'
+import { installCanvasKerning } from './canvas-kerning'
 import { AudienceView } from './components/AudienceView'
 import { LocaleProvider, setModuleLang } from './i18n/locale'
 import type { UiTheme } from '../shared/ipc'
@@ -17,7 +18,10 @@ import '@genoffice/ui/markdown.css'
 import '@genoffice/ui/ai-panel-prefs.css'
 import '@genoffice/ui/ai-scope-quote.css'
 import './styles.css'
+import '@genoffice/ui/ai-panel.css'
 import { applyAiPanelPrefs, installScreenTips } from '@genoffice/ui'
+
+installCanvasKerning()
 
 installScreenTips()
 

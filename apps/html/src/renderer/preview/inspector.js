@@ -109,7 +109,7 @@
     [${MARK}-overlay="hover"] { outline: 1.5px dashed var(--gx-hover, #0f7fff); outline-offset: -1px; }
     [${MARK}-overlay="select"] { outline: 2px solid var(--gx-select, #0f7fff); outline-offset: -1px; background: rgba(15,127,255,0.05); }
     [${MARK}-overlay="dynamic"] { outline: 2px solid #f59e0b; outline-offset: -1px; }
-    [${MARK}-overlay="highlight"] { background: rgba(255,213,79,0.35); }
+    [${MARK}-overlay="highlight"] { background: var(--gx-ai-bg); box-shadow: inset 0 -2px 0 var(--gx-ai-line); }
     [${MARK}-label] { position: fixed; z-index: 2147483647; pointer-events: none; font: 11px/1 -apple-system, system-ui, sans-serif; color: #fff; background: var(--gx-select, #0f7fff); padding: 2px 6px; border-radius: 3px; white-space: nowrap; }
     [${MARK}-editing] { outline: 2px solid #2563eb !important; outline-offset: -1px; }
     [${MARK}-pin] { position: fixed; z-index: 2147483647; min-width: 18px; height: 18px; padding: 0 5px; box-sizing: border-box; border-radius: 9px; background: var(--gx-select, #0f7fff); color: #fff; font: 600 11px/18px -apple-system, system-ui, sans-serif; text-align: center; cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,0.3); }
@@ -181,6 +181,14 @@
     box.style.width = `${Math.max(r.width, 2)}px`
     box.style.height = `${Math.max(r.height, 2)}px`
   }
+  /** a mark of an AI change: an element with no box on the page (hidden, collapsed) gets none */
+  const placeMark = (box, el) => {
+    if (!el || !el.isConnected || el.getClientRects().length === 0) {
+      box.style.display = 'none'
+      return
+    }
+    place(box, el)
+  }
   const describe = (el) => {
     const cls = (el.getAttribute('class') || '').trim().split(/\s+/).filter(Boolean).slice(0, 2)
     return (
@@ -209,6 +217,8 @@
   const targetOf = (node) => {
     let el = node && node.nodeType === 3 ? node.parentElement : node
     if (!el || isOwn(el)) return null
+    const formula = el.closest('span[data-latex],div[data-latex]')
+    if (formula && sidOf(formula) !== null) return formula
     for (let cur = el; cur && cur !== document.documentElement; cur = cur.parentElement) {
       if (ATOMIC.has(cur.tagName.toLowerCase())) el = cur
     }
@@ -406,7 +416,7 @@
     placeHandles(extras.length ? null : selected)
     placeGrip(extras.length ? null : selected)
     extras.forEach((el, i) => place(extraBoxes[i], el))
-    for (const { box, el } of highlightBoxes) place(box, el)
+    for (const { box, el } of highlightBoxes) placeMark(box, el)
     for (const { pin, el } of markPins) placePin(pin, el)
     if (selected) postRect()
   }
@@ -476,6 +486,7 @@
    * editable (no text, or block children next to several runs: those edits go through AI or source) */
   const editMode = (el) => {
     if (!el || sidOf(el) === null || !TEXT_TAGS.has(el.tagName.toLowerCase())) return null
+    if (el.matches('span[data-latex],div[data-latex]')) return null
     if (!(el.textContent || '').trim()) return null
     const children = Array.from(el.children)
     if (children.length && children.every((c) => INLINE_TAGS.has(c.tagName.toLowerCase())))
@@ -500,6 +511,10 @@
    * range made before the edit is kept). Without a point the whole run is selected (toolbar / host entry). */
   const beginEdit = (el, at) => {
     if (!el || editing) return
+    if (el.matches('span[data-latex],div[data-latex]')) {
+      post({ type: 'gx:editMath', sid: sidOf(el) })
+      return
+    }
     const mode = editMode(el)
     if (!mode) return
     // read the pre-edit selection before focus() can move it
@@ -739,6 +754,8 @@
         pressed = { x: e.clientX, y: e.clientY, grip: true }
         return
       }
+      // Alt starts a rubber band even on the selection (see the band below)
+      if (e.altKey) return
       const el = targetOf(e.target)
       if (el !== selected || el === document.body || sidOf(el) === null) return
       if (overText(el, e.clientX, e.clientY)) return
@@ -948,6 +965,10 @@
       // A single left click on the text itself starts editing with the caret at the click
       // (PowerPoint/WPS); the box around the text only selects, so it stays the drag surface.
       const plain = e.button === 0 && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey
+      if (plain && el.matches('span[data-latex],div[data-latex]')) {
+        post({ type: 'gx:editMath', sid: sidOf(el) })
+        return
+      }
       if (plain && editMode(el) && overText(el, e.clientX, e.clientY))
         beginEdit(el, { x: e.clientX, y: e.clientY })
     },
@@ -1038,10 +1059,19 @@
     'keydown',
     (e) => {
       if (pressingDeckKey) return
+      const shortcutLetter = (ev) => {
+        const k = (ev.key || '').toLowerCase()
+        if (/^[a-z]$/.test(k)) return k
+        if (ev.altKey || ev.isComposing) return ''
+        const m = /^Key([A-Z])$/.exec(ev.code || '')
+        if (m) return m[1].toLowerCase()
+        return { ㅠ: 'b', ㅑ: 'i', ㅋ: 'z', ㅛ: 'y', ㅏ: 'k' }[ev.key] || ''
+      }
       if (editing) {
         e.stopPropagation()
         editKeys.add(e.code)
         const mod = (e.metaKey || e.ctrlKey) && !e.altKey
+        const editLetter = shortcutLetter(e)
         if (e.key === 'Escape') {
           // Esc = commit the text and return to the selected state (typed input is not lost, as in
           // Slides); an unchanged run goes out as a cancel and produces no history step
@@ -1050,7 +1080,7 @@
         } else if (e.key === 'Enter' && mod) {
           e.preventDefault()
           finishEdit(true)
-        } else if (mod && (e.key.toLowerCase() === 'b' || e.key.toLowerCase() === 'i')) {
+        } else if (mod && (editLetter === 'b' || editLetter === 'i')) {
           // bold / italic on a range selected inside the edited run: commit the run first, then
           // hand the host the range again (its re-select after the commit cleared it) and the command
           const range = textSelection()
@@ -1058,7 +1088,7 @@
           e.preventDefault()
           finishEdit(true)
           post(range)
-          post({ type: 'gx:keyCommand', command: e.key.toLowerCase() === 'b' ? 'bold' : 'italic' })
+          post({ type: 'gx:keyCommand', command: editLetter === 'b' ? 'bold' : 'italic' })
         }
         return
       }
@@ -1073,15 +1103,15 @@
         e.target &&
         (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable)
       const mod = (e.metaKey || e.ctrlKey) && !e.altKey
+      const letter = shortcutLetter(e)
       // the host owns history and zoom; the frame has keyboard focus, so relay the shortcuts
       if (mod && !inField) {
-        const lower = e.key.toLowerCase()
         const hostCommand =
-          lower === 'z'
+          letter === 'z'
             ? e.shiftKey
               ? 'redo'
               : 'undo'
-            : lower === 'y' && !e.shiftKey
+            : letter === 'y' && !e.shiftKey
               ? 'redo'
               : { '=': 'zoomIn', '+': 'zoomIn', '-': 'zoomOut', _: 'zoomOut', 0: 'zoomReset' }[
                   e.key
@@ -1106,7 +1136,7 @@
         ArrowRight: 'child',
         Escape: 'escape',
       }
-      const modKey = mod ? { k: 'askAi', b: 'bold', i: 'italic' }[e.key.toLowerCase()] : undefined
+      const modKey = mod ? { k: 'askAi', b: 'bold', i: 'italic' }[letter] : undefined
       const altKey =
         e.altKey && !mod ? { ArrowUp: 'moveUp', ArrowDown: 'moveDown' }[e.key] : undefined
       const command = modKey || altKey || map[e.key]
@@ -1124,14 +1154,15 @@
   }
   window.addEventListener('keypress', keepEditKey, true)
   window.addEventListener('keyup', keepEditKey, true)
-  // Chromium reports trackpad pinch as ctrl+wheel; the frame swallows wheel events, so relay it.
+  // Ctrl/⌘+wheel (and a trackpad pinch, which Chromium reports as ctrl+wheel) zooms the host's
+  // preview; the frame swallows wheel events, so relay it with its delta unit.
   // Browse mode (present views) has no zoom control: leave the event alone there.
   document.addEventListener(
     'wheel',
     (e) => {
       if (mode !== 'inspect' || (!e.ctrlKey && !e.metaKey)) return
       e.preventDefault()
-      post({ type: 'gx:zoom', delta: e.deltaY })
+      post({ type: 'gx:zoom', delta: e.deltaY, deltaMode: e.deltaMode })
     },
     { passive: false, capture: true },
   )
@@ -1154,19 +1185,52 @@
     if (editing && e.target === editing.el) finishEdit(true)
   })
 
-  // ---- rubber band: drag from a spot that is neither the selection nor text, and everything
-  // the rectangle fully encloses is selected (the outermost such elements, like a slide editor) ----
+  // ---- rubber band: drag from a spot that is neither the selection nor text (or anywhere with
+  // Alt held), and everything the rectangle fully encloses is selected (the outermost such
+  // elements, like a slide editor). Held at an edge of the viewport, the page keeps scrolling. ----
   let band = null
   const BAND_START = 5
+  const BAND_EDGE = 32
+  /** px per frame toward the edge the pointer rides (0 when it is not near one) */
+  const edgeStep = (pos, size) => {
+    if (pos < BAND_EDGE) return -Math.ceil((Math.min(BAND_EDGE, BAND_EDGE - pos) / BAND_EDGE) * 20)
+    if (pos > size - BAND_EDGE)
+      return Math.ceil((Math.min(BAND_EDGE, pos - (size - BAND_EDGE)) / BAND_EDGE) * 20)
+    return 0
+  }
+  const drawBand = () => {
+    const r = bandRect(band, band.at.x, band.at.y)
+    band.box.style.left = `${r.left}px`
+    band.box.style.top = `${r.top}px`
+    band.box.style.width = `${r.right - r.left}px`
+    band.box.style.height = `${r.bottom - r.top}px`
+  }
+  const bandScroll = () => {
+    if (!band || !band.box) return
+    band.frame = 0
+    const dx = edgeStep(band.at.x, window.innerWidth)
+    const dy = edgeStep(band.at.y, window.innerHeight)
+    if (!dx && !dy) return
+    const before = [window.scrollX, window.scrollY]
+    window.scrollBy(dx, dy)
+    // the page can scroll no further: stop asking every frame
+    if (window.scrollX === before[0] && window.scrollY === before[1]) return
+    drawBand()
+    band.frame = window.requestAnimationFrame(bandScroll)
+  }
+  /** within this of a side of the page, the band reaches that side: a row as wide as the page
+   * can only be enclosed by a band that starts on its very first pixel otherwise */
+  const BAND_SNAP = 16
   const bandRect = (from, x, y) => {
     const x0 = from.x - window.scrollX
     const y0 = from.y - window.scrollY
-    return {
-      left: Math.min(x0, x),
-      top: Math.min(y0, y),
-      right: Math.max(x0, x),
-      bottom: Math.max(y0, y),
-    }
+    // the visible page, without the scrollbar
+    const width = document.documentElement.clientWidth
+    let left = Math.min(x0, x)
+    let right = Math.max(x0, x)
+    if (left < BAND_SNAP) left = Math.min(left, 0)
+    if (width - right < BAND_SNAP) right = Math.max(right, width)
+    return { left, top: Math.min(y0, y), right, bottom: Math.max(y0, y) }
   }
   const enclosedBy = (r) => {
     const out = []
@@ -1175,8 +1239,13 @@
         if (isOwn(el) || out.length >= 200) continue
         const b = el.getBoundingClientRect()
         const sized = b.width > 0 && b.height > 0
+        // half a pixel of slack: a box laid out at a fraction sits on the band's snapped edge
         const inside =
-          sized && b.left >= r.left && b.right <= r.right && b.top >= r.top && b.bottom <= r.bottom
+          sized &&
+          b.left >= r.left - 0.5 &&
+          b.right <= r.right + 0.5 &&
+          b.top >= r.top - 0.5 &&
+          b.bottom <= r.bottom + 0.5
         if (inside && sidOf(el) !== null) out.push(el)
         // a box of no size (display: contents) can still hold boxes that are enclosed
         else if (
@@ -1193,6 +1262,7 @@
     const done = band
     band = null
     if (!done || !done.box) return
+    if (done.frame) window.cancelAnimationFrame(done.frame)
     done.box.remove()
     document.documentElement.removeAttribute(`${MARK}-banding`)
     post({ type: 'gx:drag', active: false })
@@ -1219,15 +1289,23 @@
       // a new press: a click still owed to the last drag never came and must not eat this one
       swallowClick = false
       if (!selecting() || editing || e.button !== 0 || isOwn(e.target)) return
-      const el = targetOf(e.target)
-      // pressing the selection drags it; pressing words is for the text
-      if (el && (el === selected || extras.includes(el))) return
-      if (el && overText(el, e.clientX, e.clientY)) return
+      if (e.altKey) {
+        // Alt: a band from anywhere, so a page made of text and full-width boxes still has a
+        // place to start one. No word selection or native drag starts under it.
+        e.preventDefault()
+      } else {
+        const el = targetOf(e.target)
+        // pressing the selection drags it; pressing words is for the text
+        if (el && (el === selected || extras.includes(el))) return
+        if (el && overText(el, e.clientX, e.clientY)) return
+      }
       band = {
         x: e.clientX + window.scrollX,
         y: e.clientY + window.scrollY,
+        at: { x: e.clientX, y: e.clientY },
         additive: e.shiftKey || e.metaKey || e.ctrlKey,
         box: null,
+        frame: 0,
       }
     },
     true,
@@ -1237,9 +1315,11 @@
     (e) => {
       if (!band) return
       if (!(e.buttons & 1)) return endBand(false)
-      const r = bandRect(band, e.clientX, e.clientY)
       if (!band.box) {
-        if (r.right - r.left < BAND_START && r.bottom - r.top < BAND_START) return
+        // the pointer's own travel, not the band's (a snapped side would start it at once)
+        const dx = Math.abs(e.clientX + window.scrollX - band.x)
+        const dy = Math.abs(e.clientY + window.scrollY - band.y)
+        if (dx < BAND_START && dy < BAND_START) return
         band.box = document.createElement('div')
         band.box.setAttribute(MARK, '')
         band.box.setAttribute(`${MARK}-band`, '')
@@ -1251,10 +1331,9 @@
         post({ type: 'gx:drag', active: true })
       }
       e.preventDefault()
-      band.box.style.left = `${r.left}px`
-      band.box.style.top = `${r.top}px`
-      band.box.style.width = `${r.right - r.left}px`
-      band.box.style.height = `${r.bottom - r.top}px`
+      band.at = { x: e.clientX, y: e.clientY }
+      drawBand()
+      if (!band.frame) bandScroll()
     },
     true,
   )
@@ -1895,8 +1974,16 @@
         highlightBoxes = msg.sids
           .map((sid) => bySid(sid))
           .filter(Boolean)
-          .map((el) => ({ box: overlay('highlight'), el }))
+          .map((el) => {
+            // the host's mark colours: the page cannot read the app's tokens
+            const box = overlay('highlight')
+            if (typeof msg.fill === 'string') box.style.setProperty('--gx-ai-bg', msg.fill)
+            if (typeof msg.line === 'string') box.style.setProperty('--gx-ai-line', msg.line)
+            return { box, el }
+          })
         refresh()
+        // pictures and fonts still loading move the boxes they mark
+        whenSettled().then(refresh)
         break
       case 'gx:mark':
         for (const { pin } of markPins) pin.remove()

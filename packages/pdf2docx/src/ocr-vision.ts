@@ -16,8 +16,8 @@ import type { Rect } from './geometry'
 import type { OcrEngine, OcrRecognition } from './ocr'
 
 /** helper output caps: a page render is a few MB, JSON a few hundred KB */
-const HELPER_MAX_BUFFER = 64 * 1024 * 1024
-const HELPER_TIMEOUT_MS = 30_000
+export const HELPER_MAX_BUFFER = 64 * 1024 * 1024
+export const HELPER_TIMEOUT_MS = 30_000
 
 interface HelperChar {
   t: string
@@ -37,6 +37,28 @@ const toRect = (b: [number, number, number, number]): Rect => ({
   y1: b[3],
 })
 
+/** parse the helper's stdout JSON (shared by sync pdf2docx and async viewer callers) */
+export function parseHelperOcrOutput(stdout: Buffer): OcrRecognition | null {
+  let parsed: { lines?: HelperLine[]; paper?: number }
+  try {
+    // defense in depth: .NET Framework consoles can prepend a UTF-8 BOM
+    const text = stdout.toString('utf8').replace(/^\uFEFF/, '')
+    parsed = JSON.parse(text) as { lines?: HelperLine[]; paper?: number }
+  } catch {
+    return null
+  }
+  if (!Array.isArray(parsed.lines)) return null
+  return {
+    lines: parsed.lines.map((l) => ({
+      text: l.t,
+      confidence: l.c,
+      box: toRect(l.b),
+      ...(l.chars ? { chars: l.chars.map((c) => ({ text: c.t, box: toRect(c.b) })) } : {}),
+    })),
+    ...(typeof parsed.paper === 'number' ? { paperShare: parsed.paper } : {}),
+  }
+}
+
 /** spawn wrapper shared by the platform engines (protocol is identical) */
 function createHelperOcrEngine(helperPath: string, languages?: string[]): OcrEngine {
   return (png: Uint8Array): OcrRecognition | null => {
@@ -45,26 +67,11 @@ function createHelperOcrEngine(helperPath: string, languages?: string[]): OcrEng
       input: png,
       maxBuffer: HELPER_MAX_BUFFER,
       timeout: HELPER_TIMEOUT_MS,
+      // win-ocr.exe is a console program; started from the GUI app it would open a window
+      windowsHide: true,
     })
     if (res.status !== 0 || res.stdout == null) return null
-    let parsed: { lines?: HelperLine[]; paper?: number }
-    try {
-      // defense in depth: .NET Framework consoles can prepend a UTF-8 BOM
-      const text = res.stdout.toString('utf8').replace(/^\uFEFF/, '')
-      parsed = JSON.parse(text) as { lines?: HelperLine[]; paper?: number }
-    } catch {
-      return null
-    }
-    if (!Array.isArray(parsed.lines)) return null
-    return {
-      lines: parsed.lines.map((l) => ({
-        text: l.t,
-        confidence: l.c,
-        box: toRect(l.b),
-        ...(l.chars ? { chars: l.chars.map((c) => ({ text: c.t, box: toRect(c.b) })) } : {}),
-      })),
-      ...(typeof parsed.paper === 'number' ? { paperShare: parsed.paper } : {}),
-    }
+    return parseHelperOcrOutput(res.stdout)
   }
 }
 

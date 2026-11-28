@@ -161,9 +161,16 @@ test.describe('docs mirrored margins', () => {
         .locator('.doc-page')
         .first()
         .evaluate((el) => el.getBoundingClientRect().width / (el as HTMLElement).offsetWidth)
-      const alphaLeft = (await alpha.boundingBox())!.x
-      const betaLeft = (await beta.boundingBox())!.x
-      expect(betaLeft - alphaLeft).toBeCloseTo(-24 * zoom, 0)
+      // the shift is a translate the layout applies after --col-dx lands, and
+      // the page re-renders while it settles: read the geometry until it holds
+      // instead of once, as the strip checks below do
+      await expect
+        .poll(async () => {
+          const a = await alpha.boundingBox()
+          const b = await beta.boundingBox()
+          return a && b ? b.x - a.x : Number.NaN
+        })
+        .toBeCloseTo(-24 * zoom, 0)
 
       // header/footer strips sit on their page's own margin: 1.25in on page 1, 1in on page 2
       await expect
@@ -219,12 +226,10 @@ test.describe('docs mirrored margins', () => {
       expect(lefts[0]).toBeCloseTo(1800 * PT_PER_TWIP, 0)
       expect(lefts[1]).toBeCloseTo(1440 * PT_PER_TWIP, 0)
 
-      // the exported PDF opens in its own tab: return to the document, close the
-      // preview the export opened, then Normal from the dialog clears the shift
+      // the exported PDF opens in its own tab: return to the document (the
+      // export closed the preview it opened), then Normal from the dialog clears the shift
       const shellPage = await waitForPageWithUrl(launched.app, 'shell/out')
       await shellPage.locator('.tab-bar .tab-item', { hasText: 'mirror.docx' }).click()
-      await expect(page.locator('.pagination-preview')).toBeVisible()
-      await page.keyboard.press('Escape')
       await expect(page.locator('.pagination-preview')).toBeHidden()
       await showTab(page, /^Layout$/)
       await page.getByRole('button', { name: 'Margins', exact: true }).click()

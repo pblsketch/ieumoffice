@@ -6,7 +6,7 @@
  * textpages: content-order text, per-page size and a char count that doubles
  * as the "does this page have a text layer at all" probe (scanned pages are 0).
  */
-import { chainPdfium, loadPdfium, withDocument, type Pdfium } from './text-edit'
+import { chainPdfium, loadPdfium, restoreLineHyphens, withDocument, type Pdfium } from './text-edit'
 
 export interface PdfPageText {
   /** 1-based page number */
@@ -39,6 +39,8 @@ export interface ReadPdfTextOptions {
   pages?: readonly number[]
   /** stop extracting once the accumulated text reaches this many chars */
   charBudget?: number
+  /** user password for an encrypted file */
+  password?: string
 }
 
 /**
@@ -78,14 +80,62 @@ function pageText(m: Pdfium, textPage: number, count: number): string {
   try {
     const written = m._FPDFText_GetText(textPage, 0, count, buf)
     if (written <= 0) return ''
-    return Buffer.from(m.HEAPU8.subarray(buf, buf + written * 2))
-      .toString('utf16le')
+    const raw = Buffer.from(m.HEAPU8.subarray(buf, buf + written * 2)).toString('utf16le')
+    return restoreLineHyphens(joinSameLineBreaks(m, textPage, count, raw))
       .replace(/\0+$/, '')
       .replace(/\r\n/g, '\n')
       .replace(/\r/g, '\n')
       .trimEnd()
   } finally {
     m._free(buf)
+  }
+}
+
+/**
+ * pdfium starts a new line whenever a glyph begins left of where the previous one ended,
+ * so PDFs that place kerned glyphs that way come back a few characters per line
+ * ("테\n스\n트"). A generated break whose neighbours share a baseline and run left to
+ * right is dropped again; a wide gap on the same line (a table cell) becomes a space.
+ * Same rule as the CLI's `pdf read` (packages/cli/src/formats/pdf.ts).
+ */
+function joinSameLineBreaks(m: Pdfium, textPage: number, count: number, text: string): string {
+  // GetText writes one UTF-16 unit per char index; bail out when that does not hold
+  if (text.replace(/\0+$/, '').length !== count) return text
+  const xy = m._malloc(16)
+  if (!xy) return text
+  try {
+    const origin = (i: number): [number, number] => {
+      m._FPDFText_GetCharOrigin(textPage, i, xy, xy + 8)
+      return [m.HEAPF64[xy >> 3]!, m.HEAPF64[(xy >> 3) + 1]!]
+    }
+    let out = ''
+    for (let i = 0; i < count; i++) {
+      const isBreak =
+        text[i] === '\r' &&
+        text[i + 1] === '\n' &&
+        i > 0 &&
+        i + 2 < count &&
+        m._FPDFText_IsGenerated(textPage, i) === 1
+      if (!isBreak) {
+        out += text[i]
+        continue
+      }
+      const [px, py] = origin(i - 1)
+      const [nx, ny] = origin(i + 2)
+      const size = Math.min(
+        m._FPDFText_GetFontSize(textPage, i - 1),
+        m._FPDFText_GetFontSize(textPage, i + 2),
+      )
+      if (size > 0 && Math.abs(ny - py) < size * 0.3 && nx > px) {
+        if (nx - px > size * 2) out += ' '
+        i += 1
+        continue
+      }
+      out += text[i]
+    }
+    return out
+  } finally {
+    m._free(xy)
   }
 }
 
@@ -99,7 +149,7 @@ export function readPdfText(
 ): Promise<PdfTextDoc> {
   return chainPdfium(async () => {
     const m = await loadPdfium()
-    return withDocument(m, bytes, async (doc) => {
+    const extract = async (doc: number): Promise<PdfTextDoc> => {
       const pageCount = m._FPDF_GetPageCount(doc)
       const from = Math.max(1, Math.min(options.fromPage ?? 1, pageCount))
       const to = Math.max(from, Math.min(options.toPage ?? pageCount, pageCount))
@@ -172,6 +222,7 @@ export function readPdfText(
         }
       }
       return { pageCount, info, pages, truncated }
-    })
+    }
+    return withDocument(m, bytes, extract, options.password)
   })
 }

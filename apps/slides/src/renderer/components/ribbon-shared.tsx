@@ -20,6 +20,8 @@ import type { WordArtPreset } from '@genoffice/ui'
 import type { ChartPresetDef, IconDef, SmartArtDef } from '../insert-presets'
 import type { ZoomMode } from '../zoom-actions'
 import type { SlideThemePreset } from '../themes'
+import type { CaseMode } from '../text-case'
+import type { MergeMode } from '../merge-shapes'
 import type { ChartStyleInfo } from '@genoffice/pptx-render'
 import { BUILTIN_FONT_FAMILIES } from '@genoffice/ui'
 import type { ContextTabRequest } from './context-tabs'
@@ -214,6 +216,10 @@ export type RibbonPanelKey =
   | 'layout'
   | 'translate'
   | 'arrange'
+  | 'case'
+  | 'highlight'
+  | 'spacing'
+  | 'merge'
   | 'insert'
   | 'chart'
   | 'collapse'
@@ -301,14 +307,23 @@ export interface Props {
   onSaveAs: () => void
   /** Export as PDF (hidden slides skipped) */
   onExportPdf: () => void
-  onPrint: () => void
+  onPrint: (initialDestination?: string) => void
+  onQuickPrint?: (printerLabel: string) => void | Promise<void>
+  listPrinters?: () => Promise<readonly import('@genoffice/ui').PrintPrinterInfo[]>
+  quickPrintPrefStore?: import('@genoffice/ui').QuickPrintPrefStore
+  getPrintPageCount?: () => number | null | Promise<number | null>
+  onQuickPrintNotice?: (message: string) => void
   /** Export as images (one PNG per page, hidden slides skipped) */
   onExportImages: () => void
+  /** Export as images (one JPG per page, hidden slides skipped) */
+  onExportImagesJpg: () => void
   onFormat: (cmd: FormatCmd) => void
   zoom: number
   onZoom: (z: number | ((current: number) => number)) => void
   showThumbs: boolean
   onToggleThumbs: () => void
+  /** AI is turned on in Settings; off, the AI buttons are not drawn */
+  aiOn: boolean
   aiOpen: boolean
   onToggleAi: () => void
   /** Push a preset instruction to the AI panel and expand it (autoRun executes immediately) */
@@ -334,6 +349,15 @@ export interface Props {
   layoutSize: GetLayoutsResult['size'] | null
   formatOpen: boolean
   onToggleFormat: () => void
+  /** Selection pane (right side): every element of the slide, front to back */
+  selectionPaneOpen?: boolean
+  onToggleSelectionPane?: () => void
+  /** Change case of the selected text (editing) or of every run of the selected boxes */
+  onChangeCase?: (mode: CaseMode) => void
+  /** Text highlight (#RRGGBB, null = none) on the selection or the selected boxes */
+  onHighlight?: (hex: string | null) => void
+  /** Character spacing in points (0 = normal) on the selection or the selected boxes */
+  onLetterSpacing?: (pt: number) => void
   hasSelection: boolean
   /** Whether the selection contains text-capable elements (text boxes/shapes/tables): font group availability outside editing (pictures/charts etc. grayed) */
   hasTextSelection: boolean
@@ -383,9 +407,11 @@ export interface Props {
   /** Switch the current page's layout / reset layout (placeholders back in position) */
   onSetLayout: (layoutPath: string) => void
   onResetLayout: () => void
-  /** Slide size (EMU) and the current size tag ('16:9'|'4:3'|null for display) */
+  /** Slide size (EMU); the menu reads the current size when it opens, to mark the preset and orientation */
   onSlideSize: (cx: number, cy: number) => void
-  slideSizeKey: '16:9' | '4:3' | null
+  getSlideSize: () => Promise<{ cx: number; cy: number } | null>
+  /** Slide Size › Custom Size… */
+  onCustomSlideSize: () => void
   /** Element-level paragraph format (bullets/numbering/line spacing) */
   onParagraphFormat: (patch: {
     bullet?: 'char' | 'number' | 'blip' | 'none'
@@ -428,6 +454,11 @@ export interface Props {
   /** Animation pane (right side) toggle */
   animPaneOpen: boolean
   onToggleAnimPane: () => void
+  /** Animation painter: armed for one target ('once') or until Esc ('continuous') */
+  animPainterMode?: 'once' | 'continuous' | null
+  /** Animation painter button: click copies the selection's animations for one target, double click keeps painting */
+  onAnimPainterClick?: () => void
+  onAnimPainterDoubleClick?: () => void
   /** Current page's animation count (preview button availability) */
   animCount: number
   /** Preview the current page's animations on the edit canvas */
@@ -558,6 +589,8 @@ export interface Props {
   tableStyleFlags?: { firstRow: boolean; bandRow: boolean; rtl?: boolean } | null
   /** Cell being edited in the selected table; shading applies to just this cell */
   tableActiveCell?: { row: number; col: number } | null
+  /** One or more targeted table cells (active edited cell or multi-cell selection) */
+  tableActiveCells?: Array<{ row: number; col: number }> | null
   /** Execute a chart edit operation */
   onEditChart?: (op: Omit<EditChartOp, 'slideIndex' | 'sourceId'>) => void
   /** Open the chart data edit dialog */
@@ -572,20 +605,35 @@ export interface Props {
       | 'center-v'
       | 'bottom'
       | 'distribute-h'
-      | 'distribute-v',
+      | 'distribute-v'
+      | 'same-w'
+      | 'same-h'
+      | 'same-size',
   ) => void
   /** Mirror the selection horizontally/vertically (a:xfrm flipH/flipV) */
   onFlip?: (axis: 'h' | 'v') => void
   /** Whether distribute operations are allowed (≥3 selected elements) */
   canDistribute?: boolean
+  /** Whether same width/height operations are allowed (≥2 selected elements) */
+  canMatchSize?: boolean
+  /** Merge Shapes on the selected shapes (≥2 shapes) */
+  onMergeShapes?: (mode: MergeMode) => void
+  canMergeShapes?: boolean
 }
 
 /** Ribbon locals + props handed to the extracted tab components; rebuilt every render. */
 export interface RibbonTabCtx extends Pick<
   Props,
+  | 'aiOn'
   | 'aiOpen'
   | 'brushMode'
   | 'canDistribute'
+  | 'canMatchSize'
+  | 'onChangeCase'
+  | 'onHighlight'
+  | 'onLetterSpacing'
+  | 'selectionPaneOpen'
+  | 'onToggleSelectionPane'
   | 'canPaste'
   | 'curBulletChar'
   | 'curAlign'
@@ -652,6 +700,9 @@ export interface RibbonTabCtx extends Pick<
   | 'zoom'
 > {
   arrangeOpen: boolean
+  caseOpen: boolean
+  highlightOpen: boolean
+  spacingOpen: boolean
   closePanels: (keep: RibbonPanelKey[]) => void
   collapseOpen: string | null
   collapsedGroups: string[]
@@ -680,6 +731,9 @@ export interface RibbonTabCtx extends Pick<
   onCustomTextColor: (value: string) => void
   paraOpen: boolean
   setArrangeOpen: Dispatch<SetStateAction<boolean>>
+  setCaseOpen: Dispatch<SetStateAction<boolean>>
+  setHighlightOpen: Dispatch<SetStateAction<boolean>>
+  setSpacingOpen: Dispatch<SetStateAction<boolean>>
   setCollapseOpen: Dispatch<SetStateAction<string | null>>
   setColorOpen: Dispatch<SetStateAction<boolean>>
   setFontOpen: Dispatch<SetStateAction<boolean>>

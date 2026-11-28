@@ -39,3 +39,39 @@ describe('png helpers', () => {
     expect(at(70, 45)).toBe(255)
   })
 })
+
+describe('contact sheets retain very thin pages', () => {
+  it.each([
+    [1000, 1, 10],
+    [1000, 2, 20],
+    [400, 1, 1],
+  ])('keeps a %s x %s page visible at tile width %s', (width, height, tileWidth) => {
+    const source = solid(width, height, [220, 30, 10])
+    const sheet = contactSheet([{ page: 1, png: source }], 1, tileWidth)
+    const tile = sheet.tiles[0]!
+    expect(tile.h).toBe(1)
+    const png = PNG.sync.read(sheet.png)
+    const offset = (tile.y * png.width + tile.x) * 4
+    expect(Array.from(png.data.subarray(offset, offset + 4))).toEqual([220, 30, 10, 255])
+  })
+  it('keeps thin and portrait pages aligned without leaving the thin tile blank', () => {
+    const sheet = contactSheet(
+      [
+        { page: 1, png: solid(1000, 1, [200, 20, 10]) },
+        { page: 2, png: solid(10, 20, [10, 20, 200]) },
+      ],
+      1,
+      10,
+    )
+    expect(sheet.tiles.map((tile) => tile.h)).toEqual([1, 20])
+    const png = PNG.sync.read(sheet.png)
+    for (const [index, expected] of [
+      [0, [200, 20, 10, 255]],
+      [1, [10, 20, 200, 255]],
+    ] as const) {
+      const tile = sheet.tiles[index]!
+      const offset = (tile.y * png.width + tile.x) * 4
+      expect(Array.from(png.data.subarray(offset, offset + 4))).toEqual(expected)
+    }
+  })
+})

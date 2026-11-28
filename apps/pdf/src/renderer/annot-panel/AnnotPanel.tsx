@@ -56,7 +56,7 @@ export interface AnnotPanelProps {
   toolbar?: ReactNode
 }
 
-const MARKUP_KINDS = new Set(['highlight', 'underline', 'strikeout'])
+const MARKUP_KINDS = new Set(['highlight', 'underline', 'squiggly', 'strikeout'])
 
 /** an annotation color is document data: shown as it is, not through the theme */
 const swatchColor = (c: Rgb): string =>
@@ -120,7 +120,9 @@ export function AnnotPanel(props: AnnotPanelProps) {
       t,
       createDocument,
     })
-    if (!result.ok) props.onNotice(t('apCreateFailed', { reason: result.error ?? '' }))
+    if (!result.ok && !result.canceled) {
+      props.onNotice(t('apCreateFailed', { reason: result.error ?? '' }))
+    }
   }
 
   const unavailable = props.createDocument ? null : t('apCreateUnavailable')

@@ -14,8 +14,8 @@
  */
 import { spawn as nodeSpawn } from 'node:child_process'
 import { tmpdir } from 'node:os'
-import { isSubscriptionProvider } from '../provider-selection'
-import type { AiSubscriptionProviderId } from '../types'
+import { isSubscriptionCli } from '../providers'
+import type { AiSubscriptionCliId, AiSubscriptionProviderId } from '../types'
 import {
   SUBSCRIPTION_INSTALL_COMMANDS,
   SUBSCRIPTION_INSTALL_URLS,
@@ -41,15 +41,31 @@ import {
 } from './process'
 
 /** The CLI's own sign-in command */
-const LOGIN_ARGS: Record<AiSubscriptionProviderId, string[]> = {
+const LOGIN_ARGS: Record<AiSubscriptionCliId, string[]> = {
   'claude-code': ['auth', 'login'],
   codex: ['login'],
+  antigravity: ['acp', '--login'],
 }
 
-/** The CLI's own sign-out command */
-const LOGOUT_ARGS: Record<AiSubscriptionProviderId, string[]> = {
+/** The CLI's own sign-out command (Antigravity logs out over ACP `auth/logout`) */
+const LOGOUT_ARGS: Record<Exclude<AiSubscriptionCliId, 'antigravity'>, string[]> = {
   'claude-code': ['auth', 'logout'],
   codex: ['logout'],
+}
+
+/** ACP logout runner supplied by `antigravity-acp.ts` */
+export type AntigravityLogoutSource = (context: {
+  program: SubscriptionProgram
+  timeoutMs: number
+  baseEnv?: NodeJS.ProcessEnv | undefined
+  spawn?: SubscriptionSpawn | undefined
+}) => Promise<boolean>
+
+let antigravityLogoutSource: AntigravityLogoutSource | null = null
+
+/** Register the Antigravity ACP logout runner. Pass null to clear it. */
+export function setAntigravityLogoutSource(source: AntigravityLogoutSource | null): void {
+  antigravityLogoutSource = source
 }
 
 /** A logout that has not finished by then is given up and its program ended */
@@ -71,9 +87,37 @@ export function onSubscriptionLoginChange(
 
 /** Tell the listeners of `onSubscriptionLoginChange`; one that throws does not stop the others */
 export function notifySubscriptionLoginChange(provider: AiSubscriptionProviderId): void {
-  for (const listener of [...loginChangeListeners]) {
+  tell(loginChangeListeners, provider)
+}
+
+interface SubscriptionOffChange {
+  provider: AiSubscriptionCliId
+  off: boolean
+}
+
+const offChangeListeners = new Set<(change: SubscriptionOffChange) => void>()
+
+/**
+ * Be told when a CLI was turned off in this app, or back on (decision 0114). A
+ * bridge that keeps one of its processes running ends it, and keeps none while
+ * the CLI is off. Returns a function that stops the listening.
+ */
+export function onSubscriptionOffChange(
+  listener: (change: SubscriptionOffChange) => void,
+): () => void {
+  offChangeListeners.add(listener)
+  return () => offChangeListeners.delete(listener)
+}
+
+/** Tell the listeners of `onSubscriptionOffChange`; one that throws does not stop the others */
+export function notifySubscriptionOffChange(change: SubscriptionOffChange): void {
+  tell(offChangeListeners, change)
+}
+
+function tell<P>(listeners: Set<(value: P) => void>, value: P): void {
+  for (const listener of [...listeners]) {
     try {
-      listener(provider)
+      listener(value)
     } catch {
       /* keep telling the others */
     }
@@ -302,7 +346,8 @@ export async function launchSubscriptionLogin(
   provider: AiSubscriptionProviderId,
   options: SubscriptionLoginOptions = {},
 ): Promise<SubscriptionLaunchResult> {
-  if (!isSubscriptionProvider(provider)) return { ok: false, reason: 'invalid' }
+  // only a vendor CLI has a program to launch (ChatGPT signs in with the app's own flow)
+  if (!isSubscriptionCli(provider)) return { ok: false, reason: 'invalid' }
   let program
   try {
     program = await (options.locate ?? locateSubscriptionProgram)(provider, {
@@ -355,7 +400,8 @@ export async function launchSubscriptionLogout(
   provider: AiSubscriptionProviderId,
   options: SubscriptionLogoutOptions = {},
 ): Promise<SubscriptionLaunchResult> {
-  if (!isSubscriptionProvider(provider)) return { ok: false, reason: 'invalid' }
+  // only a vendor CLI has a program to launch (ChatGPT signs in with the app's own flow)
+  if (!isSubscriptionCli(provider)) return { ok: false, reason: 'invalid' }
   let program
   try {
     program = await (options.locate ?? locateSubscriptionProgram)(provider, {
@@ -368,6 +414,16 @@ export async function launchSubscriptionLogout(
     return { ok: false, reason: 'not-installed', installUrl: SUBSCRIPTION_INSTALL_URLS[provider] }
   }
   try {
+    if (provider === 'antigravity') {
+      if (!antigravityLogoutSource) return { ok: false, reason: 'unsupported' }
+      const ok = await antigravityLogoutSource({
+        program,
+        timeoutMs: options.timeoutMs ?? SUBSCRIPTION_LOGOUT_TIMEOUT_MS,
+        baseEnv: options.baseEnv,
+        spawn: options.spawn,
+      })
+      return ok ? { ok: true } : { ok: false, reason: 'failed' }
+    }
     const result = await (options.run ?? runSubscriptionProgram)(program, LOGOUT_ARGS[provider], {
       signal: new AbortController().signal,
       timeoutMs: options.timeoutMs ?? SUBSCRIPTION_LOGOUT_TIMEOUT_MS,
@@ -390,13 +446,22 @@ export async function launchSubscriptionLogout(
  * constant in `SUBSCRIPTION_INSTALL_COMMANDS` and the full path of PowerShell
  * in the system directory: `start` looks for a bare program name in the working
  * directory before anywhere else.
+ *
+ * A fixed line is printed first: Claude's script turns off its progress display
+ * and says nothing until the download is done, so without it the window stays
+ * blank for minutes and looks stuck. The line is ASCII with no quote marks, so
+ * it sits inside both cmd's double quotes and PowerShell's single quotes as is.
  */
+export const SUBSCRIPTION_INSTALL_WINDOW_NOTE =
+  'Installing. The download can take a few minutes, and this window may show nothing until it is done. Keep this window open.'
+
 export function subscriptionInstallCommandLine(
-  provider: AiSubscriptionProviderId,
+  provider: AiSubscriptionCliId,
   env: NodeJS.ProcessEnv = process.env,
 ): string {
   const powershell = windowsSystemTool(env, 'WindowsPowerShell', 'v1.0', 'powershell.exe')
-  return `start "" "${powershell}" -NoLogo -NoExit -Command "${SUBSCRIPTION_INSTALL_COMMANDS[provider]}"`
+  const command = `Write-Host '${SUBSCRIPTION_INSTALL_WINDOW_NOTE}'; ${SUBSCRIPTION_INSTALL_COMMANDS[provider]}`
+  return `start "" "${powershell}" -NoLogo -NoExit -Command "${command}"`
 }
 
 export interface SubscriptionInstallOptions {
@@ -420,7 +485,8 @@ export async function launchSubscriptionInstall(
   provider: AiSubscriptionProviderId,
   options: SubscriptionInstallOptions = {},
 ): Promise<SubscriptionLaunchResult> {
-  if (!isSubscriptionProvider(provider)) return { ok: false, reason: 'invalid' }
+  // only a vendor CLI has a program to launch (ChatGPT signs in with the app's own flow)
+  if (!isSubscriptionCli(provider)) return { ok: false, reason: 'invalid' }
   const installUrl = SUBSCRIPTION_INSTALL_URLS[provider]
   if ((options.platform ?? process.platform) !== 'win32') {
     return { ok: false, reason: 'unsupported', installUrl }
@@ -476,8 +542,10 @@ const WINGET_CODEX_PACKAGE = /[\\/]microsoft[\\/]winget[\\/]packages[\\/]openai\
 export function subscriptionUpdatePlan(
   program: SubscriptionProgram,
 ): SubscriptionUpdatePlan | null {
-  // `claude update` updates a native install and an npm one alike
-  if (program.provider === 'claude-code') return { kind: 'program', args: ['update'] }
+  // `claude update` and `agy update` update the located copy directly
+  if (program.provider === 'claude-code' || program.provider === 'antigravity') {
+    return { kind: 'program', args: ['update'] }
+  }
   const paths = [program.entry, program.command]
   if (paths.some((path) => NPM_CODEX.test(path))) {
     return { kind: 'command', command: SUBSCRIPTION_CODEX_UPDATE_COMMANDS.npm }
@@ -536,7 +604,8 @@ export async function launchSubscriptionUpdate(
   provider: AiSubscriptionProviderId,
   options: SubscriptionUpdateOptions = {},
 ): Promise<SubscriptionLaunchResult> {
-  if (!isSubscriptionProvider(provider)) return { ok: false, reason: 'invalid' }
+  // only a vendor CLI has a program to launch (ChatGPT signs in with the app's own flow)
+  if (!isSubscriptionCli(provider)) return { ok: false, reason: 'invalid' }
   const installUrl = SUBSCRIPTION_INSTALL_URLS[provider]
   const platform = options.platform ?? process.platform
   if (platform !== 'win32') return { ok: false, reason: 'unsupported', installUrl }

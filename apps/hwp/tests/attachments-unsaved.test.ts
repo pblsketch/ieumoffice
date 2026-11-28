@@ -30,25 +30,31 @@ vi.mock('@genoffice/file-parse', () => ({
   ATTACHABLE_EXTS: new Set(['txt', 'md', 'docx', 'pdf', 'hwp', 'hwpx', 'png', 'jpg']),
   ATTACHABLE_IMAGE_EXTS: new Set(['png', 'jpg']),
   ATTACHABLE_MAX_BYTES: 50 * 1024 * 1024,
+  attachableMaxBytes: () => 50 * 1024 * 1024,
   ATTACHABLE_IMAGE_MAX_BYTES: 5 * 1024 * 1024,
+  diagramPictureExtOf: () => null,
+  diagramPictureExtOfName: () => null,
 }))
-// the real unsaved-files helper, by path: the package root reaches Electron
+// the real unsaved-files & path-grants helpers, by path: the package root reaches Electron
 vi.mock('@genoffice/electron-utils', async () => ({
   showOpenDialogWithMemory: vi.fn(),
   ...(await import('../../../packages/electron-utils/src/unsaved-files')),
+  ...(await import('../../../packages/electron-utils/src/path-grants')),
 }))
 
 import {
   UNSAVED_CHANGES_MESSAGE,
   setOpenFilesSource,
 } from '../../../packages/electron-utils/src/unsaved-files'
+import { sharedPathGrants } from '../../../packages/electron-utils/src/path-grants'
 import { registerHwpAttachmentIpc } from '../src/main/attachments-ipc'
 
 type ReadResult = { ok: boolean; text?: string; error?: string }
 let dir: string
 
-function read(path: string): Promise<ReadResult> {
+function read(path: string, grant = true): Promise<ReadResult> {
   handlers.clear()
+  if (grant) sharedPathGrants().grant(3, [path])
   registerHwpAttachmentIpc()
   const fn = handlers.get('hwp:files-read') as unknown as (
     e: unknown,
@@ -56,7 +62,7 @@ function read(path: string): Promise<ReadResult> {
     offset: number,
     maxChars: number,
   ) => Promise<ReadResult>
-  return fn({}, path, 0, 1000)
+  return fn({ sender: { id: 3 } }, path, 0, 1000)
 }
 
 beforeEach(() => {
@@ -64,6 +70,7 @@ beforeEach(() => {
   parseFileToText.mockClear()
 })
 afterEach(() => {
+  sharedPathGrants().release(3)
   setOpenFilesSource(null)
   rmSync(dir, { recursive: true, force: true })
 })
@@ -96,5 +103,15 @@ describe('hwp:files-read and a file open with unsaved changes', () => {
     const path = join(dir, 'standalone.md')
     writeFileSync(path, 'x')
     expect((await read(path)).ok).toBe(true)
+  })
+
+  it('refuses an ungranted path before touching disk', async () => {
+    const path = join(dir, 'ungranted.md')
+    writeFileSync(path, 'x')
+    expect(await read(path, false)).toEqual({
+      ok: false,
+      error: 'hwp: path not granted to this view',
+    })
+    expect(parseFileToText).not.toHaveBeenCalled()
   })
 })

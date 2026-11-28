@@ -5,6 +5,13 @@
 /// schema and the preload's hand-rolled validator (which stays zod-free).
 export const MAX_SAVE_EDITS = 1_000_000
 
+/// Cap on structural ops (row/column inserts, sizes, visibility, outline,
+/// merges) in one save request. Unmerging a sheet journals one op per merged
+/// region and restoring row heights one per line, so a sheet-scale edit runs
+/// into the thousands. The save applies consecutive ops of one kind in a
+/// single pass, so this guards the transfer size, not the save's cost.
+export const MAX_SAVE_STRUCTURAL_OPS = 100_000
+
 /// Above this, the renderer stages edits through the chunked transfer
 /// instead of the inline request: live object graphs cross the context
 /// bridge property by property (~38s for a million edits measured on an M-
@@ -52,6 +59,7 @@ export const IPC_CHANNELS = {
   /** Open explicit paths (chat attachments) as merge-source sessions — no dialog */
   openWorkbooksForMerge: 'workbook:open-for-merge',
   readWorkbookRange: 'workbook:read-range',
+  filterWorkbookRows: 'workbook:filter-rows',
   readWorkbookFormulas: 'workbook:read-formulas',
   /** Sidecar-side Find over the file's chunk index (streamed workbooks) */
   findWorkbookCells: 'workbook:find-cells',
@@ -67,6 +75,8 @@ export const IPC_CHANNELS = {
   recalcWorkbook: 'workbook:recalc',
   readWorkbookMedia: 'workbook:read-media',
   readPivotDefinition: 'workbook:read-pivot-definition',
+  /** Data › Queries & Connections: the workbook's connections, read-only (xl/connections.xml) */
+  readWorkbookQueries: 'workbook:read-queries',
   readLocalImage: 'shell:read-local-image',
   closeWorkbook: 'workbook:close',
   saveWorkbook: 'workbook:save',
@@ -92,6 +102,7 @@ export const IPC_CHANNELS = {
   printWorkbook: 'workbook:print',
   listPrinters: 'workbook:list-printers',
   exportCsv: 'workbook:export-csv',
+  exportOds: 'workbook:export-ods',
   csvSaveConfirm: 'workbook:csv-save-confirm',
   /** AI create_document: new standalone file in the default folder (no dialog) */
   createDocument: 'workbook:create-document',

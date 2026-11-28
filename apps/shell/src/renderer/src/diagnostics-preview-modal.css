@@ -1,0 +1,80 @@
+/* Diagnostics pre-save preview modal — chrome tokens only. */
+
+.diag-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-bg-overlay);
+}
+
+.diag-modal {
+  width: 520px;
+  max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 48px);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-12);
+  background: var(--surface);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-lg);
+}
+
+.diag-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-strong);
+}
+
+.diag-notice {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
+.diag-files {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.diag-file-box {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-8);
+  background: var(--ai-card-bg);
+  padding: 8px 10px;
+}
+
+.diag-file-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-strong);
+  margin-bottom: 6px;
+}
+
+.diag-file-pre {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-all;
+  color: var(--text-secondary);
+  max-height: 140px;
+  overflow: auto;
+}
+
+.diag-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 6px;
+}

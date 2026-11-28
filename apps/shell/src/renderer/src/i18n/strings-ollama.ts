@@ -20,6 +20,7 @@ import { he } from './ollama/he'
 import { hi } from './ollama/hi'
 import { zhTW } from './ollama/zh-TW'
 import { vi } from './ollama/vi'
+import { tr } from './ollama/tr'
 
 export const ollamaStrings = defineStrings({
   zh,
@@ -43,6 +44,7 @@ export const ollamaStrings = defineStrings({
   hi,
   'zh-TW': zhTW,
   vi,
+  tr,
 })
 export type OllamaStringKey = keyof typeof zh
 const translate = createI18n(ollamaStrings)

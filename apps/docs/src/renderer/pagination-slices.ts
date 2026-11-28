@@ -1724,6 +1724,24 @@ function _placeTable(
     const row = rows[ri]
 
     if (row.vMergeContinue) {
+      // A merged group consumes column height row by row like any other row:
+      // a page that ends inside the group turns between its rows (Word cuts a
+      // vMerge group between real rows, and the gap row rides under the
+      // bridged rowspan). Charging nothing and never checking let the computed
+      // boundary drift past the real DOM heights, so the gap builder could not
+      // match a row top and anchored an in-cell band instead (genoffice#2114).
+      // The parity model's zero-height continuations charge nothing and never
+      // turn, exactly as before.
+      if (!fits(row.height) && !pageEmpty()) {
+        retractable = false
+        newPage(
+          rowCursor,
+          curSection,
+          placedHeader && ri >= headerRows ? headerHeight : 0,
+          block.top,
+        )
+      }
+      place(row.height)
       rowCursor += row.height
       continue
     }
@@ -2325,6 +2343,32 @@ export function visiblePageCount(slices: PageSlice[], upTo = slices.length): num
       n++
   }
   return n
+}
+
+/**
+ * SECTIONPAGES per page: the visible pages of the run of slices sharing that page's
+ * section, counted like visiblePageCount (a parity blank draws no page).
+ */
+export function sectionPageCounts(slices: PageSlice[]): number[] {
+  const counts: number[] = []
+  let runStart = 0
+  let visible = 0
+  const close = (end: number) => counts.push(...Array<number>(end - runStart).fill(visible))
+  for (let i = 0; i < slices.length; i++) {
+    if (i > 0 && slices[i].section !== slices[i - 1].section) {
+      close(i)
+      runStart = i
+      visible = 0
+    }
+    if (
+      i === 0 ||
+      slices[i].start !== slices[i - 1].start ||
+      slices[i - 1].end === slices[i - 1].start
+    )
+      visible++
+  }
+  close(slices.length)
+  return counts
 }
 
 /**

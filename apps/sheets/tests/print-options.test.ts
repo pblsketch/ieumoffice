@@ -29,4 +29,15 @@ describe('printOptionsFor', () => {
       height: 355600,
     })
   })
+
+  it('maps duplex to Electron duplexMode when set', () => {
+    expect(
+      printOptionsFor({ ...REQUEST, deviceName: '', duplex: 'longEdge', copies: 2 }),
+    ).toMatchObject({
+      silent: true,
+      deviceName: '',
+      copies: 2,
+      duplexMode: 'longEdge',
+    })
+  })
 })

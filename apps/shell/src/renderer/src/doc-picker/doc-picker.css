@@ -2,18 +2,18 @@
  * @genoffice/ui/tokens.css; the few shell tokens the buttons and check boxes
  * use are defined here, with light, dark and system-dark values. */
 :root {
-  --accent: #0f7fff;
+  --accent: #0a68d4;
   --checkbox-bg: #ececec;
 }
 
 [data-theme='dark'] {
-  --accent: #3f99ff;
+  --accent: #4a9eff;
   --checkbox-bg: #333;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']):not([data-theme='dark']) {
-    --accent: #3f99ff;
+    --accent: #4a9eff;
     --checkbox-bg: #333;
   }
 }
@@ -27,7 +27,7 @@
 }
 
 :root:lang(ko) {
-  --ui-cjk: 'Malgun Gothic', 'Apple SD Gothic Neo';
+  --ui-cjk: 'UI Pretendard', 'Apple SD Gothic Neo', 'Malgun Gothic';
   word-break: keep-all;
 }
 
@@ -154,7 +154,7 @@ body {
   width: 18px;
   height: 18px;
   border: 1px solid var(--border-strong);
-  border-radius: 5px;
+  border-radius: 6px;
   background: var(--checkbox-bg);
   font-size: 12px;
   line-height: 1;
@@ -183,7 +183,7 @@ body {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 12px;
-  color: var(--text-tertiary);
+  color: var(--text-secondary);
 }
 
 .doc-note {
@@ -210,7 +210,7 @@ body {
   padding: 7px 16px;
   border: none;
   border-radius: 8px;
-  background: var(--accent);
+  background: var(--color-btn-primary);
   font: inherit;
   font-size: 13px;
   font-weight: 600;
@@ -219,7 +219,7 @@ body {
 }
 
 .doc-primary:hover:not(:disabled) {
-  filter: brightness(0.95);
+  background: var(--color-btn-primary-hover);
 }
 
 .doc-ghost:disabled,

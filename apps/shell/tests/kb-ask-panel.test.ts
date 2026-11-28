@@ -14,7 +14,9 @@ import type {
   SubscriptionStatusMap,
 } from '@genoffice/ai-provider'
 import type { Lang } from '@genoffice/i18n'
-import { aiRunErrorText, aiSubscriptionText } from '@genoffice/ui'
+import { TOOLS_UNAVAILABLE_NOTE } from '@genoffice/agent-core'
+import { resolveCustomEndpoints } from '@genoffice/ai-provider/browser'
+import { AI_CONTEXT_STRINGS, aiRunErrorText, aiSubscriptionText } from '@genoffice/ui'
 import type { HomeApi } from '../src/shared/home-api'
 import { KbAskPanel } from '../src/renderer/src/KbAskPanel'
 import { LocaleProvider } from '../src/renderer/src/locale'
@@ -101,6 +103,30 @@ function connectionOf(map: SubscriptionStatusMap): SubscriptionConnection {
   }
 }
 
+/** a selected local model with a window and what it reported about tools */
+function localSettings(tools?: boolean): AiSettings {
+  const settings = defaultAiSettings()
+  settings.provider = 'custom'
+  settings.customEndpoint = 'loc'
+  settings.customEndpoints = [
+    {
+      id: 'loc',
+      name: 'Ollama',
+      baseUrl: 'http://127.0.0.1:11434/v1',
+      apiKey: '',
+      model: 'qwen3:8b',
+      kind: 'local',
+      modelProfiles: {
+        'qwen3:8b': {
+          contextLength: 32_768,
+          ...(tools === undefined ? {} : { tools }),
+        },
+      },
+    },
+  ]
+  return resolveCustomEndpoints(settings)
+}
+
 interface RenderOptions {
   connection: SubscriptionConnection
   aiSettings?: AiSettings | null
@@ -185,7 +211,8 @@ describe('ask panel without a connection', () => {
     await click(prompt.querySelector('[data-provider="claude-code"] [data-action="install"]'))
     expect(connection.install).toHaveBeenCalledWith('claude-code')
     await click(prompt.querySelector('[data-action="guide-back"]'))
-    await click(prompt.querySelector('[data-path="codex"]'))
+    await click(prompt.querySelector('[data-path="chatgpt"]'))
+    await click(prompt.querySelector('[data-action="guide-alternate"]'))
     await click(prompt.querySelector('[data-provider="codex"] [data-action="login"]'))
     expect(connection.login).toHaveBeenCalledWith('codex')
   })
@@ -402,5 +429,35 @@ describe('ask panel when a run is blocked', () => {
     expect(host.querySelector('.ai-sub-blocked')).toBeNull()
     expect(host.querySelector('.kb-ask-error')!.textContent).toContain('The provider said no.')
     expect(host.querySelector('.ai-stop-btn')).toBeNull()
+  })
+})
+
+describe('ask panel with a local model', () => {
+  it('turns tools off and shows the notice when the model reported tools: false', async () => {
+    stored = localSettings(false)
+    await renderPanel({ connection: connectionOf(statuses('ready', 'ready')) })
+    expect(host.querySelector('.ai-sub-notice')?.textContent).toBe(
+      AI_CONTEXT_STRINGS.en.toolsUnsupported,
+    )
+
+    await type(QUESTION)
+    await send()
+    expect(aiStream).toHaveBeenCalledTimes(1)
+    const request = aiStream.mock.calls[0]![0]
+    expect(request.tools).toEqual([])
+    expect(request.system).toContain(TOOLS_UNAVAILABLE_NOTE)
+  })
+
+  it('keeps tools and shows nothing when the model did not report tools', async () => {
+    stored = localSettings(undefined)
+    await renderPanel({ connection: connectionOf(statuses('ready', 'ready')) })
+    expect(host.querySelector('.ai-sub-notice')).toBeNull()
+
+    await type(QUESTION)
+    await send()
+    expect(aiStream).toHaveBeenCalledTimes(1)
+    const request = aiStream.mock.calls[0]![0]
+    expect(request.tools.length).toBeGreaterThan(0)
+    expect(request.system).not.toContain(TOOLS_UNAVAILABLE_NOTE)
   })
 })

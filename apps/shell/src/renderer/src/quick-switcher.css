@@ -1,0 +1,122 @@
+/* Global Quick Switcher popup window — chrome tokens only. */
+
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  background: var(--surface);
+  color: var(--text-primary);
+  font-family: var(--gs-font-sans);
+}
+
+.qs-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  border: 1px solid var(--border);
+  box-sizing: border-box;
+  box-shadow: var(--shadow-lg);
+}
+
+.qs-input-wrap {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.qs-input {
+  width: 100%;
+  box-sizing: border-box;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--text-strong);
+  font-family: inherit;
+  font-size: 14px;
+}
+
+.qs-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 6px;
+}
+
+.qs-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.qs-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.qs-list::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 999px;
+}
+
+.qs-group-label {
+  padding: 6px 8px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+}
+
+.qs-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 10px;
+  border: none;
+  border-radius: var(--radius-8);
+  background: transparent;
+  color: var(--text-primary);
+  text-align: left;
+  cursor: pointer;
+}
+
+.qs-row:hover,
+.qs-row-active {
+  background: var(--fill-muted);
+}
+
+.qs-row-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.qs-row-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-strong);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.qs-row-sub {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.qs-empty {
+  padding: 28px 16px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-tertiary);
+}
+
+.qs-footer {
+  padding: 7px 14px;
+  border-top: 1px solid var(--border-subtle);
+  font-size: 11px;
+  color: var(--text-tertiary);
+}

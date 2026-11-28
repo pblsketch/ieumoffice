@@ -1,19 +1,40 @@
 import {
+  AiAttachMenu,
+  AiChangesCard,
   aiPanelWidthAtPointer,
+  AiPanelHeader,
   AiPanelSideButton,
+  AiAssistantBody,
+  AiReplyFooter,
+  openGenerateForCurrentDocument,
+  useAiInlineQuestions,
+  AiQuestionCard,
+  AiQuestionReceipt,
+  isQuestionToolActivity,
+  questionToolActivities,
+  type AiInlineQuestions,
+  AiScrollToBottom,
   AiModelPicker,
+  AiWorkSteps,
+  AiEmptyHints,
+  useScrollToBottom,
   type AiModelPickerBridge,
-  DriveAttachButton,
+  type AiWorkStep,
   type DriveAttachPicked,
-  DocAttachButton,
+  McpPermissionCard,
+  McpServerButton,
+  useMcpWindow,
   SentSkillChips,
   SkillUsedNotes,
   useComposerSkills,
   type OnTemplateSkill,
+  type ProjectChatEntry,
+  type ProjectMemoryLine,
   type SkillChipRef,
   type SkillUse,
 } from '@genoffice/ui'
 import React, { useEffect, useRef, useState } from 'react'
+import type { Lang } from '@genoffice/i18n'
 import {
   AiBlockedNotice,
   AiComposer,
@@ -25,7 +46,8 @@ import {
   AI_QUEUE_LABELS,
   AiScopeQuote,
   AiSubscriptionUsageLine,
-  AiTypingIndicator,
+  AiToolsUnsupportedNotice,
+  AiReplyProgress,
   AiUsageChip,
   type AiScopeQuoteData,
   type AiSubscriptionCardActions,
@@ -43,16 +65,14 @@ import type {
   AiSubscriptionUsage,
   SubscriptionConnectHelpPath,
 } from '@genoffice/ai-provider/browser'
+import { localModelCapabilities } from '@genoffice/ai-provider/browser'
 import type { AiBlockedRun } from './subscription-state'
+import { receiptState, type AiRunReceipt } from './ai-run-receipt'
 import type { ChangePlan } from '@genoffice/xlsx-gateway/domain/workbook.types'
 import { ATTACHMENT_IMAGE_EXTS, type AttachmentMeta } from '../../shared/desktop-api'
 import { useI18n, type TFunc } from '../i18n/locale'
 import { createFileNav, Markdown } from '@genoffice/ui'
 import { SHEET_NAV_SCHEME } from './sheet-nav'
-import sendEnterOn from '../assets/send-enter-on.png'
-import sendEnterOff from '../assets/send-enter-off.png'
-import sendStop from '../assets/send-stop.png'
-import attachIcon from '../assets/attach-icon.png'
 import filePdfIcon from '../assets/file-pdf.png'
 import fileWordIcon from '../assets/file-word.png'
 import fileExcelIcon from '../assets/file-excel.png'
@@ -229,6 +249,8 @@ export interface AiToolChip {
   readonly name?: string
   /** Tool output (truncated UI-side); when present the row expands to details */
   readonly output?: string
+  /** Tool input (JSON); kept for question tools so a reopened chat redraws the card */
+  readonly input?: string
 }
 
 /** what a queued message carries until it runs */
@@ -249,8 +271,8 @@ export interface AiChatMessage {
   readonly persisted?: boolean | undefined
   /** the run stopped because its connection cannot go on — render the blocked notice */
   readonly blocked?: AiBlockedRun | undefined
-  /** Set when this message reflects an auto-applied plan; renders an inline [Undo] button. */
-  readonly autoApplied?: { readonly opCount: number; readonly undoSteps: number } | undefined
+  /** Set when this message's run applied plans; renders the run's changes card. */
+  readonly autoApplied?: AiRunReceipt | undefined
   /** attachments consumed from the composer by this user message (read-only echo chips) */
   readonly attachments?: readonly AttachmentMeta[] | undefined
   /** the range this user message targeted, frozen at send */
@@ -261,6 +283,26 @@ export interface AiChatMessage {
   readonly skillProposals?: readonly string[] | undefined
   /** tokens the provider billed for this reply, summed across its turns (absent when unreported) */
   readonly usage?: AiTokenUsageView | undefined
+  /** memory lines a reopened project chat gave this message */
+  readonly memory?: readonly ProjectMemoryLine[] | undefined
+  /** tools another editor ran for this message (a reopened project chat) */
+  readonly otherEditorTools?: ProjectChatEntry['otherEditorTools'] | undefined
+  /** came from a stored conversation: question cards are read-only */
+  readonly restored?: boolean | undefined
+}
+
+/** The project folder parts of the panel (built in App.tsx with `useProjectPanel` of @genoffice/ui) */
+export interface AiPanelProject {
+  /** the chat menu beside the title; null without a chosen project */
+  readonly chatMenu: React.ReactNode
+  /** the project chip under the input */
+  readonly picker: React.ReactNode
+  /** "this workbook is in the '…' project folder [Use]" above the composer */
+  readonly hint: React.ReactNode
+  /** unwritable, context and problem notices above the composer */
+  readonly notices: React.ReactNode
+  /** the other-editor summary and memory lines of one message */
+  readonly messageParts: (message: AiChatMessage) => React.ReactNode
 }
 
 const MODEL_BRIDGE: AiModelPickerBridge = {
@@ -309,6 +351,7 @@ const NO_STATUSES: AiSubscriptionStatuses = {}
 
 export function AiChatPanel({
   isOpen,
+  focusRequest = 0,
   hideRail = false,
   hasContent,
   chat,
@@ -334,7 +377,8 @@ export function AiChatPanel({
   onSend,
   onStop,
   onNewChat,
-  onUndo,
+  onRevertChanges,
+  onClearMarks,
   scopeRange,
   scopeColumns,
   scopeLocked,
@@ -342,8 +386,13 @@ export function AiChatPanel({
   onCitation,
   onExpand,
   onCollapse,
+  project,
+  filePath,
+  inlineQuestions: givenQuestions,
 }: {
   readonly isOpen: boolean
+  /** An explicit AI action focuses the composer, including when already open. */
+  readonly focusRequest?: number | undefined
   /** true suppresses even the collapsed rail (the "show the AI sidebar" setting is off) */
   readonly hideRail?: boolean
   /** the workbook has cells with content — empty workbooks get "build me a sheet" copy instead */
@@ -396,10 +445,12 @@ export function AiChatPanel({
   ) => boolean
   readonly onStop: () => void
   readonly onNewChat: () => void
-  readonly onUndo: (steps: number) => void
-  /** A1 notation of the range this run is scoped to, or null when there is no
-   *  scope — a resting single-cell selection carries no intent worth showing,
-   *  and dismissing the chip clears it until the next selection change */
+  /** the changes card of the reply at this chat index takes its run back */
+  readonly onRevertChanges: (index: number) => Promise<void>
+  /** the grid drops the last run's marks */
+  readonly onClearMarks: () => void
+  /** A1 notation of the selected range or explicitly requested single cell;
+   *  dismissing the chip clears it until the next selection or explicit request. */
   readonly scopeRange: string | null
   /** header names when the scope covers whole columns; they label the chip in
    *  place of the range */
@@ -412,12 +463,22 @@ export function AiChatPanel({
   readonly onCitation: (href: string) => void
   readonly onExpand: () => void
   readonly onCollapse: () => void
+  /** the project folder parts; absent: the panel shows none */
+  readonly project?: AiPanelProject | undefined
+  /** optional saved file path for the "Create another document" next-step chip */
+  readonly filePath?: string | null | undefined
+  /** the run's question card, owned by App.tsx whose loop has its skill; absent: the panel's own */
+  readonly inlineQuestions?: AiInlineQuestions | undefined
 }): React.JSX.Element {
   const { t, lang } = useI18n()
   // A reply that stopped because its connection cannot go on: the queue is paused, so the next
   // message does not run into the same wall. Declared ahead of the queue so that it runs before
   // the queue's own settle pump when both land in one commit.
   const msgQueueRef = useRef<ChatRunQueue<QueuedMeta> | null>(null)
+  /** the chat index whose changes card is taking its run back */
+  const [reverting, setReverting] = useState<number | null>(null)
+  const ownQuestions = useAiInlineQuestions()
+  const inlineQuestions = givenQuestions ?? ownQuestions
   const lastEntry = chat.at(-1)
   const lastReplyBlocked = lastEntry?.role === 'assistant' && lastEntry.blocked !== undefined
   useEffect(() => {
@@ -439,7 +500,15 @@ export function AiChatPanel({
   })
   msgQueueRef.current = msgQueue
   /** the skills called with `/` or `$` (sheets: `$` only at the start, so $A$1 stays typing) */
-  const skills = useComposerSkills({ lang, dollarAtStartOnly: true, onTemplateSkill })
+  /** this window's MCP servers (user MCP spec 7.5); the chips name the ones not usable now */
+  const mcpWindow = useMcpWindow()
+  const skills = useComposerSkills({
+    lang,
+    editor: 'sheets',
+    dollarAtStartOnly: true,
+    onTemplateSkill,
+    usableMcpServers: mcpWindow.state?.usableServers(),
+  })
   const skillsRef = useRef(skills)
   skillsRef.current = skills
   // the next request re-reads the current text of the skills the reopened conversation used
@@ -451,7 +520,14 @@ export function AiChatPanel({
   // Panel chrome follows the UI language; message text follows its own content (dir=auto below)
   const isRtl = lang === 'ar' || lang === 'he'
   const chatRef = useRef<HTMLDivElement | null>(null)
+  const scrollBottom = useScrollToBottom(chatRef)
   const inputRef = useRef<HTMLTextAreaElement | null>(null)
+  useEffect(() => {
+    if (!isOpen || !focusRequest) return
+    // Let the context menu finish closing before moving focus out of the grid.
+    const frame = requestAnimationFrame(() => inputRef.current?.focus())
+    return () => cancelAnimationFrame(frame)
+  }, [isOpen, focusRequest])
   const stickToBottomRef = useRef(true)
   const [dragOver, setDragOver] = useState(false)
   const asideRef = useRef<HTMLElement | null>(null)
@@ -599,6 +675,7 @@ export function AiChatPanel({
     const el = chatRef.current
     if (!el) return
     stickToBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48
+    scrollBottom.onScroll()
   }
 
   if (!isOpen) {
@@ -650,6 +727,9 @@ export function AiChatPanel({
     for (const a of atts) onRemoveAttachment(a.path)
     msgQueue.enqueue(text, { atts, skillUse })
     onPromptChange('')
+    // a message sent while a card waits closes it: the run goes on without the answer
+    // (and cannot ask again in this run)
+    inlineQuestions.closeOpenCard()
   }
 
   const onDrop = (e: React.DragEvent): void => {
@@ -702,40 +782,42 @@ export function AiChatPanel({
         aria-orientation="vertical"
         aria-label={aiSubscriptionText(lang, 'aiAssistant')}
       />
-      <header className="ai-panel-header">
-        <span className="ai-panel-title">
-          <AiMark size={22} />
-          {aiSubscriptionText(lang, 'aiAssistant')}
-        </span>
-        <div className="ai-panel-header-actions">
-          <AiPanelSideButton
-            lang={lang}
-            onMove={(side) => window.desktopApi.setAiPanelPrefs({ side })}
-          />
-          {(chat.length > 0 || historicChat.length > 0) && (
+      <AiPanelHeader
+        lang={lang}
+        chatMenu={project?.chatMenu}
+        actions={
+          <>
+            <AiPanelSideButton
+              lang={lang}
+              onMove={(side) => window.desktopApi.setAiPanelPrefs({ side })}
+            />
+            {(chat.length > 0 || historicChat.length > 0) && (
+              <button
+                type="button"
+                className="ai-header-btn"
+                onClick={() => {
+                  msgQueue.clear()
+                  skills.resetConversation()
+                  onNewChat()
+                }}
+                data-tip={t('aiNewChat')}
+                aria-label={t('aiNewChat')}
+              >
+                <IconNewChat size={15} />
+              </button>
+            )}
             <button
-              className="ai-header-btn"
-              onClick={() => {
-                msgQueue.clear()
-                skills.resetConversation()
-                onNewChat()
-              }}
-              data-tip={t('aiNewChat')}
-              aria-label={t('aiNewChat')}
+              type="button"
+              className="ai-header-btn ai-panel-collapse"
+              onClick={onCollapse}
+              data-tip={t('aiCollapsePanel')}
+              aria-label={t('aiCollapsePanel')}
             >
-              <IconNewChat size={15} />
+              <IconCollapse size={15} />
             </button>
-          )}
-          <button
-            className="ai-header-btn ai-panel-collapse"
-            onClick={onCollapse}
-            data-tip={t('aiCollapsePanel')}
-            aria-label={t('aiCollapsePanel')}
-          >
-            <IconCollapse size={15} />
-          </button>
-        </div>
-      </header>
+          </>
+        }
+      />
 
       <div className="ai-chat" ref={chatRef} onScroll={onChatScroll}>
         {/* Past conversation (read-only transcript), shown continuously with the current turn */}
@@ -754,12 +836,22 @@ export function AiChatPanel({
                 {entry.role === 'user' && entry.attachments && entry.attachments.length > 0 && (
                   <SentAttachments atts={entry.attachments} previews={attachmentPreviews} />
                 )}
-                {entry.tools.length > 0 && <ToolChipList tools={entry.tools} />}
+                <ReplyToolSteps lang={lang} tools={entry.tools} restored />
                 <SkillUsedNotes tools={entry.tools} />
+                {project?.messageParts(entry)}
                 {entry.skillProposals?.map((key) => renderSkillCard?.(key))}
                 {entry.text && (
                   <div dir="auto">
-                    <Markdown text={entry.text} navs={[citationNav, fileNav]} />
+                    {entry.role === 'assistant' ? (
+                      <AiAssistantBody
+                        lang={lang}
+                        text={entry.text}
+                        navs={[citationNav, fileNav]}
+                        restored
+                      />
+                    ) : (
+                      <Markdown text={entry.text} navs={[citationNav, fileNav]} />
+                    )}
                   </div>
                 )}
               </div>
@@ -769,102 +861,177 @@ export function AiChatPanel({
         )}
         {chat.length === 0 && historicChat.length === 0 && !subscription.connectChoice && (
           <div className="ai-chat-empty">
+            <div className="ai-chat-empty-badge" aria-hidden="true">
+              <AiMark size={24} />
+            </div>
             <div className="ai-chat-empty-title">
               {t(hasContent ? 'aiEmptyTitle' : 'aiEmptyBuildTitle')}
             </div>
             <div className="ai-chat-empty-body">
               {t(hasContent ? 'aiEmptyBodyLine1' : 'aiEmptyBuildBody')}
             </div>
+            <AiEmptyHints
+              lang={lang}
+              showSkill={Boolean(skills.composer)}
+              showDocMention={Boolean(docMention)}
+            />
           </div>
         )}
-        {chat.map((entry, index) => (
-          <div
-            key={index}
-            className={`ai-msg ai-msg-${entry.role}${entry.isError && !entry.blocked ? ' ai-msg-error' : ''}${entry.role === 'assistant' && entry.streaming ? ' ai-msg-streaming' : ''}`}
-          >
-            {entry.role === 'user' ? (
-              <>
-                {entry.scope && <AiScopeQuote scope={entry.scope} />}
-                <SentSkillChips lang={lang} chips={entry.skills} isAvailable={skills.isAvailable} />
-                {entry.attachments && entry.attachments.length > 0 && (
-                  <SentAttachments atts={entry.attachments} previews={attachmentPreviews} />
-                )}
-                <span dir="auto">{entry.text}</span>
-                {entry.undelivered && (
-                  <div className="ai-msg-undelivered">
-                    {t('aiUndelivered')}
-                    {!aiBusy && (
-                      <button
-                        className="ai-retry-btn"
-                        onClick={() => onSend(entry.text, entry.attachments ?? [], index)}
-                      >
-                        {t('aiRetry')}
-                      </button>
-                    )}
-                  </div>
-                )}
-              </>
-            ) : (
-              <>
-                {entry.tools.length > 0 && <ToolChipList tools={entry.tools} />}
-                <SkillUsedNotes tools={entry.tools} />
-                {entry.skillProposals?.map((key) => renderSkillCard?.(key))}
-                {entry.usage && (
-                  <div className="ai-message-usage">
-                    <AiUsageChip usage={entry.usage} lang={lang} />
-                  </div>
-                )}
-                {entry.blocked ? (
-                  <AiBlockedNotice
-                    kind={entry.blocked.kind}
-                    provider={entry.blocked.provider}
-                    resetsAt={entry.blocked.resetsAt}
-                    message={entry.text}
-                    settings={subscription.settings ?? NO_METERED_ACCEPTED}
-                    // only the run that just stopped can be continued on another connection
-                    statuses={
-                      index === chat.length - 1 && !aiBusy ? subscription.statuses : NO_STATUSES
-                    }
+        {chat.map((entry, index) => {
+          const isLast = index === chat.length - 1
+          const nextEntry = chat[index + 1]
+          const turnEnded = nextEntry ? nextEntry.role === 'user' : !aiBusy
+          const showCopy =
+            entry.role === 'assistant' &&
+            !entry.streaming &&
+            turnEnded &&
+            !entry.blocked &&
+            !!entry.text
+          return (
+            <div
+              key={index}
+              className={`ai-msg ai-msg-${entry.role}${entry.isError && !entry.blocked ? ' ai-msg-error' : ''}${entry.role === 'assistant' && entry.streaming ? ' ai-msg-streaming' : ''}`}
+            >
+              {entry.role === 'user' ? (
+                <>
+                  {entry.scope && <AiScopeQuote scope={entry.scope} />}
+                  <SentSkillChips
                     lang={lang}
-                    onContinueWith={(provider) => subscription.onContinueWith(provider, index)}
+                    chips={entry.skills}
+                    isAvailable={skills.isAvailable}
                   />
-                ) : entry.text ? (
-                  <div dir="auto">
-                    <Markdown text={entry.text} navs={[citationNav, fileNav]} />
-                  </div>
-                ) : (
-                  entry.streaming && (
-                    <span className="ai-typing-row">
-                      <AiTypingIndicator
-                        label={entry.tools.length > 0 ? t('aiWorking') : t('aiThinking')}
-                      />
-                    </span>
-                  )
-                )}
-                {entry.autoApplied && (
-                  <div className="ai-auto-applied">
-                    <span className="ai-auto-applied-text">
-                      {t('aiAutoApplied', { count: entry.autoApplied.opCount })}
-                    </span>
-                    {/* undoSteps 0 = the batch exceeded the undo budget and
-                        kept no stack entry; a forced 1-step undo would revert
-                        the user's own previous action instead. */}
-                    {(entry.autoApplied.undoSteps ?? 1) > 0 && (
-                      <button
-                        className="ai-undo-btn"
-                        onClick={() => onUndo(Math.max(1, entry.autoApplied?.undoSteps ?? 1))}
-                        data-tip={t('aiUndoTitle')}
-                      >
-                        {t('aiUndo')}
-                      </button>
-                    )}
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-        ))}
+                  {entry.attachments && entry.attachments.length > 0 && (
+                    <SentAttachments atts={entry.attachments} previews={attachmentPreviews} />
+                  )}
+                  <span dir="auto">{entry.text}</span>
+                  {entry.undelivered && (
+                    <div className="ai-msg-undelivered">
+                      {t('aiUndelivered')}
+                      {!aiBusy && (
+                        <button
+                          className="ai-retry-btn"
+                          onClick={() => onSend(entry.text, entry.attachments ?? [], index)}
+                        >
+                          {t('aiRetry')}
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </>
+              ) : (
+                <>
+                  <ReplyToolSteps lang={lang} tools={entry.tools} restored={entry.restored} />
+                  <SkillUsedNotes tools={entry.tools} />
+                  {project?.messageParts(entry)}
+                  {entry.skillProposals?.map((key) => renderSkillCard?.(key))}
+                  {entry.blocked ? (
+                    <AiBlockedNotice
+                      kind={entry.blocked.kind}
+                      provider={entry.blocked.provider}
+                      resetsAt={entry.blocked.resetsAt}
+                      message={entry.text}
+                      settings={subscription.settings ?? NO_METERED_ACCEPTED}
+                      // only the run that just stopped can be continued on another connection
+                      statuses={
+                        index === chat.length - 1 && !aiBusy ? subscription.statuses : NO_STATUSES
+                      }
+                      lang={lang}
+                      onContinueWith={(provider) => subscription.onContinueWith(provider, index)}
+                    />
+                  ) : (
+                    entry.text && (
+                      <div dir="auto">
+                        <AiAssistantBody
+                          lang={lang}
+                          text={entry.text}
+                          navs={[citationNav, fileNav]}
+                          streaming={entry.streaming}
+                          restored={entry.restored}
+                          questionStatus={inlineQuestions.textCardStates[`m-${index}`]?.status}
+                          questionAnswer={inlineQuestions.textCardStates[`m-${index}`]?.answer}
+                          onQuestionSubmit={(view, answer) => {
+                            inlineQuestions.markTextCard(`m-${index}`, 'submitted', answer)
+                            onSend(inlineQuestions.formatFollowUp(lang, view, answer), [])
+                          }}
+                          onQuestionSkip={(view) => {
+                            inlineQuestions.markTextCard(`m-${index}`, 'skipped')
+                            onSend(inlineQuestions.formatFollowUp(lang, view, { kind: 'skip' }), [])
+                          }}
+                        />
+                      </div>
+                    )
+                  )}
+                  {entry.autoApplied && (
+                    // undoSteps 0 = the batch exceeded the undo budget and kept no
+                    // stack entry: the card says it can no longer go back (expired)
+                    <AiChangesCard
+                      lang={lang}
+                      state={receiptState(entry.autoApplied)}
+                      count={entry.autoApplied.opCount}
+                      lines={entry.autoApplied.lines}
+                      onShowLine={(lineIdx) => {
+                        const href = entry.autoApplied?.lines?.[lineIdx]?.navHref
+                        if (href) onCitation(href)
+                      }}
+                      canRevert={!aiBusy && reverting === null}
+                      onRevert={() => {
+                        setReverting(index)
+                        void onRevertChanges(index).finally(() => setReverting(null))
+                      }}
+                      onClearMarks={entry.autoApplied.marked ? onClearMarks : undefined}
+                    />
+                  )}
+                  <AiReplyProgress
+                    reply={entry}
+                    thinking={t('aiThinking')}
+                    working={t('aiWorking')}
+                    paused={inlineQuestions.waitingForPerson}
+                  />
+                  {(showCopy || entry.usage) && (
+                    <AiReplyFooter
+                      lang={lang}
+                      isLast={isLast}
+                      copyText={showCopy ? entry.text : undefined}
+                      usage={entry.usage}
+                      nextSteps={
+                        isLast
+                          ? {
+                              context: {
+                                aiVisible: true,
+                                streaming: Boolean(entry.streaming),
+                                completedNormally: !entry.isError && !entry.blocked,
+                                editorKind: 'sheets',
+                                editedDocument: Boolean(entry.autoApplied),
+                                qualityIssueCount: 0,
+                                usedSkillName: entry.skills?.[0]?.title,
+                                canGenerateOtherDoc: true,
+                                hasSavedPath: Boolean(filePath),
+                              },
+                              onGenerateOtherDoc: openGenerateForCurrentDocument,
+                            }
+                          : undefined
+                      }
+                    />
+                  )}
+                </>
+              )}
+            </div>
+          )
+        })}
+        {inlineQuestions.activeToolCard && (
+          <AiQuestionCard
+            key={inlineQuestions.activeToolCard.id}
+            lang={lang}
+            view={inlineQuestions.activeToolCard.view}
+            status={inlineQuestions.activeToolCard.status}
+            answer={inlineQuestions.activeToolCard.answer}
+            onSubmit={inlineQuestions.submitToolCard}
+            onSkip={inlineQuestions.skipToolCard}
+          />
+        )}
         {skillNotes}
+        {/* an MCP tool waiting for the person's yes (user MCP spec 7.4) */}
+        <McpPermissionCard lang={lang} />
 
         {preview && (
           <section className="preview ai-preview-card" aria-label={t('aiPreviewAria')}>
@@ -929,6 +1096,15 @@ export function AiChatPanel({
         )}
       </div>
 
+      <AiScrollToBottom
+        lang={lang}
+        visible={scrollBottom.showButton}
+        onClick={() => {
+          stickToBottomRef.current = true
+          scrollBottom.scrollToBottom()
+        }}
+      />
+
       <div className="ai-composer">
         {subscription.noticeDue && (
           <AiFirstConnectionNotice
@@ -940,7 +1116,16 @@ export function AiChatPanel({
         {subscription.inputTruncated && (
           <AiInputTruncatedNotice lang={lang} onDismiss={subscription.onDismissTruncated} />
         )}
+        {subscription.settings !== null &&
+          localModelCapabilities(subscription.settings).tools === false && (
+            <AiToolsUnsupportedNotice lang={lang} />
+          )}
+        {project?.hint}
+        {project?.notices}
         {attachNotice && <div className="ai-attach-notice">{attachNotice}</div>}
+        {/* Above the input card, not inside its footer: the reset time is long and
+            would otherwise squeeze the attach/send buttons in a narrow panel. */}
+        <AiSubscriptionUsageLine usage={subscription.usage} lang={lang} />
         <AiComposer
           queueStrip={
             <AiQueueStrip
@@ -958,7 +1143,7 @@ export function AiChatPanel({
           queuePlaceholder={AI_QUEUE_LABELS[lang].queuePlaceholder}
           header={
             <>
-              {/* Only a deliberate multi-cell selection shows here: it tells the
+              {/* A range or explicitly requested single cell shows here: it tells the
                   user what "this column / these rows" will resolve to, and the
                   send freezes it so mid-run clicking cannot retarget the run.
                   While that frozen scope is what shows, dropping it could not
@@ -1069,31 +1254,29 @@ export function AiChatPanel({
           stopLabel={t('aiStop')}
           ariaLabel={t('aiInstructionAria')}
           iconOnly
-          sendIconEnabled={<img src={sendEnterOn} alt="" aria-hidden />}
-          sendIconDisabled={<img src={sendEnterOff} alt="" aria-hidden />}
-          stopIcon={<img src={sendStop} alt="" aria-hidden />}
+          lang={lang}
+          showSkillButton
           footerStart={
             <>
-              <AiModelPicker
-                bridge={MODEL_BRIDGE}
+              <AiAttachMenu
                 lang={lang}
-                subscriptionStatuses={subscription.statuses}
-                onRefreshSubscriptions={subscription.refresh}
+                onPickPc={onPickAttachments}
+                onPickedDocs={onDrivePicked}
+                onPickedDrive={onDrivePicked}
               />
-              {sessionUsage && <AiUsageChip usage={sessionUsage} session lang={lang} />}
-              <AiSubscriptionUsageLine usage={subscription.usage} lang={lang} />
-              <button
-                className="ai-attach-btn"
-                onClick={onPickAttachments}
-                data-tip={t('aiAttachTitle')}
-                aria-label={t('aiAttachTitle')}
-              >
-                <img src={attachIcon} alt="" aria-hidden />
-              </button>
-              {onDrivePicked && <DriveAttachButton lang={lang} onPicked={onDrivePicked} />}
-              {onDrivePicked && <DocAttachButton lang={lang} onPicked={onDrivePicked} />}
+              <McpServerButton lang={lang} />
             </>
           }
+          footerEnd={
+            <AiModelPicker
+              bridge={MODEL_BRIDGE}
+              lang={lang}
+              subscriptionStatuses={subscription.statuses}
+              onRefreshSubscriptions={subscription.refresh}
+            />
+          }
+          footerBelow={project?.picker}
+          footerBelowEnd={sessionUsage && <AiUsageChip usage={sessionUsage} session lang={lang} />}
           textareaRef={inputRef}
           onChange={onPromptChange}
           onSend={send}
@@ -1161,138 +1344,44 @@ function IconCollapse({ size }: { size: number }): React.JSX.Element {
   )
 }
 
-/** Tool row list (unified with docs/slides): dot + summary; rows with output
- * expand to details, with the arrow shown on hover */
-/** Step-row status icons (timeline glyphs: 14px in a 20px slot, 1.6 stroke) */
-function StepIcon({ status }: { status: 'running' | 'done' | 'error' }) {
-  if (status === 'running') {
-    return (
-      <svg
-        viewBox="0 0 24 24"
-        width="14"
-        height="14"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        aria-hidden
-      >
-        <path d="M6.5 3.5h11M6.5 20.5h11M8 3.5v3.2c0 2.6 4 4.2 4 5.3 0 1.1 4 2.7 4 5.3v3.2M16 3.5v3.2c0 2.6-4 4.2-4 5.3 0 1.1-4 2.7-4 5.3v3.2" />
-      </svg>
-    )
-  }
-  if (status === 'error') {
-    return (
-      <svg
-        viewBox="0 0 24 24"
-        width="14"
-        height="14"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        aria-hidden
-      >
-        <circle cx="12" cy="12" r="9" />
-        <path d="m9.2 9.2 5.6 5.6M14.8 9.2l-5.6 5.6" />
-      </svg>
-    )
-  }
+/**
+ * The work steps of one reply. A restored reply draws each question tool as a
+ * read-only card instead of a step; a live reply keeps its card at the foot of the chat.
+ */
+function ReplyToolSteps({
+  lang,
+  tools,
+  restored,
+}: {
+  readonly lang: Lang
+  readonly tools: readonly AiToolChip[]
+  readonly restored: boolean | undefined
+}): React.JSX.Element | null {
+  if (tools.length === 0) return null
+  if (!restored) return <AiWorkSteps lang={lang} steps={toWorkSteps(tools)} />
   return (
-    <svg
-      viewBox="0 0 24 24"
-      width="14"
-      height="14"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.6"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <circle cx="12" cy="12" r="9" />
-      <path d="m8.5 12.4 2.4 2.4 4.6-5" />
-    </svg>
+    <>
+      <AiWorkSteps
+        lang={lang}
+        steps={toWorkSteps(
+          tools.filter((tool) => !isQuestionToolActivity({ name: tool.name ?? '' })),
+        )}
+      />
+      {questionToolActivities(tools.map((tool) => ({ ...tool, name: tool.name ?? '' }))).map(
+        (activity, k) => (
+          <AiQuestionReceipt key={`q${k}`} lang={lang} activity={activity} />
+        ),
+      )}
+    </>
   )
 }
 
-/** Tool activity group: a single quiet summary row
- *  that auto-opens while tools run, auto-collapses into "Worked · N steps" when they finish,
- *  and a manual toggle that always wins. Rows inside are step rows with 1px connectors. */
-function ToolChipList({ tools }: { tools: readonly AiToolChip[] }): React.JSX.Element {
-  const { t: tr } = useI18n()
-  const [expanded, setExpanded] = useState<Set<number>>(new Set())
-  const [userOpen, setUserOpen] = useState<boolean | null>(null)
-
-  const toggle = (j: number) => {
-    setExpanded((prev) => {
-      const next = new Set(prev)
-      if (next.has(j)) next.delete(j)
-      else next.add(j)
-      return next
-    })
-  }
-
-  const anyRunning = tools.some((tool) => tool.running)
-  const open = userOpen ?? anyRunning
-  const label = anyRunning ? tr('aiGroupWorking') : tr('aiWorkedSteps', { n: tools.length })
-
-  return (
-    <div className="ai-work-group">
-      <button
-        type="button"
-        className={`ai-work-group-summary${anyRunning ? ' running' : ''}`}
-        aria-expanded={open}
-        onClick={() => setUserOpen(!open)}
-      >
-        {anyRunning && !open && <span className="ai-tool-chip-spinner" aria-hidden />}
-        <span className="ai-work-group-label">{label}</span>
-        <span className={`ai-tool-chip-caret${open ? ' open' : ''}`} aria-hidden>
-          ›
-        </span>
-      </button>
-      <div className={`ai-work-group-body${open ? ' open' : ''}`}>
-        <div className="ai-work-group-body-inner">
-          {tools.map((tool, j) => {
-            const hasOutput = !tool.running && !!tool.output
-            const isOpen = expanded.has(j)
-            const stepStatus = tool.running ? 'running' : tool.isError ? 'error' : 'done'
-            return (
-              <div key={j} className="ai-step-row">
-                <span className={`ai-step-icon ${stepStatus}`} aria-hidden>
-                  <StepIcon status={stepStatus} />
-                </span>
-                <div className="ai-step-content">
-                  {hasOutput ? (
-                    <button
-                      type="button"
-                      className="ai-step-title clickable"
-                      data-tip={tool.name}
-                      aria-expanded={isOpen}
-                      onClick={() => toggle(j)}
-                    >
-                      {tool.summary}
-                    </button>
-                  ) : (
-                    <span className="ai-step-title" data-tip={tool.name}>
-                      {tool.summary}
-                    </span>
-                  )}
-                  {hasOutput && isOpen && (
-                    <div className="ai-step-detail">
-                      <div className="ai-tool-output">
-                        <div className="ai-tool-output-pre">{tool.output}</div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      </div>
-    </div>
-  )
+function toWorkSteps(tools: readonly AiToolChip[]): AiWorkStep[] {
+  return tools.map((tool) => ({
+    name: tool.name ?? '',
+    summary: tool.summary,
+    running: tool.running,
+    isError: tool.isError,
+    output: tool.output,
+  }))
 }

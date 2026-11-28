@@ -272,6 +272,13 @@ describe('aiProviderPickerGroups', () => {
     expect(key[0]!.metered).toBe(false)
   })
 
+  it('shows the models the vendor listed for the key after the catalog (decision 0087)', () => {
+    const settings = withAnthropicKey()
+    settings.providers.anthropic.models = ['claude-opus-6', anthropicModels[1]!]
+    const key = aiProviderPickerGroups(settings, ready).find((g) => g.id === 'anthropic')!
+    expect(key.models).toEqual([...anthropicModels, 'claude-opus-6'])
+  })
+
   it('never lists a provider config stored under an id this build does not know', () => {
     const settings = defaultAiSettings()
     const stored = settings.providers as Record<string, { apiKey: string; model: string }>
@@ -321,6 +328,7 @@ describe('aiProviderPickerGroups', () => {
     it('resolves to Codex when Claude is not ready', () => {
       const auto = autoOf(defaultAiSettings(), {
         'claude-code': status('claude-code', 'signed-out'),
+        chatgpt: status('chatgpt', 'signed-out'),
         codex: status('codex', 'ready'),
       })
       expect(auto?.resolved).toBe('codex')
@@ -329,7 +337,11 @@ describe('aiProviderPickerGroups', () => {
 
     it('skips an accepted metered Claude for a ready Codex', () => {
       const { settings, status: claude } = acceptedMetered('claude-code')
-      const statuses = { 'claude-code': claude, codex: status('codex', 'ready') }
+      const statuses = {
+        'claude-code': claude,
+        chatgpt: status('chatgpt', 'signed-out'),
+        codex: status('codex', 'ready'),
+      }
       expect(autoOf(settings, statuses)?.resolved).toBe('codex')
       // the metered login stays selectable on its own, marked as paid
       const groups = aiProviderPickerGroups(settings, statuses)

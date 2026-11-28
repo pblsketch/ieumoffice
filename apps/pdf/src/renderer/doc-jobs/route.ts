@@ -16,6 +16,7 @@
  * confirmation names them ("〈provider〉 will charge for this").
  */
 import {
+  AI_BATCH_SUBSCRIPTION_PROVIDERS,
   isSubscriptionProvider,
   selectAiProvider,
   type AiNotConnectedReason,
@@ -56,7 +57,9 @@ export function documentJobRoute(
   statuses: AiSubscriptionStatuses | null | undefined,
 ): DocumentJobRoute {
   if (!settings || !statuses) return { state: 'checking' }
-  const choice = selectAiProvider(settings, statuses)
+  const choice = selectAiProvider(settings, statuses, {
+    subscriptions: AI_BATCH_SUBSCRIPTION_PROVIDERS,
+  })
   if (!choice.connected) {
     return STILL_CHECKING.has(choice.reason)
       ? { state: 'checking' }

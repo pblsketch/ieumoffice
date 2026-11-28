@@ -81,7 +81,12 @@ function registerSettingsIpc(): void {
       const parent = parentWindow()
       if (parent) showUpdateWindow(parent, currentState, actions ?? dummyActions)
     }
-    if (currentState.phase === 'available' || currentState.phase === 'error') actions?.onDownload()
+    if (
+      currentState.phase === 'available' ||
+      currentState.phase === 'error' ||
+      currentState.phase === 'install-failed'
+    )
+      actions?.onDownload()
     return true
   })
 }
@@ -119,6 +124,8 @@ export function showUpdateWindow(
   parent: BrowserWindow | null,
   state: UpdateUiState,
   windowActions: UpdateActions,
+  /** shown without taking the focus: the update came back by itself, not on a click */
+  options: { inactive?: boolean } = {},
 ): void {
   currentState = state
   actions = windowActions
@@ -128,8 +135,12 @@ export function showUpdateWindow(
 
   if (updateWin && !updateWin.isDestroyed()) {
     updateWin.webContents.send(UPDATE_CHANNELS.changed, currentState)
-    updateWin.show()
-    updateWin.focus()
+    if (options.inactive) {
+      updateWin.showInactive()
+    } else {
+      updateWin.show()
+      updateWin.focus()
+    }
     return
   }
 
@@ -156,7 +167,7 @@ export function showUpdateWindow(
   })
   updateWin = win
 
-  win.once('ready-to-show', () => win.show())
+  win.once('ready-to-show', () => (options.inactive ? win.showInactive() : win.show()))
   win.on('closed', () => {
     updateWin = null
     if (!closingProgrammatically) actions?.onLater()

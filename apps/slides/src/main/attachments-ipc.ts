@@ -7,15 +7,23 @@
  */
 import { app, dialog, ipcMain } from 'electron'
 import { mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
-import { basename, join } from 'node:path'
-import { showOpenDialogWithMemory } from '@genoffice/electron-utils'
-import { assertFileSaved } from '@genoffice/electron-utils'
+import { basename, join, extname } from 'node:path'
+import {
+  assertFileSaved,
+  isBesideDocument,
+  sharedPathGrants,
+  showOpenDialogWithMemory,
+} from '@genoffice/electron-utils'
+import { sessions } from './session-state'
 import {
   parseFileToText,
   ATTACHABLE_EXTS,
   ATTACHABLE_IMAGE_EXTS,
   ATTACHABLE_MAX_BYTES,
+  attachableMaxBytes,
   ATTACHABLE_IMAGE_MAX_BYTES,
+  diagramPictureExtOf,
+  diagramPictureExtOfName,
 } from '@genoffice/file-parse'
 import type {
   AttachmentAddResult,
@@ -39,12 +47,13 @@ const attachmentTextCache = new Map<string, { stamp: string; text: string }>()
 
 function statAttachment(filePath: string): { meta?: AttachmentMeta; error?: string } {
   const name = basename(filePath)
-  const ext = name.split('.').pop()?.toLowerCase() ?? ''
+  // a draw.io picture that holds its diagram is read as diagram text
+  const ext = diagramPictureExtOf(filePath) ?? name.split('.').pop()?.toLowerCase() ?? ''
   if (!ATTACHABLE_EXTS.has(ext)) return { error: `${name}: ${tm('errUnsupportedExt', { ext })}` }
   try {
     const stat = statSync(filePath)
     if (!stat.isFile()) return { error: `${name}: ${tm('errNotFile')}` }
-    if (stat.size > ATTACHABLE_MAX_BYTES) {
+    if (!ATTACHABLE_IMAGE_EXTS.has(ext) && stat.size > attachableMaxBytes(ext)) {
       return {
         error: `${name}: ${tm('errTooLarge', { mb: Math.round(ATTACHABLE_MAX_BYTES / 1024 / 1024) })}`,
       }
@@ -104,7 +113,8 @@ async function extractAttachmentText(filePath: string): Promise<string> {
   const stamp = `${stat.mtimeMs}:${stat.size}`
   const cached = attachmentTextCache.get(filePath)
   if (cached && cached.stamp === stamp) return cached.text
-  if (stat.size > ATTACHABLE_MAX_BYTES) throw new Error(tm('errFileTooLarge'))
+  const capExt = diagramPictureExtOfName(filePath) ?? extname(filePath)
+  if (stat.size > attachableMaxBytes(capExt)) throw new Error(tm('errFileTooLarge'))
   const parsed = await parseFileToText(filePath)
   if (!parsed.ok || parsed.kind !== 'text' || parsed.text == null) {
     throw new Error(parsed.error ?? tm('errParseFailed'))
@@ -120,7 +130,7 @@ async function extractAttachmentText(filePath: string): Promise<string> {
 
 /** Register the slides:files-* attachment channels (called from registerSlidesIpc). */
 export function registerAttachmentIpc(): void {
-  ipcMain.handle('slides:files-pick', async (): Promise<AttachmentAddResult | null> => {
+  ipcMain.handle('slides:files-pick', async (e): Promise<AttachmentAddResult | null> => {
     const parent = dialogParent()
     const options = {
       title: tm('dlgAddAttachment'),
@@ -132,21 +142,35 @@ export function registerAttachmentIpc(): void {
     }
     const r = await showOpenDialogWithMemory(dialog, parent, options)
     if (r.canceled || r.filePaths.length === 0) return null
+    sharedPathGrants().grant(e.sender.id, r.filePaths)
     return collectAttachments(r.filePaths)
   })
 
-  ipcMain.handle('slides:files-add', (_e, paths: string[]) => collectAttachments(paths))
+  ipcMain.handle('slides:files-add', (_e, paths: string[]) => {
+    // panel drops and clipboard file pastes are recorded by the preload bridge
+    // before this runs; minting a grant for renderer-named paths here would
+    // let a compromised renderer read whatever it names
+    return collectAttachments(paths)
+  })
+
+  function canReadAttachment(wcId: number, filePath: string): boolean {
+    return (
+      sharedPathGrants().has(wcId, filePath) || isBesideDocument(sessions.get(wcId)?.path, filePath)
+    )
+  }
 
   ipcMain.handle(
     'slides:files-read',
     async (
-      _e,
+      e,
       filePath: string,
       offset: number,
       maxChars: number,
     ): Promise<AttachmentReadResult> => {
+      if (!canReadAttachment(e.sender.id, filePath))
+        return { ok: false, error: 'slides: path not granted to this view' }
       const name = basename(filePath)
-      const ext = name.split('.').pop()?.toLowerCase() ?? ''
+      const ext = diagramPictureExtOf(filePath) ?? name.split('.').pop()?.toLowerCase() ?? ''
       if (!ATTACHABLE_EXTS.has(ext)) return { ok: false, error: tm('errUnsupportedExt', { ext }) }
       if (ATTACHABLE_IMAGE_EXTS.has(ext)) {
         return { ok: false, error: tm('errImageNoText') }
@@ -169,7 +193,9 @@ export function registerAttachmentIpc(): void {
   )
 
   // Image attachments read raw bytes -> base64; AiPanel puts them into the user message's images for multimodal
-  ipcMain.handle('slides:files-read-image', (_e, filePath: string): AttachmentImageResult => {
+  ipcMain.handle('slides:files-read-image', (e, filePath: string): AttachmentImageResult => {
+    if (!canReadAttachment(e.sender.id, filePath))
+      return { ok: false, error: 'slides: path not granted to this view' }
     const name = basename(filePath)
     const ext = name.split('.').pop()?.toLowerCase() ?? ''
     const mime = ATTACHMENT_IMAGE_MIME[ext]
@@ -188,7 +214,7 @@ export function registerAttachmentIpc(): void {
   // Clipboard-pasted images (screenshots and other bitmaps without a local path): saved to a temp file then take the regular attachment chain
   ipcMain.handle(
     'slides:files-add-pasted-image',
-    (_e, data: unknown, ext: unknown): AttachmentAddResult => {
+    (e, data: unknown, ext: unknown): AttachmentAddResult => {
       const saved = savePastedImage(data, ext)
       if ('error' in saved) {
         return {
@@ -196,6 +222,7 @@ export function registerAttachmentIpc(): void {
           rejected: [saved.error === 'too-large' ? tm('errImageTooLarge') : tm('errNotImage')],
         }
       }
+      sharedPathGrants().grant(e.sender.id, [saved.path])
       return collectAttachments([saved.path])
     },
   )

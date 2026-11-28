@@ -26,9 +26,11 @@ Regole: l'estensione viene conservata automaticamente; i caratteri non ammessi, 
 ## Salva e Salva con nome
 
 - **⌘S / ctrl+S** salva il file corrente; un file senza titolo chiede prima percorso e nome.
+- Nella maggior parte degli editor, l’elenco dei tipi di file della finestra Salva con nome offre anche i formati di esportazione (PDF, immagini, altri formati di documento). Sceglierne uno scrive solo una copia; il documento aperto e la sua scheda restano sul file originale. Le immagini di più pagine vengono divise in `nome-01.png`, `nome-02.png`, ….
+- **Docs**: l’elenco Salva con nome offre anche .hwp e .hwpx (File ▸ Esporta come documento HWP… fa lo stesso). Se qualcosa non può essere trasferito, come commenti, equazioni o caselle di testo, viene segnalato prima di scrivere il file.
 - **Salva con nome…** scrive un file nuovo e lascia intatto l'originale; le modifiche successive riguardano il file nuovo.
 - Ogni salvataggio è atomico (file temporaneo + rinomina); un'uscita a metà scrittura non può corrompere il file.
-- Il salvataggio automatico interviene solo dopo il primo salvataggio manuale (vedi [Avvio rapido](help://getting-started)).
+- Il salvataggio automatico segue l’interruttore di ogni editor; un nuovo documento senza file proprio inizia dopo il primo salvataggio (vedi [Avvio rapido](help://getting-started)).
 
 ## Esportazione in PDF
 
@@ -44,7 +46,17 @@ Regole: l'estensione viene conservata automaticamente; i caratteri non ammessi, 
 
 ## Stampa
 
-File ▸ Stampa… in ogni editor (⌘P/ctrl+P) apre la finestra di stampa di sistema; i PDF si stampano con l'ordine delle pagine e le rotazioni correnti.
+File ▸ Stampa (⌘P/ctrl+P) apre una finestra di stampa con anteprima in tempo reale in tutti gli editor — Docs, Sheets, Slides, PDF, Markdown, Hangul, HTML, Mind Map, Diagram e Whiteboard. Senza modificare Layout di pagina e usando la finestra di sistema, la stampa resta identica a prima.
+
+- **Destinazione (stampante, PDF, immagini)**: scegli in un solo elenco una stampante installata, **Salva come PDF**, **Salva come immagini** o la **Finestra di stampa di sistema**. Il salvataggio immagini supporta PNG e JPG (Alta 90%, Media 80%, File ridotto 65%) in file numerati separati o in un archivio ZIP. I PDF protetti disabilitano PDF e immagini mantenendo attiva la stampa.
+- **Anteprima di stampa dal vivo**: tutti i dieci editor mostrano un’anteprima prima dell’output. Quando layout, scala di grigi, filigrana o intestazioni/piè di pagina modificano le facciate, l’anteprima renderizza le facciate reali su richiesta con navigazione, zoom e schema di layout.
+- **Layout**: scegli Una pagina per foglio, Più pagine per foglio (2, 4, 6, 9 o 16, con bordi opzionali), Opuscolo (rilegatura a sinistra o destra), Poster (colonne × righe, sovrapposizione, segni di taglio ed etichette riquadri) o Etichette (una pagina per etichetta o ripetuta, cella iniziale, modelli A4 o misure personalizzate).
+- **Scala, orientamento, facciate e ordine**: imposta Dimensioni effettive (100%), Adatta al foglio, Riduci pagine troppo grandi o Scala personalizzata (10%–400%) e orientamento Automatico, Verticale o Orizzontale. Solo dispari, solo pari e ordine inverso si basano sulle facciate finali.
+- **Filigrana, intestazioni/piè di pagina, grigi e risoluzione**: applica filigrane di testo o immagine e 6 campi di intestazione/piè di pagina (titolo, data, numero di pagina o testo libero) solo in stampa, senza modificare il documento. Regola inoltre scala di grigi e DPI (Automatico, 150, 300 o 600 dpi).
+- **Intervalli di pagine e selezione**: Docs e Markdown impaginano il testo selezionato da pagina 1; Slides stampa le diapositive selezionate; PDF le pagine selezionate; Hangul offre Tutte, Pagina corrente o Intervallo personalizzato; Sheets stampa fogli attivi, cartella o selezione.
+- **Finestra di sistema**: per gli opuscoli scegli fronte/retro sul lato corto e lascia invariati intervallo e pagine per foglio nella finestra di sistema.
+
+I PDF vengono stampati con l’ordine e la rotazione correnti.
 
 ## Dove finiscono i file senza titolo
 

@@ -6,9 +6,13 @@ import { PRODUCT_NAME } from '@genoffice/i18n'
 import { flagBool, parseArgs } from './args'
 import { appendAudit } from './audit'
 import { cliSecretCodecFor } from './secrets'
+import { registerCodexImageRoute } from './cloud'
 import { capabilitiesCommand } from './commands/capabilities'
 import { convertCommand } from './commands/convert'
 import { docsCommand } from './commands/docs'
+import { diagramCommand } from './commands/diagram'
+import { mapCommand } from './commands/map'
+import { whiteboardCommand } from './commands/whiteboard'
 import { createCommand } from './commands/create'
 import { guideCommand } from './commands/guide'
 import { imageCommand } from './commands/image'
@@ -41,6 +45,7 @@ import {
 } from './result'
 import { didYouMean } from './suggest'
 import { branded } from './names'
+import { wasmMemoryFailure } from './wasm'
 
 declare const __GENOFFICE_VERSION__: string | undefined
 
@@ -69,6 +74,9 @@ export function defaultRegistry(): CommandRegistry {
     .register(pdfCommand)
     .register(epubCommand)
     .register(hwpCommand)
+    .register(diagramCommand)
+    .register(mapCommand)
+    .register(whiteboardCommand)
     .register(renderCommand)
     .register(guideCommand)
     .register(searchCommand)
@@ -104,7 +112,18 @@ export async function runCli(argv: readonly string[], opts: RunOptions = {}): Pr
     stdout: (t) => process.stdout.write(t + '\n'),
     stderr: (t) => process.stderr.write(t + '\n'),
   }
-  const args = parseArgs(argv, booleanFlags(registry))
+  let args: ReturnType<typeof parseArgs>
+  try {
+    args = parseArgs(argv, booleanFlags(registry))
+  } catch (err) {
+    if (!(err instanceof CliError)) throw err
+    // Parsing failed before a command was selected; only real flags select JSON output.
+    const end = argv.indexOf('--')
+    const json = argv.slice(0, end === -1 ? argv.length : end).includes('--json')
+    if (json) io.stdout(JSON.stringify(toJsonError(null, err)))
+    else io.stderr(formatHumanError(err))
+    return err.code
+  }
   const json = flagBool(args, 'json')
   const name = args.positionals.shift() ?? null
 
@@ -175,6 +194,8 @@ export async function runCli(argv: readonly string[], opts: RunOptions = {}): Pr
   }
   // keys the app sealed open through it, for this command's settings file (decision 0063)
   setAiSecretCodec(cliSecretCodecFor(ctx.env))
+  // the Codex image route over the same settings file; starts nothing until an image takes it
+  registerCodexImageRoute(ctx.env)
   const started = Date.now()
   const audit = (status: 'ok' | 'error', code: ExitCode, outputPath?: string) =>
     appendAudit(ctx.env, {
@@ -199,9 +220,10 @@ export async function runCli(argv: readonly string[], opts: RunOptions = {}): Pr
     return EXIT.ok
   } catch (err) {
     const error =
-      err instanceof CliError
+      wasmMemoryFailure(err) ??
+      (err instanceof CliError
         ? err
-        : new CliError(EXIT.conversion, err instanceof Error ? err.message : String(err))
+        : new CliError(EXIT.conversion, err instanceof Error ? err.message : String(err)))
     audit('error', error.code)
     return fail(error)
   }

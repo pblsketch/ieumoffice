@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
   DROP_OPEN_CHANNEL,
+  USER_FILE_PATHS_SEEN_CHANNEL,
   KNOWN_UNSUPPORTED_DOC_RE,
   OPENABLE_DOC_RE,
   droppableFilePaths,
@@ -123,9 +124,21 @@ describe('droppableFilePaths', () => {
 
 describe('partitionDropPayload', () => {
   it('rejects non-array payloads outright', () => {
-    expect(partitionDropPayload(null)).toEqual({ supported: [], unsupportedExts: [] })
-    expect(partitionDropPayload('a.docx')).toEqual({ supported: [], unsupportedExts: [] })
-    expect(partitionDropPayload({ 0: 'a.docx' })).toEqual({ supported: [], unsupportedExts: [] })
+    expect(partitionDropPayload(null)).toEqual({
+      supported: [],
+      skillFiles: [],
+      unsupportedExts: [],
+    })
+    expect(partitionDropPayload('a.docx')).toEqual({
+      supported: [],
+      skillFiles: [],
+      unsupportedExts: [],
+    })
+    expect(partitionDropPayload({ 0: 'a.docx' })).toEqual({
+      supported: [],
+      skillFiles: [],
+      unsupportedExts: [],
+    })
   })
 
   it('ignores non-string entries, whitespace-only strings, and duplicates', () => {
@@ -159,6 +172,34 @@ describe('partitionDropPayload', () => {
     expect(result.unsupportedExts).toEqual([])
   })
 
+  it('treats a dropped .ods as openable (the spreadsheet tab converts it), not as unsupported', () => {
+    const result = partitionDropPayload(['/data/budget.ods', 'C:/x/BUDGET.ODS', 'z.odp'])
+    expect(result.supported).toEqual(['/data/budget.ods', 'C:/x/BUDGET.ODS'])
+    expect(result.unsupportedExts).toEqual(['odp'])
+    expect(OPENABLE_DOC_RE.test('a.ods')).toBe(true)
+    expect(KNOWN_UNSUPPORTED_DOC_RE.test('a.ods')).toBe(false)
+  })
+
+  it('routes dropped mind maps, a FreeMind / Freeplane map included, as openable', () => {
+    const result = partitionDropPayload(['/maps/plan.xmind', '/maps/PLAN.MM', '/maps/plan.mmap'])
+    expect(result.supported).toEqual(['/maps/plan.xmind', '/maps/PLAN.MM'])
+    expect(result.unsupportedExts).toEqual([])
+  })
+
+  it('routes dropped diagrams, draw.io pictures and Visio drawings as openable', () => {
+    const paths = [
+      '/maps/flow.drawio',
+      '/maps/FLOW.DIO',
+      '/maps/flow.drawio.svg',
+      '/maps/flow.drawio.png',
+      '/maps/plan.vsdx',
+    ]
+    const result = partitionDropPayload([...paths, '/maps/photo.png', '/maps/logo.svg'])
+    // a plain picture is no document: it is neither opened nor reported
+    expect(result.supported).toEqual(paths)
+    expect(result.unsupportedExts).toEqual([])
+  })
+
   it('routes dropped .xmind files as openable', () => {
     const result = partitionDropPayload(['/maps/plan.xmind', '/maps/PLAN2.XMIND'])
     expect(result.supported).toEqual(['/maps/plan.xmind', '/maps/PLAN2.XMIND'])
@@ -166,9 +207,24 @@ describe('partitionDropPayload', () => {
   })
 
   it('collects known-unsupported extensions uniquely, first-seen order', () => {
-    const result = partitionDropPayload(['old.doc', 'x.pages', 'y.rtf', 'z.doc'])
+    const result = partitionDropPayload(['old.pps', 'x.pages', 'y.rtf', 'z.pps'])
     expect(result.supported).toEqual([])
-    expect(result.unsupportedExts).toEqual(['doc', 'pages', 'rtf'])
+    expect(result.unsupportedExts).toEqual(['pps', 'pages', 'rtf'])
+  })
+
+  it('sets SKILL.md files and zip files apart for the shell to look into', () => {
+    const result = partitionDropPayload([
+      '/dl/SKILL.md',
+      'C:\\dl\\skill.MD',
+      '/dl/pack.ZIP',
+      '/dl/report.docx',
+      '/dl/MY-SKILL.md',
+      '/dl/notes.md',
+    ])
+    expect(result.skillFiles).toEqual(['/dl/SKILL.md', 'C:\\dl\\skill.MD', '/dl/pack.ZIP'])
+    // any other .md is a markdown document
+    expect(result.supported).toEqual(['/dl/report.docx', '/dl/MY-SKILL.md', '/dl/notes.md'])
+    expect(result.unsupportedExts).toEqual([])
   })
 
   it('caps the number of openable files at 20', () => {
@@ -196,10 +252,10 @@ describe('installDropOpenBridge', () => {
     resetInstallFlag()
   }
 
-  it('registers exactly one dragover and one drop listener', () => {
+  it('registers one dragover, a capture drop, a capture paste, and the open drop', () => {
     const win = install()
     try {
-      expect(win.recorded.map((r) => r.type)).toEqual(['dragover', 'drop'])
+      expect(win.recorded.map((r) => r.type)).toEqual(['dragover', 'drop', 'paste', 'drop'])
     } finally {
       uninstall(win)
     }
@@ -209,7 +265,7 @@ describe('installDropOpenBridge', () => {
     const win = install()
     try {
       installDropOpenBridge()
-      expect(win.recorded.length).toBe(2)
+      expect(win.recorded.length).toBe(4)
     } finally {
       uninstall(win)
     }
@@ -263,14 +319,19 @@ describe('installDropOpenBridge', () => {
     }
   })
 
-  it('stays silent when the page already handled the drop', async () => {
+  it('records a page-claimed drop in the ledger but never opens it', async () => {
     electronMocks.getPathForFile.mockImplementation((f: { name: string }) => `/tmp/${f.name}`)
     const win = install()
     try {
       const ev = fileDrag(['report.docx'], true)
       win.fire('drop', ev)
       await Promise.resolve()
-      expect(electronMocks.send).not.toHaveBeenCalled()
+      // the capture-phase ledger record must not depend on where the drop
+      // landed; the open bridge stays out of the way
+      expect(electronMocks.send).toHaveBeenCalledWith(USER_FILE_PATHS_SEEN_CHANNEL, [
+        '/tmp/report.docx',
+      ])
+      expect(electronMocks.send).not.toHaveBeenCalledWith(DROP_OPEN_CHANNEL, expect.anything())
     } finally {
       uninstall(win)
     }
@@ -296,11 +357,29 @@ describe('installDropOpenBridge', () => {
     electronMocks.getPathForFile.mockImplementation((f: { name: string }) => `/tmp/${f.name}`)
     const win = install()
     try {
-      const ev = fileDrag(['legacy.doc'])
+      const ev = fileDrag(['legacy.pps'])
       win.fire('drop', ev)
       await vi.waitFor(() =>
-        expect(electronMocks.send).toHaveBeenCalledWith(DROP_OPEN_CHANNEL, ['/tmp/legacy.doc']),
+        expect(electronMocks.send).toHaveBeenCalledWith(DROP_OPEN_CHANNEL, ['/tmp/legacy.pps']),
       )
+    } finally {
+      uninstall(win)
+    }
+  })
+
+  it('records pasted OS files in the ledger without opening them', async () => {
+    electronMocks.getPathForFile.mockImplementation((f: { name: string }) => `/tmp/${f.name}`)
+    const win = install()
+    try {
+      win.fire('paste', {
+        clipboardData: { files: [{ name: 'report.docx' }, { name: 'photo.png' }] },
+      })
+      await Promise.resolve()
+      expect(electronMocks.send).toHaveBeenCalledWith(USER_FILE_PATHS_SEEN_CHANNEL, [
+        '/tmp/report.docx',
+        '/tmp/photo.png',
+      ])
+      expect(electronMocks.send).not.toHaveBeenCalledWith(DROP_OPEN_CHANNEL, expect.anything())
     } finally {
       uninstall(win)
     }

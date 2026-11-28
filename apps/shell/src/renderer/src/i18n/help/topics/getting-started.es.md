@@ -1,6 +1,6 @@
 # Inicio rápido: la interfaz y lo esencial
 
-GenOffice es una suite ofimática que funciona en su equipo: una ventana, una fila de pestañas, con ocho editores: Docs (procesamiento de texto), Sheets (hojas de cálculo), Slides (presentaciones), PDF, Markdown y texto plano, HTML, HWP/HWPX (documentos de Hangul) y mapas mentales (.xmind). Cada editor abre y guarda archivos en su propio formato: .docx, .xlsx, .pptx, .pdf, .md, .html, .hwp/.hwpx y .xmind. Editar no requiere red; las funciones de IA sí.
+GenOffice es una suite ofimática que funciona en su equipo: una ventana, una fila de pestañas, con ocho editores: Docs (procesamiento de texto), Sheets (hojas de cálculo), Slides (presentaciones), PDF, Markdown y texto plano, HTML, HWP/HWPX (documentos de Hangul) y mapas mentales (.xmind). Cada editor abre y guarda archivos en su propio formato: .docx, .xlsx, .pptx, .pdf, .md, .html, .hwp/.hwpx y .xmind. Editar no requiere red; las funciones de IA sí. El editor de mapas mentales también importa archivos de FreeMind y Freeplane (.mm) como mapas nuevos, que se guardan como .xmind.
 
 ## Descripción de la interfaz
 
@@ -38,7 +38,7 @@ Los archivos .odt (texto OpenDocument, el formato que guardan Hancom Office, Lib
 ## El modelo de guardado
 
 - **Guardado manual**: ⌘S/ctrl+S, o Archivo ▸ Guardar / Guardar como. El primer guardado pregunta por la ubicación y el nombre.
-- **El autoguardado** se activa solo después de haber guardado el archivo a mano al menos una vez: un PDF que solo se lee nunca se reescribe a escondidas. El autoguardado se dispara poco después de que cambie el contenido.
+- **El autoguardado** sigue el interruptor de cada editor (y el valor predeterminado de la aplicación). Un PDF que solo se lee nunca se reescribe a escondidas, y un documento nuevo sin archivo propio empieza a autoguardarse tras su primer guardado.
 - Al cerrar una pestaña con cambios sin guardar, primero se pregunta si se quiere Guardar / Descartar / Cancelar.
 - Cada escritura es atómica (archivo temporal y renombrado), así que un corte de luz no puede dejar un archivo a medias.
 

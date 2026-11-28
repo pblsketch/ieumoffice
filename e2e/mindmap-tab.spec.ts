@@ -162,7 +162,7 @@ test.describe('mind map editor in the shell', () => {
       await page.screenshot({ path: screenshotPath('mindmap-tab-strip') })
       await map.screenshot({ path: screenshotPath('mindmap-new-editor') })
 
-      // ── its own menu: File with the three exports and Print, Edit with undo / redo
+      // ── its own menu: File with the four exports and Print, Edit with undo / redo
       const file = await menuLabels(app, 'File')
       expect(file).toEqual([
         'New',
@@ -177,6 +177,7 @@ test.describe('mind map editor in the shell', () => {
         'Make Another Document from This',
         '-',
         'Export as Image (PNG)…',
+        'Export as Image (SVG)…',
         'Export as PDF…',
         'Export as Markdown Outline…',
         '-',
@@ -227,6 +228,7 @@ test.describe('mind map editor in the shell', () => {
       })
       for (const label of [
         'Export as Image (PNG)…',
+        'Export as Image (SVG)…',
         'Export as PDF…',
         'Export as Markdown Outline…',
         'Print…',
@@ -237,6 +239,7 @@ test.describe('mind map editor in the shell', () => {
         await app.evaluate(() => (globalThis as unknown as { __sent: unknown[][] }).__sent),
       ).toEqual([
         ['mindmap:export-request', 'png'],
+        ['mindmap:export-request', 'svg'],
         ['mindmap:export-request', 'pdf'],
         ['mindmap:export-request', 'markdown'],
         ['mindmap:print-request'],
@@ -516,10 +519,15 @@ test.describe('mind map editor in the shell', () => {
           () => (globalThis as unknown as { __openDialogs: unknown[] }).__openDialogs,
         )
       )[0] as { filters: Array<{ name: string; extensions: string[] }> }
-      expect(asked.filters[0]!.extensions).toContain('xmind')
-      const own = asked.filters.find((filter) => filter.extensions.join() === 'xmind')
-      // the file format is named only here, as the kind of file that is opened
-      expect(own?.name).toBe('Mind Maps (XMind files)')
+      expect(asked.filters[0]!.extensions).toEqual(expect.arrayContaining(['xmind', 'mm']))
+      const own = asked.filters.filter((filter) => filter.extensions.includes('xmind'))
+      // one filter for the editor besides "supported files", naming the
+      // programs whose maps it takes: XMind's own, FreeMind's and Freeplane's
+      expect(own).toHaveLength(2)
+      expect(own[1]).toEqual({
+        name: 'Mind Maps (XMind, FreeMind, Freeplane)',
+        extensions: ['xmind', 'mm'],
+      })
       // File > Open asks the same way
       expect(await clickMenuItem(app, 'File', 'Open…')).toBe(true)
       await expect
@@ -535,7 +543,12 @@ test.describe('mind map editor in the shell', () => {
       // message the drop bridge sends from the preload is sent here instead
       await app.evaluate(
         ({ ipcMain }, dropped) => {
-          ipcMain.emit('app:open-dropped-files', {}, [dropped, 'C:\\not-a-document.png'])
+          // a real preload message carries its window as the sender; the drop
+          // handler records the dropped paths as granted to that window
+          ipcMain.emit('app:open-dropped-files', { sender: { id: -1 } }, [
+            dropped,
+            'C:\\not-a-document.png',
+          ])
         },
         join(outside, 'dropped.xmind'),
       )
@@ -550,7 +563,7 @@ test.describe('mind map editor in the shell', () => {
     }
   })
 
-  test('a headless export of a .xmind is refused with the input-file exit code', async () => {
+  test('a headless export of a .xmind writes a PDF file', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'genoffice-mindmap-headless-'))
     const mapPath = join(dir, 'trip.xmind')
     const outPath = join(dir, 'trip.pdf')
@@ -580,15 +593,15 @@ test.describe('mind map editor in the shell', () => {
           },
         )
       })
-      // 2 = the input cannot be exported: reported, not crashed
-      expect(result.code).toBe(2)
+      expect(result.code).toBe(0)
       const envelope = JSON.parse(result.stdout.trim().split('\n').at(-1)!) as {
         status: string
-        error?: string
+        output_path?: string
       }
-      expect(envelope.status).toBe('error')
-      expect(envelope.error).toMatch(/cannot export/)
-      expect(existsSync(outPath)).toBe(false)
+      expect(envelope.status).toBe('ok')
+      expect(existsSync(outPath)).toBe(true)
+      const bytes = await readFile(outPath)
+      expect(bytes.subarray(0, 5).toString('latin1')).toBe('%PDF-')
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }

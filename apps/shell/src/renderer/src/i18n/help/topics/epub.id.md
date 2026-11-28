@@ -12,13 +12,22 @@ Editor e-book membuka buku EPUB (`.epub`) di sebuah tab. Anda bisa membaca buku,
 
 ## Membaca
 
-- Panel **Daftar isi** di sebelah kiri menampilkan daftar isi buku. Klik sebuah entri untuk menuju ke sana. Buku yang tidak punya daftar isi mendapat daftar babnya sebagai gantinya.
+- Panel **Daftar isi** di sebelah kiri menampilkan daftar isi buku. Klik sebuah entri untuk menuju ke sana. Buku yang tidak punya daftar isi mendapat daftar babnya sebagai gantinya. Seret tepi dalam panel untuk mengubah lebarnya; klik dua kali tepinya untuk kembali ke lebar semula. Panel pencarian memakai lebar yang sama.
 - Setiap bab digulir ke atas dan ke bawah. Teruskan menggulir melewati akhir bab untuk pindah ke bab berikutnya, atau melewati awalnya untuk kembali. Baris status menunjukkan bab tempat Anda berada.
 - Tab **Tampilan** mengubah ukuran teks dan spasi baris, serta menyalakan dan mematikan **Tampilan gelap**. Pengaturan ini hanya mengubah tampilan layar, tidak pernah mengubah buku, dan berlaku untuk semua buku.
 - Posisi terakhir Anda membaca diingat untuk setiap file, di folder data aplikasi, bukan di dalam buku.
 - **Cari di buku** (Ctrl+F) mencari di semua bab. Klik sebuah hasil untuk menuju ke sana.
 - Tautan di dalam buku membawa Anda ke tempat tujuannya. Tautan web dan email dibuka di peramban default Anda; alamat jenis lain tidak dibuka.
 - Skrip bawaan buku tidak pernah dijalankan dan tidak ada yang dimuat dari internet. Suara dan video tidak diputar.
+
+## Pratinjau
+
+- Klik **Pratinjau** di tab **Beranda** atau **Tampilan** untuk melihat buku per halaman, seperti yang ditampilkan e-reader. Pratinjau dibuka di tempat Anda sedang membaca.
+- Di bilah atas, pilih layar (**E-reader**, **Ponsel**, **Tablet**, atau **Sesuaikan jendela**), lanskap, ukuran teks, dan warna latar (putih, sepia, atau gelap). Layar lebar yang dimiringkan menampilkan dua halaman berdampingan. Pengaturan ini hanya mengubah pratinjau, tidak pernah mengubah buku.
+- Balik halaman dengan tombol panah, Page Up dan Page Down, spasi, roda mouse, atau tombol di kedua sisi. Membalik melewati halaman terakhir sebuah bab akan berlanjut ke bab berikutnya. Daftar isi dan tautan di dalam buku memindahkan pratinjau ke tempat itu.
+- Teks tidak dapat disunting di pratinjau. Saat AI mengubah buku atau Anda membatalkan perubahan, pratinjau ikut berubah.
+- Klik **Tutup pratinjau** atau tekan Esc untuk kembali menyunting, di tempat yang sedang ditampilkan pratinjau.
+- Pemisahan halaman sedikit berbeda di setiap aplikasi toko dan perangkat, jadi anggap pratinjau sebagai gambaran yang mendekati.
 
 ## Menyunting teks
 
@@ -38,7 +47,7 @@ Editor e-book membuka buku EPUB (`.epub`) di sebuah tab. Anda bisa membaca buku,
 ## Panel AI
 
 - Tanyakan tentang buku, minta ringkasan sebuah bab, atau minta teksnya diperbaiki atau ditulis ulang. AI membaca daftar isi dan bab-bab buku, serta mencari teks di dalamnya.
-- Perubahan dari AI langsung terlihat, dan satu kali urungkan (Ctrl+Z) membatalkan semua yang diubahnya pada giliran itu. AI dapat membuat teks tebal atau miring, tetapi tidak dapat menambahkan gambar, tabel, atau bab.
+- Perubahan dari AI langsung terlihat, blok yang diubah ditandai kuning, dan **Batalkan perubahan ini** pada kartu di bawah balasannya membatalkan semua yang diubahnya pada giliran itu (selama buku tidak disunting setelahnya). AI dapat membuat teks tebal atau miring, tetapi tidak dapat menambahkan gambar, tabel, atau bab.
 - Teks buku adalah bahan bagi AI, bukan perintah untuknya.
 - Ketik "Terjemahkan buku ini ke bahasa Prancis" dan AI membuka jendela terjemahan dengan bahasa itu sudah terisi. Tidak ada yang dikirim sebelum Anda menekan **Mulai**.
 - Buku EPUB juga dapat dilampirkan di panel AI editor lain, dipilih dengan `@`, dan ditemukan lewat pencarian file di layar Beranda.
@@ -58,11 +67,12 @@ Editor e-book membuka buku EPUB (`.epub`) di sebuah tab. Anda bisa membaca buku,
 - Bagian yang sudah diterjemahkan disimpan. Jika Anda berhenti, pilih **Ekspor yang sudah diterjemahkan** (sisanya tetap dalam bahasa asli) atau **Lanjutkan nanti**. Saat Anda membuka buku yang terjemahannya belum selesai, GenOffice menawarkan untuk melanjutkannya. **Terjemahkan ulang dari awal** lebih dulu menghapus terjemahan tersimpan untuk bahasa itu.
 - Terjemahan tersimpan dihitung di Pengaturan ▸ Umum ▸ **Hasil AI tersimpan**, bersama hasil dari dokumen PDF, dan **Hapus semua** ikut menghapusnya.
 - Terjemahan yang sama juga dapat dijalankan dari [perintah terminal](help://cli) sebagai `ieumoffice epub translate`.
+- Pilih **Bahasa sederhana** pada **Mode** untuk menulis ulang buku dengan kata-kata sederhana dalam bahasa yang dipilih. Hasilnya **Buku bahasa sederhana** dan **Teks asli diikuti bahasa sederhana**; judulnya diberi tanda versi bahasa sederhana dalam bahasa itu, dan nama filenya diberi tanda itu dalam bahasa antarmuka agar berbeda dari nama file terjemahan. Bahasanya awalnya bahasa antarmuka dan boleh sama dengan bahasa buku. Versi sederhana disimpan terpisah dari terjemahan, tawaran untuk melanjutkannya muncul sendiri, dan perintah terminal tidak membuatnya.
 
 ## Belum didukung
 
 - Menambah, menghapus, atau mengurutkan ulang bab; mengubah judul, penulis, atau sampul; menyisipkan gambar atau tabel; mengubah paragraf menjadi judul atau daftar.
 - Menyunting atau menerjemahkan buku bertata letak tetap, dan membuka buku yang dilindungi salin.
-- Membalik halaman seperti buku cetak, dan membuat buku baru yang kosong.
+- Membuat buku baru yang kosong.
 - Membandingkan teks asli dan terjemahan berdampingan di dalam editor. Sebagai gantinya, buka buku dwibahasa, lalu perbaiki buku terjemahan seperti buku lainnya.
 - Menyembunyikan bagian buku dari AI.

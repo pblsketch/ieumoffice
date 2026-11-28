@@ -4,7 +4,7 @@ Agent traktuje jeden wybrany przez ciebie folder jako projekt i uruchamia w nim 
 
 ## Zanim zaczniesz
 
-- Subskrypcja Claude lub ChatGPT połączona w **Ustawienia ▸ AI**. Jak to zrobić, wyjaśnia temat „Połączenie z subskrypcją”.
+- Program Claude Code lub Codex połączony w **Ustawienia ▸ AI** (zalogowany w ramach subskrypcji Claude lub planu ChatGPT). ChatGPT połączony bezpośrednio w aplikacji nie jest używany przez agenta. Jak to zrobić, wyjaśnia temat „Połączenie z subskrypcją”.
 - Folder z twoimi materiałami. Nie można wybrać całego dysku, całego folderu domowego ani folderów z danymi logowania lub danymi aplikacji.
 
 ## Rozpoczynanie sesji

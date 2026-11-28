@@ -68,11 +68,11 @@ describe('normalizeAiSettings', () => {
     expect(activeSearchProvider(settings)).toBe('parallel')
   })
 
-  it('drops the cloud-tools switch so the next save no longer writes it', () => {
+  it('drops the cloud-tools switch from the settings the app works with', () => {
     for (const gskToolsEnabled of [true, false]) {
       const settings = normalizeAiSettings({ ...gensparkEraFile(), gskToolsEnabled })
       expect('gskToolsEnabled' in settings).toBe(false)
-      // the save path is the IPC guard: it must not bring the field back
+      // a renderer's copy goes through the IPC guard: it must not bring the field back
       expect('gskToolsEnabled' in sanitizeAiSettings(settings)!).toBe(false)
     }
   })
@@ -160,7 +160,11 @@ describe('normalizeAiSettings', () => {
 
   it('fills the new settings with their defaults', () => {
     const settings = normalizeAiSettings(gensparkEraFile())
-    expect(settings.meteredAccepted).toEqual({ 'claude-code': false, codex: false })
+    expect(settings.meteredAccepted).toEqual({
+      'claude-code': false,
+      codex: false,
+      antigravity: false,
+    })
     expect(settings.headlessSubscriptionEnabled).toBe(false)
     expect(settings.subscriptionNoticeSeen).toBe(false)
   })
@@ -173,7 +177,11 @@ describe('normalizeAiSettings', () => {
       headlessSubscriptionConsentVersion: HEADLESS_SUBSCRIPTION_CONSENT_VERSION,
       subscriptionNoticeSeen: true,
     })
-    expect(kept.meteredAccepted).toEqual({ 'claude-code': true, codex: false })
+    expect(kept.meteredAccepted).toEqual({
+      'claude-code': true,
+      codex: false,
+      antigravity: false,
+    })
     expect(kept.headlessSubscriptionEnabled).toBe(true)
     expect(kept.subscriptionNoticeSeen).toBe(true)
 
@@ -183,7 +191,11 @@ describe('normalizeAiSettings', () => {
       headlessSubscriptionEnabled: 'true',
       subscriptionNoticeSeen: 1,
     })
-    expect(malformed.meteredAccepted).toEqual({ 'claude-code': false, codex: false })
+    expect(malformed.meteredAccepted).toEqual({
+      'claude-code': false,
+      codex: false,
+      antigravity: false,
+    })
     expect(malformed.headlessSubscriptionEnabled).toBe(false)
     expect(malformed.subscriptionNoticeSeen).toBe(false)
   })
@@ -221,7 +233,10 @@ describe('normalizeAiSettings', () => {
     const ready = { provider: 'codex', state: 'ready', meteredAccepted: false } as const
     // Claude's check answered too: `auto` decides nothing while it is still out
     const out = { provider: 'claude-code', state: 'signed-out', meteredAccepted: false } as const
-    expect(selectAiProvider(settings, { 'claude-code': out, codex: ready })).toEqual({
+    const direct = { provider: 'chatgpt', state: 'signed-out', meteredAccepted: false } as const
+    expect(
+      selectAiProvider(settings, { 'claude-code': out, chatgpt: direct, codex: ready }),
+    ).toEqual({
       connected: true,
       provider: 'codex',
       metered: false,
@@ -285,5 +300,39 @@ describe('normalizeAiSettings', () => {
     const settings = normalizeAiSettings({ apiKey: 'sk-old', model: 'gpt-4o', baseUrl: '' })
     expect(settings.providers.custom).toMatchObject({ apiKey: 'sk-old', model: 'gpt-4o' })
     expect(settings.provider).toBe('auto')
+  })
+})
+
+describe('the CLIs turned off in this app (decision 0114)', () => {
+  it('reads only a literal true under a CLI id as off', () => {
+    const settings = normalizeAiSettings({
+      providers: {},
+      subscriptionOff: { 'claude-code': true, codex: 'true', chatgpt: true, openai: true },
+    })
+    expect(settings.subscriptionOff).toEqual({ 'claude-code': true })
+    expect(selectAiProvider(settings, {})).toMatchObject({ connected: false })
+  })
+
+  it('leaves the field out when nothing is off, so the file keeps its shape', () => {
+    expect('subscriptionOff' in normalizeAiSettings({ providers: {} })).toBe(false)
+    expect(
+      'subscriptionOff' in
+        normalizeAiSettings({ providers: {}, subscriptionOff: { codex: false } }),
+    ).toBe(false)
+  })
+
+  it('keeps a CLI off even in a file from before the provider table', () => {
+    expect(normalizeAiSettings({ subscriptionOff: { codex: true } }).subscriptionOff).toEqual({
+      codex: true,
+    })
+  })
+
+  it('carries what a renderer read on its requests, checked the same way', () => {
+    const sent = sanitizeAiSettings({
+      provider: 'auto',
+      providers: {},
+      subscriptionOff: { codex: true, 'claude-code': 1, chatgpt: true },
+    })
+    expect(sent?.subscriptionOff).toEqual({ codex: true })
   })
 })

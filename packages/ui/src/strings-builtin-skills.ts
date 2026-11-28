@@ -10,6 +10,23 @@ export const BUILTIN_SKILL_NAMES = [
   'humanizer',
   'copy-editing',
   'find-skills',
+  'administration-report',
+  'administration-report-draft',
+  'docx',
+  'pptx',
+  'xlsx',
+  'pdf',
+  'hwp-document',
+  'hwp-exam-paper',
+  'mindmap',
+  'diagram',
+  'whiteboard',
+  'html-document',
+  'general-report',
+  'project-proposal',
+  'public-notice',
+  'presentation-deck',
+  'table-summary',
 ] as const
 
 export type BuiltinSkillName = (typeof BUILTIN_SKILL_NAMES)[number]
@@ -20,6 +37,40 @@ const zh = {
   'builtinSkillDesc.humanizer': '找出文本中带有 AI 痕迹的表达，在不改变内容的前提下改得更自然。',
   'builtinSkillDesc.copy-editing': '把已经写好的英文文本逐遍检查，改得更清楚、更简洁。',
   'builtinSkillDesc.find-skills': '仅在智能体窗口中可用，需要联网，用来查找所需技能并建议安装。',
+  'builtinSkillDesc.administration-report':
+    '按照韩国行政安全部的指南整理报告：叙述式语句、标准编号、通用字体、简洁的表格。',
+  'builtinSkillDesc.administration-report-draft':
+    '按行政安全部格式从头撰写行政文书：章节结构、Ⅰ·1·가 编号、叙述式语句、表题与通用字体。',
+  'builtinSkillDesc.docx':
+    '仅在智能体窗口中可用。运行脚本，在项目文件夹中创建、修改和读取 .docx 文件。这台电脑上需要装有 Python 等程序。',
+  'builtinSkillDesc.pptx':
+    '仅在智能体窗口中可用。运行脚本，在项目文件夹中创建、修改和读取 .pptx 文件。这台电脑上需要装有 Python 等程序。',
+  'builtinSkillDesc.xlsx':
+    '仅在智能体窗口中可用。运行脚本，在项目文件夹中创建和修改 .xlsx 文件，并重新计算公式。这台电脑上需要装有 Python 等程序。',
+  'builtinSkillDesc.pdf':
+    '仅在智能体窗口中可用。运行脚本，在项目文件夹中读取、合并和拆分 .pdf 文件，并填写表单。这台电脑上需要装有 Python 等程序。',
+  'builtinSkillDesc.hwp-document':
+    '从头撰写 .hwp、.hwpx 文档：按报告、计划、通知、公文、会议记录选定结构，用公文语体撰写，最后进行检查。',
+  'builtinSkillDesc.hwp-exam-paper':
+    '按韩国学校提交的原稿格式出试卷：填写已打开的学校试卷模板，或新建 B4 双栏试卷，配有表头、分值和页码。',
+  'builtinSkillDesc.mindmap':
+    '根据主题或资料制作思维导图：均衡地设 3 到 7 个主分支，标题简短、说明放在备注里，最后检查结构。',
+  'builtinSkillDesc.diagram':
+    '绘制清晰易读的图表：选对图表类型，流向保持一个方向，文字简短、颜色少用，并检查重叠和孤立的图形。',
+  'builtinSkillDesc.whiteboard':
+    '在白板上组织便利贴、区域、卡片、连线和表格：先规划版面再一次落盘，保持留白清晰、文字简短，并在最后检查重叠。',
+  'builtinSkillDesc.html-document':
+    '制作屏幕上好读、打印也整洁的 HTML 文档：先确定读者、篇幅和纸张，再检查分页和内容。',
+  'builtinSkillDesc.general-report':
+    '按“先问清、再列纲、后撰写、最后检查”的流程撰写结构清晰的通用报告，结论先行并核对数据来源。',
+  'builtinSkillDesc.project-proposal':
+    '撰写涵盖背景问题、解决方案、范围边界、里程碑、风险与决策请求的完整项目策划与提案。',
+  'builtinSkillDesc.public-notice':
+    '撰写面向内部或外部读者的通知与公告，在开头突出对象、时间、影响范围、所需操作与联系方式。',
+  'builtinSkillDesc.presentation-deck':
+    '按周报、提案、讲义或产品介绍四种目标结构规划并制作演示文稿，控制单页信息量并支持演讲者备注。',
+  'builtinSkillDesc.table-summary':
+    '把零散记录或对比资料整理为带单位表头、统一格式与核心结论摘要的清晰表格。',
 }
 
 /**
@@ -40,6 +91,40 @@ export const BUILTIN_SKILL_STRINGS = defineStrings({
       'Goes over English text you have already written and makes it clearer and tighter.',
     'builtinSkillDesc.find-skills':
       'Works only in the agent window and needs internet access to find skills and suggest installing them.',
+    'builtinSkillDesc.administration-report':
+      'Brings a report in line with the Ministry of the Interior and Safety guideline: prose, standard numbering, fonts that open anywhere, simple tables.',
+    'builtinSkillDesc.administration-report-draft':
+      'Writes an administrative report from scratch in the ministry format: sections, the Ⅰ·1·가 numbering, prose, table titles and compatible fonts.',
+    'builtinSkillDesc.docx':
+      'Works only in the agent window. Runs scripts to create, edit and read .docx files in the project folder. Python and other programs must be installed on this PC.',
+    'builtinSkillDesc.pptx':
+      'Works only in the agent window. Runs scripts to create, edit and read .pptx files in the project folder. Python and other programs must be installed on this PC.',
+    'builtinSkillDesc.xlsx':
+      'Works only in the agent window. Runs scripts to create and edit .xlsx files in the project folder and recalculate their formulas. Python and other programs must be installed on this PC.',
+    'builtinSkillDesc.pdf':
+      'Works only in the agent window. Runs scripts to read, merge and split .pdf files in the project folder and fill in forms. Python and other programs must be installed on this PC.',
+    'builtinSkillDesc.hwp-document':
+      'Writes a new .hwp or .hwpx document from scratch: picks the parts for a report, plan, notice, official letter or minutes, writes it in document style, and checks it at the end.',
+    'builtinSkillDesc.hwp-exam-paper':
+      'Writes a test paper the way Korean schools hand it in: fills the school form that is open, or builds a B4 paper in two columns with a head table, points and page numbers.',
+    'builtinSkillDesc.mindmap':
+      'Builds a mind map from a topic or material: three to seven balanced main branches, short titles with the detail in notes, and a structure check at the end.',
+    'builtinSkillDesc.diagram':
+      'Draws a clear diagram: picks the type that fits, keeps one direction, short labels and few colours, and checks for overlaps and loose shapes.',
+    'builtinSkillDesc.whiteboard':
+      'Organizes sticky notes, zones, cards, connectors and tables on a whiteboard: plans a clear layout, keeps labels short and whitespace clean, and checks for overlaps.',
+    'builtinSkillDesc.html-document':
+      'Makes an HTML document that reads well on screen and prints cleanly: settles the reader, length and paper first, then checks the pages and the content.',
+    'builtinSkillDesc.general-report':
+      'Writes a clear workplace report in four steps (ask, outline, draft, verify) with conclusion first and grounded facts.',
+    'builtinSkillDesc.project-proposal':
+      'Drafts a structured project proposal covering problem, approach, scope, timeline, risks, and the decision ask.',
+    'builtinSkillDesc.public-notice':
+      'Writes a clear notice or announcement highlighting who is affected, when it happens, required actions, and contacts upfront.',
+    'builtinSkillDesc.presentation-deck':
+      'Plans and builds a presentation deck for weekly reports, proposals, lectures, or product overviews with clean hierarchy and speaker notes.',
+    'builtinSkillDesc.table-summary':
+      'Turns raw notes or multi-source records into a scannable comparison or summary table with units and a concise takeaway.',
   },
   ja: {
     'builtinSkillDesc.meeting-minutes':
@@ -51,6 +136,40 @@ export const BUILTIN_SKILL_STRINGS = defineStrings({
     'builtinSkillDesc.copy-editing': '書き上げた英語の文章を何度か見直し、より明確で簡潔にします。',
     'builtinSkillDesc.find-skills':
       'エージェントのウィンドウでのみ使え、インターネットにつないで必要なスキルを探し、インストールを提案します。',
+    'builtinSkillDesc.administration-report':
+      '行政安全部のガイドラインに合わせて報告書を整えます。叙述式の文章、標準の番号、どの環境でも開けるフォント、単純な表。',
+    'builtinSkillDesc.administration-report-draft':
+      '行政文書を最初から行政安全部の形式で書きます。節構成、Ⅰ・1・가の番号、叙述式の文章、表の題名と通用するフォント。',
+    'builtinSkillDesc.docx':
+      'エージェントのウィンドウでのみ使えます。スクリプトを実行して、プロジェクトのフォルダーの .docx ファイルを作成・編集・読み取りします。この PC に Python などのプログラムが入っている必要があります。',
+    'builtinSkillDesc.pptx':
+      'エージェントのウィンドウでのみ使えます。スクリプトを実行して、プロジェクトのフォルダーの .pptx ファイルを作成・編集・読み取りします。この PC に Python などのプログラムが入っている必要があります。',
+    'builtinSkillDesc.xlsx':
+      'エージェントのウィンドウでのみ使えます。スクリプトを実行して、プロジェクトのフォルダーの .xlsx ファイルを作成・編集し、数式を再計算します。この PC に Python などのプログラムが入っている必要があります。',
+    'builtinSkillDesc.pdf':
+      'エージェントのウィンドウでのみ使えます。スクリプトを実行して、プロジェクトのフォルダーの .pdf ファイルを読み取り、結合・分割し、フォームに入力します。この PC に Python などのプログラムが入っている必要があります。',
+    'builtinSkillDesc.hwp-document':
+      '.hwp・.hwpx の文書を最初から書きます。報告書・計画書・案内文・公文書・議事録に合った構成を選び、文書の文体で書き、最後に点検します。',
+    'builtinSkillDesc.hwp-exam-paper':
+      '韓国の学校が提出する原稿の形で試験用紙を作ります。開いている学校の様式に書き込むか、見出しの表・配点・ページ番号のある B4 二段組の用紙を新しく作ります。',
+    'builtinSkillDesc.mindmap':
+      'テーマや資料からマインドマップを作ります。主な枝を 3〜7 本でバランスよく取り、タイトルは短く、説明はノートに置き、最後に構成を点検します。',
+    'builtinSkillDesc.diagram':
+      '読みやすい図を描きます。合った種類を選び、流れは一方向に、文字は短く、色は少なくし、重なりや孤立した図形を点検します。',
+    'builtinSkillDesc.whiteboard':
+      'ホワイトボード上に付箋・エリア・カード・接続線・表を整理します。見やすい配置を先に組み立て、文字は短く余白を保ち、最後に重なりを点検します。',
+    'builtinSkillDesc.html-document':
+      '画面で読みやすく、印刷してもきれいな HTML 文書を作ります。読み手・分量・用紙を先に決め、ページ割りと内容を点検します。',
+    'builtinSkillDesc.general-report':
+      '確認・構成・執筆・点検の4段階で、結論を先に置き根拠を整えた実務報告書を作成します。',
+    'builtinSkillDesc.project-proposal':
+      '課題・解決策・範囲・スケジュール・リスク・承認依頼を整理した提案書・企画書を作成します。',
+    'builtinSkillDesc.public-notice':
+      '対象・日時・影響範囲・必要な対応・問い合わせ先を冒頭にまとめた分かりやすい案内文を作成します。',
+    'builtinSkillDesc.presentation-deck':
+      '週次報告・提案書・講義資料・製品紹介の4構成に合わせて、見やすいスライド資料を作成します。',
+    'builtinSkillDesc.table-summary':
+      '散らばったメモや比較情報を、単位と要約を備えた見やすい比較表・集計表に整理します。',
   },
   ko: {
     'builtinSkillDesc.meeting-minutes':
@@ -63,6 +182,40 @@ export const BUILTIN_SKILL_STRINGS = defineStrings({
       '이미 쓴 영어 글을 여러 번 훑으며 더 분명하고 간결하게 다듬습니다.',
     'builtinSkillDesc.find-skills':
       '에이전트 창에서만 쓸 수 있으며, 인터넷에 연결해 필요한 스킬을 찾고 설치를 제안합니다.',
+    'builtinSkillDesc.administration-report':
+      '행안부 가이드라인에 맞게 보고서를 다듬습니다. 서술식 문장, 표준 번호, 호환 글꼴, 단순한 표.',
+    'builtinSkillDesc.administration-report-draft':
+      '행안부 형식으로 행정문서를 처음부터 씁니다. 절 구성, Ⅰ·1·가 번호, 서술식 문장, 표 제목과 호환 글꼴.',
+    'builtinSkillDesc.docx':
+      '에이전트 창에서만 쓸 수 있습니다. 스크립트를 실행해 프로젝트 폴더의 .docx 파일을 만들고 고치고 읽습니다. 이 PC에 Python 같은 프로그램이 설치되어 있어야 합니다.',
+    'builtinSkillDesc.pptx':
+      '에이전트 창에서만 쓸 수 있습니다. 스크립트를 실행해 프로젝트 폴더의 .pptx 파일을 만들고 고치고 읽습니다. 이 PC에 Python 같은 프로그램이 설치되어 있어야 합니다.',
+    'builtinSkillDesc.xlsx':
+      '에이전트 창에서만 쓸 수 있습니다. 스크립트를 실행해 프로젝트 폴더의 .xlsx 파일을 만들고 고치고 수식을 다시 계산합니다. 이 PC에 Python 같은 프로그램이 설치되어 있어야 합니다.',
+    'builtinSkillDesc.pdf':
+      '에이전트 창에서만 쓸 수 있습니다. 스크립트를 실행해 프로젝트 폴더의 .pdf 파일을 읽고 합치고 나누고 양식을 채웁니다. 이 PC에 Python 같은 프로그램이 설치되어 있어야 합니다.',
+    'builtinSkillDesc.hwp-document':
+      '한글 문서(.hwp, .hwpx)를 처음부터 씁니다. 보고서·계획서·안내문·공문·회의록에 맞는 짜임을 고르고, 문서 문체로 쓴 뒤 마지막에 점검합니다.',
+    'builtinSkillDesc.hwp-exam-paper':
+      '학교 원안지 꼴로 시험지를 씁니다. 열린 학교 시험지 양식에 채우거나, 머리 표·배점·쪽 번호를 갖춘 B4 2단 시험지를 새로 만듭니다.',
+    'builtinSkillDesc.mindmap':
+      '주제나 자료로 마인드맵을 만듭니다. 큰 가지 3~7개를 고르게 잡고, 제목은 짧게 쓰고 설명은 메모에 두며, 마지막에 짜임을 점검합니다.',
+    'builtinSkillDesc.diagram':
+      '읽기 쉬운 다이어그램을 그립니다. 알맞은 종류를 고르고, 흐름은 한 방향으로, 글은 짧게, 색은 적게 쓰며, 겹침과 떨어진 도형을 점검합니다.',
+    'builtinSkillDesc.whiteboard':
+      '화이트보드에 포스트잇·구역·카드·연결선·표를 정리합니다. 보기 좋은 배치를 먼저 짜고 글은 짧고 여백은 넉넉히 두며, 마지막에 겹침을 점검합니다.',
+    'builtinSkillDesc.html-document':
+      '화면에서 읽기 좋고 인쇄해도 깔끔한 HTML 문서를 만듭니다. 읽는 사람·분량·용지를 먼저 정하고, 쪽 나눔과 내용을 점검합니다.',
+    'builtinSkillDesc.general-report':
+      '묻고·짜고·쓰고·점검하는 4단계로 결론을 앞에 두고 근거를 맞춘 범용 실무 보고서를 작성합니다.',
+    'builtinSkillDesc.project-proposal':
+      '배경·문제, 해결 방안, 범위, 일정, 리스크, 의사결정 요청을 갖춘 제안서와 기획서를 작성합니다.',
+    'builtinSkillDesc.public-notice':
+      '대상·일시·변경 내용·필요 조치·문의처를 첫머리에 정리한 명확한 안내문과 공지문을 작성합니다.',
+    'builtinSkillDesc.presentation-deck':
+      '주간 보고·제안서·강의안·제품 소개 4가지 목적별 구조로 간결하고 균형 잡힌 발표 자료를 만듭니다.',
+    'builtinSkillDesc.table-summary':
+      '흩어진 메모나 비교 자료를 단위·정렬·핵심 요약 3줄이 갖춰진 깔끔한 비교·요약 표로 정리합니다.',
   },
   fr: {
     'builtinSkillDesc.meeting-minutes':
@@ -75,6 +228,40 @@ export const BUILTIN_SKILL_STRINGS = defineStrings({
       'Relit en plusieurs passes un texte anglais déjà écrit pour le rendre plus clair et plus concis.',
     'builtinSkillDesc.find-skills':
       'Fonctionne uniquement dans la fenêtre Agent et demande une connexion Internet pour trouver des compétences et proposer de les installer.',
+    'builtinSkillDesc.administration-report':
+      "Aligne un rapport sur la directive du ministère coréen de l'Intérieur : phrases rédigées, numérotation normalisée, polices disponibles partout, tableaux simples.",
+    'builtinSkillDesc.administration-report-draft':
+      'Rédige un rapport administratif de zéro au format du ministère : sections, numérotation Ⅰ·1·가, phrases rédigées, titres de tableaux et polices disponibles partout.',
+    'builtinSkillDesc.docx':
+      'Fonctionne uniquement dans la fenêtre Agent. Exécute des scripts pour créer, modifier et lire des fichiers .docx dans le dossier du projet. Python et d’autres programmes doivent être installés sur ce PC.',
+    'builtinSkillDesc.pptx':
+      'Fonctionne uniquement dans la fenêtre Agent. Exécute des scripts pour créer, modifier et lire des fichiers .pptx dans le dossier du projet. Python et d’autres programmes doivent être installés sur ce PC.',
+    'builtinSkillDesc.xlsx':
+      'Fonctionne uniquement dans la fenêtre Agent. Exécute des scripts pour créer et modifier des fichiers .xlsx dans le dossier du projet et recalculer leurs formules. Python et d’autres programmes doivent être installés sur ce PC.',
+    'builtinSkillDesc.pdf':
+      'Fonctionne uniquement dans la fenêtre Agent. Exécute des scripts pour lire, fusionner et diviser des fichiers .pdf dans le dossier du projet et remplir des formulaires. Python et d’autres programmes doivent être installés sur ce PC.',
+    'builtinSkillDesc.hwp-document':
+      'Rédige un nouveau document .hwp ou .hwpx à partir de zéro : choisit la structure d’un rapport, d’un plan, d’un avis, d’une lettre officielle ou d’un compte rendu, écrit dans le style du document et vérifie le résultat.',
+    'builtinSkillDesc.hwp-exam-paper':
+      'Rédige un sujet d’examen dans la forme que les écoles coréennes remettent : remplit le modèle de l’école ouvert, ou crée une copie B4 sur deux colonnes avec un tableau d’en-tête, les points et les numéros de page.',
+    'builtinSkillDesc.mindmap':
+      'Construit une carte mentale à partir d’un sujet ou de documents : trois à sept branches principales équilibrées, des titres courts avec le détail dans les notes, et une vérification de la structure à la fin.',
+    'builtinSkillDesc.diagram':
+      'Dessine un diagramme clair : choisit le type adapté, garde un seul sens de lecture, des libellés courts et peu de couleurs, puis vérifie les chevauchements et les formes isolées.',
+    'builtinSkillDesc.whiteboard':
+      'Organise post-its, zones, cartes, connecteurs et tableaux sur un tableau blanc : planifie une mise en page claire, garde des libellés courts et vérifie les chevauchements.',
+    'builtinSkillDesc.html-document':
+      'Crée un document HTML agréable à lire à l’écran et propre à l’impression : fixe d’abord le lecteur, la longueur et le papier, puis vérifie les pages et le contenu.',
+    'builtinSkillDesc.general-report':
+      'Rédige un rapport structuré en quatre étapes (questions, plan, rédaction, contrôle) avec la conclusion en tête.',
+    'builtinSkillDesc.project-proposal':
+      'Rédige une proposition de projet présentant problème, solution, périmètre, calendrier, risques et décision attendue.',
+    'builtinSkillDesc.public-notice':
+      'Rédige un avis ou une annonce claire mettant en avant le public, la date, les actions requises et le contact.',
+    'builtinSkillDesc.presentation-deck':
+      'Conçoit une présentation selon quatre structures (rapport hebdomadaire, proposition, cours, produit) avec une hiérarchie soignée.',
+    'builtinSkillDesc.table-summary':
+      'Transforme des notes éparses en tableau de synthèse ou de comparaison avec unités, totaux et résumé initial.',
   },
   de: {
     'builtinSkillDesc.meeting-minutes':
@@ -87,6 +274,40 @@ export const BUILTIN_SKILL_STRINGS = defineStrings({
       'Geht einen fertigen englischen Text in mehreren Durchgängen durch und macht ihn klarer und knapper.',
     'builtinSkillDesc.find-skills':
       'Funktioniert nur im Agent-Fenster und braucht Internet, um Skills zu finden und ihre Installation vorzuschlagen.',
+    'builtinSkillDesc.administration-report':
+      'Bringt einen Bericht auf die Linie der Richtlinie des koreanischen Innenministeriums: Fließtext, einheitliche Nummerierung, überall verfügbare Schriften, einfache Tabellen.',
+    'builtinSkillDesc.administration-report-draft':
+      'Schreibt einen Verwaltungsbericht von Grund auf im Format des Ministeriums: Abschnitte, Nummerierung Ⅰ·1·가, Fließtext, Tabellenüberschriften und verfügbare Schriften.',
+    'builtinSkillDesc.docx':
+      'Funktioniert nur im Agent-Fenster. Führt Skripte aus, um .docx-Dateien im Projektordner zu erstellen, zu bearbeiten und zu lesen. Auf diesem PC müssen Python und weitere Programme installiert sein.',
+    'builtinSkillDesc.pptx':
+      'Funktioniert nur im Agent-Fenster. Führt Skripte aus, um .pptx-Dateien im Projektordner zu erstellen, zu bearbeiten und zu lesen. Auf diesem PC müssen Python und weitere Programme installiert sein.',
+    'builtinSkillDesc.xlsx':
+      'Funktioniert nur im Agent-Fenster. Führt Skripte aus, um .xlsx-Dateien im Projektordner zu erstellen und zu bearbeiten und ihre Formeln neu zu berechnen. Auf diesem PC müssen Python und weitere Programme installiert sein.',
+    'builtinSkillDesc.pdf':
+      'Funktioniert nur im Agent-Fenster. Führt Skripte aus, um .pdf-Dateien im Projektordner zu lesen, zusammenzuführen und zu teilen und Formulare auszufüllen. Auf diesem PC müssen Python und weitere Programme installiert sein.',
+    'builtinSkillDesc.hwp-document':
+      'Schreibt ein neues .hwp- oder .hwpx-Dokument von Grund auf: wählt den Aufbau für Bericht, Plan, Mitteilung, amtliches Schreiben oder Protokoll, schreibt im Dokumentstil und prüft das Ergebnis.',
+    'builtinSkillDesc.hwp-exam-paper':
+      'Schreibt eine Prüfungsarbeit in der Form, die koreanische Schulen einreichen: füllt die geöffnete Schulvorlage aus oder legt ein B4-Blatt in zwei Spalten mit Kopftabelle, Punkten und Seitenzahlen an.',
+    'builtinSkillDesc.mindmap':
+      'Baut eine Mindmap aus einem Thema oder Material: drei bis sieben ausgewogene Hauptzweige, kurze Titel mit den Details in Notizen und am Ende eine Prüfung der Struktur.',
+    'builtinSkillDesc.diagram':
+      'Zeichnet ein klares Diagramm: wählt den passenden Typ, hält eine Leserichtung, kurze Beschriftungen und wenige Farben ein und prüft auf Überlappungen und lose Formen.',
+    'builtinSkillDesc.whiteboard':
+      'Ordnet Haftnotizen, Bereiche, Karten, Verbinder und Tabellen auf einem Whiteboard: plant ein klares Layout, hält Texte kurz und prüft am Ende auf Überlappungen.',
+    'builtinSkillDesc.html-document':
+      'Erstellt ein HTML-Dokument, das sich am Bildschirm gut liest und sauber druckt: legt zuerst Leser, Länge und Papier fest und prüft dann Seiten und Inhalt.',
+    'builtinSkillDesc.general-report':
+      'Schreibt einen klaren Bericht in vier Schritten (klären, gliedern, schreiben, prüfen) mit Fazit am Anfang.',
+    'builtinSkillDesc.project-proposal':
+      'Erstellt einen Projektvorschlag mit Problemstellung, Lösung, Umfang, Zeitplan, Risiken und Entscheidungsbitte.',
+    'builtinSkillDesc.public-notice':
+      'Verfasst eine klare Bekanntmachung mit Zielgruppe, Zeitraum, Auswirkungen, Handlungsbedarf und Kontakt ganz oben.',
+    'builtinSkillDesc.presentation-deck':
+      'Plant und erstellt Präsentationen für Wochenbericht, Vorschlag, Vortrag oder Produktübersicht mit klarer Gliederung.',
+    'builtinSkillDesc.table-summary':
+      'Ordnet lose Notizen in eine übersichtliche Vergleichs- oder Übersichtstabelle mit Einheiten und Kurzfazit.',
   },
   es: {
     'builtinSkillDesc.meeting-minutes':
@@ -99,6 +320,40 @@ export const BUILTIN_SKILL_STRINGS = defineStrings({
       'Repasa varias veces un texto en inglés ya escrito para hacerlo más claro y conciso.',
     'builtinSkillDesc.find-skills':
       'Solo funciona en la ventana del agente y necesita internet para buscar habilidades y proponer su instalación.',
+    'builtinSkillDesc.administration-report':
+      'Ajusta un informe a la guía del Ministerio del Interior y Seguridad de Corea: frases redactadas, numeración estándar, fuentes disponibles en cualquier equipo, tablas sencillas.',
+    'builtinSkillDesc.administration-report-draft':
+      'Escribe un informe administrativo desde cero con el formato del ministerio: secciones, numeración Ⅰ·1·가, frases redactadas, títulos de tablas y fuentes disponibles.',
+    'builtinSkillDesc.docx':
+      'Solo funciona en la ventana del agente. Ejecuta scripts para crear, editar y leer archivos .docx en la carpeta del proyecto. Este PC debe tener instalados Python y otros programas.',
+    'builtinSkillDesc.pptx':
+      'Solo funciona en la ventana del agente. Ejecuta scripts para crear, editar y leer archivos .pptx en la carpeta del proyecto. Este PC debe tener instalados Python y otros programas.',
+    'builtinSkillDesc.xlsx':
+      'Solo funciona en la ventana del agente. Ejecuta scripts para crear y editar archivos .xlsx en la carpeta del proyecto y recalcular sus fórmulas. Este PC debe tener instalados Python y otros programas.',
+    'builtinSkillDesc.pdf':
+      'Solo funciona en la ventana del agente. Ejecuta scripts para leer, combinar y dividir archivos .pdf en la carpeta del proyecto y rellenar formularios. Este PC debe tener instalados Python y otros programas.',
+    'builtinSkillDesc.hwp-document':
+      'Redacta un documento .hwp o .hwpx nuevo desde cero: elige la estructura de un informe, plan, aviso, oficio o acta, escribe en el estilo del documento y revisa el resultado.',
+    'builtinSkillDesc.hwp-exam-paper':
+      'Redacta un examen con la forma que entregan las escuelas coreanas: rellena la plantilla escolar abierta o crea una hoja B4 a dos columnas con tabla de encabezado, puntos y números de página.',
+    'builtinSkillDesc.mindmap':
+      'Construye un mapa mental a partir de un tema o de materiales: de tres a siete ramas principales equilibradas, títulos cortos con el detalle en las notas y una revisión de la estructura al final.',
+    'builtinSkillDesc.diagram':
+      'Dibuja un diagrama claro: elige el tipo adecuado, mantiene una sola dirección, etiquetas cortas y pocos colores, y revisa solapamientos y formas sueltas.',
+    'builtinSkillDesc.whiteboard':
+      'Organiza notas adhesivas, zonas, tarjetas, conectores y tablas en una pizarra: diseña una disposición clara, usa textos breves y revisa posibles solapamientos.',
+    'builtinSkillDesc.html-document':
+      'Crea un documento HTML que se lee bien en pantalla y se imprime limpio: define primero el lector, la extensión y el papel, y luego revisa las páginas y el contenido.',
+    'builtinSkillDesc.general-report':
+      'Redacta un informe claro en cuatro pasos (aclarar, esquematizar, redactar, revisar) con la conclusión al principio.',
+    'builtinSkillDesc.project-proposal':
+      'Elabora una propuesta de proyecto con problema, solución, alcance, cronograma, riesgos y solicitud de decisión.',
+    'builtinSkillDesc.public-notice':
+      'Redacta un aviso o comunicado claro destacando al inicio afectados, fechas, acciones requeridas y contacto.',
+    'builtinSkillDesc.presentation-deck':
+      'Planifica y crea presentaciones para informe semanal, propuesta, clase o producto con jerarquía limpia.',
+    'builtinSkillDesc.table-summary':
+      'Convierte notas dispersas en una tabla comparativa o resumen con unidades claras y conclusión inicial.',
   },
   th: {
     'builtinSkillDesc.meeting-minutes':
@@ -111,6 +366,40 @@ export const BUILTIN_SKILL_STRINGS = defineStrings({
       'อ่านทวนข้อความภาษาอังกฤษที่เขียนไว้แล้วหลายรอบ ให้ชัดเจนและกระชับขึ้น',
     'builtinSkillDesc.find-skills':
       'ใช้ได้เฉพาะในหน้าต่างเอเจนต์และต้องต่ออินเทอร์เน็ต เพื่อค้นหาสกิลและเสนอให้ติดตั้ง',
+    'builtinSkillDesc.administration-report':
+      'ปรับรายงานให้ตรงแนวทางของกระทรวงมหาดไทยและความมั่นคงเกาหลี: ประโยคบรรยาย ลำดับเลขมาตรฐาน ฟอนต์ที่เปิดได้ทุกเครื่อง และตารางเรียบง่าย',
+    'builtinSkillDesc.administration-report-draft':
+      'เขียนรายงานราชการตั้งแต่ต้นตามรูปแบบกระทรวง: โครง sections ลำดับเลข Ⅰ·1·가 ประโยคบรรยาย หัวตาราง และฟอนต์ที่ใช้ได้ทั่วไป',
+    'builtinSkillDesc.docx':
+      'ใช้ได้เฉพาะในหน้าต่างเอเจนต์ เรียกใช้สคริปต์เพื่อสร้าง แก้ไข และอ่านไฟล์ .docx ในโฟลเดอร์โปรเจกต์ พีซีเครื่องนี้ต้องติดตั้ง Python และโปรแกรมอื่นไว้',
+    'builtinSkillDesc.pptx':
+      'ใช้ได้เฉพาะในหน้าต่างเอเจนต์ เรียกใช้สคริปต์เพื่อสร้าง แก้ไข และอ่านไฟล์ .pptx ในโฟลเดอร์โปรเจกต์ พีซีเครื่องนี้ต้องติดตั้ง Python และโปรแกรมอื่นไว้',
+    'builtinSkillDesc.xlsx':
+      'ใช้ได้เฉพาะในหน้าต่างเอเจนต์ เรียกใช้สคริปต์เพื่อสร้างและแก้ไขไฟล์ .xlsx ในโฟลเดอร์โปรเจกต์ และคำนวณสูตรใหม่ พีซีเครื่องนี้ต้องติดตั้ง Python และโปรแกรมอื่นไว้',
+    'builtinSkillDesc.pdf':
+      'ใช้ได้เฉพาะในหน้าต่างเอเจนต์ เรียกใช้สคริปต์เพื่ออ่าน รวม และแยกไฟล์ .pdf ในโฟลเดอร์โปรเจกต์ และกรอกแบบฟอร์ม พีซีเครื่องนี้ต้องติดตั้ง Python และโปรแกรมอื่นไว้',
+    'builtinSkillDesc.hwp-document':
+      'เขียนเอกสาร .hwp หรือ .hwpx ใหม่ตั้งแต่ต้น โดยเลือกโครงสร้างให้เหมาะกับรายงาน แผนงาน ประกาศ หนังสือราชการ หรือรายงานการประชุม เขียนด้วยภาษาเอกสาร แล้วตรวจทานตอนท้าย',
+    'builtinSkillDesc.hwp-exam-paper':
+      'เขียนข้อสอบตามแบบต้นฉบับที่โรงเรียนเกาหลีใช้ส่ง: กรอกลงในแบบฟอร์มข้อสอบของโรงเรียนที่เปิดอยู่ หรือสร้างข้อสอบ B4 สองคอลัมน์พร้อมตารางหัว คะแนน และเลขหน้า',
+    'builtinSkillDesc.mindmap':
+      'สร้างแผนผังความคิดจากหัวข้อหรือเอกสาร โดยวางกิ่งหลัก 3 ถึง 7 กิ่งให้สมดุล ตั้งชื่อหัวข้อสั้น ๆ ใส่รายละเอียดไว้ในบันทึก แล้วตรวจโครงสร้างตอนท้าย',
+    'builtinSkillDesc.diagram':
+      'วาดแผนภาพที่อ่านง่าย โดยเลือกชนิดให้เหมาะ ให้ทิศทางไหลไปทางเดียว ใช้ข้อความสั้นและสีน้อย แล้วตรวจการซ้อนทับและรูปร่างที่ไม่ได้เชื่อมต่อ',
+    'builtinSkillDesc.whiteboard':
+      'จัดระเบียบโพสต์อิท โซน การ์ด เส้นเชื่อม และตารางบนไวท์บอร์ด วางผังให้ชัดเจน ใช้ข้อความสั้น มีพื้นที่ว่างพอเหมาะ และตรวจการซ้อนทับตอนท้าย',
+    'builtinSkillDesc.html-document':
+      'สร้างเอกสาร HTML ที่อ่านง่ายบนจอและพิมพ์ออกมาเรียบร้อย โดยกำหนดผู้อ่าน ความยาว และกระดาษก่อน แล้วตรวจการแบ่งหน้าและเนื้อหา',
+    'builtinSkillDesc.general-report':
+      'เขียนรายงานการทำงานอย่างเป็นระบบใน 4 ขั้นตอน (ถาม วางโครง ร่าง ตรวจทาน) โดยสรุปประเด็นสำคัญไว้ตอนต้น',
+    'builtinSkillDesc.project-proposal':
+      'ร่างข้อเสนอโครงการที่ครอบคลุมปัญหา แนวทาง ขอบเขต กำหนดการ ความเสี่ยง และข้อเสนอเพื่ออนุมัติ',
+    'builtinSkillDesc.public-notice':
+      'เขียนประกาศหรือแจ้งเตือนที่ชัดเจน โดยระบุกลุ่มเป้าหมาย วันเวลา การดำเนินการที่ต้องทำ และช่องทางติดต่อไว้ด้านบน',
+    'builtinSkillDesc.presentation-deck':
+      'วางโครงและสร้างสไลด์นำเสนอตาม 4 รูปแบบหลัก (รายงานประจำสัปดาห์ ข้อเสนอ บทเรียน แนะนำผลิตภัณฑ์) อย่างกระชับ',
+    'builtinSkillDesc.table-summary':
+      'จัดระเบียบบันทึกหรือข้อมูลเปรียบเทียบให้เป็นตารางสรุปที่อ่านง่าย พร้อมหน่วยวัดและสรุปใจความสำคัญ',
   },
   id: {
     'builtinSkillDesc.meeting-minutes':
@@ -123,6 +412,40 @@ export const BUILTIN_SKILL_STRINGS = defineStrings({
       'Memeriksa ulang teks bahasa Inggris yang sudah ditulis beberapa kali agar lebih jelas dan ringkas.',
     'builtinSkillDesc.find-skills':
       'Hanya berfungsi di jendela agen dan memerlukan internet untuk mencari skill serta mengusulkan pemasangannya.',
+    'builtinSkillDesc.administration-report':
+      'Menyesuaikan laporan dengan pedoman Kementerian Dalam Negeri dan Keamanan Korea: kalimat naratif, penomoran baku, font yang tersedia di mana saja, tabel sederhana.',
+    'builtinSkillDesc.administration-report-draft':
+      'Menulis laporan administrasi dari nol dengan format kementerian: bagian, penomoran Ⅰ·1·가, kalimat naratif, judul tabel, dan font yang tersedia.',
+    'builtinSkillDesc.docx':
+      'Hanya berfungsi di jendela agen. Menjalankan skrip untuk membuat, mengedit, dan membaca file .docx di folder proyek. Python dan program lain harus terpasang di PC ini.',
+    'builtinSkillDesc.pptx':
+      'Hanya berfungsi di jendela agen. Menjalankan skrip untuk membuat, mengedit, dan membaca file .pptx di folder proyek. Python dan program lain harus terpasang di PC ini.',
+    'builtinSkillDesc.xlsx':
+      'Hanya berfungsi di jendela agen. Menjalankan skrip untuk membuat dan mengedit file .xlsx di folder proyek serta menghitung ulang rumusnya. Python dan program lain harus terpasang di PC ini.',
+    'builtinSkillDesc.pdf':
+      'Hanya berfungsi di jendela agen. Menjalankan skrip untuk membaca, menggabungkan, dan memisahkan file .pdf di folder proyek serta mengisi formulir. Python dan program lain harus terpasang di PC ini.',
+    'builtinSkillDesc.hwp-document':
+      'Menulis dokumen .hwp atau .hwpx baru dari awal: memilih susunan untuk laporan, rencana, pengumuman, surat resmi, atau notulen, menulis dengan gaya dokumen, lalu memeriksa hasilnya.',
+    'builtinSkillDesc.hwp-exam-paper':
+      'Menulis soal ujian dalam bentuk naskah yang diserahkan sekolah Korea: mengisi formulir sekolah yang terbuka, atau membuat lembar B4 dua kolom dengan tabel kepala, skor, dan nomor halaman.',
+    'builtinSkillDesc.mindmap':
+      'Menyusun peta pikiran dari topik atau bahan: tiga sampai tujuh cabang utama yang seimbang, judul singkat dengan rincian di catatan, dan pemeriksaan struktur di akhir.',
+    'builtinSkillDesc.diagram':
+      'Menggambar diagram yang jelas: memilih jenis yang sesuai, menjaga satu arah alur, label singkat dan sedikit warna, lalu memeriksa tumpang-tindih dan bentuk yang lepas.',
+    'builtinSkillDesc.whiteboard':
+      'Menata catatan tempel, zona, kartu, konektor, dan tabel di papan tulis: merancang tata letak yang jelas, label singkat, ruang lega, lalu memeriksa tumpang-tindih.',
+    'builtinSkillDesc.html-document':
+      'Membuat dokumen HTML yang enak dibaca di layar dan rapi saat dicetak: menetapkan pembaca, panjang, dan kertas lebih dulu, lalu memeriksa halaman dan isinya.',
+    'builtinSkillDesc.general-report':
+      'Menulis laporan kerja yang jelas dalam empat langkah (tanya, rangka, tulis, periksa) dengan kesimpulan di awal.',
+    'builtinSkillDesc.project-proposal':
+      'Menyusun proposal proyek berisi masalah, solusi, ruang lingkup, jadwal, risiko, dan permintaan keputusan.',
+    'builtinSkillDesc.public-notice':
+      'Menulis pengumuman yang jelas dengan menyoroti pihak terdampak, waktu, tindakan yang diperlukan, dan kontak.',
+    'builtinSkillDesc.presentation-deck':
+      'Merancang presentasi untuk laporan mingguan, proposal, materi ajar, atau pengenalan produk dengan tata letak rapi.',
+    'builtinSkillDesc.table-summary':
+      'Mengubah catatan mentah menjadi tabel perbandingan atau ringkasan yang rapi dengan satuan jelas dan inti utama.',
   },
   ru: {
     'builtinSkillDesc.meeting-minutes':
@@ -135,6 +458,40 @@ export const BUILTIN_SKILL_STRINGS = defineStrings({
       'Несколько раз проходит по готовому английскому тексту и делает его яснее и короче.',
     'builtinSkillDesc.find-skills':
       'Работает только в окне агента и требует интернета, чтобы найти навыки и предложить их установить.',
+    'builtinSkillDesc.administration-report':
+      'Приводит отчёт в соответствие с руководством Министерства внутренних дел Кореи: связные предложения, единая нумерация, доступные шрифты, простые таблицы.',
+    'builtinSkillDesc.administration-report-draft':
+      'Пишет административный отчёт с нуля в формате министерства: разделы, нумерация Ⅰ·1·가, связные предложения, заголовки таблиц и доступные шрифты.',
+    'builtinSkillDesc.docx':
+      'Работает только в окне агента. Запускает скрипты, чтобы создавать, изменять и читать файлы .docx в папке проекта. На этом компьютере должны быть установлены Python и другие программы.',
+    'builtinSkillDesc.pptx':
+      'Работает только в окне агента. Запускает скрипты, чтобы создавать, изменять и читать файлы .pptx в папке проекта. На этом компьютере должны быть установлены Python и другие программы.',
+    'builtinSkillDesc.xlsx':
+      'Работает только в окне агента. Запускает скрипты, чтобы создавать и изменять файлы .xlsx в папке проекта и пересчитывать формулы. На этом компьютере должны быть установлены Python и другие программы.',
+    'builtinSkillDesc.pdf':
+      'Работает только в окне агента. Запускает скрипты, чтобы читать, объединять и разделять файлы .pdf в папке проекта и заполнять формы. На этом компьютере должны быть установлены Python и другие программы.',
+    'builtinSkillDesc.hwp-document':
+      'Пишет новый документ .hwp или .hwpx с нуля: выбирает структуру для отчёта, плана, объявления, официального письма или протокола, пишет в стиле документа и проверяет результат.',
+    'builtinSkillDesc.hwp-exam-paper':
+      'Составляет контрольную работу в виде, принятом в корейских школах: заполняет открытый школьный бланк или создаёт лист B4 в две колонки с таблицей-шапкой, баллами и номерами страниц.',
+    'builtinSkillDesc.mindmap':
+      'Строит интеллект-карту по теме или материалам: от трёх до семи уравновешенных главных ветвей, короткие заголовки с подробностями в заметках и проверка структуры в конце.',
+    'builtinSkillDesc.diagram':
+      'Рисует понятную диаграмму: выбирает подходящий тип, держит одно направление, короткие подписи и мало цветов, проверяет наложения и несвязанные фигуры.',
+    'builtinSkillDesc.whiteboard':
+      'Организует стикеры, зоны, карточки, связи и таблицы на доске: продумывает чистую компоновку, короткие подписи и отступы, а затем проверяет наложения.',
+    'builtinSkillDesc.html-document':
+      'Создаёт HTML-документ, который удобно читать на экране и аккуратно печатать: сначала определяет читателя, объём и бумагу, затем проверяет страницы и содержание.',
+    'builtinSkillDesc.general-report':
+      'Пишет структурированный рабочий отчёт в четыре шага (уточнить, составить план, написать, проверить) с выводом в начале.',
+    'builtinSkillDesc.project-proposal':
+      'Готовит проектное предложение с описанием проблемы, решения, границ, сроков, рисков и запроса на согласование.',
+    'builtinSkillDesc.public-notice':
+      'Составляет понятное объявление, вынося наверх адресатов, сроки, необходимые действия и контакты.',
+    'builtinSkillDesc.presentation-deck':
+      'Планирует и собирает презентацию по четырём структурам (еженедельный отчёт, предложение, лекция, обзор продукта).',
+    'builtinSkillDesc.table-summary':
+      'Превращает разрозненные заметки в наглядную сводную или сравнительную таблицу с единицами измерения и кратким выводом.',
   },
   ar: {
     'builtinSkillDesc.meeting-minutes':
@@ -146,6 +503,40 @@ export const BUILTIN_SKILL_STRINGS = defineStrings({
     'builtinSkillDesc.copy-editing': 'يراجع نصًا إنجليزيًا مكتوبًا عدة مرات ليجعله أوضح وأوجز.',
     'builtinSkillDesc.find-skills':
       'يعمل في نافذة الوكيل فقط ويحتاج إلى الإنترنت للبحث عن المهارات واقتراح تثبيتها.',
+    'builtinSkillDesc.administration-report':
+      'يضبط التقرير وفق إرشادات وزارة الداخلية والسلامة الكورية: جمل سردية، ترقيم موحد، خطوط متوفرة في أي جهاز، وجداول بسيطة.',
+    'builtinSkillDesc.administration-report-draft':
+      'يكتب تقريراً إدارياً من الصفر بصيغة الوزارة: الأقسام، ترقيم Ⅰ·1·가، جمل سردية، عناوين الجداول وخطوط متوفرة.',
+    'builtinSkillDesc.docx':
+      'يعمل في نافذة الوكيل فقط. يشغّل نصوصًا برمجية لإنشاء ملفات .docx في مجلد المشروع وتعديلها وقراءتها. يجب أن يكون Python وبرامج أخرى مثبتة على هذا الكمبيوتر.',
+    'builtinSkillDesc.pptx':
+      'يعمل في نافذة الوكيل فقط. يشغّل نصوصًا برمجية لإنشاء ملفات .pptx في مجلد المشروع وتعديلها وقراءتها. يجب أن يكون Python وبرامج أخرى مثبتة على هذا الكمبيوتر.',
+    'builtinSkillDesc.xlsx':
+      'يعمل في نافذة الوكيل فقط. يشغّل نصوصًا برمجية لإنشاء ملفات .xlsx في مجلد المشروع وتعديلها وإعادة حساب صيغها. يجب أن يكون Python وبرامج أخرى مثبتة على هذا الكمبيوتر.',
+    'builtinSkillDesc.pdf':
+      'يعمل في نافذة الوكيل فقط. يشغّل نصوصًا برمجية لقراءة ملفات .pdf في مجلد المشروع ودمجها وتقسيمها وتعبئة النماذج. يجب أن يكون Python وبرامج أخرى مثبتة على هذا الكمبيوتر.',
+    'builtinSkillDesc.hwp-document':
+      'يكتب مستند .hwp أو .hwpx جديدًا من البداية: يختار بنية التقرير أو الخطة أو الإعلان أو الخطاب الرسمي أو محضر الاجتماع، ويكتب بأسلوب المستندات، ثم يراجع النتيجة.',
+    'builtinSkillDesc.hwp-exam-paper':
+      'يكتب ورقة اختبار بالشكل الذي تسلّمه المدارس الكورية: يملأ نموذج المدرسة المفتوح، أو ينشئ ورقة B4 في عمودين مع جدول رأس والدرجات وأرقام الصفحات.',
+    'builtinSkillDesc.mindmap':
+      'ينشئ خريطة ذهنية من موضوع أو مواد: من ثلاثة إلى سبعة فروع رئيسية متوازنة، وعناوين قصيرة مع وضع التفاصيل في الملاحظات، ثم يراجع البنية في النهاية.',
+    'builtinSkillDesc.diagram':
+      'يرسم مخططًا واضحًا: يختار النوع المناسب، ويحافظ على اتجاه واحد وتسميات قصيرة وألوان قليلة، ثم يتحقق من التداخل والأشكال غير الموصولة.',
+    'builtinSkillDesc.whiteboard':
+      'ينظم الملاحظات اللاصقة والمناطق والبطاقات والروابط والجداول على السبورة: يخطط تخطيطًا واضحًا بعناوين قصيرة ومساحات مريحة ويتحقق من عدم التداخل.',
+    'builtinSkillDesc.html-document':
+      'ينشئ مستند HTML سهل القراءة على الشاشة ومرتبًا عند الطباعة: يحدد القارئ والطول والورق أولًا، ثم يراجع الصفحات والمحتوى.',
+    'builtinSkillDesc.general-report':
+      'يكتب تقرير عمل واضحًا في أربع خطوات (استيضاح، تخطيط، صياغة، مراجعة) مع تقديم الخلاصة أولًا وتدقيق الأرقام.',
+    'builtinSkillDesc.project-proposal':
+      'يصوغ مقترح مشروع متكاملًا يغطي المشكلة والحل والنطاق والجدول الزمني والمخاطر وطلب الاعتماد.',
+    'builtinSkillDesc.public-notice':
+      'يكتب إعلانًا أو تنويهًا واضحًا يبرز في بدايته الفئة المعنية والموعد والإجراء المطلوب وجهة التواصل.',
+    'builtinSkillDesc.presentation-deck':
+      'يخطط وينشئ عرضًا تقديميًا لأربعة أغراض (تقرير أسبوعي، مقترح، محاضرة، تعريف منتج) بتسلسل بصري متوازن.',
+    'builtinSkillDesc.table-summary':
+      'يحول الملاحظات المتفرقة إلى جدول مقارنة أو ملخص منظم بوحدات واضحة وخلاصة موجزة في الأعلى.',
   },
   pt: {
     'builtinSkillDesc.meeting-minutes':
@@ -158,6 +549,40 @@ export const BUILTIN_SKILL_STRINGS = defineStrings({
       'Revê em várias passadas um texto em inglês já escrito para deixá-lo mais claro e conciso.',
     'builtinSkillDesc.find-skills':
       'Funciona só na janela do agente e precisa de internet para encontrar habilidades e sugerir a instalação.',
+    'builtinSkillDesc.administration-report':
+      'Alinha um relatório à diretriz do Ministério do Interior e Segurança da Coreia: frases corridas, numeração padrão, fontes disponíveis em qualquer PC, tabelas simples.',
+    'builtinSkillDesc.administration-report-draft':
+      'Escreve um relatório administrativo do zero no formato do ministério: seções, numeração Ⅰ·1·가, frases corridas, títulos de tabelas e fontes disponíveis.',
+    'builtinSkillDesc.docx':
+      'Funciona só na janela do agente. Executa scripts para criar, editar e ler arquivos .docx na pasta do projeto. Este PC precisa ter o Python e outros programas instalados.',
+    'builtinSkillDesc.pptx':
+      'Funciona só na janela do agente. Executa scripts para criar, editar e ler arquivos .pptx na pasta do projeto. Este PC precisa ter o Python e outros programas instalados.',
+    'builtinSkillDesc.xlsx':
+      'Funciona só na janela do agente. Executa scripts para criar e editar arquivos .xlsx na pasta do projeto e recalcular as fórmulas. Este PC precisa ter o Python e outros programas instalados.',
+    'builtinSkillDesc.pdf':
+      'Funciona só na janela do agente. Executa scripts para ler, juntar e dividir arquivos .pdf na pasta do projeto e preencher formulários. Este PC precisa ter o Python e outros programas instalados.',
+    'builtinSkillDesc.hwp-document':
+      'Escreve um novo documento .hwp ou .hwpx do zero: escolhe a estrutura de relatório, plano, aviso, ofício ou ata, escreve no estilo do documento e confere o resultado.',
+    'builtinSkillDesc.hwp-exam-paper':
+      'Escreve uma prova no formato que as escolas coreanas entregam: preenche o modelo da escola que está aberto ou cria uma folha B4 em duas colunas com tabela de cabeçalho, pontos e números de página.',
+    'builtinSkillDesc.mindmap':
+      'Monta um mapa mental a partir de um tema ou de materiais: de três a sete ramos principais equilibrados, títulos curtos com o detalhe nas notas e uma conferência da estrutura no final.',
+    'builtinSkillDesc.diagram':
+      'Desenha um diagrama claro: escolhe o tipo adequado, mantém uma só direção, rótulos curtos e poucas cores, e confere sobreposições e formas soltas.',
+    'builtinSkillDesc.whiteboard':
+      'Organiza notas adesivas, zonas, cartões, conectores e tabelas em um quadro branco: planeja um layout claro, usa rótulos curtos e verifica sobreposições.',
+    'builtinSkillDesc.html-document':
+      'Cria um documento HTML bom de ler na tela e limpo na impressão: define primeiro o leitor, o tamanho e o papel, depois confere as páginas e o conteúdo.',
+    'builtinSkillDesc.general-report':
+      'Escreve um relatório claro em quatro etapas (alinhar, estruturar, redigir, revisar) com a conclusão logo no início.',
+    'builtinSkillDesc.project-proposal':
+      'Elabora uma proposta de projeto com problema, solução, escopo, cronograma, riscos e pedido de decisão.',
+    'builtinSkillDesc.public-notice':
+      'Redige um aviso ou comunicado objetivo destacando no topo quem é afetado, datas, ações necessárias e contato.',
+    'builtinSkillDesc.presentation-deck':
+      'Planeja e monta apresentações para relatório semanal, proposta, aula ou produto com hierarquia visual limpa.',
+    'builtinSkillDesc.table-summary':
+      'Organiza anotações soltas em uma tabela de comparação ou resumo com unidades claras e síntese inicial.',
   },
   it: {
     'builtinSkillDesc.meeting-minutes':
@@ -170,6 +595,40 @@ export const BUILTIN_SKILL_STRINGS = defineStrings({
       'Rilegge più volte un testo in inglese già scritto per renderlo più chiaro e conciso.',
     'builtinSkillDesc.find-skills':
       'Funziona solo nella finestra dell’agente e richiede internet per trovare abilità e proporne l’installazione.',
+    'builtinSkillDesc.administration-report':
+      "Allinea una relazione alle linee guida del Ministero dell'Interno coreano: frasi discorsive, numerazione standard, caratteri disponibili ovunque, tabelle semplici.",
+    'builtinSkillDesc.administration-report-draft':
+      'Scrive una relazione amministrativa da zero nel formato del ministero: sezioni, numerazione Ⅰ·1·가, frasi discorsive, titoli delle tabelle e caratteri disponibili.',
+    'builtinSkillDesc.docx':
+      'Funziona solo nella finestra dell’agente. Esegue script per creare, modificare e leggere file .docx nella cartella del progetto. Su questo PC devono essere installati Python e altri programmi.',
+    'builtinSkillDesc.pptx':
+      'Funziona solo nella finestra dell’agente. Esegue script per creare, modificare e leggere file .pptx nella cartella del progetto. Su questo PC devono essere installati Python e altri programmi.',
+    'builtinSkillDesc.xlsx':
+      'Funziona solo nella finestra dell’agente. Esegue script per creare e modificare file .xlsx nella cartella del progetto e ricalcolarne le formule. Su questo PC devono essere installati Python e altri programmi.',
+    'builtinSkillDesc.pdf':
+      'Funziona solo nella finestra dell’agente. Esegue script per leggere, unire e dividere file .pdf nella cartella del progetto e compilare moduli. Su questo PC devono essere installati Python e altri programmi.',
+    'builtinSkillDesc.hwp-document':
+      'Scrive da zero un nuovo documento .hwp o .hwpx: sceglie la struttura per relazione, piano, avviso, lettera ufficiale o verbale, scrive nello stile del documento e controlla il risultato.',
+    'builtinSkillDesc.hwp-exam-paper':
+      'Scrive una verifica nella forma che le scuole coreane consegnano: compila il modello della scuola aperto oppure crea un foglio B4 su due colonne con tabella di intestazione, punteggi e numeri di pagina.',
+    'builtinSkillDesc.mindmap':
+      'Costruisce una mappa mentale da un argomento o da materiali: da tre a sette rami principali equilibrati, titoli brevi con i dettagli nelle note e un controllo della struttura alla fine.',
+    'builtinSkillDesc.diagram':
+      'Disegna un diagramma chiaro: sceglie il tipo adatto, mantiene una sola direzione, etichette brevi e pochi colori, e controlla sovrapposizioni e forme isolate.',
+    'builtinSkillDesc.whiteboard':
+      'Organizza foglietti, aree, schede, connettori e tabelle su una lavagna: imposta un layout chiaro, usa testi brevi e controlla eventuali sovrapposizioni.',
+    'builtinSkillDesc.html-document':
+      'Crea un documento HTML piacevole da leggere a schermo e pulito in stampa: stabilisce prima lettore, lunghezza e carta, poi controlla le pagine e il contenuto.',
+    'builtinSkillDesc.general-report':
+      'Scrive un rapporto chiaro in quattro fasi (chiarire, strutturare, redigere, verificare) con conclusione in apertura.',
+    'builtinSkillDesc.project-proposal':
+      'Redige una proposta di progetto con problema, soluzione, ambito, tempi, rischi e richiesta di approvazione.',
+    'builtinSkillDesc.public-notice':
+      'Scrive un avviso chiaro mettendo subito in evidenza destinatari, date, azioni richieste e contatti.',
+    'builtinSkillDesc.presentation-deck':
+      'Progetta presentazioni per report settimanale, proposta, lezione o prodotto con gerarchia pulita e note relatore.',
+    'builtinSkillDesc.table-summary':
+      'Trasforma appunti sparsi in una tabella comparativa o riepilogativa con unità chiare e sintesi iniziale.',
   },
   pl: {
     'builtinSkillDesc.meeting-minutes':
@@ -182,6 +641,40 @@ export const BUILTIN_SKILL_STRINGS = defineStrings({
       'Kilka razy przechodzi przez gotowy tekst angielski, by był jaśniejszy i zwięźlejszy.',
     'builtinSkillDesc.find-skills':
       'Działa tylko w oknie agenta i wymaga internetu, aby znaleźć umiejętności i zaproponować ich instalację.',
+    'builtinSkillDesc.administration-report':
+      'Dopasowuje raport do wytycznych koreańskiego ministerstwa spraw wewnętrznych: zdania opisowe, stała numeracja, czcionki dostępne wszędzie, proste tabele.',
+    'builtinSkillDesc.administration-report-draft':
+      'Pisze raport administracyjny od zera w formacie ministerstwa: sekcje, numeracja Ⅰ·1·가, zdania opisowe, tytuły tabel i dostępne czcionki.',
+    'builtinSkillDesc.docx':
+      'Działa tylko w oknie agenta. Uruchamia skrypty, aby tworzyć, edytować i odczytywać pliki .docx w folderze projektu. Na tym komputerze muszą być zainstalowane Python i inne programy.',
+    'builtinSkillDesc.pptx':
+      'Działa tylko w oknie agenta. Uruchamia skrypty, aby tworzyć, edytować i odczytywać pliki .pptx w folderze projektu. Na tym komputerze muszą być zainstalowane Python i inne programy.',
+    'builtinSkillDesc.xlsx':
+      'Działa tylko w oknie agenta. Uruchamia skrypty, aby tworzyć i edytować pliki .xlsx w folderze projektu oraz przeliczać formuły. Na tym komputerze muszą być zainstalowane Python i inne programy.',
+    'builtinSkillDesc.pdf':
+      'Działa tylko w oknie agenta. Uruchamia skrypty, aby odczytywać, scalać i dzielić pliki .pdf w folderze projektu oraz wypełniać formularze. Na tym komputerze muszą być zainstalowane Python i inne programy.',
+    'builtinSkillDesc.hwp-document':
+      'Pisze od zera nowy dokument .hwp lub .hwpx: dobiera układ raportu, planu, ogłoszenia, pisma urzędowego lub protokołu, pisze stylem dokumentu i sprawdza wynik.',
+    'builtinSkillDesc.hwp-exam-paper':
+      'Pisze sprawdzian w formie, jaką oddają koreańskie szkoły: wypełnia otwarty szkolny formularz albo tworzy arkusz B4 w dwóch kolumnach z tabelą nagłówka, punktacją i numerami stron.',
+    'builtinSkillDesc.mindmap':
+      'Buduje mapę myśli z tematu lub materiałów: od trzech do siedmiu zrównoważonych głównych gałęzi, krótkie tytuły ze szczegółami w notatkach i sprawdzenie struktury na końcu.',
+    'builtinSkillDesc.diagram':
+      'Rysuje czytelny diagram: dobiera właściwy typ, trzyma jeden kierunek, krótkie etykiety i niewiele kolorów, a potem sprawdza nakładanie się i luźne kształty.',
+    'builtinSkillDesc.whiteboard':
+      'Porządkuje karteczki, strefy, karty, łączniki i tabele na tablicy: planuje przejrzysty układ, krótkie etykiety i odstępy, a na końcu sprawdza nakładanie się.',
+    'builtinSkillDesc.html-document':
+      'Tworzy dokument HTML, który dobrze się czyta na ekranie i czysto drukuje: najpierw ustala czytelnika, długość i papier, potem sprawdza strony i treść.',
+    'builtinSkillDesc.general-report':
+      'Pisze przejrzysty raport w czterech krokach (doprecyzuj, zaplanuj, napisz, sprawdź) z wnioskiem na początku.',
+    'builtinSkillDesc.project-proposal':
+      'Tworzy propozycję projektu obejmującą problem, rozwiązanie, zakres, harmonogram, ryzyka i prośbę o decyzję.',
+    'builtinSkillDesc.public-notice':
+      'Redaguje klarowne ogłoszenie z wyróżnieniem odbiorców, terminu, wymaganych działań i kontaktu na samej górze.',
+    'builtinSkillDesc.presentation-deck':
+      'Planuje i buduje prezentację dla raportu tygodniowego, propozycji, wykładu lub przeglądu produktu.',
+    'builtinSkillDesc.table-summary':
+      'Zamienia luźne notatki w czytelną tabelę porównawczą lub podsumowującą z jednostkami i krótkim wnioskiem.',
   },
   cs: {
     'builtinSkillDesc.meeting-minutes':
@@ -194,6 +687,40 @@ export const BUILTIN_SKILL_STRINGS = defineStrings({
       'Projde hotový anglický text v několika krocích a udělá ho jasnějším a stručnějším.',
     'builtinSkillDesc.find-skills':
       'Funguje jen v okně agenta a potřebuje internet, aby našel dovednosti a navrhl jejich instalaci.',
+    'builtinSkillDesc.administration-report':
+      'Uvede zprávu do souladu se směrnicí korejského ministerstva vnitra: souvislé věty, jednotné číslování, dostupné písmo, jednoduché tabulky.',
+    'builtinSkillDesc.administration-report-draft':
+      'Píše správní zprávu od začátku ve formátu ministerstva: oddíly, číslování Ⅰ·1·가, souvislé věty, názvy tabulek a dostupné písmo.',
+    'builtinSkillDesc.docx':
+      'Funguje jen v okně agenta. Spouští skripty, které vytvářejí, upravují a čtou soubory .docx ve složce projektu. Na tomto počítači musí být nainstalován Python a další programy.',
+    'builtinSkillDesc.pptx':
+      'Funguje jen v okně agenta. Spouští skripty, které vytvářejí, upravují a čtou soubory .pptx ve složce projektu. Na tomto počítači musí být nainstalován Python a další programy.',
+    'builtinSkillDesc.xlsx':
+      'Funguje jen v okně agenta. Spouští skripty, které vytvářejí a upravují soubory .xlsx ve složce projektu a přepočítávají vzorce. Na tomto počítači musí být nainstalován Python a další programy.',
+    'builtinSkillDesc.pdf':
+      'Funguje jen v okně agenta. Spouští skripty, které čtou, slučují a dělí soubory .pdf ve složce projektu a vyplňují formuláře. Na tomto počítači musí být nainstalován Python a další programy.',
+    'builtinSkillDesc.hwp-document':
+      'Napíše od začátku nový dokument .hwp nebo .hwpx: zvolí stavbu zprávy, plánu, oznámení, úředního dopisu nebo zápisu, píše stylem dokumentu a výsledek zkontroluje.',
+    'builtinSkillDesc.hwp-exam-paper':
+      'Napíše písemku v podobě, jakou odevzdávají korejské školy: vyplní otevřený školní formulář, nebo vytvoří list B4 ve dvou sloupcích s hlavičkovou tabulkou, body a čísly stránek.',
+    'builtinSkillDesc.mindmap':
+      'Sestaví myšlenkovou mapu z tématu nebo podkladů: tři až sedm vyvážených hlavních větví, krátké názvy s podrobnostmi v poznámkách a na konci kontrola struktury.',
+    'builtinSkillDesc.diagram':
+      'Nakreslí přehledný diagram: zvolí vhodný typ, drží jeden směr, krátké popisky a málo barev a zkontroluje překryvy a nepřipojené tvary.',
+    'builtinSkillDesc.whiteboard':
+      'Uspořádá lístečky, zóny, karty, spojnice a tabulky na tabuli: navrhne přehledné rozvržení, krátké popisky a čisté rozestupy a zkontroluje překryvy.',
+    'builtinSkillDesc.html-document':
+      'Vytvoří dokument HTML, který se dobře čte na obrazovce a čistě tiskne: nejdřív určí čtenáře, rozsah a papír, potom zkontroluje stránky a obsah.',
+    'builtinSkillDesc.general-report':
+      'Napíše přehlednou zprávu ve čtyřech krocích (upřesnit, rozvrhnout, napsat, zkontrolovat) se závěrem na začátku.',
+    'builtinSkillDesc.project-proposal':
+      'Připraví návrh projektu s problémem, řešením, rozsahem, harmonogramem, riziky a žádostí o rozhodnutí.',
+    'builtinSkillDesc.public-notice':
+      'Sepíše jasné oznámení, které hned v úvodu uvádí dotčené osoby, termín, potřebné kroky a kontakt.',
+    'builtinSkillDesc.presentation-deck':
+      'Navrhne a vytvoří prezentaci pro týdenní hlášení, návrh, přednášku nebo přehled produktu.',
+    'builtinSkillDesc.table-summary':
+      'Převede roztříštěné poznámky na přehlednou srovnávací nebo souhrnnou tabulku s jednotkami a krátkým shrnutím.',
   },
   nl: {
     'builtinSkillDesc.meeting-minutes':
@@ -206,6 +733,40 @@ export const BUILTIN_SKILL_STRINGS = defineStrings({
       'Loopt een geschreven Engelse tekst een paar keer na en maakt hem duidelijker en bondiger.',
     'builtinSkillDesc.find-skills':
       'Werkt alleen in het agentvenster en heeft internet nodig om vaardigheden te vinden en installatie voor te stellen.',
+    'builtinSkillDesc.administration-report':
+      'Brengt een rapport in lijn met de richtlijn van het Koreaanse ministerie van Binnenlandse Zaken: lopende tekst, vaste nummering, overal beschikbare lettertypen, eenvoudige tabellen.',
+    'builtinSkillDesc.administration-report-draft':
+      'Schrijft een bestuurlijk rapport vanaf nul in het formaat van het ministerie: secties, nummering Ⅰ·1·가, lopende tekst, tabelkoppen en overal beschikbare lettertypen.',
+    'builtinSkillDesc.docx':
+      'Werkt alleen in het agentvenster. Voert scripts uit om .docx-bestanden in de projectmap te maken, te bewerken en te lezen. Op deze pc moeten Python en andere programma’s zijn geïnstalleerd.',
+    'builtinSkillDesc.pptx':
+      'Werkt alleen in het agentvenster. Voert scripts uit om .pptx-bestanden in de projectmap te maken, te bewerken en te lezen. Op deze pc moeten Python en andere programma’s zijn geïnstalleerd.',
+    'builtinSkillDesc.xlsx':
+      'Werkt alleen in het agentvenster. Voert scripts uit om .xlsx-bestanden in de projectmap te maken en te bewerken en de formules opnieuw te berekenen. Op deze pc moeten Python en andere programma’s zijn geïnstalleerd.',
+    'builtinSkillDesc.pdf':
+      'Werkt alleen in het agentvenster. Voert scripts uit om .pdf-bestanden in de projectmap te lezen, samen te voegen en te splitsen en formulieren in te vullen. Op deze pc moeten Python en andere programma’s zijn geïnstalleerd.',
+    'builtinSkillDesc.hwp-document':
+      'Schrijft een nieuw .hwp- of .hwpx-document vanaf nul: kiest de opbouw voor een rapport, plan, mededeling, officiële brief of notulen, schrijft in documentstijl en controleert het resultaat.',
+    'builtinSkillDesc.hwp-exam-paper':
+      'Schrijft een toets in de vorm die Koreaanse scholen inleveren: vult het geopende schoolsjabloon in of maakt een B4-blad in twee kolommen met een koptabel, punten en paginanummers.',
+    'builtinSkillDesc.mindmap':
+      'Bouwt een mindmap uit een onderwerp of materiaal: drie tot zeven evenwichtige hoofdtakken, korte titels met de details in notities en aan het eind een controle van de structuur.',
+    'builtinSkillDesc.diagram':
+      'Tekent een duidelijk diagram: kiest het passende type, houdt één richting aan, korte labels en weinig kleuren, en controleert op overlappingen en losse vormen.',
+    'builtinSkillDesc.whiteboard':
+      'Ordent plaknotities, zones, kaarten, verbindingslijnen en tabellen op een whiteboard: plant een heldere indeling, korte labels en controleert op overlappingen.',
+    'builtinSkillDesc.html-document':
+      'Maakt een HTML-document dat prettig leest op het scherm en netjes afdrukt: legt eerst lezer, lengte en papier vast en controleert daarna de pagina’s en de inhoud.',
+    'builtinSkillDesc.general-report':
+      'Schrijft een helder rapport in vier stappen (afstemmen, structureren, schrijven, controleren) met conclusie voorop.',
+    'builtinSkillDesc.project-proposal':
+      'Stelt een projectvoorstel op met probleem, aanpak, reikwijdte, planning, risico’s en beslisvraag.',
+    'builtinSkillDesc.public-notice':
+      'Schrijft een duidelijke aankondiging met doelgroep, tijdstip, vereiste actie en contactgegevens direct bovenaan.',
+    'builtinSkillDesc.presentation-deck':
+      'Ontwerpt een presentatie voor weekrapport, voorstel, les of productoverzicht met heldere structuur.',
+    'builtinSkillDesc.table-summary':
+      'Zet losse notities om in een overzichtelijke vergelijkings- of samenvattingstabel met eenheden en kernpunt.',
   },
   ms: {
     'builtinSkillDesc.meeting-minutes':
@@ -218,6 +779,40 @@ export const BUILTIN_SKILL_STRINGS = defineStrings({
       'Menyemak teks bahasa Inggeris yang sudah ditulis beberapa kali supaya lebih jelas dan ringkas.',
     'builtinSkillDesc.find-skills':
       'Hanya berfungsi dalam tetingkap ejen dan memerlukan internet untuk mencari kemahiran serta mencadangkan pemasangannya.',
+    'builtinSkillDesc.administration-report':
+      'Menyesuaikan laporan dengan garis panduan Kementerian Dalam Negeri dan Keselamatan Korea: ayat naratif, penomboran piawai, fon yang ada di mana-mana, jadual ringkas.',
+    'builtinSkillDesc.administration-report-draft':
+      'Menulis laporan pentadbiran dari awal mengikut format kementerian: bahagian, penomboran Ⅰ·1·가, ayat naratif, tajuk jadual dan fon yang tersedia.',
+    'builtinSkillDesc.docx':
+      'Hanya berfungsi dalam tetingkap ejen. Menjalankan skrip untuk mencipta, mengedit dan membaca fail .docx dalam folder projek. Python dan program lain mesti dipasang pada PC ini.',
+    'builtinSkillDesc.pptx':
+      'Hanya berfungsi dalam tetingkap ejen. Menjalankan skrip untuk mencipta, mengedit dan membaca fail .pptx dalam folder projek. Python dan program lain mesti dipasang pada PC ini.',
+    'builtinSkillDesc.xlsx':
+      'Hanya berfungsi dalam tetingkap ejen. Menjalankan skrip untuk mencipta dan mengedit fail .xlsx dalam folder projek serta mengira semula formulanya. Python dan program lain mesti dipasang pada PC ini.',
+    'builtinSkillDesc.pdf':
+      'Hanya berfungsi dalam tetingkap ejen. Menjalankan skrip untuk membaca, menggabungkan dan memisahkan fail .pdf dalam folder projek serta mengisi borang. Python dan program lain mesti dipasang pada PC ini.',
+    'builtinSkillDesc.hwp-document':
+      'Menulis dokumen .hwp atau .hwpx baharu dari awal: memilih susunan untuk laporan, rancangan, notis, surat rasmi atau minit mesyuarat, menulis dalam gaya dokumen, kemudian menyemak hasilnya.',
+    'builtinSkillDesc.hwp-exam-paper':
+      'Menulis kertas ujian dalam bentuk yang diserahkan sekolah Korea: mengisi borang sekolah yang dibuka, atau membina kertas B4 dua lajur dengan jadual kepala, markah dan nombor halaman.',
+    'builtinSkillDesc.mindmap':
+      'Membina peta minda daripada topik atau bahan: tiga hingga tujuh cabang utama yang seimbang, tajuk ringkas dengan butiran dalam nota, dan semakan struktur pada akhirnya.',
+    'builtinSkillDesc.diagram':
+      'Melukis rajah yang jelas: memilih jenis yang sesuai, mengekalkan satu arah aliran, label ringkas dan sedikit warna, kemudian menyemak pertindihan dan bentuk yang terlepas.',
+    'builtinSkillDesc.whiteboard':
+      'Menyusun nota lekat, zon, kad, penyambung dan jadual di papan putih: merancang susun atur yang jelas, label ringkas dan menyemak pertindihan.',
+    'builtinSkillDesc.html-document':
+      'Membuat dokumen HTML yang selesa dibaca pada skrin dan kemas apabila dicetak: menetapkan pembaca, panjang dan kertas dahulu, kemudian menyemak halaman dan kandungannya.',
+    'builtinSkillDesc.general-report':
+      'Menulis laporan kerja yang jelas dalam empat langkah (tanya, rangka, tulis, semak) dengan kesimpulan di awal.',
+    'builtinSkillDesc.project-proposal':
+      'Menyediakan cadangan projek merangkumi masalah, penyelesaian, skop, jadual, risiko dan permintaan keputusan.',
+    'builtinSkillDesc.public-notice':
+      'Menulis notis atau pengumuman jelas yang menonjolkan pihak terlibat, masa, tindakan diperlukan dan rujukan.',
+    'builtinSkillDesc.presentation-deck':
+      'Merancang dan membina dek pembentangan bagi laporan mingguan, cadangan, kuliah atau pengenalan produk.',
+    'builtinSkillDesc.table-summary':
+      'Menyusun nota mentah menjadi jadual perbandingan atau ringkasan yang kemas dengan unit jelas dan rumusan awal.',
   },
   he: {
     'builtinSkillDesc.meeting-minutes': 'הופך רשימות מפגישה לסיכום שמציג את ההחלטות ואת המשימות.',
@@ -229,6 +824,40 @@ export const BUILTIN_SKILL_STRINGS = defineStrings({
       'עובר כמה פעמים על טקסט באנגלית שכבר נכתב והופך אותו לבהיר ולתמציתי יותר.',
     'builtinSkillDesc.find-skills':
       'פועל רק בחלון הסוכן ודורש אינטרנט כדי למצוא מיומנויות ולהציע להתקין אותן.',
+    'builtinSkillDesc.administration-report':
+      'מתאים דוח להנחיות משרד הפנים והביטחון של קוריאה: משפטים רצופים, מספור אחיד, גופנים זמינים בכל מחשב וטבלאות פשוטות.',
+    'builtinSkillDesc.administration-report-draft':
+      'כותב דוח מנהלי מאפס בפורמט של המשרד: סעיפים, מספור Ⅰ·1·가, משפטים רצופים, כותרות טבלאות וגופנים זמינים.',
+    'builtinSkillDesc.docx':
+      'פועל רק בחלון הסוכן. מריץ סקריפטים כדי ליצור, לערוך ולקרוא קובצי .docx בתיקיית הפרויקט. Python ותוכנות נוספות צריכות להיות מותקנות במחשב הזה.',
+    'builtinSkillDesc.pptx':
+      'פועל רק בחלון הסוכן. מריץ סקריפטים כדי ליצור, לערוך ולקרוא קובצי .pptx בתיקיית הפרויקט. Python ותוכנות נוספות צריכות להיות מותקנות במחשב הזה.',
+    'builtinSkillDesc.xlsx':
+      'פועל רק בחלון הסוכן. מריץ סקריפטים כדי ליצור ולערוך קובצי .xlsx בתיקיית הפרויקט ולחשב מחדש את הנוסחאות. Python ותוכנות נוספות צריכות להיות מותקנות במחשב הזה.',
+    'builtinSkillDesc.pdf':
+      'פועל רק בחלון הסוכן. מריץ סקריפטים כדי לקרוא, למזג ולפצל קובצי .pdf בתיקיית הפרויקט ולמלא טפסים. Python ותוכנות נוספות צריכות להיות מותקנות במחשב הזה.',
+    'builtinSkillDesc.hwp-document':
+      'כותב מסמך .hwp או .hwpx חדש מאפס: בוחר מבנה לדוח, לתוכנית, להודעה, למכתב רשמי או לפרוטוקול, כותב בסגנון של מסמך ובודק את התוצאה.',
+    'builtinSkillDesc.hwp-exam-paper':
+      'כותב מבחן בצורה שבתי ספר בקוריאה מגישים: ממלא את תבנית בית הספר הפתוחה, או יוצר דף B4 בשני טורים עם טבלת כותרת, ניקוד ומספרי עמודים.',
+    'builtinSkillDesc.mindmap':
+      'בונה מפת חשיבה מנושא או מחומרים: שלושה עד שבעה ענפים ראשיים מאוזנים, כותרות קצרות עם הפירוט בהערות, ובדיקת המבנה בסוף.',
+    'builtinSkillDesc.diagram':
+      'משרטט תרשים ברור: בוחר את הסוג המתאים, שומר על כיוון אחד, תוויות קצרות ומעט צבעים, ובודק חפיפות וצורות שאינן מחוברות.',
+    'builtinSkillDesc.whiteboard':
+      'מארגן פתקים דביקים, אזורים, כרטיסים, חיבורים וטבלאות על לוח לבן: מתכנן פריסה ברורה, שומר על תוויות קצרות ורווחים נקיים ובודק חפיפות.',
+    'builtinSkillDesc.html-document':
+      'יוצר מסמך HTML שנוח לקרוא על המסך ונקי בהדפסה: קובע קודם את הקורא, האורך והנייר, ואז בודק את העמודים והתוכן.',
+    'builtinSkillDesc.general-report':
+      'כותב דוח עבודה ברור בארבעה שלבים (בירור, מתווה, כתיבה, בדיקה) כשהמסקנה בראש והנתונים מבוססים.',
+    'builtinSkillDesc.project-proposal':
+      'מנסח הצעת פרויקט הכוללת בעיה, פתרון, היקף, לוח זמנים, סיכונים ובקשת החלטה ברורה.',
+    'builtinSkillDesc.public-notice':
+      'כותב הודעה או עדכון ברור המדגיש מיד מי מושפע, מתי זה קורה, מה נדרש לעשות ופרטי קשר.',
+    'builtinSkillDesc.presentation-deck':
+      'מתכנן ובונה מצגת לארבע מטרות (דוח שבועי, הצעה, הרצאה, סקירת מוצר) בהיררכיה נקייה ועם הערות דובר.',
+    'builtinSkillDesc.table-summary':
+      'הופך רשימות מפוזרות לטבלת השוואה או סיכום ברורה עם יחידות מידה ותקציר ממוקד בראשה.',
   },
   hi: {
     'builtinSkillDesc.meeting-minutes':
@@ -241,6 +870,40 @@ export const BUILTIN_SKILL_STRINGS = defineStrings({
       'पहले से लिखे अंग्रेज़ी पाठ को कई बार जाँचकर उसे ज़्यादा साफ़ और संक्षिप्त बनाता है।',
     'builtinSkillDesc.find-skills':
       'केवल एजेंट विंडो में काम करता है और कौशल खोजने व उन्हें इंस्टॉल करने का सुझाव देने के लिए इंटरनेट चाहिए।',
+    'builtinSkillDesc.administration-report':
+      'रिपोर्ट को कोरिया के आंतरिक एवं सुरक्षा मंत्रालय के दिशानिर्देश के अनुसार ढालता है: वर्णनात्मक वाक्य, मानक क्रमांकन, हर जगह उपलब्ध फ़ॉन्ट, सरल तालिकाएँ।',
+    'builtinSkillDesc.administration-report-draft':
+      'मंत्रालय के प्रारूप में प्रशासनिक रिपोर्ट शुरू से लिखता है: अनुभाग, Ⅰ·1·가 क्रमांकन, वर्णनात्मक वाक्य, तालिका शीर्षक और उपलब्ध फ़ॉन्ट।',
+    'builtinSkillDesc.docx':
+      'केवल एजेंट विंडो में काम करता है। स्क्रिप्ट चलाकर प्रोजेक्ट फ़ोल्डर में .docx फ़ाइलें बनाता, संपादित करता और पढ़ता है। इस PC पर Python और अन्य प्रोग्राम इंस्टॉल होने चाहिए।',
+    'builtinSkillDesc.pptx':
+      'केवल एजेंट विंडो में काम करता है। स्क्रिप्ट चलाकर प्रोजेक्ट फ़ोल्डर में .pptx फ़ाइलें बनाता, संपादित करता और पढ़ता है। इस PC पर Python और अन्य प्रोग्राम इंस्टॉल होने चाहिए।',
+    'builtinSkillDesc.xlsx':
+      'केवल एजेंट विंडो में काम करता है। स्क्रिप्ट चलाकर प्रोजेक्ट फ़ोल्डर में .xlsx फ़ाइलें बनाता और संपादित करता है और उनके फ़ॉर्मूले दोबारा गिनता है। इस PC पर Python और अन्य प्रोग्राम इंस्टॉल होने चाहिए।',
+    'builtinSkillDesc.pdf':
+      'केवल एजेंट विंडो में काम करता है। स्क्रिप्ट चलाकर प्रोजेक्ट फ़ोल्डर की .pdf फ़ाइलें पढ़ता, जोड़ता और बाँटता है और फ़ॉर्म भरता है। इस PC पर Python और अन्य प्रोग्राम इंस्टॉल होने चाहिए।',
+    'builtinSkillDesc.hwp-document':
+      'नया .hwp या .hwpx दस्तावेज़ शुरू से लिखता है: रिपोर्ट, योजना, सूचना, सरकारी पत्र या बैठक के कार्यवृत्त के लिए ढाँचा चुनता है, दस्तावेज़ की शैली में लिखता है और अंत में जाँच करता है।',
+    'builtinSkillDesc.hwp-exam-paper':
+      'कोरियाई स्कूलों द्वारा जमा किए जाने वाले मूल प्रारूप में प्रश्नपत्र लिखता है: खुले हुए स्कूल फ़ॉर्म को भरता है, या शीर्ष तालिका, अंकों और पृष्ठ संख्याओं वाला दो कॉलम का B4 पत्र बनाता है।',
+    'builtinSkillDesc.mindmap':
+      'किसी विषय या सामग्री से माइंड मैप बनाता है: तीन से सात संतुलित मुख्य शाखाएँ, छोटे शीर्षक और ब्योरा नोट में, और अंत में ढाँचे की जाँच।',
+    'builtinSkillDesc.diagram':
+      'साफ़ आरेख बनाता है: सही प्रकार चुनता है, प्रवाह एक ही दिशा में, लेबल छोटे और रंग कम रखता है, और ओवरलैप व बिना जुड़ी आकृतियों की जाँच करता है।',
+    'builtinSkillDesc.whiteboard':
+      'व्हाइटबोर्ड पर स्टिकी नोट्स, ज़ोन, कार्ड, कनेक्टर और तालिकाएँ व्यवस्थित करता है: स्पष्ट लेआउट बनाता है, लेबल छोटे रखता है और अंत में ओवरलैप जाँचता है।',
+    'builtinSkillDesc.html-document':
+      'ऐसा HTML दस्तावेज़ बनाता है जो स्क्रीन पर पढ़ने में अच्छा और छपने पर साफ़ हो: पहले पाठक, लंबाई और काग़ज़ तय करता है, फिर पृष्ठों और सामग्री की जाँच करता है।',
+    'builtinSkillDesc.general-report':
+      'चार चरणों (पूछें, रूपरेखा, लेखन, जाँच) में निष्कर्ष-प्रमुख और तथ्यों पर आधारित स्पष्ट कार्य रिपोर्ट लिखता है।',
+    'builtinSkillDesc.project-proposal':
+      'समस्या, समाधान, दायरा, समय-सीमा, जोखिम और निर्णय अनुरोध सहित संरचित परियोजना प्रस्ताव तैयार करता है।',
+    'builtinSkillDesc.public-notice':
+      'स्पष्ट सूचना या घोषणा लिखता है जिसमें प्रभावित लोग, समय, आवश्यक कार्रवाई और संपर्क विवरण सबसे ऊपर हों।',
+    'builtinSkillDesc.presentation-deck':
+      'साप्ताहिक रिपोर्ट, प्रस्ताव, व्याख्यान या उत्पाद परिचय के चार ढाँचों के अनुसार संतुलित स्लाइड डेक बनाता है।',
+    'builtinSkillDesc.table-summary':
+      'बिखरे नोट्स को स्पष्ट इकाइयों, सुसंगत प्रारूप और संक्षिप्त निष्कर्ष वाली तुलना या सारांश तालिका में बदलता है।',
   },
   'zh-TW': {
     'builtinSkillDesc.meeting-minutes': '把會議筆記整理成列明決議事項和待辦事項的會議紀錄。',
@@ -249,6 +912,40 @@ export const BUILTIN_SKILL_STRINGS = defineStrings({
     'builtinSkillDesc.copy-editing': '把已經寫好的英文文字逐次檢查，改得更清楚、更簡潔。',
     'builtinSkillDesc.find-skills':
       '僅能在代理程式視窗中使用，需要連網，用來尋找所需技能並建議安裝。',
+    'builtinSkillDesc.administration-report':
+      '依照韓國行政安全部的指南整理報告：敘述式語句、標準編號、通用字體、簡潔的表格。',
+    'builtinSkillDesc.administration-report-draft':
+      '依行政安全部格式從頭撰寫行政文書：章節結構、Ⅰ·1·가 編號、敘述式語句、表題與通用字體。',
+    'builtinSkillDesc.docx':
+      '僅能在代理程式視窗中使用。執行指令碼，在專案資料夾中建立、修改和讀取 .docx 檔案。這台電腦上需要安裝 Python 等程式。',
+    'builtinSkillDesc.pptx':
+      '僅能在代理程式視窗中使用。執行指令碼，在專案資料夾中建立、修改和讀取 .pptx 檔案。這台電腦上需要安裝 Python 等程式。',
+    'builtinSkillDesc.xlsx':
+      '僅能在代理程式視窗中使用。執行指令碼，在專案資料夾中建立和修改 .xlsx 檔案，並重新計算公式。這台電腦上需要安裝 Python 等程式。',
+    'builtinSkillDesc.pdf':
+      '僅能在代理程式視窗中使用。執行指令碼，在專案資料夾中讀取、合併和分割 .pdf 檔案，並填寫表單。這台電腦上需要安裝 Python 等程式。',
+    'builtinSkillDesc.hwp-document':
+      '從頭撰寫 .hwp、.hwpx 文件：依報告、計畫、通知、公文、會議紀錄選定架構，用公文語體撰寫，最後進行檢查。',
+    'builtinSkillDesc.hwp-exam-paper':
+      '依韓國學校繳交的原稿格式出試卷：填寫已開啟的學校試卷範本，或新建 B4 雙欄試卷，附表頭、配分與頁碼。',
+    'builtinSkillDesc.mindmap':
+      '根據主題或資料製作心智圖：均衡地設 3 到 7 個主分支，標題簡短、說明放在備註裡，最後檢查架構。',
+    'builtinSkillDesc.diagram':
+      '繪製清楚易讀的圖表：選對圖表類型，流向保持同一方向，文字簡短、顏色少用，並檢查重疊和孤立的圖形。',
+    'builtinSkillDesc.whiteboard':
+      '在白板上整理便利貼、區域、卡片、連線與表格：先規劃版面再一次建立，保持留白清楚、文字簡短，最後檢查重疊。',
+    'builtinSkillDesc.html-document':
+      '製作在螢幕上好讀、列印也整潔的 HTML 文件：先確定讀者、篇幅和紙張，再檢查分頁和內容。',
+    'builtinSkillDesc.general-report':
+      '依「先釐清、再列綱、後撰寫、最後檢查」四步驟撰寫結構清楚的通用報告，結論先行並核對來源。',
+    'builtinSkillDesc.project-proposal':
+      '撰寫涵蓋問題背景、解決方案、範圍界線、時程、風險與決策請求的完整專案提案與企劃書。',
+    'builtinSkillDesc.public-notice':
+      '撰寫清楚明確的公告與通知，在開頭突出對象、時間、影響範圍、所需操作與聯絡方式。',
+    'builtinSkillDesc.presentation-deck':
+      '依週報、提案、講義或產品介紹四種目標架構規劃簡報，控制單頁資訊量並支援講者備忘稿。',
+    'builtinSkillDesc.table-summary':
+      '將零散筆記或比較資料整理為具備單位表頭、統一格式與核心摘要的清晰比較與彙整表。',
   },
   vi: {
     'builtinSkillDesc.meeting-minutes':
@@ -261,6 +958,86 @@ export const BUILTIN_SKILL_STRINGS = defineStrings({
       'Rà lại nhiều lượt một văn bản tiếng Anh đã viết để nó rõ ràng và gọn hơn.',
     'builtinSkillDesc.find-skills':
       'Chỉ dùng được trong cửa sổ tác tử và cần internet để tìm kỹ năng và đề xuất cài đặt.',
+    'builtinSkillDesc.administration-report':
+      'Đưa báo cáo về đúng hướng dẫn của Bộ Nội vụ và An toàn Hàn Quốc: câu diễn đạt, đánh số chuẩn, phông chữ mở được mọi nơi, bảng đơn giản.',
+    'builtinSkillDesc.administration-report-draft':
+      'Viết báo cáo hành chính từ đầu theo định dạng của bộ: các phần, đánh số Ⅰ·1·가, câu diễn đạt, tiêu đề bảng và phông chữ phổ dụng.',
+    'builtinSkillDesc.docx':
+      'Chỉ dùng được trong cửa sổ tác tử. Chạy tập lệnh để tạo, sửa và đọc tệp .docx trong thư mục dự án. PC này cần cài sẵn Python và các chương trình khác.',
+    'builtinSkillDesc.pptx':
+      'Chỉ dùng được trong cửa sổ tác tử. Chạy tập lệnh để tạo, sửa và đọc tệp .pptx trong thư mục dự án. PC này cần cài sẵn Python và các chương trình khác.',
+    'builtinSkillDesc.xlsx':
+      'Chỉ dùng được trong cửa sổ tác tử. Chạy tập lệnh để tạo và sửa tệp .xlsx trong thư mục dự án và tính lại công thức. PC này cần cài sẵn Python và các chương trình khác.',
+    'builtinSkillDesc.pdf':
+      'Chỉ dùng được trong cửa sổ tác tử. Chạy tập lệnh để đọc, gộp và tách tệp .pdf trong thư mục dự án và điền biểu mẫu. PC này cần cài sẵn Python và các chương trình khác.',
+    'builtinSkillDesc.hwp-document':
+      'Viết mới tài liệu .hwp hoặc .hwpx từ đầu: chọn bố cục cho báo cáo, kế hoạch, thông báo, công văn hoặc biên bản họp, viết theo văn phong tài liệu rồi kiểm tra kết quả.',
+    'builtinSkillDesc.hwp-exam-paper':
+      'Soạn đề kiểm tra theo mẫu bản gốc mà các trường Hàn Quốc nộp: điền vào mẫu đề của trường đang mở, hoặc tạo tờ B4 hai cột có bảng đầu đề, điểm số và số trang.',
+    'builtinSkillDesc.mindmap':
+      'Dựng sơ đồ tư duy từ một chủ đề hoặc tài liệu: ba đến bảy nhánh chính cân đối, tiêu đề ngắn với chi tiết đặt trong ghi chú, và kiểm tra cấu trúc ở cuối.',
+    'builtinSkillDesc.diagram':
+      'Vẽ sơ đồ rõ ràng: chọn loại phù hợp, giữ một hướng đi, nhãn ngắn và ít màu, rồi kiểm tra chồng lấn và hình rời rạc.',
+    'builtinSkillDesc.whiteboard':
+      'Sắp xếp giấy nhớ, khu vực, thẻ, đường nối và bảng trên bảng trắng: bố cục rõ ràng, nhãn ngắn gọn, khoảng trống thoáng và kiểm tra chồng lấn.',
+    'builtinSkillDesc.html-document':
+      'Tạo tài liệu HTML dễ đọc trên màn hình và gọn gàng khi in: xác định người đọc, độ dài và khổ giấy trước, rồi kiểm tra các trang và nội dung.',
+    'builtinSkillDesc.general-report':
+      'Viết báo cáo công việc rõ ràng theo bốn bước (hỏi rõ, lập dàn ý, viết, kiểm tra) với kết luận đặt đầu tiên.',
+    'builtinSkillDesc.project-proposal':
+      'Soạn đề xuất dự án đầy đủ vấn đề, giải pháp, phạm vi, tiến độ, rủi ro và đề nghị phê duyệt.',
+    'builtinSkillDesc.public-notice':
+      'Viết thông báo rõ ràng nêu bật ngay đầu bài đối tượng ảnh hưởng, thời gian, hành động cần làm và liên hệ.',
+    'builtinSkillDesc.presentation-deck':
+      'Lập cấu trúc và tạo bài thuyết trình theo bốn mục tiêu (báo cáo tuần, đề xuất, bài giảng, giới thiệu sản phẩm).',
+    'builtinSkillDesc.table-summary':
+      'Chuyển ghi chú rời rạc thành bảng so sánh hoặc tóm tắt rõ đơn vị, nhất quán định dạng kèm tóm lược ngắn.',
+  },
+  tr: {
+    'builtinSkillDesc.meeting-minutes':
+      'Toplantı notlarını, kararları ve yapılacakları gösteren bir tutanağa dönüştürür.',
+    'builtinSkillDesc.internal-comms':
+      'Duyurular, bültenler, ilerleme raporları, SSS ve diğer kurum içi yazıları yazar.',
+    'builtinSkillDesc.humanizer':
+      'Metinde AI tarafından yazılmış gibi duran ifadeleri bulur ve içeriğini değiştirmeden doğal hale getirir.',
+    'builtinSkillDesc.copy-editing':
+      'Zaten yazılmış İngilizce metni birkaç kez gözden geçirip daha açık ve daha kısa hale getirir.',
+    'builtinSkillDesc.find-skills':
+      'Yalnızca ajan penceresinde çalışır ve beceri bulup yüklemeyi önermek için internet bağlantısı gerektirir.',
+    'builtinSkillDesc.administration-report':
+      'Bir raporu İçişleri ve Güvenlik Bakanlığı kılavuzuna uydurur: düz anlatım, standart numaralandırma, her yerde açılan yazı tipleri, sade tablolar.',
+    'builtinSkillDesc.administration-report-draft':
+      'Bakanlık biçiminde sıfırdan bir idari rapor yazar: bölümler, Ⅰ·1·가 numaralandırması, düz anlatım, tablo başlıkları ve uyumlu yazı tipleri.',
+    'builtinSkillDesc.docx':
+      'Yalnızca ajan penceresinde çalışır. Proje klasöründeki .docx dosyalarını oluşturmak, düzenlemek ve okumak için betik çalıştırır. Bu bilgisayarda Python ve başka programlar kurulu olmalıdır.',
+    'builtinSkillDesc.pptx':
+      'Yalnızca ajan penceresinde çalışır. Proje klasöründeki .pptx dosyalarını oluşturmak, düzenlemek ve okumak için betik çalıştırır. Bu bilgisayarda Python ve başka programlar kurulu olmalıdır.',
+    'builtinSkillDesc.xlsx':
+      'Yalnızca ajan penceresinde çalışır. Proje klasöründeki .xlsx dosyalarını oluşturmak ve düzenlemek, formüllerini yeniden hesaplamak için betik çalıştırır. Bu bilgisayarda Python ve başka programlar kurulu olmalıdır.',
+    'builtinSkillDesc.pdf':
+      'Yalnızca ajan penceresinde çalışır. Proje klasöründeki .pdf dosyalarını okumak, birleştirmek ve bölmek, formları doldurmak için betik çalıştırır. Bu bilgisayarda Python ve başka programlar kurulu olmalıdır.',
+    'builtinSkillDesc.hwp-document':
+      'Yeni bir .hwp veya .hwpx belgesini sıfırdan yazar: rapor, plan, duyuru, resmî yazı veya tutanak için bölümleri seçer, belge üslubuyla yazar ve sonunda denetler.',
+    'builtinSkillDesc.hwp-exam-paper':
+      'Kore okullarının teslim ettiği biçimde bir sınav kâğıdı yazar: açık olan okul şablonunu doldurur ya da başlık tablosu, puanlar ve sayfa numaraları olan iki sütunlu bir B4 kâğıdı oluşturur.',
+    'builtinSkillDesc.mindmap':
+      'Bir konudan veya malzemeden zihin haritası kurar: üç ila yedi dengeli ana dal, ayrıntısı notlarda duran kısa başlıklar ve sonunda yapı denetimi.',
+    'builtinSkillDesc.diagram':
+      'Anlaşılır bir diyagram çizer: uygun türü seçer, tek yönü, kısa etiketleri ve az rengi korur, çakışmaları ve bağlantısız şekilleri denetler.',
+    'builtinSkillDesc.whiteboard':
+      'Beyaz tahtada yapışkan notları, bölgeleri, kartları, bağlantıları ve tabloları düzenler: net bir yerleşim kurar, etiketleri kısa tutar ve çakışmaları denetler.',
+    'builtinSkillDesc.html-document':
+      'Ekranda rahat okunan ve temiz basılan bir HTML belgesi hazırlar: önce okuru, uzunluğu ve kâğıdı belirler, sonra sayfaları ve içeriği denetler.',
+    'builtinSkillDesc.general-report':
+      'Dört adımda (netleştir, taslak çıkar, yaz, denetle) sonucu başa alan, kanıta dayalı net bir iş raporu yazar.',
+    'builtinSkillDesc.project-proposal':
+      'Sorun, çözüm, kapsam, zaman planı, riskler ve karar talebini içeren düzenli bir proje önerisi hazırlar.',
+    'builtinSkillDesc.public-notice':
+      'Kimlerin etkilendiğini, zamanı, gereken adımları ve iletişimi en üstte vurgulayan net bir duyuru yazar.',
+    'builtinSkillDesc.presentation-deck':
+      'Haftalık rapor, öneri, ders veya ürün tanıtımı için temiz hiyerarşili sunum destesi planlar ve oluşturur.',
+    'builtinSkillDesc.table-summary':
+      'Dağınık notları açık birimli, düzenli biçimli ve kısa özetli bir karşılaştırma veya özet tablosuna dönüştürür.',
   },
 })
 

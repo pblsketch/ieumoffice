@@ -12,13 +12,22 @@ Editor e-buku membuka buku EPUB (`.epub`) dalam satu tab. Anda boleh membaca buk
 
 ## Membaca
 
-- Anak tetingkap **Kandungan** di sebelah kiri memaparkan senarai kandungan buku. Klik satu entri untuk pergi ke situ. Buku yang tiada senarai kandungan akan mendapat senarai babnya.
+- Anak tetingkap **Kandungan** di sebelah kiri memaparkan senarai kandungan buku. Klik satu entri untuk pergi ke situ. Buku yang tiada senarai kandungan akan mendapat senarai babnya. Seret tepi dalam anak tetingkap untuk mengubah lebarnya; klik dua kali pada tepi itu untuk kembali ke lebar asal. Anak tetingkap carian menggunakan lebar yang sama.
 - Setiap bab ditatal ke atas dan ke bawah. Teruskan menatal melepasi hujung bab untuk ke bab seterusnya, atau melepasi permulaannya untuk berundur. Baris status menunjukkan bab yang sedang anda baca.
 - Tab **Paparan** menukar saiz teks dan jarak baris, serta menghidupkan dan mematikan **Paparan gelap**. Tetapan ini hanya mengubah skrin, tidak sekali-kali buku, dan digunakan untuk semua buku.
 - Tempat anda berhenti membaca diingati bagi setiap fail, dalam folder data aplikasi dan bukan dalam buku.
 - **Cari dalam buku** (Ctrl+F) mencari dalam semua bab. Klik satu hasil untuk pergi ke situ.
 - Pautan di dalam buku membawa anda ke tempat yang dipautkan. Pautan web dan e-mel dibuka dalam pelayar lalai anda; alamat lain tidak dibuka.
 - Skrip milik buku itu sendiri tidak pernah dijalankan dan tiada apa-apa dimuatkan dari internet. Bunyi dan video tidak dimainkan.
+
+## Pratonton
+
+- Klik **Pratonton** pada tab **Laman Utama** atau **Paparan** untuk melihat buku mengikut halaman, seperti yang dipaparkan oleh pembaca e-buku. Pratonton dibuka di tempat anda sedang membaca.
+- Pada bar di atas, pilih skrin (**Pembaca e-buku**, **Telefon**, **Tablet** atau **Muat tetingkap**), landskap, saiz teks dan warna latar (putih, sepia atau gelap). Skrin lebar yang diletakkan secara landskap memaparkan dua halaman bersebelahan. Tetapan ini hanya mengubah pratonton, tidak sekali-kali buku.
+- Selak halaman dengan kekunci anak panah, Page Up dan Page Down, bar ruang, roda tetikus atau butang di kedua-dua sisi. Menyelak melepasi halaman terakhir sesuatu bab akan membawa anda ke bab seterusnya. Kandungan dan pautan dalam buku membawa pratonton ke tempat itu.
+- Teks tidak boleh disunting dalam pratonton. Apabila AI mengubah buku atau anda membuat asal perubahan, pratonton turut berubah.
+- Klik **Tutup pratonton** atau tekan Esc untuk kembali menyunting di tempat yang dipaparkan oleh pratonton.
+- Pemisahan halaman berbeza sedikit pada setiap aplikasi kedai dan peranti, jadi anggap pratonton sebagai gambaran yang hampir tepat.
 
 ## Menyunting teks
 
@@ -38,7 +47,7 @@ Editor e-buku membuka buku EPUB (`.epub`) dalam satu tab. Anda boleh membaca buk
 ## Panel AI
 
 - Tanya tentang buku, minta ringkasan sesuatu bab, atau minta teksnya dibetulkan atau ditulis semula. AI membaca senarai kandungan dan bab-bab buku serta mencari teks di dalamnya.
-- Perubahan yang dibuat oleh AI muncul serta-merta, dan satu kali buat asal (Ctrl+Z) mengembalikan semua yang diubahnya dalam giliran itu. AI boleh menjadikan teks tebal atau condong, tetapi tidak boleh menambah gambar, jadual atau bab.
+- Perubahan yang dibuat oleh AI muncul serta-merta, blok yang diubah ditanda dengan warna kuning, dan **Buat asal perubahan ini** pada kad di bawah jawapannya mengembalikan semua yang diubahnya dalam giliran itu (selagi buku tidak disunting selepas itu). AI boleh menjadikan teks tebal atau condong, tetapi tidak boleh menambah gambar, jadual atau bab.
 - Teks buku ialah bahan untuk AI, bukan arahan kepadanya.
 - Minta "Terjemah buku ini ke bahasa Perancis" dan AI akan membuka tetingkap terjemahan dengan bahasa itu sudah diisi. Tiada apa-apa dihantar sehingga anda menekan **Mula**.
 - Buku EPUB juga boleh dilampirkan dalam panel AI editor lain, dipilih dengan `@`, dan ditemui melalui carian fail di skrin Laman Utama.
@@ -58,11 +67,12 @@ Editor e-buku membuka buku EPUB (`.epub`) dalam satu tab. Anda boleh membaca buk
 - Apa yang telah diterjemah akan disimpan. Jika anda berhenti, pilih **Eksport yang sudah diterjemah** (selebihnya kekal dalam bahasa asal) atau **Sambung kemudian**. Apabila anda membuka buku yang terjemahannya belum selesai, GenOffice menawarkan untuk menyambungnya. **Terjemah semula dari awal** terlebih dahulu memadam terjemahan yang disimpan bagi bahasa itu.
 - Terjemahan yang disimpan dikira di bawah Tetapan ▸ Umum ▸ **Hasil AI yang disimpan**, bersama-sama hasil dokumen PDF, dan **Padam semua** turut memadamnya.
 - Terjemahan yang sama juga boleh dijalankan daripada [arahan terminal](help://cli) sebagai `ieumoffice epub translate`.
+- Pilih **Bahasa mudah** pada **Mod** untuk menulis semula buku dengan perkataan mudah dalam bahasa yang dipilih. Hasilnya ialah **Buku bahasa mudah** dan **Teks asal diikuti bahasa mudah**; tajuknya ditanda sebagai versi bahasa mudah dalam bahasa itu, dan nama failnya membawa tanda itu dalam bahasa antara muka supaya berbeza daripada nama fail terjemahan. Bahasanya pada mulanya bahasa antara muka dan boleh sama dengan bahasa buku. Versi mudah disimpan berasingan daripada terjemahan, tawaran untuk menyambungnya muncul sendiri, dan arahan terminal tidak membuatnya.
 
 ## Belum disokong
 
 - Menambah, memadam atau menyusun semula bab; menukar tajuk, pengarang atau kulit buku; menyisipkan gambar atau jadual; menukar perenggan menjadi tajuk atau senarai.
 - Menyunting atau menterjemah buku susun atur tetap, dan membuka buku yang dilindungi salinan.
-- Menyelak halaman seperti buku bercetak, dan mencipta buku baharu yang kosong.
+- Mencipta buku baharu yang kosong.
 - Membandingkan teks asal dan terjemahan bersebelahan di dalam editor. Sebaliknya, buka buku dwibahasa, dan betulkan buku terjemahan seperti buku lain.
 - Menyembunyikan bahagian buku daripada AI.

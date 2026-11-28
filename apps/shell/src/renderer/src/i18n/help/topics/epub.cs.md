@@ -12,13 +12,22 @@ Editor e-knih otevírá knihy EPUB (`.epub`) na kartě. Knihu můžete číst, o
 
 ## Čtení
 
-- Panel **Obsah** vlevo zobrazuje obsah knihy. Kliknutím na položku na ni přejdete. Kniha bez obsahu dostane seznam svých kapitol.
+- Panel **Obsah** vlevo zobrazuje obsah knihy. Kliknutím na položku na ni přejdete. Kniha bez obsahu dostane seznam svých kapitol. Šířku panelu změníte přetažením jeho vnitřního okraje, dvojklikem na okraj vrátíte původní šířku. Panel hledání má stejnou šířku.
 - Každá kapitola se posouvá nahoru a dolů. Když budete posouvat dál za konec kapitoly, přejdete na další, a za jejím začátkem se vrátíte na předchozí. Stavový řádek ukazuje, ve které kapitole jste.
 - Karta **Zobrazení** mění velikost textu a řádkování a zapíná a vypíná **Tmavé zobrazení**. Tato nastavení mění jen obrazovku, nikdy knihu, a platí pro všechny knihy.
 - Místo, kde jste přestali číst, se pamatuje pro každý soubor zvlášť, a to ve složce dat aplikace, ne v knize.
 - **Hledat v knize** (Ctrl+F) prohledá všechny kapitoly. Kliknutím na výsledek na něj přejdete.
 - Odkaz v knize vás přesune na dané místo. Webové a e-mailové odkazy se otevřou ve výchozím prohlížeči; jiné adresy se neotevírají.
 - Vlastní skripty knihy se nikdy nespouštějí a nic se nenačítá z internetu. Zvuk a video se nepřehrávají.
+
+## Náhled
+
+- Kliknutím na **Náhled** na kartě **Domů** nebo **Zobrazení** uvidíte knihu rozdělenou na stránky, jak ji ukazuje čtečka e-knih. Náhled se otevře v místě, kde právě čtete.
+- Na liště nahoře vyberte obrazovku (**Čtečka e-knih**, **Telefon**, **Tablet** nebo **Přizpůsobit oknu**), orientaci na šířku, velikost textu a pozadí (bílé, sépie nebo tmavé). Široká obrazovka otočená na šířku ukazuje dvě stránky vedle sebe. Tato nastavení mění jen náhled, nikdy knihu.
+- Stránky otáčejte šipkami, klávesami Page Up a Page Down, mezerníkem, kolečkem myši nebo tlačítky po stranách. Za poslední stránkou kapitoly pokračujete další kapitolou. Obsah a odkazy v knize přesunou náhled na dané místo.
+- V náhledu nelze upravovat text. Když AI knihu změní nebo vrátíte změnu zpět, náhled se aktualizuje.
+- Kliknutím na **Zavřít náhled** nebo klávesou Esc se vrátíte k úpravám v místě, které náhled ukazoval.
+- Zalomení stránek se v aplikacích obchodů a na zařízeních trochu liší, berte proto náhled jako blízké přiblížení.
 
 ## Úpravy textu
 
@@ -38,7 +47,7 @@ Editor e-knih otevírá knihy EPUB (`.epub`) na kartě. Knihu můžete číst, o
 ## Panel AI
 
 - Ptejte se na knihu, nechte si shrnout kapitolu nebo opravit či přepsat její text. AI čte obsah a kapitoly knihy a vyhledává v ní text.
-- Změny od AI se objeví hned a jedno vrácení (Ctrl+Z) vezme zpět vše, co AI v daném kole změnila. AI umí text zvýraznit tučně nebo kurzívou, ale nemůže přidávat obrázky, tabulky ani kapitoly.
+- Změny od AI se objeví hned, změněné bloky se označí žlutě a **Vrátit tyto změny** na kartě pod odpovědí vezme zpět vše, co AI v daném kole změnila (pokud jste knihu potom neupravovali). AI umí text zvýraznit tučně nebo kurzívou, ale nemůže přidávat obrázky, tabulky ani kapitoly.
 - Text knihy je pro AI materiál, ne pokyny.
 - Napište „Přelož tuto knihu do francouzštiny“ a AI otevře okno překladu s tímto jazykem už vyplněným. Dokud nestisknete **Spustit**, nic se neodešle.
 - Knihy EPUB lze také připojit v panelu AI ostatních editorů, vybrat přes `@` a najít vyhledáváním souborů na domovské stránce.
@@ -58,11 +67,12 @@ Editor e-knih otevírá knihy EPUB (`.epub`) na kartě. Knihu můžete číst, o
 - Co už je přeložené, se uchovává. Když překlad zastavíte, zvolte **Exportovat dosud přeložené** (zbytek zůstane v původním jazyce) nebo **Pokračovat později**. Když otevřete knihu s nedokončeným překladem, GenOffice nabídne, že v něm bude pokračovat. **Přeložit znovu od začátku** nejprve smaže uchovaný překlad do daného jazyka.
 - Uchované překlady se započítávají v Nastavení ▸ Obecné ▸ **Uložené výsledky AI** spolu s výsledky dokumentů PDF a **Smazat vše** odstraní i je.
 - Stejný překlad lze spustit i z [příkazů terminálu](help://cli) jako `ieumoffice epub translate`.
+- Zvolte v poli **Režim** možnost **Jednoduchý jazyk** a kniha se přepíše jednoduchými slovy ve zvoleném jazyce. Výsledky jsou **Kniha v jednoduchém jazyce** a **Originál a po něm jednoduchý jazyk**; jejich název nese v tom jazyce označení verze v jednoduchém jazyce a název souboru je nese v jazyce rozhraní, aby se lišil od názvu překladu. Jazyk je nejprve jazykem rozhraní a může to být i jazyk knihy. Jednoduchá verze se uchovává odděleně od překladů, pokračování se nabízí zvlášť a příkazy terminálu ji nevytvářejí.
 
 ## Zatím nepodporováno
 
 - Přidávání, mazání a změna pořadí kapitol; změna názvu, autora nebo obálky; vkládání obrázků a tabulek; změna odstavce na nadpis nebo seznam.
 - Úpravy a překlad knih s pevným rozvržením a otevírání knih chráněných proti kopírování.
-- Obracení stránek jako v tištěné knize a vytvoření nové prázdné knihy.
+- Vytvoření nové prázdné knihy.
 - Porovnání originálu a překladu vedle sebe přímo v editoru. Místo toho otevřete dvojjazyčnou knihu a přeloženou knihu opravujte jako kteroukoli jinou.
 - Skrytí částí knihy před AI.

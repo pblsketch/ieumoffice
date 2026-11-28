@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 /** the shell-wide AutoSave default; `updatedAt` is 0 until the user has ever set it */
 export interface AutoSaveDefault {
@@ -63,16 +63,28 @@ export function useAutoSavePref(
   api: Partial<AutoSaveDefaultApi> | undefined,
 ): [boolean, (on: boolean) => void] {
   const [global, setGlobal] = useState<AutoSaveDefault>(NO_AUTO_SAVE_DEFAULT)
+  const globalRef = useRef<AutoSaveDefault>(NO_AUTO_SAVE_DEFAULT)
   const [autoSave, setAutoSaveState] = useState(() =>
     resolveAutoSave(NO_AUTO_SAVE_DEFAULT, localStorage.getItem(storageKey)),
   )
+  const autoSaveRef = useRef(autoSave)
+  autoSaveRef.current = autoSave
 
   useEffect(() => {
     let alive = true
     const apply = (value: AutoSaveDefault) => {
       if (!alive) return
-      setGlobal(value)
-      setAutoSaveState(resolveAutoSave(value, localStorage.getItem(storageKey)))
+      // Skip identical defaults so a fresh IPC object (or a non-memoized
+      // wrapper api) never triggers redundant re-renders or an effect loop.
+      if (globalRef.current.on !== value.on || globalRef.current.updatedAt !== value.updatedAt) {
+        globalRef.current = value
+        setGlobal(value)
+      }
+      const next = resolveAutoSave(value, localStorage.getItem(storageKey))
+      if (autoSaveRef.current !== next) {
+        autoSaveRef.current = next
+        setAutoSaveState(next)
+      }
     }
     api
       ?.getAutoSaveDefault?.()
@@ -92,6 +104,7 @@ export function useAutoSavePref(
   const setAutoSave = useCallback(
     (on: boolean) => {
       localStorage.setItem(storageKey, encodeAutoSaveOverride(on, global))
+      autoSaveRef.current = on
       setAutoSaveState(on)
     },
     [global, storageKey],

@@ -18,12 +18,16 @@ export const ms = {
   cardErrNeedsUpdatePath: 'Fail yang dijalankan oleh aplikasi ini:',
   cardErrNeedsUpdateWindows:
     'Mengemas kini {provider} di dalam WSL (Ubuntu) atau dalam folder lain tidak mengubah fail ini. Jalankan {command} dalam Windows PowerShell.',
+  claudeDesktopNote:
+    'Aplikasi desktop Claude bukan Claude Code yang dijalankan oleh aplikasi ini. Claude Code ialah program berasingan yang digunakan dalam terminal, jadi memasang atau mengemas kini aplikasi desktop tidak mengubahnya.',
   cardErrTimeout:
     'Program {provider} tidak menjawab dalam masa yang ditetapkan. Semak semula sebentar lagi.',
   cardErrFailed: 'Masalah berlaku semasa menyemak {provider}. Semak semula.',
   actionInstall: 'Pasang',
   actionLogin: 'Log masuk',
   actionLoginWindow: 'Pelayar tidak dibuka?',
+  actionLoginWithCode: 'Pelayar menunjukkan kod?',
+  actionLoginBrowser: 'Log masuk melalui pelayar',
   actionRecheck: 'Semak semula',
   actionAcceptMetered: 'Guna juga',
   actionInstallHelp: 'Panduan pemasangan rasmi',
@@ -42,17 +46,19 @@ export const ms = {
     'Log masuk ini menggunakan kunci API atau akaun bayar ikut guna, atau jenisnya tidak dapat disahkan. Dengan "Guna juga", AI berjalan melalui sambungan ini dan setiap permintaan dicaj kepada akaun tersebut.',
   connectTitle: 'Sambungkan AI untuk bermula',
   connectBody:
-    'AI berjalan dengan langganan Claude atau Codex yang anda sudah ada. Kunci API tidak diperlukan.',
+    'AI berjalan dengan langganan Claude, ChatGPT atau Google Antigravity yang sudah anda miliki. Tiada kunci API diperlukan.',
   connectProviderTitle: 'Sambungan {provider} tidak boleh digunakan sekarang',
   connectKeyBody:
     'Persediaan {provider} belum selesai. Lengkapkannya dalam Tetapan, atau pilih AI lain.',
   errNotConnected:
-    'Tiada AI yang disambungkan. Sambungkan langganan Claude atau Codex, atau AI percuma, dahulu.',
+    'Tiada AI yang disambungkan. Sambungkan langganan Claude, ChatGPT, Codex atau Antigravity, atau AI percuma terlebih dahulu.',
   errNotInstalled: 'Program {provider} tidak ditemui pada PC ini.',
   errSignedOut: 'Log masuk {provider} telah tamat. Log masuk semula untuk meneruskan.',
   errRateLimit: 'Had langganan {provider} telah habis digunakan.',
   errRateLimitReset:
     'Had langganan {provider} telah habis digunakan. Had ditetapkan semula pada {time}.',
+  errChatGptAppLimit:
+    'Apl ini telah menghabiskan penggunaan ChatGPT yang boleh digunakannya. Had itu mungkin had seluruh pelan anda atau had yang ditetapkan untuk apl ini. Semak dalam ChatGPT di Tetapan → Penggunaan.',
   errUnsafeTools:
     'Program {provider} bermula dengan alatnya sendiri masih aktif, jadi proses dihentikan demi keselamatan.',
   errMeteredNotAccepted:
@@ -68,6 +74,8 @@ export const ms = {
     'Peruntukan percuma hari ini telah habis. Cuba lagi esok, atau pilih AI lain dalam Tetapan.',
   errFreeLimitReset:
     'Peruntukan percuma hari ini telah habis. Anda boleh menggunakannya semula pada {time}.',
+  errFreeTierModel:
+    'Model ini tiada peringkat percuma, jadi kunci percuma tidak boleh menggunakannya. Pilih model yang termasuk dalam peringkat percuma (contohnya model Flash), atau hidupkan pengebilan dalam konsol penyedia.',
   continueWith: 'Teruskan dengan {provider}',
   continueMeteredNote:
     'Sambungan {provider} bukan langganan: meneruskan akan dicaj mengikut penggunaan.',
@@ -76,7 +84,7 @@ export const ms = {
   usageWindowSevenDay: 'Had 7 hari',
   noticeTitle: 'Sebelum menggunakan AI dengan langganan anda',
   noticeSend:
-    'Kandungan dokumen dan perbualan anda dihantar kepada Anthropic atau OpenAI di bawah akaun anda sendiri. Setiap permintaan juga membawa nama, tajuk dan penerangan setiap kemahiran yang ditetapkan kepada "AI tentukan"; kemahiran yang digunakan dan fail kemahiran yang dibaca oleh AI turut dihantar.',
+    'Kandungan dokumen dan perbualan anda dihantar kepada Anthropic, OpenAI atau Google di bawah akaun anda sendiri. Setiap permintaan juga membawa nama, tajuk dan penerangan setiap kemahiran yang ditetapkan kepada "AI tentukan"; kemahiran yang digunakan dan fail kemahiran yang dibaca oleh AI turut dihantar.',
   noticeTraining:
     'Sama ada kandungan itu digunakan untuk melatih AI ditentukan oleh tetapan akaun anda sendiri di syarikat tersebut.',
   noticeCodexHistory:
@@ -103,7 +111,7 @@ export const ms = {
   guidePathCodexTitle: 'Saya guna ChatGPT',
   guidePathCodexBody:
     'Log masuk ke program Codex OpenAI dengan akaun ChatGPT anda. Pelan percuma hanya membenarkan sedikit penggunaan.',
-  guidePathFreeTitle: 'Belum ada kedua-duanya',
+  guidePathFreeTitle: 'Belum ada mana-mana',
   guidePathFreeBody:
     'Sambungkan AI percuma dalam masa kira-kira seminit. Semasa anda menggunakannya secara percuma, kandungan yang anda hantar mungkin digunakan untuk menambah baik AI syarikat itu.',
   guideBack: 'Pilih cara lain',
@@ -115,12 +123,14 @@ export const ms = {
   stepLogin: 'Log masuk',
   stepReady: 'Disambungkan',
   installReturnNote:
-    'Apabila pemasangan dalam tetingkap itu selesai, kembali ke sini. Aplikasi akan menyemak semula dengan sendiri.',
+    'Semasa memuat turun, tetingkap itu mungkin tidak memaparkan apa-apa selama beberapa minit. Biarkan ia terbuka. Apabila pemasangan selesai, kembali ke sini. Aplikasi akan menyemak semula dengan sendiri.',
   loginHowNote:
     'Pelayar akan dibuka apabila anda menekannya. Log masuk dengan akaun {vendor} anda dan tekan Benarkan; sambungan akan selesai dengan sendiri.',
   signingInStalledNote:
     'Jika tiada halaman log masuk dibuka dalam pelayar anda, buka tetingkap log masuk dengan butang di bawah. Jika anda masih sedang log masuk dalam pelayar, selesaikan di sana sahaja: butang ini menghentikan log masuk itu dan bermula semula dari awal.',
   actionLoginWindowOpen: 'Buka tetingkap log masuk',
+  loginUnfinishedNote:
+    'Log masuk tidak selesai. Jika pelayar menunjukkan kod, kod itu perlu ditampal di tetingkap log masuk: buka tetingkap itu dan log masuk semula di sana. Kod yang dipaparkan sebelum ini tidak lagi berfungsi.',
   loginWindowTitle: 'Log masuk {provider}',
   loginWindowIntro:
     'Ini tetingkap log masuk program {provider}. Teks bahasa Inggeris di bawah datang daripada program {provider}.',
@@ -143,4 +153,49 @@ export const ms = {
   actionCopyInfo: 'Salin maklumat untuk bantuan',
   copyInfoDone: 'Disalin',
   actionConnectHelp: 'Lihat setiap langkah pada skrin (halaman dalam bahasa Korea)',
+  guidePathChatGptBody:
+    'Log masuk dengan akaun ChatGPT anda dan gunakan pelan anda. Tiada apa-apa perlu dipasang. Pelan percuma hanya membenarkan sedikit penggunaan.',
+  guideUseCodex: 'Sudah menggunakan program Codex pada PC ini? Sambung dengan Codex',
+  guideUseDirect: 'Sambung terus dalam aplikasi, tanpa Codex',
+  chatgptLoginNote:
+    'Halaman log masuk ChatGPT akan dibuka dalam pelayar anda. Log masuk dan benarkan aplikasi ini menggunakan pelan ChatGPT anda; sambungan akan dibuat sendiri.',
+  chatgptLoginUnfinishedNote:
+    'Log masuk tidak selesai. Tekan sekali lagi untuk bermula semula. Untuk menyambung, anda perlu membenarkan penggunaan pelan ChatGPT anda.',
+  chatgptLoginNoPlanNote:
+    'Anda sudah log masuk ke ChatGPT, tetapi aplikasi ini tidak mendapat kebenaran untuk menggunakan pelan anda. Tekan sekali lagi dan benarkan penggunaan pelan di halaman kebenaran. Jika anda sudah membenarkannya, mungkin OpenAI tidak menawarkan penggunaan ini untuk akaun anda (contohnya akaun yang diurus oleh syarikat atau sekolah) atau pelan anda. Dalam hal itu, anda boleh menyambung dengan program Codex.',
+  chatgptLoginDeniedNote:
+    'Anda sudah log masuk dalam pelayar, tetapi OpenAI tidak menerima sambungan ini, atau jawapannya tidak dapat disemak. Pastikan tarikh dan masa PC ini betul, kemudian tekan sekali lagi untuk bermula semula.',
+  chatgptLoginNetworkNote:
+    'Log masuk tidak dapat diselesaikan: OpenAI tidak dapat dihubungi atau tiada pelayar dibuka. Semak sambungan internet (termasuk rangkaian syarikat, VPN atau proksi), kemudian tekan sekali lagi.',
+  chatgptLoginWorkspacePolicyNote:
+    'Akaun ChatGPT ini tergolong ruang kerja yang diurus oleh syarikat atau sekolah, dan OpenAI tidak membenarkan aplikasi menggunakan pelan ChatGPT ruang kerja. Pentadbir ruang kerja tiada tetapan untuk membenarkan aplikasi ini, jadi log masuk semula tidak akan membantu. Log masuk dengan akaun ChatGPT peribadi (Go, Plus, atau Pro), atau sambung melalui kad Codex.',
+  chatgptLoginNotAllowedNote:
+    'Anda tidak membenarkan aplikasi ini menggunakan pelan ChatGPT anda, atau pelayar kembali daripada log masuk dengan kegagalan. Tekan sekali lagi, log masuk dan benarkan di halaman kebenaran.',
+  chatgptSigningInNote:
+    'Log masuk dengan akaun ChatGPT anda dalam pelayar yang dibuka, kemudian benarkan aplikasi ini menggunakan pelan anda. Sambungan akan dibuat sendiri.',
+  chatgptPlanNote:
+    'AI dalam aplikasi ini berjalan pada pelan ChatGPT anda. Memutuskan sambungan hanya menamatkannya untuk aplikasi ini; program lain pada PC ini kekal log masuk.',
+  actionContinueWithChatGpt: 'Teruskan dengan ChatGPT',
+  actionManageUsage: 'Urus penggunaan',
+  browserPageDoneBody: 'Anda boleh menutup tab ini dan kembali ke aplikasi.',
+  browserPageFailedTitle: 'Sambungan tidak berjaya',
+  browserPageFailedBody: 'Kembali ke aplikasi dan cuba lagi.',
+  cardOff: 'Dimatikan dalam aplikasi ini',
+  offNote:
+    'Aplikasi ini tidak menjalankan program {provider} dan tidak menyemak statusnya. Log masuk {provider} pada PC ini dan penggunaannya dalam terminal kekal seperti biasa.',
+  offElsewhereNote: 'Anda boleh menggunakannya semula di Tetapan → AI.',
+  offSwitchNote:
+    '"Jangan guna dalam aplikasi ini" mengekalkan log masuk {provider} pada PC ini dan hanya menghentikan aplikasi ini. Log keluar terpakai pada seluruh PC.',
+  actionTurnOff: 'Jangan guna dalam aplikasi ini',
+  actionTurnOn: 'Guna semula',
+  connectOffTitle: '{provider} dimatikan dalam aplikasi ini',
+  connectOffBody: 'Tekan "Guna semula" pada kad {provider} di Tetapan → AI, atau pilih AI lain.',
+  errOffInApp:
+    '{provider} dimatikan dalam aplikasi ini, jadi tiada apa yang dijalankan. Anda boleh menggunakannya semula di Tetapan → AI.',
+  guideBadgeOff: 'Dimatikan',
+  guidePathAntigravityTitle: 'Saya guna Google Antigravity',
+  guidePathAntigravityBody:
+    'Log masuk ke program Antigravity daripada Google dengan akaun Google anda untuk menggunakan pelan Google AI anda.',
+  antigravityCardNote:
+    'Berjalan dalam panel AI dan mod Ejen melalui protokol ACP rasmi Antigravity CLI. Model yang tersedia, keutamaan penggunaan data dan tetapan kredit lebihan mengikut tetapan Antigravity anda.',
 } satisfies Record<keyof typeof zh, string>

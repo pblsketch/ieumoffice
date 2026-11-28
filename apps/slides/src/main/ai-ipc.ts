@@ -4,7 +4,7 @@
  * to avoid renderer CORS), search tools, and the slides-only ai:* channels
  * (image generation, media analysis, style templates).
  */
-import { app, ipcMain, nativeImage, net, webContents } from 'electron'
+import { app, ipcMain, nativeImage, net, shell, webContents } from 'electron'
 import {
   appendFileSync,
   existsSync,
@@ -15,8 +15,10 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { join } from 'node:path'
+import { readSlidesAiFonts } from './ai-default-fonts'
 import {
   sanitizeAiSettings,
+  withStoredUnknownFields,
   setAiUserAgent,
   setRescueFetch,
   type AiSettings,
@@ -25,6 +27,7 @@ import {
   sealAiSecrets,
 } from '@genoffice/ai-provider'
 import { shutdownCodexAppServers } from '@genoffice/ai-provider/codex-app-server'
+import { withStoredMainFields } from '@genoffice/ai-provider/key-models'
 import {
   ensureSubscriptionIpc,
   sharedSubscriptionStatuses,
@@ -34,8 +37,16 @@ import {
   MAX_REMOTE_IMAGE_BYTES,
   fetchRemoteImage,
   readBodyCapped,
+  safeExternalUrl,
   writeJsonAtomic,
 } from '@genoffice/electron-utils'
+import { aiRunRefusal } from '@genoffice/electron-utils/ai-run-guard'
+import {
+  ACP_TOOL_RESULT_CHANNEL,
+  createAcpToolBroker,
+} from '@genoffice/electron-utils/acp-tool-channels'
+import { registerAiJob } from '@genoffice/electron-utils/ai-activity'
+import { screenMediaCall } from './screen-media-call'
 import {
   webSearchTool,
   imageSearchTool,
@@ -54,7 +65,10 @@ import { addPicture, editPictureSrcRect, replacePictureBytes } from '@genoffice/
 import { rasterImageExt } from './media-mime'
 import { matchesElementRef } from '@genoffice/pptx-engine/identity'
 import { coverCropFractions } from '@genoffice/pipelines/slides'
-import { aiSubscriptionLoginWindowText } from '@genoffice/ui/ai-subscription-login-window'
+import {
+  aiChatGptSignInPages,
+  aiSubscriptionLoginWindowText,
+} from '@genoffice/ui/ai-subscription-login-window'
 import type { AiRunFailure } from '../shared/ipc'
 import { EMU_PER_PX_96 } from '@genoffice/pptx-render'
 import { runAiStream, storedAiSettings, withMeteredAccepted } from './ai-stream'
@@ -65,6 +79,15 @@ import { registerTemplateSelectionIpc } from './template-selection-ipc'
 // ---- AI settings + streaming proxy (the main process does the networking to avoid renderer CORS; implementation shared via @genoffice/ai-provider) ----
 
 const AI_SETTINGS_PATH = () => join(app.getPath('userData'), 'ai-settings.json')
+
+/**
+ * The only write of the settings file: keys and tokens go to disk sealed
+ * (decision 0063), and fields a newer build wrote stay as they are.
+ */
+function writeAiSettingsFile(settings: unknown): void {
+  const stored = readJson<unknown>(AI_SETTINGS_PATH(), {})
+  writeJsonAtomic(AI_SETTINGS_PATH(), sealAiSecrets(withStoredUnknownFields(settings, stored)))
+}
 
 /**
  * Local media roots for a slides renderer: the open deck's directory plus the
@@ -146,15 +169,24 @@ export function registerAiIpc(): void {
   ensureSubscriptionIpc(ipcMain, {
     getSettings: readAiSettings,
     setMeteredAccepted: (provider, accepted) => {
-      writeJsonAtomic(
-        AI_SETTINGS_PATH(),
-        sealAiSecrets(withMeteredAccepted(readAiSettings(), provider, accepted)),
-      )
+      writeAiSettingsFile(withMeteredAccepted(readAiSettings(), provider, accepted))
       broadcastToWindows('ai:settings-changed')
     },
     dataDir: app.getPath('userData'),
     broadcast: broadcastToWindows,
     loginWindowText: (provider) => aiSubscriptionLoginWindowText(getUiLang(), provider),
+    // the ChatGPT sign-in is the app's own (decision 0081): OpenAI's page in the system browser
+    chatGptSignIn: {
+      openBrowser: async (url) => {
+        const target = safeExternalUrl(url)
+        if (!target) return false
+        return shell.openExternal(target).then(
+          () => true,
+          () => false,
+        )
+      },
+      pages: () => aiChatGptSignInPages(getUiLang()),
+    },
   })
 
   ipcMain.handle('ai:set-settings', (_event, settings: AiSettings) => {
@@ -166,8 +198,15 @@ export function registerAiIpc(): void {
       console.warn('[ai] rejected invalid ai:set-settings payload')
       return
     }
-    writeJsonAtomic(AI_SETTINGS_PATH(), sealAiSecrets(sanitized))
+    // the live model lists (decision 0087) and the CLIs turned off (decision 0114) are the
+    // main process's: the file's copy is kept
+    writeAiSettingsFile(withStoredMainFields(sanitized, readAiSettings()))
     broadcastToWindows('ai:settings-changed')
+  })
+
+  const acpToolBroker = createAcpToolBroker()
+  ipcMain.handle(ACP_TOOL_RESULT_CHANNEL, (event, raw: unknown) => {
+    acpToolBroker.resolve(event.sender.id, raw)
   })
 
   ipcMain.handle('ai:stream', async (event, request: AiStreamRequest) => {
@@ -187,9 +226,28 @@ export function registerAiIpc(): void {
     const send = (chunk: AiStreamChunk) => {
       if (!event.sender.isDestroyed()) event.sender.send('ai:stream-chunk', chunk)
     }
+    // a free provider is only ever the explicit selection, never what `auto` lands on
+    const refusal = aiRunRefusal({
+      senderId: event.sender.id,
+      provider: settings.provider,
+      model: settings.providers[settings.provider as keyof typeof settings.providers]?.model ?? '',
+    })
+    if (refusal) {
+      send({ requestId, type: 'error', error: refusal })
+      return
+    }
     const controller = new AbortController()
     activeAiStreams.set(requestId, controller)
     const unwatchSender = abortOnDestroyed(event.sender, controller)
+    // one turn of the window's chat is running AI work: turning AI off stops it the way Stop does
+    const senderId = event.sender.id
+    const unregisterJob = registerAiJob({
+      kind: 'chat',
+      stop: () => {
+        controller.abort()
+        abortMediaCalls(senderId)
+      },
+    })
     try {
       await runAiStream({
         request,
@@ -197,8 +255,27 @@ export function registerAiIpc(): void {
         statuses: sharedSubscriptionStatuses(),
         signal: controller.signal,
         send,
+        onAcpToolCall: async (toolCall) => {
+          const callId = globalThis.crypto.randomUUID()
+          const pending = acpToolBroker.waitForResult({
+            senderId: event.sender.id,
+            requestId,
+            callId,
+            signal: controller.signal,
+          })
+          send({ requestId, type: 'acp-tool-call', callId, toolCall })
+          const result = await pending
+          return {
+            id: toolCall.id,
+            name: toolCall.name,
+            output: result.output,
+            ...(result.isError ? { isError: true } : {}),
+          }
+        },
       })
     } finally {
+      acpToolBroker.cancelRequest(requestId)
+      unregisterJob()
       unwatchSender()
       activeAiStreams.delete(requestId)
     }
@@ -255,6 +332,12 @@ export function registerAiIpc(): void {
 // generic ai:* channels are registered by docs-main.registerAiIpc, and slides' registerAiIpc is
 // never called; docs does not have these channels, so putting them in the wrong place raises
 // "No handler registered".
+/** Same-named `.styleskill.json` beside a draft deck, or null when the path is not a pptx. */
+export function styleSkillSidecarPath(draftPath: string | null | undefined): string | null {
+  if (!draftPath || !/\.pptx$/i.test(draftPath)) return null
+  return draftPath.replace(/\.pptx$/i, '.styleskill.json')
+}
+
 export function registerSlidesOnlyAiIpc(): void {
   // The design template remembered per document (slides:ai-template-selection-get / -set)
   registerTemplateSelectionIpc()
@@ -265,14 +348,21 @@ export function registerSlidesOnlyAiIpc(): void {
     appendRunFailure(entry)
   })
 
+  // The fonts generation uses when the request names none (Settings › General); the
+  // renderer passes its UI language, which picks the default before a choice is stored
+  ipcMain.handle('slides:ai-default-fonts', (_event, lang: unknown) =>
+    readSlidesAiFonts(app, typeof lang === 'string' ? lang : ''),
+  )
+
   // What the search/image/media tools can do right now (settings + subscription connections):
   // the renderer offers the model only the tools that have a route.
   ipcMain.handle('slides:ai-tool-capabilities', (): AiToolCapabilities =>
     aiToolCapabilities(readAiSettings(), screenToolContext()),
   )
 
-  // AI image generation / media analysis. Answers with an error text when no route is available.
-  // Either call ends with its window, or when the window's AI run is stopped.
+  // AI image generation / media analysis. Answers with an error text when no route is available,
+  // and refuses while AI is turned off. Either call ends with its window, or when the window's
+  // AI run is stopped.
   ipcMain.handle(
     'ai:generate-image',
     async (
@@ -286,21 +376,26 @@ export function registerSlidesOnlyAiIpc(): void {
         transparentBackground?: boolean
       },
     ) => {
-      return withMediaCallSignal(event.sender, (signal) =>
-        generateImageTool(
-          AI_SETTINGS_PATH(),
-          {
-            prompt: String(op.prompt),
-            model: op.model ? String(op.model) : undefined,
-            referenceImageUrls: Array.isArray(op.referenceImageUrls)
-              ? op.referenceImageUrls.map(String)
-              : undefined,
-            aspectRatio: op.aspectRatio ? String(op.aspectRatio) : undefined,
-            imageSize: op.imageSize ? String(op.imageSize) : undefined,
-            transparentBackground: op.transparentBackground === true,
-          },
-          { mediaRoots: slidesMediaRoots(event.sender.id), context: screenToolContext(), signal },
-        ),
+      // the model the user named, as given: the shared tool decides whether the route offers it
+      const model = typeof op?.model === 'string' ? op.model.trim() : ''
+      return screenMediaCall(
+        event.sender,
+        (signal) =>
+          generateImageTool(
+            AI_SETTINGS_PATH(),
+            {
+              prompt: String(op.prompt),
+              ...(model ? { model } : {}),
+              referenceImageUrls: Array.isArray(op.referenceImageUrls)
+                ? op.referenceImageUrls.map(String)
+                : undefined,
+              aspectRatio: op.aspectRatio ? String(op.aspectRatio) : undefined,
+              imageSize: op.imageSize ? String(op.imageSize) : undefined,
+              transparentBackground: op.transparentBackground === true,
+            },
+            { mediaRoots: slidesMediaRoots(event.sender.id), context: screenToolContext(), signal },
+          ),
+        (error) => ({ error, errorCode: 'unavailable' as const }),
       )
     },
   )
@@ -308,15 +403,18 @@ export function registerSlidesOnlyAiIpc(): void {
   ipcMain.handle(
     'ai:analyze-media',
     async (event, op: { mediaUrls: string[]; requirements: string }) => {
-      return withMediaCallSignal(event.sender, (signal) =>
-        analyzeMediaTool(
-          AI_SETTINGS_PATH(),
-          {
-            mediaUrls: (op.mediaUrls ?? []).map(String),
-            requirements: String(op.requirements ?? ''),
-          },
-          { mediaRoots: slidesMediaRoots(event.sender.id), context: screenToolContext(), signal },
-        ),
+      return screenMediaCall(
+        event.sender,
+        (signal) =>
+          analyzeMediaTool(
+            AI_SETTINGS_PATH(),
+            {
+              mediaUrls: (op.mediaUrls ?? []).map(String),
+              requirements: String(op.requirements ?? ''),
+            },
+            { mediaRoots: slidesMediaRoots(event.sender.id), context: screenToolContext(), signal },
+          ),
+        (error) => ({ error, errorCode: 'unavailable' as const }),
       )
     },
   )
@@ -496,9 +594,8 @@ export function registerSlidesOnlyAiIpc(): void {
     ): Promise<{ ok: boolean }> => {
       try {
         const session = sessions.get(event.sender.id)
-        const draftPath = session?.path
-        if (!draftPath || !draftPath.endsWith('.pptx')) return { ok: false }
-        const sidecarPath = draftPath.replace(/\.pptx$/i, '.styleskill.json')
+        const sidecarPath = styleSkillSidecarPath(session?.path)
+        if (!sidecarPath) return { ok: false }
         writeFileSync(sidecarPath, JSON.stringify(data, null, 2))
         return { ok: true }
       } catch {

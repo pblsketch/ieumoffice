@@ -1,10 +1,12 @@
 import { randomBytes } from 'node:crypto'
 import { lookup } from 'node:dns/promises'
 import { createWriteStream, existsSync, mkdirSync, rmSync, statSync } from 'node:fs'
-import { request as httpRequest, type IncomingMessage } from 'node:http'
-import { request as httpsRequest } from 'node:https'
+// node:http and node:https are imported where a download starts: on Node 22 a
+// static ESM import of node:http evaluates its WebSocket getter, which compiles
+// undici's WebAssembly parser, and every command reaches this module.
+import type { IncomingMessage } from 'node:http'
 import { BlockList, isIP } from 'node:net'
-import { basename, extname, join } from 'node:path'
+import { basename, dirname, extname, join, resolve } from 'node:path'
 import { Transform } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 
@@ -47,6 +49,25 @@ export function mimeOf(path: string): string {
 /** Max safe file name chars (preserves extension when truncating). */
 export const MAX_SAFE_NAME_CHARS = 128
 
+/**
+ * Max safe file name bytes (UTF-8). Linux and macOS refuse a name over 255
+ * bytes, and a Hangul letter takes 3, so 128 of them would not fit; the margin
+ * leaves room for the temp name an edit of the file adds beside it.
+ */
+export const MAX_SAFE_NAME_BYTES = 200
+
+/** The leading characters of `text` that fit both limits, never cutting inside a surrogate pair. */
+function headWithin(text: string, maxUnits: number, maxBytes: number): string {
+  let head = ''
+  let bytes = 0
+  for (const char of text) {
+    bytes += Buffer.byteLength(char)
+    if (head.length + char.length > maxUnits || bytes > maxBytes) break
+    head += char
+  }
+  return head
+}
+
 /** A client-supplied file name reduced to one safe path segment. */
 export function safeName(raw: string | undefined, fallback = 'file'): string {
   const base = basename((raw ?? '').trim().replace(/\\/g, '/'))
@@ -56,19 +77,32 @@ export function safeName(raw: string | undefined, fallback = 'file'): string {
   // marks, which is what an NFD name (what macOS volumes and many mac clients
   // emit) is built from: dropping them would still fold `résumé.pdf` onto
   // `re_sume_.pdf`.
-  let clean = base.replace(/[^\p{L}\p{N}\p{M}._\- ()]/gu, '_').replace(/^\.+/, '')
+  let clean = base
+    .replace(/[^\p{L}\p{N}\p{M}._\- ()]/gu, '_')
+    .replace(/^\.+/, '')
+    .replace(/[ .]+$/, '')
   if (clean === '') return fallback
-  if (clean.length > MAX_SAFE_NAME_CHARS) {
-    const ext = extname(clean).slice(0, 16)
-    const stem = clean.slice(0, MAX_SAFE_NAME_CHARS - ext.length)
+  // Windows device names remain reserved when followed by an extension.
+  if (
+    /^(?:CON|PRN|AUX|NUL|(?:COM|LPT)[1-9\u00b9\u00b2\u00b3])$/i.test(clean.split('.')[0]!.trimEnd())
+  )
+    clean = '_' + clean
+  if (clean.length > MAX_SAFE_NAME_CHARS || Buffer.byteLength(clean) > MAX_SAFE_NAME_BYTES) {
+    const ext = headWithin(extname(clean), 16, 16 * 4)
+    const stem = headWithin(
+      clean,
+      MAX_SAFE_NAME_CHARS - ext.length,
+      MAX_SAFE_NAME_BYTES - Buffer.byteLength(ext),
+    )
     clean = stem + ext
   }
-  return clean
+  return clean.replace(/[ .]+$/, '')
 }
 
 export class FileStore {
   private readonly entries = new Map<string, StoredFile & { touched: number }>()
   private readonly idsByPath = new Map<string, string>()
+  private readonly uploadDirectories = new Set<string>()
   private readonly sweeper: NodeJS.Timeout
 
   constructor(
@@ -84,6 +118,7 @@ export class FileStore {
   uploadTarget(name: string): string {
     const dir = join(this.root, 'uploads', newId())
     mkdirSync(dir, { recursive: true })
+    this.uploadDirectories.add(resolve(dir))
     return join(dir, safeName(name, 'upload.bin'))
   }
 
@@ -140,8 +175,9 @@ export class FileStore {
     if (!entry) return
     this.entries.delete(id)
     this.idsByPath.delete(entry.path)
-    if (entry.path.startsWith(join(this.root, 'uploads'))) {
-      rmSync(join(entry.path, '..'), { recursive: true, force: true })
+    const directory = dirname(resolve(entry.path))
+    if (this.uploadDirectories.delete(directory)) {
+      rmSync(directory, { recursive: true, force: true })
     }
   }
 }
@@ -195,9 +231,10 @@ function pinnedLookup(pinned: Pinned[]) {
   }
 }
 
-function get(url: URL, pinned: Pinned[], signal: AbortSignal): Promise<IncomingMessage> {
+async function get(url: URL, pinned: Pinned[], signal: AbortSignal): Promise<IncomingMessage> {
+  const { request } =
+    url.protocol === 'https:' ? await import('node:https') : await import('node:http')
   return new Promise((resolve, reject) => {
-    const request = url.protocol === 'https:' ? httpsRequest : httpRequest
     const req = request(
       url,
       { method: 'GET', signal, lookup: pinnedLookup(pinned) as never },

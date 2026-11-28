@@ -58,3 +58,11 @@ Meta viewport celowo nie ma: to renderuje się w panelu pulpitu bez mobilnego vi
 `lang` podąża za językiem interfejsu aplikacji, więc wstawiany szkielet jest tym, pod który twoje narzędzia są już skonfigurowane. Potem możesz go swobodnie edytować.
 
 Ta pozycja pojawia się tylko w trybie edycji i tylko, gdy dokument jest pusty — gdy jest treść, nie ma czegoś, _w co_ wstawić szkielet.
+
+## Edytuj równanie
+
+Wpisuj wizualnie lub edytuj LaTeX. HTML zachowuje źródło do późniejszej edycji.
+
+Wybierz Wstaw równanie na pasku, użyj pola wizualnego, szablonów lub LaTeX i zastosuj. Kliknij zapisaną formułę w podglądzie, aby ją edytować. Aby dodać ją w tekście, zaznacz akapit i wyłącz osobny wiersz; formuła trafi na koniec akapitu.
+
+Wyrażenie, którego nie da się złożyć, nie przepada: formuła zachowuje źródło LaTeX i pokazuje w dokumencie surowy tekst, więc można ją otworzyć ponownie i poprawić.

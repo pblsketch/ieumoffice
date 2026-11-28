@@ -1,0 +1,36 @@
+/* Contextual Next-Step chips below the latest completed assistant reply — chrome tokens only. */
+
+.ai-next-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.ai-next-step-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-16);
+  background: var(--fill-subtle);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background-color var(--transition-fast),
+    border-color var(--transition-fast);
+}
+
+.ai-next-step-chip:hover:not(:disabled) {
+  background: var(--fill-muted);
+  border-color: var(--border-hover);
+}
+
+.ai-next-step-chip:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}

@@ -36,9 +36,16 @@ V panelu AI editorů Docs, Sheets, Slides, hangul, HTML a myšlenkových map mů
 - Když mají dva dokumenty stejný název, ale leží v různých složkách, přidá se název složky bezprostředně nad nimi, například `@plán.docx(2. pololetí)`, a tento název složky dostane i AI.
 - Editory PDF a Markdown zatím přílohy nemají, takže tam není k dispozici ani jeden způsob.
 
+## Projekty
+
+- Projekt (jednu složku ve vašem počítači) vyberete kliknutím na název projektu vlevo pod vstupním polem. AI pak odpovídá se znalostí souborů, pokynů a paměti z této složky a konverzace se uloží do složky, takže v ní můžete pokračovat v jiném editoru. Viz [Projekty](help://projects).
+- S vybraným projektem se nahoře v panelu zobrazí název aktuální konverzace. Kliknutím na něj otevřete seznam konverzací projektu a **Nová konverzace**.
+- Seznam `@` ve vstupním poli ukazuje za otevřenými dokumenty „Soubory v tomto projektu“.
+- Požadavek s vybraným projektem posílá AI, kterou používáte, také pokyny projektu (spolu s `AGENTS.md` a `CLAUDE.md` v kořeni složky, které lze vypnout na stránce projektu), jeho paměť a seznam názvů souborů, krátký úryvek z každého souboru, který AI najde při hledání ve složce, a k tomu text každého souboru, který si AI přečte.
+
 ## Vrácení zpět a bezpečnost
 
-- Panel v Docs vede **seznam verzí**: jeden snímek na krok, můžete se vrátit k libovolnému a samotný návrat lze zase vrátit pomocí Ctrl+Z. Snímy přežijí i znovu otevření dokumentu.
+- Krok, ve kterém AI změnila dokument, dostane pod odpovědí kartu **Změny v dokumentu: N** a změněná místa se v dokumentu označí žlutě. Označení je vidět jen na obrazovce — nikdy se neukládá, netiskne ani neexportuje — a zmizí, když pošlete další požadavek nebo stisknete **Skrýt označení**. **Vrátit tyto změny** vezme zpět celý krok najednou. V editorech Docs, Markdown, HTML, Slides, myšlenkových map a diagramů se při vrácení dřívějšího kroku vrátí i kroky po něm; v editorech hangul, Sheets, PDF a EPUB lze vrátit jen poslední krok, a to jen tehdy, když jste dokument potom neupravovali. Když to vrátit nejde, použijte Zpět samotného editoru (Ctrl+Z).
 - Změny od AI procházejí stejnou cestou úprav jako ruční změny (lze je vrátit, vyžadují uložení) — nic neobchází vaše potvrzení uložení.
 
 ## Skrýt výběr před AI

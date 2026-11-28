@@ -13,7 +13,7 @@
 import { lookup } from 'node:dns/promises'
 import type { LookupAddress, LookupOptions } from 'node:dns'
 import { BlockList, isIP } from 'node:net'
-import { Agent, fetch as undiciFetch, getGlobalDispatcher, type Dispatcher } from 'undici'
+import type { Dispatcher } from 'undici'
 
 /**
  * Non-public address ranges. BlockList does the range math and maps
@@ -96,6 +96,28 @@ const normalizeHost = (hostname: string): string =>
     .replace(/\.+$/, '')
 
 /**
+ * Settles with the lookup, or with `null` as soon as `signal` aborts. Node's
+ * resolver has no per-query signal, so the wait — not the OS resolver request —
+ * is what the caller's deadline can cut; the request itself ends on its own.
+ */
+function lookupBeforeAbort<T>(
+  start: () => Promise<T>,
+  signal: AbortSignal | undefined,
+): Promise<T | null> {
+  if (!signal) return start()
+  if (signal.aborted) return Promise.resolve(null)
+  return new Promise((resolve) => {
+    const settle = (value: T | null) => {
+      signal.removeEventListener('abort', onAbort)
+      resolve(value)
+    }
+    const onAbort = () => settle(null)
+    signal.addEventListener('abort', onAbort, { once: true })
+    start().then(settle, () => settle(null))
+  })
+}
+
+/**
  * Resolves and validates `raw`: http(s) only, a public literal, or a hostname
  * whose every resolved address is public. Literal addresses are checked
  * directly — a URL naming an internal address outright is refused with no
@@ -104,11 +126,17 @@ const normalizeHost = (hostname: string): string =>
  * can produce for a hostname an attacker does not already control the
  * machine's DNS for.
  *
+ * `signal` also covers the DNS lookup: a caller with a whole-request deadline
+ * (read_url's 30 seconds) must not wait past it for a slow resolver.
+ *
  * Returns the validated addresses so the caller can bind the connection to
  * them (see `fetchWithSsrfGuard`); a plain boolean check loses exactly the
  * information that makes rebinding impossible.
  */
-export async function resolveSafeRemoteTarget(raw: unknown): Promise<SafeRemoteTarget | null> {
+export async function resolveSafeRemoteTarget(
+  raw: unknown,
+  signal?: AbortSignal,
+): Promise<SafeRemoteTarget | null> {
   if (typeof raw !== 'string') return null
   let url: URL
   try {
@@ -135,8 +163,9 @@ export async function resolveSafeRemoteTarget(raw: unknown): Promise<SafeRemoteT
   }
   if (host === 'localhost' || BLOCKED_HOST_SUFFIXES.some((s) => host.endsWith(s))) return null
   try {
-    const addrs = await lookup(host, { all: true })
+    const addrs = await lookupBeforeAbort(() => lookup(host, { all: true }), signal)
     if (
+      !addrs ||
       addrs.length === 0 ||
       !addrs.every((a) => !isBlockedAddress(a.address) || isFakeIpDnsArtifact(a.address))
     ) {
@@ -161,8 +190,8 @@ export async function resolveSafeRemoteTarget(raw: unknown): Promise<SafeRemoteT
  * `resolveSafeRemoteTarget` for the exact rules, including the fake-ip
  * allowance for resolved hostnames).
  */
-export async function isSafeRemoteUrl(raw: unknown): Promise<boolean> {
-  return (await resolveSafeRemoteTarget(raw)) !== null
+export async function isSafeRemoteUrl(raw: unknown, signal?: AbortSignal): Promise<boolean> {
+  return (await resolveSafeRemoteTarget(raw, signal)) !== null
 }
 
 type PinnedLookup = (
@@ -247,12 +276,26 @@ const PROXY_DISPATCHER_SYMBOLS: ReadonlySet<string> = new Set([
   'tunnel proxy',
 ])
 
-function globalDispatcherRoutesThroughProxy(): boolean {
-  const d: unknown = getGlobalDispatcher()
-  if (d === null || typeof d !== 'object') return false
-  return Object.getOwnPropertySymbols(d).some((s) =>
+function globalDispatcherRoutesThroughProxy(dispatcher: unknown): boolean {
+  if (dispatcher === null || typeof dispatcher !== 'object') return false
+  return Object.getOwnPropertySymbols(dispatcher).some((s) =>
     PROXY_DISPATCHER_SYMBOLS.has(s.description ?? ''),
   )
+}
+
+type UndiciModule = typeof import('undici')
+
+/**
+ * undici is imported when a hop is really requested, never when this module is
+ * evaluated. Importing it runs the HTTP/1 client, which instantiates the llhttp
+ * WebAssembly parser; a WebAssembly memory reserves a large virtual address
+ * range, and on a machine with a low `ulimit -v` that instantiation aborts the
+ * process. The command line imports this module through its search/read-url
+ * commands, so an eager import would make document-only commands (`docs read`,
+ * `create`, `convert`) die before they print anything.
+ */
+async function loadUndici(): Promise<UndiciModule> {
+  return await import('undici')
 }
 
 /**
@@ -283,7 +326,7 @@ export async function fetchWithSsrfGuard(
   for (let hop = 0; hop <= hopBudget; hop++) {
     // Stop between hops too: an aborted chain must not start another request.
     if (signal?.aborted) return null
-    const target = await resolveSafeRemoteTarget(current)
+    const target = await resolveSafeRemoteTarget(current, signal)
     if (!target) return null
     if (signal?.aborted) return null
     // headers stays absent rather than explicitly undefined (exactOptionalPropertyTypes)
@@ -294,21 +337,24 @@ export async function fetchWithSsrfGuard(
       ...(signal ? { signal } : {}),
     }
     let dispatcher: Dispatcher | undefined
-    if (!target.literal && !globalDispatcherRoutesThroughProxy()) {
+    // The hop is about to be requested, so the transport (and the Agent that
+    // pins the validated addresses) is needed from here on.
+    const undici = await loadUndici()
+    if (!target.literal && !globalDispatcherRoutesThroughProxy(undici.getGlobalDispatcher())) {
       // A forward proxy resolves at its own exit, so pinning is neither
       // possible (the proxy owns the connection) nor meaningful — when the
       // shell has installed one via setGlobalDispatcher, let the hop ride it
       // instead of dialing the validated address directly and breaking
       // proxied users. Behind a proxy the gate therefore degrades to its
       // per-hop validation; rebinding is then the proxy's to prevent.
-      dispatcher = new Agent({ connect: { lookup: pinnedLookup(target) } })
+      dispatcher = new undici.Agent({ connect: { lookup: pinnedLookup(target) } })
       init.dispatcher = dispatcher
     }
     try {
       const resp =
         fetchImpl !== undefined
           ? await fetchImpl(current, init as RequestInit)
-          : ((await undiciFetch(current, init as never)) as unknown as Response)
+          : ((await undici.fetch(current, init as never)) as unknown as Response)
       if (resp.status < 300 || resp.status >= 400) return resp
       const location = resp.headers.get('location')
       if (!location) return null

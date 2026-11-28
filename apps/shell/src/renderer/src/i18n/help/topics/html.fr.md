@@ -58,3 +58,11 @@ La balise meta de viewport est volontairement absente : ceci se rend dans un vol
 Le `lang` suit la langue d’interface de l’application : le squelette que vous insérez est donc celui pour lequel votre outillage est déjà configuré. Modifiez-le librement ensuite.
 
 L’élément n’apparaît qu’en mode édition, et seulement tant que le document est vide — dès qu’il y a du contenu, il n’y a plus rien _dans quoi_ insérer un squelette.
+
+## Modifier une équation
+
+Saisissez une formule ou modifiez le LaTeX. Le HTML conserve la source pour la réédition.
+
+Choisissez Insérer une équation dans la barre d’outils, saisissez une formule visuellement, par modèle ou en LaTeX, puis appliquez. Cliquez sur une formule enregistrée dans l’aperçu pour la modifier. Pour une formule en ligne, sélectionnez un paragraphe et désactivez la ligne séparée : la formule sera ajoutée à sa fin.
+
+Une expression que le moteur de composition ne gère pas n’est pas perdue : la formule conserve sa source LaTeX et affiche le texte brut dans la page, que vous pouvez rouvrir pour la corriger.

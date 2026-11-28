@@ -9,6 +9,7 @@ import { describe, expect, it } from 'vitest'
 import {
   SUBSCRIPTION_INSTALL_COMMANDS,
   SUBSCRIPTION_INSTALL_URLS,
+  SUBSCRIPTION_INSTALL_WINDOW_NOTE,
   SUBSCRIPTION_LOGIN_ARGS_ENV,
   SUBSCRIPTION_LOGIN_EXE_ENV,
   SUBSCRIPTION_LOGOUT_TIMEOUT_MS,
@@ -21,7 +22,7 @@ import {
   subscriptionInstallCommandLine,
   type SubscriptionProgram,
 } from '../src/subscription'
-import type { AiSubscriptionProviderId } from '../src/types'
+import type { AiSubscriptionCliId, AiSubscriptionProviderId } from '../src/types'
 
 class FakeChild extends EventEmitter {
   unrefs = 0
@@ -71,7 +72,7 @@ const NOT_FULL_PATHS = [
   'C:\\%X%',
 ]
 
-function program(provider: AiSubscriptionProviderId): SubscriptionProgram {
+function program(provider: AiSubscriptionCliId): SubscriptionProgram {
   const command = provider === 'codex' ? 'C:\\npm\\codex.exe' : 'C:\\npm\\claude.exe'
   return { provider, command, prefixArgs: [], env: {}, entry: command, source: 'npm' }
 }
@@ -302,20 +303,28 @@ describe('launchSubscriptionInstall', () => {
     expect(SUBSCRIPTION_INSTALL_COMMANDS).toEqual({
       'claude-code': 'irm https://claude.ai/install.ps1 | iex',
       codex: 'winget install OpenAI.Codex',
+      antigravity: 'irm https://antigravity.google/cli/install.ps1 | iex',
     })
   })
 
   it('the command line is a constant per provider, built from the vendor command alone', () => {
     // PowerShell by full path: `start` looks for a bare name in the working directory first
+    const note = `Write-Host '${SUBSCRIPTION_INSTALL_WINDOW_NOTE}'; `
     expect(subscriptionInstallCommandLine('claude-code', WINDOWS)).toBe(
-      `start "" "${POWERSHELL}" -NoLogo -NoExit -Command "irm https://claude.ai/install.ps1 | iex"`,
+      `start "" "${POWERSHELL}" -NoLogo -NoExit -Command "${note}irm https://claude.ai/install.ps1 | iex"`,
     )
     expect(subscriptionInstallCommandLine('codex', WINDOWS)).toBe(
-      `start "" "${POWERSHELL}" -NoLogo -NoExit -Command "winget install OpenAI.Codex"`,
+      `start "" "${POWERSHELL}" -NoLogo -NoExit -Command "${note}winget install OpenAI.Codex"`,
     )
     expect(subscriptionInstallCommandLine('codex', { SystemRoot: 'D:\\WinNT' })).toBe(
-      'start "" "D:\\WinNT\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -NoLogo -NoExit -Command "winget install OpenAI.Codex"',
+      `start "" "D:\\WinNT\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -NoLogo -NoExit -Command "${note}winget install OpenAI.Codex"`,
     )
+  })
+
+  it('the window note fits inside both quotings untouched', () => {
+    // Claude's script prints nothing while it downloads; the note keeps the window from looking stuck
+    expect(SUBSCRIPTION_INSTALL_WINDOW_NOTE).toMatch(/^[\x20-\x7e]+$/)
+    expect(SUBSCRIPTION_INSTALL_WINDOW_NOTE).not.toMatch(/['"`$%^&|<>;]/)
   })
 
   it('a system directory that is not a full path never reaches the command line', () => {
@@ -413,7 +422,11 @@ describe('launchSubscriptionInstall', () => {
     for (const url of Object.values(SUBSCRIPTION_INSTALL_URLS)) {
       expect(url).toMatch(/^https:\/\//)
     }
-    expect(Object.keys(SUBSCRIPTION_INSTALL_URLS).sort()).toEqual(['claude-code', 'codex'])
+    expect(Object.keys(SUBSCRIPTION_INSTALL_URLS).sort()).toEqual([
+      'antigravity',
+      'claude-code',
+      'codex',
+    ])
   })
 })
 

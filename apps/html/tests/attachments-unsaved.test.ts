@@ -50,21 +50,68 @@ const parseFileToText = vi.fn(async (_path: string) => ({
 vi.mock('@genoffice/file-parse', () => ({
   parseFileToText: (path: string) => parseFileToText(path),
   ATTACHABLE_EXTS: new Set([
-    'txt', 'md', 'markdown', 'csv', 'tsv', 'json', 'yaml', 'yml', 'xml', 'html', 'htm',
-    'log', 'js', 'ts', 'tsx', 'jsx', 'py', 'java', 'c', 'h', 'cpp', 'go', 'rs', 'rb',
-    'sh', 'sql', 'css', 'doc', 'docx', 'odt', 'pdf', 'pptx', 'ppt', 'xlsx', 'xlsm',
-    'xls', 'xmind', 'hwp', 'hwpx', 'png', 'jpg', 'jpeg', 'gif', 'webp',
+    'txt',
+    'md',
+    'markdown',
+    'csv',
+    'tsv',
+    'json',
+    'yaml',
+    'yml',
+    'xml',
+    'html',
+    'htm',
+    'log',
+    'js',
+    'ts',
+    'tsx',
+    'jsx',
+    'py',
+    'java',
+    'c',
+    'h',
+    'cpp',
+    'go',
+    'rs',
+    'rb',
+    'sh',
+    'sql',
+    'css',
+    'doc',
+    'docx',
+    'odt',
+    'pdf',
+    'pptx',
+    'ppt',
+    'xlsx',
+    'xlsm',
+    'xls',
+    'xmind',
+    'hwp',
+    'hwpx',
+    'png',
+    'jpg',
+    'jpeg',
+    'gif',
+    'webp',
   ]),
   ATTACHABLE_IMAGE_EXTS: new Set(['png', 'jpg', 'jpeg', 'gif', 'webp']),
   ATTACHABLE_MAX_BYTES: 50 * 1024 * 1024,
+  attachableMaxBytes: () => 50 * 1024 * 1024,
   ATTACHABLE_IMAGE_MAX_BYTES: 5 * 1024 * 1024,
+  diagramPictureExtOf: () => null,
+  diagramPictureExtOfName: () => null,
 }))
 vi.mock('@genoffice/ai-provider/subscription', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@genoffice/ai-provider/subscription')>()),
   sharedSubscriptionStatuses: () => ({}),
 }))
 
-import { UNSAVED_CHANGES_MESSAGE, setOpenFilesSource } from '@genoffice/electron-utils'
+import {
+  UNSAVED_CHANGES_MESSAGE,
+  setOpenFilesSource,
+  sharedPathGrants,
+} from '@genoffice/electron-utils'
 import { createHtmlView } from '../src/main/html-main'
 import { HTML_CHANNELS } from '../src/shared/ipc'
 
@@ -73,7 +120,13 @@ let dir: string
 
 function read(path: string): Promise<ReadResult> {
   if (!handlers.has(HTML_CHANNELS.filesRead)) createHtmlView(null)
-  return handlers.get(HTML_CHANNELS.filesRead)!({}, path, 0, 1000) as Promise<ReadResult>
+  sharedPathGrants().grant(1, [path])
+  return handlers.get(HTML_CHANNELS.filesRead)!(
+    { sender: { id: 1 } },
+    path,
+    0,
+    1000,
+  ) as Promise<ReadResult>
 }
 
 beforeEach(() => {
@@ -81,6 +134,7 @@ beforeEach(() => {
   parseFileToText.mockClear()
 })
 afterEach(() => {
+  sharedPathGrants().release(1)
   setOpenFilesSource(null)
   rmSync(dir, { recursive: true, force: true })
 })

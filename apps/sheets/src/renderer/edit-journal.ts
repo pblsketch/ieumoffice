@@ -1,4 +1,4 @@
-import { CellValueType } from '@univerjs/core'
+import { BorderStyleTypes, CellValueType } from '@univerjs/core'
 
 import type {
   WorkbookCellEdit,
@@ -138,6 +138,22 @@ export interface SheetJournal {
   orderDirty: boolean
 }
 
+/// A picture the reader put into a note this session: the bytes stay as a
+/// data URL so the in-session view can show them, and the save splits off the
+/// base64 payload. `picture: null` takes a picture away.
+export interface NotePictureAdd {
+  readonly sheetId: string
+  readonly row: number
+  readonly column: number
+  readonly picture: {
+    readonly mediaType: 'image/png' | 'image/jpeg' | 'image/gif'
+    readonly dataUrl: string
+    readonly widthPx: number
+    readonly heightPx: number
+    readonly name: string
+  } | null
+}
+
 export interface EditJournal {
   readonly cells: Map<string, Map<string, JournalEntry>>
   /// Constant range fills stay declarative so whole-column AI operations do
@@ -198,6 +214,10 @@ export interface EditJournal {
   /// Sheets whose notes changed; the save snapshots the live note set (same
   /// recipe as filters).
   readonly noteDirty: Set<string>
+  /// Pictures put into notes this session, keyed by cell. The save sends them
+  /// with the note they belong to; a picture the note was already carrying
+  /// needs no entry, because the saver keeps it.
+  readonly notePictures: NotePictureAdd[]
   /// pivotCacheDefinition part paths whose pivots were recomputed this
   /// session; the save flags them refreshOnLoad so Excel rebuilds its cache.
   readonly pivotCacheRefresh: Set<string>
@@ -303,6 +323,7 @@ export function createEditJournal(): EditJournal {
     hyperlinks: new Map(),
     pageSetup: new Map(),
     noteDirty: new Set(),
+    notePictures: [],
     pivotCacheRefresh: new Set(),
     pivotRefreshUpdates: new Map(),
   }
@@ -803,6 +824,43 @@ export function recordVisualAdd(journal: EditJournal, visual: WorkbookVisualObje
   journal.visualAdds.push(visual)
 }
 
+/// Records a picture put into a note; a second picture on the same note
+/// replaces the earlier one (a note carries one picture).
+export function recordNotePicture(journal: EditJournal, entry: NotePictureAdd): void {
+  removeNotePicture(journal, entry.sheetId, entry.row, entry.column)
+  journal.notePictures.push(entry)
+}
+
+export function removeNotePicture(
+  journal: EditJournal,
+  sheetId: string,
+  row: number,
+  column: number,
+): void {
+  const at = journal.notePictures.findIndex(
+    (entry) => entry.sheetId === sheetId && entry.row === row && entry.column === column,
+  )
+  if (at >= 0) journal.notePictures.splice(at, 1)
+}
+
+/**
+ * The pictures one sheet's notes carry this session, keyed by "row:column".
+ *
+ * A `null` value is a picture taken away: the note keeps its text and loses
+ * its picture. A note with no entry says nothing about its picture, and the
+ * saver keeps the one the note was already carrying.
+ */
+export function notePicturesFor(
+  journal: EditJournal,
+  sheetId: string,
+): Map<string, NotePictureAdd['picture']> {
+  const pictures = new Map<string, NotePictureAdd['picture']>()
+  for (const entry of journal.notePictures) {
+    if (entry.sheetId === sheetId) pictures.set(`${entry.row}:${entry.column}`, entry.picture)
+  }
+  return pictures
+}
+
 /// Arrange-tab properties shared by file-visual edits and session visuals.
 export interface VisualArrangeChanges {
   readonly rotation?: number
@@ -1125,6 +1183,12 @@ export function toSaveVisualAdds(journal: EditJournal): WorkbookVisualAdd[] {
                   ]),
                 ),
               }),
+          // Combo Select Data tags ride along; other families never reach a
+          // 'combo' chartType above.
+          ...(series.plot === 'barChart' || series.plot === 'lineChart'
+            ? { plot: series.plot }
+            : {}),
+          ...(series.secondaryAxis === undefined ? {} : { secondaryAxis: series.secondaryAxis }),
         })),
         ...(visual.chart.legend === undefined ? {} : { legend: visual.chart.legend }),
         // The read-only combined mode narrows to the closest writable one.
@@ -1152,6 +1216,10 @@ export function toSaveVisualAdds(journal: EditJournal): WorkbookVisualAdd[] {
         ...(visual.chart.holeSizePct === undefined
           ? {}
           : { holeSizePct: Math.round(visual.chart.holeSizePct) }),
+        // PivotChart marker rides along so the save writes c:pivotSource.
+        ...(visual.chart.pivotTablePath === undefined
+          ? {}
+          : { pivotTablePath: visual.chart.pivotTablePath }),
       },
     })
   }
@@ -1598,9 +1666,39 @@ export function toSaveStructuralOps(journal: EditJournal): WorkbookStructuralOp[
   const ops: WorkbookStructuralOp[] = []
   for (const [sheetId, sheetOps] of journal.structuralOps) {
     if (isSheetRemoved(journal, sheetId)) continue
-    for (const op of sheetOps) ops.push({ sheetId, ...op })
+    for (const op of sheetOps) {
+      const previous = ops[ops.length - 1]
+      const joined = previous?.sheetId === sheetId ? joinedRowAttributeSpan(previous, op) : null
+      if (previous && joined) ops[ops.length - 1] = { ...previous, ...joined }
+      else ops.push({ sheetId, ...op })
+    }
   }
   return ops
+}
+
+/// An undo that restores row heights journals one op per line, often all
+/// with the same value: back-to-back row ops of one kind and value over
+/// touching or overlapping spans save as one op. Row attributes are written
+/// row by row, so the saved sheet is byte-for-byte the same; column ops are
+/// left alone because the save splits <col> spans per op.
+function joinedRowAttributeSpan(
+  previous: WorkbookStructuralOp,
+  op: StructuralJournalOp,
+): { start: number; end: number } | null {
+  if (previous.kind !== op.kind || !('start' in previous) || !('start' in op)) return null
+  const sameValue =
+    'size' in previous && 'size' in op
+      ? previous.kind === 'set-row-size' && previous.size === op.size
+      : 'hidden' in previous && 'hidden' in op
+        ? previous.kind === 'set-rows-hidden' && previous.hidden === op.hidden
+        : 'level' in previous && 'level' in op
+          ? previous.kind === 'set-rows-outline' &&
+            previous.level === op.level &&
+            previous.collapsed === op.collapsed
+          : false
+  if (!sameValue) return null
+  if (op.start > previous.end + 1 || previous.start > op.end + 1) return null
+  return { start: Math.min(previous.start, op.start), end: Math.max(previous.end, op.end) }
 }
 
 export interface BulkConstantFillRecord {
@@ -1817,6 +1915,31 @@ export function recordSetNumfmt(
           })
           if (entry) recorded.push(entry)
         }
+      }
+    }
+  }
+  return recorded
+}
+
+/// Ingests a `sheet.mutation.remove.numfmt` payload (`{ranges}`): undoing a
+/// format edit, or a culture-specific input that inserted a date format.
+export function recordRemoveNumfmt(
+  journal: EditJournal,
+  sheetId: string,
+  params: unknown,
+): JournalEntry[] {
+  if (typeof params !== 'object' || params === null) return []
+  const { ranges } = params as { ranges?: unknown }
+  if (!Array.isArray(ranges)) return []
+  const recorded: JournalEntry[] = []
+  for (const range of ranges) {
+    if (typeof range !== 'object' || range === null) continue
+    const { startRow, endRow, startColumn, endColumn } = range as Record<string, unknown>
+    if (![startRow, endRow, startColumn, endColumn].every(isBoundedIndex)) continue
+    for (let row = startRow as number; row <= (endRow as number); row += 1) {
+      for (let column = startColumn as number; column <= (endColumn as number); column += 1) {
+        const entry = mergeIntoJournal(journal, sheetId, row, column, { s: { n: null } })
+        if (entry) recorded.push(entry)
       }
     }
   }
@@ -2116,6 +2239,14 @@ const UNIVER_VERTICAL: Record<number, WorkbookStyleEdit['verticalAlignment']> = 
 /// journal overlay replay, and the ribbon's No Fill.
 export const NO_FILL_STYLE: { readonly rgb: '' } = { rgb: '' }
 
+/// "No border" as a Univer bd value, the border twin of NO_FILL_STYLE: an
+/// empty bd is dropped by the set-range-values sanitizer, so one NONE edge
+/// keeps the key defined (blocks a <col style=> border at compose time) while
+/// the renderer skips NONE edges and the save path has no xlsx name for it.
+export const NO_BORDER_STYLE: {
+  readonly t: { readonly s: BorderStyleTypes.NONE; readonly cl: { readonly rgb: '#000000' } }
+} = { t: { s: BorderStyleTypes.NONE, cl: { rgb: '#000000' } } }
+
 /// Converts a Univer IStyleData delta (from a set-range-values mutation) to
 /// the renderer-neutral wire format. Unknown keys are ignored; `null` values
 /// mean "remove the attribute" and map to explicit `false`.
@@ -2182,10 +2313,18 @@ export function toNeutralStyle(s: Record<string, unknown>): WorkbookStyleEdit | 
       }
     }
   }
-  const pattern =
-    typeof s.n === 'object' && s.n !== null ? (s.n as Record<string, unknown>).pattern : undefined
-  if (typeof pattern === 'string' && pattern.length > 0 && pattern.length <= 255) {
-    style.numberFormat = pattern
+  if ('n' in s) {
+    // A removed format (numfmt undo, a paste of unformatted cells, which
+    // carries `n: null` in every pasted style) saves as General. The save wire
+    // takes only a pattern string, so null failed the whole save; General is
+    // numFmtId 0, the file's own "no number format".
+    if (s.n === null) style.numberFormat = 'General'
+    else if (typeof s.n === 'object') {
+      const pattern = (s.n as Record<string, unknown>).pattern
+      if (typeof pattern === 'string' && pattern.length > 0 && pattern.length <= 255) {
+        style.numberFormat = pattern
+      }
+    }
   }
   if ('bd' in s && typeof s.bd === 'object' && s.bd !== null) {
     const bd = s.bd as Record<string, unknown>
@@ -2421,6 +2560,9 @@ export function journalSize(journal: EditJournal): number {
   }
   for (const sheetId of journal.noteDirty) {
     if (!isSheetRemoved(journal, sheetId)) total += 1
+  }
+  for (const picture of journal.notePictures) {
+    if (!isSheetRemoved(journal, picture.sheetId)) total += 1
   }
   total += journal.pivotCacheRefresh.size
   for (const [sheetId, links] of journal.hyperlinks) {

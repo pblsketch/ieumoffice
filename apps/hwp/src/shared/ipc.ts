@@ -1,10 +1,34 @@
 import type { AiSettings, AiStreamChunk, AiStreamRequest } from '@genoffice/ai-provider'
+import type { AiToolCapabilities, MediaToolErrorCode } from '@genoffice/ai-search'
+import type { PrintLayoutBridge } from '@genoffice/electron-utils/print-layout-bridge'
 import type { Lang } from '@genoffice/i18n'
-import type { AiPanelPrefs } from '@genoffice/ui'
+import type { AiPanelPrefs, AutoSaveDefault } from '@genoffice/ui'
+import type {
+  BibliographyFormat,
+  DuplicateMatch,
+  ImportFailureReason,
+  ImportPreviewPlan,
+} from '../../studio-plugin/citation-io.mjs'
+import type { BibEntry, BibEntryInput } from '../../studio-plugin/citation-styles.mjs'
 import type { SubscriptionApi } from './subscription-api'
+
+export type {
+  BibEntry,
+  BibEntryInput,
+  BibliographyFormat,
+  DuplicateMatch,
+  ImportFailureReason,
+  ImportPreviewPlan,
+}
 
 export const HWP_CHANNELS = {
   consumePending: 'hwp:consume-pending',
+  /** invoke → number | null: how many font files the editor's font detection may read (Linux) */
+  fontFileReads: 'hwp:font-file-reads',
+  /** invoke(faces) → Array<HwpFontNames | null>: per-face SFNT metadata read in main */
+  fontNames: 'hwp:font-names',
+  /** invoke → boolean: whether this view is a hidden `--headless-export` window */
+  isHeadlessExport: 'hwp:is-headless-export',
   /** invoke → `{ name, format } | null`: the pending path is an untitled copy (spec 5.7) */
   untitledCopy: 'hwp:untitled-copy',
   readFile: 'hwp:read-file',
@@ -14,12 +38,27 @@ export const HWP_CHANNELS = {
   trackingDropped: 'hwp:tracking-dropped',
   abortSave: 'hwp:abort-save',
   saveRequest: 'hwp:save-request',
+  beginSubmissionSave: 'hwp:begin-submission-save',
+  commitSubmissionSave: 'hwp:commit-submission-save',
+  abortSubmissionSave: 'hwp:abort-submission-save',
+  submissionSaveRequest: 'hwp:submission-save-request',
   printRequest: 'hwp:print-request',
+  previewRequest: 'hwp:preview-request',
   fileCommand: 'hwp:file-command',
   printPages: 'hwp:print-pages',
+  /** invoke → string | null: the PDF path a hidden window of `--headless-export` writes */
+  consumeHeadlessExport: 'hwp:consume-headless-export',
+  /** renderer → main ({ ok, error? }): the headless export is done */
+  headlessExportDone: 'hwp:headless-export-done',
   dirtyChanged: 'hwp:dirty-changed',
   closeSaveRequest: 'hwp:close-save-request',
   closeSaveResult: 'hwp:close-save-result',
+  /** renderer → main: the memo editor opened or closed in this tab (T7 holds back save/close) */
+  memoModalOpen: 'hwp:memo-modal-open',
+  /** invoke → boolean: whether a memo editor is open anywhere (a new tab locks itself) */
+  memoModalState: 'hwp:memo-modal-state',
+  /** main → renderer: a save, close or quit was asked for while a memo editor is open */
+  memoBlocked: 'hwp:memo-blocked',
   readBytesRequest: 'hwp:read-bytes-request',
   readBytesResult: 'hwp:read-bytes-result',
   /** invoke → RecoveryBeginResult: a recovery copy is about to be exported */
@@ -41,11 +80,79 @@ export const HWP_CHANNELS = {
   filesAddPastedImage: 'hwp:files-add-pasted-image',
   filesRead: 'hwp:files-read',
   filesReadImage: 'hwp:files-read-image',
+  /** invoke(path) → `AttachmentDocumentResult`: an attached .hwp / .hwpx, for read_formatting */
+  filesReadDocument: 'hwp:files-read-document',
+  /** send(stop): the AI panel's run was stopped by the app's own rule; kept in the crash record */
+  aiRunStop: 'hwp:ai-run-stop',
+  /** invoke(path, request?) → `AttachmentImportResult`: an attached Markdown file as a new Hangul tab */
+  filesImportDocument: 'hwp:files-import-document',
+  /** invoke(path, intoCurrentBlank) → `LoadGeneratedHwpxResult`: load an externally generated .hwpx/.hwp (e.g. from kordoc) into the blank tab or a new tab */
+  loadGeneratedHwpx: 'hwp:load-generated-hwpx',
+  /** invoke({prompt, aspectRatio, model?}) → `{url?, error?, errorCode?}`: one AI picture */
+  aiGenerateImage: 'hwp:ai-generate-image',
+  /** invoke(url) �� `{base64, mime} | null`: a web image or a generated-store file */
+  fetchImage: 'hwp:fetch-image',
+  /** invoke({ mediaUrls, requirements }) �� MediaAnalysisResult: let the model look at a picture */
+  analyzeMedia: 'hwp:analyze-media',
+  /** invoke -> OutlineStyleMap: app-wide style-to-outline-level mapping */
+  getOutlineStyleMap: 'hwp:get-outline-style-map',
+  /** invoke(map | null) -> OutlineStyleMap: save or reset the app-wide outline style mapping */
+  setOutlineStyleMap: 'hwp:set-outline-style-map',
+  /** main -> renderer (OutlineStyleMap): the app-wide outline style mapping changed */
+  outlineStyleMapChanged: 'hwp:outline-style-map-changed',
+  /** invoke -> BibReadStateResult: inspect the app-wide bibliography library state, including corruption/size status */
+  bibReadState: 'hwp:bib-read-state',
+  /** invoke -> BibListResult: list all entries and sorted tags from the app-wide bibliography library */
+  bibList: 'hwp:bib-list',
+  /** invoke(input) -> BibAddResult: add a human-entered reference to the app-wide library */
+  bibAdd: 'hwp:bib-add',
+  /** invoke(id, patch) -> BibUpdateResult: update a reference entry in the app-wide library */
+  bibUpdate: 'hwp:bib-update',
+  /** invoke(id) -> BibDeleteResult: delete a reference entry from the app-wide library */
+  bibDelete: 'hwp:bib-delete',
+  /** invoke(id) -> BibVerifyResult: mark a reference entry as human-verified */
+  bibVerify: 'hwp:bib-verify',
+  /** invoke(candidates) -> BibAddAiCandidatesResult: add unverified AI-found reference candidates */
+  bibAddAiCandidates: 'hwp:bib-add-ai-candidates',
+  /** invoke -> BibPickImportFileResult: pick and preview a BibTeX/RIS/CSL JSON file without saving */
+  bibPickImportFile: 'hwp:bib-pick-import-file',
+  /** invoke(candidates) -> BibPreviewImportResult: preview parsed reference candidates without saving */
+  bibPreviewImport: 'hwp:bib-preview-import',
+  /** invoke(entries, options?) -> BibCommitImportResult: commit confirmed import entries to library */
+  bibCommitImport: 'hwp:bib-commit-import',
+  /** invoke(format, options?) -> BibExportFileResult: export library entries via native save dialog */
+  bibExportFile: 'hwp:bib-export-file',
+  /** main -> renderer (BibEntry[]): the app-wide bibliography library changed */
+  bibChanged: 'hwp:bib-changed',
+  /** main -> renderer (BibKeyRenameInfo): a reference citation key was renamed */
+  bibKeyRenamed: 'hwp:bib-key-renamed',
+  /** invoke -> MacrosReadStateResult: inspect the app-wide macro store state, including corruption/size status */
+  macrosReadState: 'hwp:macros-read-state',
+  /** invoke(input) -> MacroAddResult: add a macro to the app-wide macro store */
+  macrosAdd: 'hwp:macros-add',
+  /** invoke(id, patch) -> MacroUpdateResult: update an existing macro in the app-wide macro store */
+  macrosUpdate: 'hwp:macros-update',
+  /** invoke(id) -> MacroDeleteResult: delete a macro from the app-wide macro store */
+  macrosDelete: 'hwp:macros-delete',
+  /** invoke(id, slot) -> MacroAssignSlotResult: assign or clear shortcut slot 1..11 for a macro */
+  macrosAssignSlot: 'hwp:macros-assign-slot',
+  /** invoke -> MacroPickImportFileResult: pick and preview a plain-text .ieummacro file without saving */
+  macrosPickImportFile: 'hwp:macros-pick-import-file',
+  /** invoke(input) -> MacroCommitImportResult: commit a user-confirmed imported macro with origin 'imported' */
+  macrosCommitImport: 'hwp:macros-commit-import',
+  /** invoke(id) -> MacroExportFileResult: export a macro to a plain-text .ieummacro file via native save dialog */
+  macrosExportFile: 'hwp:macros-export-file',
+  /** main -> renderer (MacroRecord[]): the app-wide macro store changed */
+  macrosChanged: 'hwp:macros-changed',
   // channels below are served once by the shell for every editor
   getLanguage: 'app:get-language',
   languageChanged: 'app:language-changed',
   getTheme: 'app:get-theme',
   themeChanged: 'app:theme-changed',
+  /** the shell's stored author name (settings, else the PC account); `{ value, fallback }` */
+  getAuthorName: 'home:get-author-name',
+  getAutoSaveDefault: 'app:get-auto-save-default',
+  autoSaveDefaultChanged: 'app:auto-save-default-changed',
   getAiPanelPrefs: 'app:get-ai-panel-prefs',
   setAiPanelPrefs: 'app:set-ai-panel-prefs',
   aiPanelPrefsChanged: 'app:ai-panel-prefs-changed',
@@ -64,16 +171,454 @@ export const AI_CHANNELS = {
   streamChunk: 'ai:stream-chunk',
   streamCancel: 'ai:stream-cancel',
   readUrl: 'ai:read-url',
+  webSearch: 'ai:web-search',
+  imageSearch: 'ai:image-search',
+  /** () �� `AiToolCapabilities | null`, registered by the docs main (shell mode only) */
+  toolCapabilities: 'ai:tool-capabilities',
 } as const
 
 export type UiTheme = 'light' | 'dark' | 'system'
-export type SaveMode = 'save' | 'saveAs'
+export type OutlineStyleMap = Record<string, number>
 
-/** What the editor's File menu asks for (see the plugin's FILE_COMMAND_EVENT). */
-export type FileCommand = SaveMode | PrintMode
+export interface BibKeyRenameInfo {
+  id: string
+  oldKey: string
+  newKey: string
+  title: string
+}
+
+export interface BibAiCandidateInput extends BibEntryInput {
+  sourceUrl?: string
+}
+
+export interface BibCommitImportOptions {
+  source?: 'import' | 'document'
+  skipDuplicates?: boolean
+}
+
+export interface BibExportOptions {
+  tag?: string
+  ids?: readonly string[]
+}
+
+export type BibLibraryFailureReason = 'library_corrupt' | 'library_too_large' | 'library_read_error'
+
+export type BibLibraryState =
+  | {
+      ok: true
+      exists: boolean
+      entries: BibEntry[]
+      tags: string[]
+      sizeBytes: number
+      maxBytes: number
+      nearLimit: boolean
+    }
+  | {
+      ok: false
+      reason: BibLibraryFailureReason
+      error: string
+      corruptBackupPath?: string
+      sizeBytes?: number
+      maxBytes: number
+    }
+
+export type BibReadStateResult =
+  BibLibraryState | { ok: false; reason: 'unauthorized'; error: string }
+
+export type BibListResult =
+  | {
+      ok: true
+      entries: BibEntry[]
+      tags: string[]
+      sizeBytes?: number
+      maxBytes?: number
+      nearLimit?: boolean
+    }
+  | {
+      ok: false
+      reason: BibLibraryFailureReason | 'unauthorized'
+      error: string
+      corruptBackupPath?: string
+      sizeBytes?: number
+      maxBytes?: number
+    }
+
+export type BibAddResult =
+  | {
+      ok: true
+      entry: BibEntry
+      entries: BibEntry[]
+      sizeBytes?: number
+      maxBytes?: number
+      nearLimit?: boolean
+    }
+  | {
+      ok: false
+      reason: 'invalid_input' | 'too_large' | BibLibraryFailureReason | 'unauthorized'
+      error: string
+      corruptBackupPath?: string
+      sizeBytes?: number
+      maxBytes?: number
+      actualBytes?: number
+    }
+
+export type BibAddAiCandidatesResult =
+  | {
+      ok: true
+      added: BibEntry[]
+      duplicates: DuplicateMatch[]
+      entries: BibEntry[]
+      sizeBytes?: number
+      maxBytes?: number
+      nearLimit?: boolean
+    }
+  | {
+      ok: false
+      reason:
+        | 'invalid_input'
+        | 'missing_source_url'
+        | 'too_large'
+        | BibLibraryFailureReason
+        | 'unauthorized'
+      error: string
+      corruptBackupPath?: string
+      sizeBytes?: number
+      maxBytes?: number
+      actualBytes?: number
+    }
+
+export type BibUpdateResult =
+  | {
+      ok: true
+      entry: BibEntry
+      entries: BibEntry[]
+      renamedKey?: BibKeyRenameInfo
+      sizeBytes?: number
+      maxBytes?: number
+      nearLimit?: boolean
+    }
+  | {
+      ok: false
+      reason:
+        | 'invalid_input'
+        | 'invalid_key'
+        | 'duplicate_key'
+        | 'not_found'
+        | 'ai_cannot_verify'
+        | 'too_large'
+        | BibLibraryFailureReason
+        | 'unauthorized'
+      error: string
+      corruptBackupPath?: string
+      sizeBytes?: number
+      maxBytes?: number
+      actualBytes?: number
+    }
+
+export type BibVerifyResult =
+  | {
+      ok: true
+      entry: BibEntry
+      entries: BibEntry[]
+      sizeBytes?: number
+      maxBytes?: number
+      nearLimit?: boolean
+    }
+  | {
+      ok: false
+      reason: 'invalid_input' | 'not_found' | 'too_large' | BibLibraryFailureReason | 'unauthorized'
+      error: string
+      corruptBackupPath?: string
+      sizeBytes?: number
+      maxBytes?: number
+      actualBytes?: number
+    }
+
+export type BibDeleteResult =
+  | {
+      ok: true
+      deletedId: string
+      entries: BibEntry[]
+      sizeBytes?: number
+      maxBytes?: number
+      nearLimit?: boolean
+    }
+  | {
+      ok: false
+      reason: 'invalid_input' | 'not_found' | 'too_large' | BibLibraryFailureReason | 'unauthorized'
+      error: string
+      corruptBackupPath?: string
+      sizeBytes?: number
+      maxBytes?: number
+      actualBytes?: number
+    }
+
+export type BibPreviewImportResult =
+  | { ok: true; preview: ImportPreviewPlan }
+  | {
+      ok: false
+      reason: 'empty' | 'invalid_input' | BibLibraryFailureReason | 'unauthorized'
+      error: string
+      corruptBackupPath?: string
+      sizeBytes?: number
+      maxBytes?: number
+    }
+
+export type BibPickImportFileResult =
+  | { ok: true; canceled: true }
+  | {
+      ok: true
+      canceled?: false
+      fileName: string
+      format: BibliographyFormat
+      preview: ImportPreviewPlan
+      warnings: string[]
+    }
+  | {
+      ok: false
+      reason:
+        ImportFailureReason | 'not_found' | 'unreadable' | BibLibraryFailureReason | 'unauthorized'
+      error: string
+      format?: BibliographyFormat | null
+      warnings?: string[]
+      corruptBackupPath?: string
+      sizeBytes?: number
+      maxBytes?: number
+      actualBytes?: number
+    }
+
+export type BibCommitImportResult =
+  | {
+      ok: true
+      added: BibEntry[]
+      skippedDuplicates: DuplicateMatch[]
+      entries: BibEntry[]
+      sizeBytes?: number
+      maxBytes?: number
+      nearLimit?: boolean
+    }
+  | {
+      ok: false
+      reason: 'empty' | 'invalid_input' | 'too_large' | BibLibraryFailureReason | 'unauthorized'
+      error: string
+      corruptBackupPath?: string
+      sizeBytes?: number
+      maxBytes?: number
+      actualBytes?: number
+    }
+
+export type BibExportFileResult =
+  | { ok: true; canceled: true }
+  | { ok: true; canceled?: false; path: string; count: number; format: BibliographyFormat }
+  | {
+      ok: false
+      reason:
+        | 'invalid_input'
+        | 'invalid_format'
+        | 'write_failed'
+        | 'file_exists'
+        | BibLibraryFailureReason
+        | 'unauthorized'
+      error: string
+      corruptBackupPath?: string
+      sizeBytes?: number
+      maxBytes?: number
+    }
+
+export type MacroOrigin = 'recorded' | 'manual' | 'ai' | 'imported'
+
+export interface MacroRecord {
+  id: string
+  name: string
+  description?: string
+  script: string
+  slot: number | null
+  origin: MacroOrigin
+  createdAt: string
+  updatedAt: string
+}
+
+export interface MacroCreateInput {
+  name: string
+  description?: string
+  script: string
+  slot?: number | null
+  origin?: MacroOrigin
+}
+
+export interface MacroUpdatePatch {
+  name?: string
+  description?: string | null
+  script?: string
+  slot?: number | null
+}
+
+export interface MacroImportCommitInput {
+  name: string
+  description?: string
+  script: string
+  /** Ignored during import: imported macros are always saved with `slot: null`. */
+  slot?: null
+}
+
+export type MacroSyntaxCheckResult =
+  { ok: true } | { ok: false; error: string; line: number; column: number }
+
+export type MacroSyntaxChecker = (script: string) => MacroSyntaxCheckResult
+
+export interface MacroImportPreview {
+  name: string
+  description?: string
+  script: string
+  /** Shortcut slots are never imported from `.ieummacro` files. */
+  slot?: null
+  syntax?: MacroSyntaxCheckResult
+}
+
+export type MacroStoreFailureReason = 'library_corrupt' | 'library_too_large' | 'library_read_error'
+
+export type MacrosState =
+  | {
+      ok: true
+      exists: boolean
+      macros: MacroRecord[]
+      sizeBytes: number
+      maxBytes: number
+      nearLimit: boolean
+    }
+  | {
+      ok: false
+      reason: MacroStoreFailureReason
+      error: string
+      corruptBackupPath?: string
+      sizeBytes?: number
+      maxBytes: number
+    }
+
+export type MacrosReadStateResult =
+  MacrosState | { ok: false; reason: 'unauthorized'; error: string }
+
+export type MacroAddResult =
+  | {
+      ok: true
+      macro: MacroRecord
+      macros: MacroRecord[]
+      sizeBytes: number
+      maxBytes: number
+      nearLimit: boolean
+    }
+  | {
+      ok: false
+      reason: 'invalid_input' | 'too_large' | MacroStoreFailureReason | 'unauthorized'
+      error: string
+      corruptBackupPath?: string
+      sizeBytes?: number
+      maxBytes?: number
+      actualBytes?: number
+    }
+
+export type MacroUpdateResult =
+  | {
+      ok: true
+      macro: MacroRecord
+      macros: MacroRecord[]
+      sizeBytes: number
+      maxBytes: number
+      nearLimit: boolean
+    }
+  | {
+      ok: false
+      reason: 'invalid_input' | 'not_found' | 'too_large' | MacroStoreFailureReason | 'unauthorized'
+      error: string
+      corruptBackupPath?: string
+      sizeBytes?: number
+      maxBytes?: number
+      actualBytes?: number
+    }
+
+export type MacroDeleteResult =
+  | {
+      ok: true
+      deletedId: string
+      macros: MacroRecord[]
+      sizeBytes: number
+      maxBytes: number
+      nearLimit: boolean
+    }
+  | {
+      ok: false
+      reason: 'invalid_input' | 'not_found' | 'too_large' | MacroStoreFailureReason | 'unauthorized'
+      error: string
+      corruptBackupPath?: string
+      sizeBytes?: number
+      maxBytes?: number
+      actualBytes?: number
+    }
+
+export type MacroAssignSlotResult = MacroUpdateResult
+
+export type MacroPickImportFileResult =
+  | { ok: true; canceled: true }
+  | {
+      ok: true
+      canceled?: false
+      fileName: string
+      preview: MacroImportPreview
+    }
+  | {
+      ok: false
+      reason:
+        | 'not_found'
+        | 'unreadable'
+        | 'too_large'
+        | 'invalid_format'
+        | MacroStoreFailureReason
+        | 'unauthorized'
+      error: string
+      corruptBackupPath?: string
+      sizeBytes?: number
+      maxBytes?: number
+      actualBytes?: number
+    }
+
+export type MacroCommitImportResult = MacroAddResult
+
+export type MacroExportFileResult =
+  | { ok: true; canceled: true }
+  | { ok: true; canceled?: false; path: string; macroId: string; name: string }
+  | {
+      ok: false
+      reason:
+        | 'invalid_input'
+        | 'not_found'
+        | 'write_failed'
+        | 'file_exists'
+        | MacroStoreFailureReason
+        | 'unauthorized'
+      error: string
+      corruptBackupPath?: string
+      sizeBytes?: number
+      maxBytes?: number
+    }
+export type SaveMode = 'save' | 'saveAs'
+/** Save dialog modes: normal save, Save As, or Save As pre-targeted to HWPX (e.g. after HWP verify failure). */
+export type BeginSaveMode = SaveMode | 'saveAsHwpx'
+
+/**
+ * What the editor's File menu asks for (see the plugin's FILE_COMMAND_EVENT). `open` asks
+ * the shell for a file and opens it in a tab of its own, as Ctrl+O does. `importPdf` asks
+ * the shell for a PDF and opens it as a new Hangul document in a tab of its own.
+ */
+export type FileCommand = SaveMode | 'saveSubmission' | PrintMode | 'preview' | 'importPdf' | 'open'
 
 /** Where the pages go: a PDF file, or the printer through the system print dialog. */
 export type PrintMode = 'pdf' | 'print'
+
+/**
+ * What File > Print / Print Preview asks the renderer to do. 'print' opens the
+ * preview when it is closed and prints from it when it is open; 'open' only opens.
+ */
+export type PreviewAction = 'print' | 'open'
 
 /** One page as the editor draws it for printing: SVG, and its size in CSS pixels. */
 export interface PrintPage {
@@ -116,17 +661,85 @@ export const MAX_HWP_SAVE_BYTES = 512 * 1024 * 1024
 
 export type BeginSaveResult =
   | { ok: true; path: string; format: HwpFormat }
+  /**
+   * Save As picked PDF: no save. The renderer gathers the pages and hands them to
+   * `printPages` with this path, which that call takes once without asking again.
+   */
+  | { ok: true; path: string; export: 'pdf' }
   | { ok: true; canceled: true }
-  /** `reason` 'tracked': the document has tracked changes, which a save here would lose */
-  | { ok: false; error: string; reason?: 'tracked' }
+  /**
+   * `reason` 'tracked': the document has tracked changes, which a save here would lose.
+   * `reason` 'memo': a memo editor is open and its text has not been committed yet.
+   */
+  | { ok: false; error: string; reason?: 'tracked' | 'memo' }
+
+/** One step of a memo anchor's path into a table cell or text box, as the engine lists it. */
+export interface MemoPathStep {
+  type: 'cell' | 'textbox'
+  controlIndex: number
+  cellIndex?: number
+  paraIndex: number
+}
+
+/**
+ * A memo as the editor lists it just before a save. The written HWPX is compared with this
+ * by content, date, author and place; the anchor may legitimately move.
+ */
+export interface MemoSnapshot {
+  author: string
+  date: string | null
+  text: string
+  place: string
+  sectionIndex: number | null
+  paraIndex: number | null
+  startCharIdx: number | null
+  endCharIdx: number | null
+  path: MemoPathStep[] | null
+}
+
+/** Extra arguments of one save; the second argument stays the measured tabs. */
+export interface CommitSaveOptions {
+  /** an automatic save stands down rather than asking about a sibling's change */
+  auto?: boolean
+  /** the editor's memo list, or null when it could not be listed */
+  memos?: MemoSnapshot[] | null
+  /**
+   * The preview of the document as it is now, written over the one the engine carried
+   * from the opened file (decision 0146). null: the editor could not make one, and a blank
+   * preview is written rather than the stale one.
+   */
+  preview?: SavePreview | null
+}
+
+/** What other programs show of a file without opening it: its first lines and first page. */
+export interface SavePreview {
+  /** the text, lines ended by CR LF, table rows as `<cell><cell>` as Hangul writes them */
+  text: string
+  /** the first page as PNG, or null when it could not be drawn */
+  image: Uint8Array | null
+}
 
 export type CommitSaveResult =
   /**
    * `backupPath` is set when this save was the first to overwrite the file and the previous
    * bytes were kept. `tailsLost` is set when master pages or memos of the opened file could
-   * not be carried into the written one.
+   * not be carried into the written one (`memosLost` is the HWPX count).
    */
-  { ok: true; path: string; backupPath?: string; tailsLost?: true } | { ok: false; error: string }
+  | { ok: true; path: string; backupPath?: string; tailsLost?: true; memosLost?: number }
+  | { ok: false; error: string }
+
+export type BeginSubmissionSaveResult =
+  | { ok: true; path: string; format: HwpFormat }
+  | { ok: true; canceled: true }
+  | { ok: false; error: string; reason?: 'tracked' | 'memo' | 'same_as_open' }
+
+export interface CommitSubmissionSaveOptions {
+  preview?: SavePreview | null
+}
+
+export type CommitSubmissionSaveResult =
+  | { ok: true; path: string; backupPath?: string; tailsLost?: true }
+  | { ok: false; error: string; reason?: 'same_as_open' }
 
 /**
  * A tab the engine saved without a width, as the editor can find it again: the body
@@ -205,6 +818,51 @@ export interface AttachmentImageResult {
   error?: string
 }
 
+/** An attached HWP / HWPX document's bytes, for the editor's engine to read its formatting. */
+export type AttachmentDocumentResult = { ok: true; base64: string } | { ok: false; error: string }
+
+/**
+ * An attached Markdown file opened as a new, untitled Hangul document in a tab
+ * of its own. `handed`: the person's request went along for that tab's panel.
+ */
+export type AttachmentImportResult =
+  { ok: true; title: string; handed: boolean } | { ok: false; error: string }
+
+/**
+ * An externally generated HWP/HWPX file (e.g. written by kordoc MCP) opened
+ * either directly into the currently blank untitled tab or in a new Hangul tab.
+ */
+export type LoadGeneratedHwpxResult =
+  | { ok: true; mode: 'current'; name: string; format: HwpFormat; bytes: Uint8Array }
+  | { ok: true; mode: 'new-tab'; name: string; format: HwpFormat }
+  | { ok: false; error: string }
+
+/** What the configured picture reader says about one picture of the document. */
+export interface MediaAnalysisResult {
+  text?: string
+  error?: string
+  errorCode?: MediaToolErrorCode
+  resetsAt?: number
+}
+
+/** Web search results (the shared ai:web-search handler) */
+export interface WebSearchResult {
+  /** a direct answer some services give before their results */
+  answer?: string
+  results: Array<{ title: string; url: string; snippet: string }>
+  method: string
+  /** failure reason when method === 'error' */
+  error?: string
+}
+
+/** Image search results (the shared ai:image-search handler) */
+export interface ImageSearchResult {
+  images: Array<{ title?: string; imageUrl: string; width?: number; height?: number }>
+  method: string
+  /** failure reason when method === 'error' */
+  error?: string
+}
+
 /** One page of a web page read for the AI (the shared ai:read-url handler) */
 export type ReadUrlResult =
   | {
@@ -222,9 +880,34 @@ export type ReadUrlResult =
     }
   | { ok: false; error: string; errorCode: string }
 
+export interface HwpFontFaceQuery {
+  readonly family?: string
+  readonly fullName?: string
+  readonly postscriptName?: string
+  readonly style?: string
+}
+
+export interface HwpFontNames {
+  families: string[]
+  fullNames: string[]
+  postscriptNames: string[]
+  styles: string[]
+  weightClass?: number
+  italic?: boolean
+}
+
 export interface HwpApi {
   /** path queued for this view when its tab was created; null for a view opened without a file */
   consumePending(): Promise<string | null>
+  /**
+   * How many font files the editor's font detection may read, from this view's open-file
+   * limit (Linux); null where it reads them all or the limit is not known.
+   */
+  fontFileReads?(): Promise<number | null>
+  /** Per-face SFNT name/style metadata read from disk in main (avoids renderer FontData.blob()). */
+  readFontNames?(faces: readonly HwpFontFaceQuery[]): Promise<Array<HwpFontNames | null>>
+  /** Whether this view is a hidden `--headless-export` window (does not consume the export path). */
+  isHeadlessExport?(): Promise<boolean>
   /** the pending path is an untitled copy (a skill template's): its name and format; null otherwise */
   untitledCopy?(): Promise<{ name: string; format: 'hwp' | 'hwpx' } | null>
   readFile(path: string): Promise<Uint8Array>
@@ -234,29 +917,67 @@ export interface HwpApi {
    */
   trackingDropped(): Promise<boolean>
   /** resolve where and in which format this save goes (shows the dialog for Save As) */
-  beginSave(mode: SaveMode): Promise<BeginSaveResult>
+  beginSave(mode: BeginSaveMode): Promise<BeginSaveResult>
   /** the tabs of exported bytes that have no width yet (see tab-widths in main) */
   newTabs(bytes: Uint8Array, format: HwpFormat): Promise<TabSpot[]>
   /**
    * write the exported bytes to the target `beginSave` resolved, with the widths the editor
    * measured for the tabs `newTabs` found
    */
-  commitSave(bytes: Uint8Array, tabs?: MeasuredTab[]): Promise<CommitSaveResult>
+  commitSave(
+    bytes: Uint8Array,
+    tabs?: MeasuredTab[],
+    options?: CommitSaveOptions,
+  ): Promise<CommitSaveResult>
   /** the renderer could not produce bytes for a save it began */
   abortSave(): void
+  /** resolve a separate save path for a clean submission copy (never alters the active tab) */
+  beginSubmissionSave(): Promise<BeginSubmissionSaveResult>
+  /** write stripped submission copy bytes to the chosen submission target only */
+  commitSubmissionSave(
+    bytes: Uint8Array,
+    tabs?: MeasuredTab[],
+    options?: CommitSubmissionSaveOptions,
+  ): Promise<CommitSubmissionSaveResult>
+  /** cancel a pending submission copy save without modifying disk or tab state */
+  abortSubmissionSave(): void
   setDirty(dirty: boolean): void
   onSaveRequest(handler: (mode: SaveMode) => void): () => void
+  onSubmissionSaveRequest(handler: () => void): () => void
   /**
    * the editor's own File menu asks to save or print: the main process answers it the way
    * it answers Ctrl+S and Ctrl+P, with a save or print request back to this view
    */
   requestFileCommand(command: FileCommand): void
-  /** the File menu or Ctrl+P asks for a PDF or a print */
+  /** the File menu asks for a PDF (print now goes through the preview) */
   onPrintRequest(handler: (mode: PrintMode) => void): () => void
-  /** make the PDF (asking where) or open the print dialog for these pages */
-  printPages(job: PrintJob): Promise<PrintResult>
+  /** the File menu or Ctrl+P asks for the print preview */
+  onPreviewRequest(handler: (action: PreviewAction) => void): () => void
+  /**
+   * make the PDF (asking where, unless `path` is the PDF path Save As just picked) or open
+   * the print dialog for these pages
+   */
+  printPages(job: PrintJob, options?: { path: string }): Promise<PrintResult>
+  /**
+   * The advanced print layout (decision 0141): the same pages as `printPages`, sent as
+   * the request's `editor`, made into the PDF export's PDF, then arranged and previewed,
+   * printed or saved by the shared print layout
+   */
+  printLayout: PrintLayoutBridge<PrintJob>
+  /** Headless export mode: the PDF path this hidden window must write, null in normal use */
+  consumeHeadlessExport(): Promise<string | null>
+  /** Headless export mode: report the outcome so the main process can exit */
+  headlessExportDone(result: { ok: boolean; error?: string }): void
   onCloseSaveRequest(handler: () => void): () => void
   sendCloseSaveResult(ok: boolean): void
+  /** the memo editor opened or closed in this tab: main holds back save, close and quit */
+  setMemoModalOpen(open: boolean): void
+  /** whether a memo editor is open in any tab (a tab opened meanwhile locks itself) */
+  getMemoModalOpen(): Promise<boolean>
+  /** the main process refused a save, close or quit because a memo editor is open */
+  onMemoBlocked(handler: () => void): () => void
+  /** the author a new memo takes: the settings name, else the PC account */
+  getAuthorName(): Promise<{ value: string; fallback: string }>
   /** the main process wants the document as it is now, unsaved edits included */
   onReadBytesRequest(handler: () => void): () => void
   sendReadBytesResult(result: ReadBytesResult): void
@@ -287,6 +1008,25 @@ export interface HwpApi {
   readAttachment(path: string, offset: number, maxChars: number): Promise<AttachmentReadResult>
   /** read an image attachment as base64 for multimodal input */
   readAttachmentImage(path: string): Promise<AttachmentImageResult>
+  /** read an attached .hwp / .hwpx whole, as base64, to read its formatting */
+  readAttachmentDocument(path: string): Promise<AttachmentDocumentResult>
+  /**
+   * convert an attached Markdown file and open it as a new, untitled Hangul document in a
+   * tab of its own; with `request` the person's words go along for that tab's AI panel
+   */
+  importAttachmentAsDocument(path: string, request?: string): Promise<AttachmentImportResult>
+  /**
+   * Load an externally generated .hwpx/.hwp file (for example created by kordoc
+   * MCP) directly into this blank tab or open it in a new Hangul tab.
+   */
+  loadGeneratedHwpx?(path: string, intoCurrentBlank: boolean): Promise<LoadGeneratedHwpxResult>
+  /**
+   * note that the app stopped an AI run by its own rule: the rule, fault counts and
+   * tool names only (an AgentRunStop), for the crash record on this PC
+   */
+  noteAiRunStop?(stop: unknown): void
+  /** let the model look at one picture of the document (a data URL) and answer about it */
+  analyzeMedia(op: { mediaUrls: string[]; requirements: string }): Promise<MediaAnalysisResult>
   /** the local path of a dropped or pasted file; empty for one that has none (a screenshot) */
   getPathForFile(file: File): string
   /**
@@ -299,6 +1039,9 @@ export interface HwpApi {
   onLanguageChanged(handler: (lang: Lang) => void): () => void
   getTheme(): Promise<UiTheme>
   onThemeChanged(handler: (theme: UiTheme) => void): () => void
+  /** The shell-wide AutoSave default; a per-window override is kept in localStorage */
+  getAutoSaveDefault(): Promise<AutoSaveDefault>
+  onAutoSaveDefaultChanged(handler: (value: AutoSaveDefault) => void): () => void
   /** AI panel side and text size (Settings › General in the shell) */
   getAiPanelPrefs(): Promise<AiPanelPrefs>
   setAiPanelPrefs(patch: Partial<AiPanelPrefs>): Promise<AiPanelPrefs>
@@ -315,5 +1058,77 @@ export interface HwpApi {
   aiStreamCancel(requestId: string): Promise<void>
   /** Read one web page as text (the shared ai:read-url handler), paged by character offset */
   readUrl(url: string, offset?: number): Promise<ReadUrlResult>
+  /** Web search for text (the shared ai:web-search handler) */
+  webSearch(query: string, maxResults?: number): Promise<WebSearchResult>
+  /** Image search (the shared ai:image-search handler) */
+  imageSearch(query: string, maxResults?: number): Promise<ImageSearchResult>
+  /** AI image generation (hwp-owned channel; the main process picks the backend) */
+  generateImage(op: { prompt: string; aspectRatio?: string; model?: string }): Promise<{
+    url?: string
+    error?: string
+    errorCode?: string
+    /** the shared tool's remark for the model (e.g. Codex picked the image model) */
+    note?: string
+  }>
+  /** Download an image URL (or a generated-store file) in the main process */
+  fetchImage(url: string): Promise<{ base64: string; mime: string } | null>
+  /** Read the app-wide Hangul outline style-to-level mapping */
+  getOutlineStyleMap?(): Promise<OutlineStyleMap>
+  /** Save the app-wide Hangul outline style-to-level mapping, or pass null to reset defaults */
+  setOutlineStyleMap?(map: OutlineStyleMap | null): Promise<OutlineStyleMap>
+  /** Subscribe to app-wide Hangul outline style-to-level mapping changes across views */
+  onOutlineStyleMapChanged?(handler: (map: OutlineStyleMap) => void): () => void
+  /** Inspect the app-wide bibliography library state, including corruption and size status */
+  bibReadState?(): Promise<BibReadStateResult>
+  /** List all entries and sorted tags from the app-wide bibliography library */
+  bibList?(): Promise<BibListResult>
+  /** Add a human-entered reference to the app-wide bibliography library */
+  bibAdd?(input: BibEntryInput): Promise<BibAddResult>
+  /** Update an existing reference entry in the app-wide bibliography library */
+  bibUpdate?(id: string, patch: Partial<BibEntryInput>): Promise<BibUpdateResult>
+  /** Delete a reference entry from the app-wide bibliography library */
+  bibDelete?(id: string): Promise<BibDeleteResult>
+  /** Mark a reference entry as human-verified */
+  bibVerify?(id: string): Promise<BibVerifyResult>
+  /** Add unverified AI-found reference candidates (requires valid http(s) source URLs) */
+  bibAddAiCandidates?(candidates: readonly BibAiCandidateInput[]): Promise<BibAddAiCandidatesResult>
+  /** Open a native file picker to preview a BibTeX, RIS, or CSL JSON file without saving */
+  bibPickImportFile?(): Promise<BibPickImportFileResult>
+  /** Preview parsed reference candidates against the live library without saving */
+  bibPreviewImport?(candidates: readonly Partial<BibEntryInput>[]): Promise<BibPreviewImportResult>
+  /** Commit confirmed reference import candidates into the app-wide library */
+  bibCommitImport?(
+    entries: readonly Partial<BibEntryInput>[],
+    options?: BibCommitImportOptions,
+  ): Promise<BibCommitImportResult>
+  /** Open a native save dialog and export bibliography entries in BibTeX, RIS, or CSL JSON format */
+  bibExportFile?(
+    format: BibliographyFormat,
+    options?: BibExportOptions,
+  ): Promise<BibExportFileResult>
+  /** Subscribe to app-wide bibliography library updates across Hangul views */
+  onBibChanged?(handler: (entries: BibEntry[]) => void): () => void
+  /** Subscribe to citation key rename events across Hangul views */
+  onBibKeyRenamed?(handler: (info: BibKeyRenameInfo) => void): () => void
+  /** Inspect the app-wide macro store state, including corruption and size status */
+  macrosReadState?(): Promise<MacrosReadStateResult>
+  /** Add a macro to the app-wide macro store */
+  macrosAdd?(input: MacroCreateInput): Promise<MacroAddResult>
+  /** Update an existing macro in the app-wide macro store */
+  macrosUpdate?(id: string, patch: MacroUpdatePatch): Promise<MacroUpdateResult>
+  /** Delete a macro from the app-wide macro store */
+  macrosDelete?(id: string): Promise<MacroDeleteResult>
+  /** Assign or clear shortcut slot 1..11 for a macro */
+  macrosAssignSlot?(id: string, slot: number | null): Promise<MacroAssignSlotResult>
+  /** Open a native file picker and preview a plain-text .ieummacro file without saving */
+  macrosPickImportFile?(): Promise<MacroPickImportFileResult>
+  /** Commit a user-confirmed imported macro into the app-wide macro store */
+  macrosCommitImport?(input: MacroImportCommitInput): Promise<MacroCommitImportResult>
+  /** Open a native save dialog and export a macro to a plain-text .ieummacro file */
+  macrosExportFile?(id: string): Promise<MacroExportFileResult>
+  /** Subscribe to app-wide macro store updates across Hangul views */
+  onMacrosChanged?(handler: (macros: MacroRecord[]) => void): () => void
+  /** which search/media tools can run right now — gates generate_image */
+  aiToolCapabilities(): Promise<AiToolCapabilities | null>
   onAiStream(handler: (chunk: AiStreamChunk) => void): () => void
 }

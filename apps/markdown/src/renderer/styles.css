@@ -11,7 +11,6 @@
   --md-code-bg: #f6f8fa;
   --md-code-inline-bg: rgb(129 139 152 / 14%);
   --md-table-header-bg: #f6f8fa;
-  --md-ai-changed: rgb(255 213 79 / 40%);
   --md-ai-anchor-bg: rgb(80 128 220 / 14%);
   --md-ai-anchor-line: #5080dc;
   --md-on-accent: #ffffff;
@@ -41,10 +40,15 @@
   --md-diagram-bg: #ffffff;
   /* preview paper under an explicit light document page (genoffice#1811) */
   --md-paper-light: #ffffff;
+  /* the print preview's sheet: the document, white in both app themes */
+  --md-print-paper: var(--md-paper-light);
 }
 
 [data-theme='dark'] {
   --accent: #4a9eff;
+  /* the dark accent is light: white on it does not read */
+  --md-on-accent: #141414;
+  --image-host-on-accent: #141414;
   --accent-dark: #3a8eef;
   --accent-soft: #1e3a5f;
 
@@ -52,7 +56,6 @@
   --md-code-bg: #23272e;
   --md-code-inline-bg: rgb(129 139 152 / 22%);
   --md-table-header-bg: #282c32;
-  --md-ai-changed: rgb(255 213 79 / 28%);
   --md-ai-anchor-bg: rgb(96 148 240 / 22%);
   --md-ai-anchor-line: #6a9aec;
   --md-on-accent: #ffffff;
@@ -82,6 +85,8 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']):not([data-theme='dark']) {
     --accent: #4a9eff;
+    --md-on-accent: #141414;
+    --image-host-on-accent: #141414;
     --accent-dark: #3a8eef;
     --accent-soft: #1e3a5f;
 
@@ -89,7 +94,6 @@
     --md-code-bg: #23272e;
     --md-code-inline-bg: rgb(129 139 152 / 22%);
     --md-table-header-bg: #282c32;
-    --md-ai-changed: rgb(255 213 79 / 28%);
     --md-ai-anchor-bg: rgb(96 148 240 / 22%);
     --md-ai-anchor-line: #6a9aec;
     --md-on-accent: #ffffff;
@@ -132,7 +136,7 @@
 }
 
 :root:lang(ko) {
-  --ui-cjk: 'Apple SD Gothic Neo', 'Malgun Gothic';
+  --ui-cjk: 'UI Pretendard', 'Apple SD Gothic Neo', 'Malgun Gothic';
 }
 
 :root:lang(zh-TW) {
@@ -221,16 +225,16 @@ html[data-doc-theme='light'] .doc-page {
   --accent-soft: #e8f1fb;
   --surface: #ffffff;
   --border: #e3e6ea;
-  --border-strong: #d9d9d9;
+  --border-strong: #d7dbe0;
   --text: #242424;
   --text-secondary: #606366;
   --text-muted: #616870;
   --text-primary: #232425;
-  --text-tertiary: #909499;
-  --text-dim: #605e5c;
+  --text-tertiary: #6b7079;
+  --text-dim: #5c6066;
   --surface-subtle: #f6f7f9;
   --bg-content: #fafafa;
-  --border-subtle: #efefef;
+  --border-subtle: #eef0f2;
   --hover: #f5f5f5;
   --pressed: #edebe9;
   --active-bg: #eaeaea;
@@ -241,7 +245,6 @@ html[data-doc-theme='light'] .doc-page {
   --md-code-bg: #f6f8fa;
   --md-code-inline-bg: rgb(129 139 152 / 14%);
   --md-table-header-bg: #f6f8fa;
-  --md-ai-changed: rgb(255 213 79 / 40%);
   --md-ai-anchor-bg: rgb(80 128 220 / 14%);
   --md-ai-anchor-line: #5080dc;
   --md-selection: color-mix(in srgb, var(--accent) 10%, transparent);
@@ -291,6 +294,19 @@ html[data-doc-theme='light'] .doc-page {
   font-size: 16px;
   line-height: 1.75;
   word-wrap: break-word;
+}
+
+/* the reader's view font (editor-font.ts) beats a paper theme's face; code,
+   math and diagrams set their own and keep them */
+html[data-md-font] .doc-page .doc-editor,
+html[data-md-font] .doc-page .doc-editor :is(h1, h2, h3, h4, h5, h6) {
+  font-family:
+    var(--md-editor-font),
+    'Segoe UI',
+    -apple-system,
+    BlinkMacSystemFont,
+    var(--ui-cjk),
+    sans-serif;
 }
 
 .doc-editor > *:first-child {
@@ -379,6 +395,7 @@ html[data-doc-theme='light'] .doc-page {
 
 .doc-editor a {
   color: var(--md-link);
+  cursor: pointer;
 }
 
 /* Obsidian-style [[wiki links]]. A resolved one reads as an ordinary link; an
@@ -397,6 +414,139 @@ html[data-doc-theme='light'] .doc-page {
 
 .wiki-link-unresolved {
   color: var(--text-muted);
+}
+
+/* An aliased link shows only its display text: the `[[target|` prefix and the
+ * closing `]]` are covered by the alias display pass's inline decorations and
+ * taken out of the flow. The words underneath are document text; only the view
+ * hides them. */
+.wiki-alias-hidden {
+  display: none;
+}
+
+/* A `^id` block marker is document text that other notes link to; it reads as
+ * an address, not as prose, so the view dims it the way Obsidian does. */
+.md-block-id {
+  color: var(--text-muted);
+  font-size: 0.82em;
+  opacity: 0.8;
+}
+
+/* GFM footnotes. The reference shows the label as written and jumps to its
+ * definition; the definition keeps its label in a fixed slot beside the body
+ * column. A separator opens the first definition of a run, echoing GitHub's
+ * footnotes section. */
+.doc-editor sup.md-footnote-ref {
+  color: var(--md-link);
+  cursor: pointer;
+  font-size: 0.78em;
+  line-height: 1;
+  padding: 0 1px;
+}
+
+.doc-editor sup.md-footnote-ref.ProseMirror-selectednode {
+  background: var(--md-selection);
+  border-radius: 3px;
+}
+
+.doc-editor .md-footnote-def {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  column-gap: 6px;
+  font-size: 0.92em;
+  color: var(--text-secondary);
+}
+
+.doc-editor > *:not(.md-footnote-def) + .md-footnote-def {
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+  margin-top: 8px;
+}
+
+.doc-editor .md-footnote-def-label {
+  cursor: pointer;
+  user-select: none;
+  white-space: pre;
+}
+
+.doc-editor .md-footnote-def-label:hover {
+  color: var(--md-link);
+  text-decoration: underline;
+}
+
+.doc-editor .md-footnote-def-body > p {
+  margin: 0.15em 0;
+}
+
+.doc-editor .md-footnote-flash {
+  background: var(--md-selection);
+  border-radius: 3px;
+  transition: background 0.6s ease;
+}
+
+/* Obsidian-style ![[embeds]]. The literal renders as a card: a resolved one
+ * shows its source, an unresolved one stays dashed so the typo is visible.
+ * A resolved picture swaps the literal for the picture itself (the widget the
+ * resolver adds next to the node); the node's own text is hidden then. */
+.wiki-embed {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  padding: 2px 9px;
+  border: 1px dashed var(--border-strong);
+  border-radius: 8px;
+  background: var(--surface-subtle);
+  color: var(--text-secondary);
+  font-size: 0.94em;
+  vertical-align: baseline;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wiki-embed-resolved {
+  border-style: solid;
+  border-color: var(--border);
+  color: var(--md-link);
+  background: var(--surface);
+}
+
+.wiki-embed-resolved.wiki-embed-image {
+  display: none;
+}
+
+.wiki-embed-img {
+  display: block;
+  max-width: min(100%, 480px);
+  max-height: 420px;
+  height: auto;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+}
+
+.wiki-suggest-item {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.wiki-suggest-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wiki-suggest-path {
+  flex-shrink: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11.5px;
+  color: var(--text-tertiary);
 }
 
 .doc-editor img {
@@ -423,6 +573,9 @@ html[data-doc-theme='light'] .doc-page {
   padding: 6px 10px;
   vertical-align: top;
   text-align: start;
+  /* break-word does not lower a cell's min-content width, so one long inline
+     code token would pin its column and push the table past the page */
+  overflow-wrap: anywhere;
 }
 
 /* cells hold paragraph nodes — the document paragraph margin would bloat rows */
@@ -467,6 +620,13 @@ html.genoffice-popover-open .ribbon-tabs {
   -webkit-app-region: no-drag;
 }
 
+/* Same for the wiki graph: its header (close button included) covers the
+   strip, so while the overlay is up the row has to yield or the press is
+   taken for a window drag and the graph cannot be closed */
+html.markdown-graph-open .ribbon-tabs {
+  -webkit-app-region: no-drag;
+}
+
 .ribbon-tabs button,
 .ribbon-tabs .autosave-toggle {
   -webkit-app-region: no-drag;
@@ -491,6 +651,19 @@ html.genoffice-popover-open .ribbon-tabs {
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: none;
+}
+
+/* the step after the AI labels: the band and its groups close up their spacing */
+.ribbon-body.tight {
+  padding-inline: 6px;
+}
+
+.ribbon-body.tight > .ribbon-group {
+  padding-inline: 1px;
+}
+
+.ribbon-body.tight > .rb-sep {
+  margin-inline: 3px;
 }
 
 .ribbon-body::-webkit-scrollbar {
@@ -685,6 +858,15 @@ html.genoffice-popover-open .ribbon-tabs {
   background: var(--hover);
 }
 
+/* a band too narrow even with the view tools folded shows the entry's icon
+   alone. The label is clipped, not removed: it keeps its line, so the icon
+   sits level with its labelled neighbours, and it still names the button. */
+.rb-big.ai-entry.compact > :not(.rb-big-icon) {
+  width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
 /* neutral gray open state, same control across docs/sheets/slides ribbons */
 .rb-big.ai-entry.active {
   background: var(--active-bg);
@@ -723,6 +905,52 @@ html.genoffice-popover-open .ribbon-tabs {
   border-color: var(--color-border-strong);
   color: var(--text-primary);
   font-size: 13px;
+}
+
+/* the step after the spacing: the box clips the style name, its ScreenTip reads it in full */
+.rb-style.gs-dd.narrow {
+  min-width: 0;
+  width: 72px;
+}
+
+/* view font picker: the block-style picker's box */
+.rb-font.gs-dd {
+  width: 112px;
+}
+
+.rb-font .gs-dd-btn {
+  height: 28px;
+  padding: 0 7px;
+  border-color: var(--color-border-strong);
+  color: var(--text-primary);
+  font-size: 13px;
+}
+
+/* More: the view tools that no longer fit the band, in a floating row under
+   the button (the slides ribbon's collapsed-group flyout). Fixed + anchored so
+   the ribbon-body clip cannot cut it off; it opens leftward from the window edge. */
+.rb-more-wrap {
+  position: relative;
+  display: inline-flex;
+  anchor-name: --rb-more-anchor;
+  anchor-scope: --rb-more-anchor;
+}
+
+.rb-more-pop {
+  position: fixed;
+  position-anchor: --rb-more-anchor;
+  top: calc(anchor(bottom) + 6px);
+  right: anchor(right);
+  position-try-fallbacks: flip-inline;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 8px;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px var(--md-shadow-color);
 }
 
 /* Anchor for the link popover, which is position: fixed so it escapes the
@@ -907,10 +1135,8 @@ html.genoffice-popover-open .ribbon-tabs {
 
 .fm-title {
   padding: 6px 12px 0;
-  font-size: 11.5px;
+  font-size: 12px;
   font-weight: 600;
-  letter-spacing: 0.4px;
-  text-transform: uppercase;
   color: var(--text-muted);
 }
 
@@ -955,10 +1181,8 @@ html.genoffice-popover-open .ribbon-tabs {
 }
 
 .source-title {
-  font-size: 11.5px;
+  font-size: 12px;
   font-weight: 600;
-  letter-spacing: 0.4px;
-  text-transform: uppercase;
   color: var(--text-muted);
 }
 
@@ -1136,6 +1360,24 @@ html.genoffice-popover-open .ribbon-tabs {
 .ai-header-btn:hover {
   background: var(--color-bg-subtle);
   color: var(--color-text-primary);
+}
+
+/* icon buttons in the composer footer beside the model picker (the MCP server button) */
+.ai-attach-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+.ai-attach-btn:hover {
+  filter: brightness(0.7);
 }
 
 .ai-chat {
@@ -1941,82 +2183,6 @@ html.genoffice-popover-open .ribbon-tabs {
   transform: scale(0.98);
 }
 
-/* Version snapshots footer (same as docs) */
-.ai-versions {
-  border-top: 1px solid var(--border);
-  padding: 8px 14px 10px;
-  max-height: 150px;
-  overflow-y: auto;
-}
-
-.ai-versions-title {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 11.5px;
-  font-weight: 600;
-  color: var(--text-dim);
-  margin-bottom: 4px;
-}
-
-.ai-version-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px;
-  font-size: 12px;
-  padding: 4px 8px;
-  margin: 0 -8px;
-  border-radius: 6px;
-}
-
-.ai-version-row:hover {
-  background: var(--hover);
-}
-
-.ai-version-label {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  overflow: hidden;
-  white-space: nowrap;
-  color: var(--text);
-  min-width: 0;
-}
-
-.ai-version-label > :last-child {
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.ai-version-time {
-  flex-shrink: 0;
-  font-size: 11px;
-  color: var(--text-dim);
-  font-variant-numeric: tabular-nums;
-}
-
-.ai-version-rollback {
-  flex-shrink: 0;
-  border: none;
-  background: none;
-  color: var(--word-blue);
-  font-size: 12px;
-  padding: 2px 8px;
-  border-radius: 5px;
-  cursor: pointer;
-}
-
-.ai-version-rollback:hover {
-  background: var(--active-bg);
-}
-
-.ai-version-rollback:disabled {
-  color: var(--text-dim);
-  cursor: default;
-  background: none;
-}
-
 /* Composer floats over the chat scroll area — no top border (agent-shell §4.6) */
 .ai-composer {
   border-top: none;
@@ -2030,7 +2196,7 @@ html.genoffice-popover-open .ribbon-tabs {
   border: 1px solid var(--color-border-default);
   border-radius: var(--radius-16);
   background: var(--color-bg-page);
-  box-shadow: 0 6px 30px var(--md-shadow-soft);
+  box-shadow: 0 1px 3px var(--md-shadow-soft);
   transition:
     border-color var(--transition-fast),
     box-shadow var(--transition-fast);
@@ -2372,14 +2538,6 @@ html.genoffice-popover-open .ribbon-tabs {
   background: var(--hover);
 }
 
-/* ---- transient AI-change highlight ---- */
-
-.doc-editor .ai-changed {
-  background: var(--md-ai-changed);
-  border-radius: 2px;
-  transition: background 300ms cubic-bezier(0.4, 0, 0.2, 1);
-}
-
 /* ---- code block chrome ---- */
 
 .md-codeblock {
@@ -2454,6 +2612,10 @@ html.genoffice-popover-open .ribbon-tabs {
   background: var(--md-diagram-bg);
   text-align: center;
   cursor: text;
+  /* a diagram wider than the column keeps its natural size and scrolls; the
+     scrollbar follows the paper, which stays white under the dark UI */
+  overflow-x: auto;
+  color-scheme: light;
 }
 
 .md-diagram:not(.md-diagram-collapsed) .md-diagram-preview {
@@ -2466,7 +2628,6 @@ html.genoffice-popover-open .ribbon-tabs {
 }
 
 .md-diagram-preview svg {
-  max-width: 100%;
   height: auto;
 }
 
@@ -2479,6 +2640,149 @@ html.genoffice-popover-open .ribbon-tabs {
   color: var(--md-error);
   font-size: 12.5px;
   white-space: pre-wrap;
+}
+
+/* ---- selection formatting ---- */
+
+.md-format-bar {
+  position: fixed;
+  z-index: 36;
+  width: max-content;
+  max-width: calc(100vw - 16px);
+  padding: 4px;
+  border: 1px solid var(--border-strong);
+  border-radius: 9px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-menu);
+}
+
+.md-format-row,
+.md-format-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.md-format-row {
+  flex-wrap: wrap;
+}
+
+.md-format-actions {
+  padding-inline-start: 4px;
+  margin-inline-start: 2px;
+  border-inline-start: 1px solid var(--border);
+}
+
+.md-format-style {
+  width: 112px;
+}
+
+.md-format-style .gs-dd-btn,
+.md-format-btn {
+  height: 30px;
+}
+
+.md-format-style .gs-dd-value kbd {
+  display: none;
+}
+
+.md-format-style .gs-dd-value > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.md-format-style .gs-dd-pop {
+  min-width: 216px;
+}
+
+.md-format-style .gs-dd-item {
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.md-format-style kbd {
+  color: var(--text-muted);
+  font-size: 11px;
+  white-space: nowrap;
+  direction: ltr;
+}
+
+.md-format-btn {
+  display: grid;
+  width: 30px;
+  place-items: center;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.md-format-btn span {
+  display: grid;
+  place-items: center;
+}
+
+.md-format-btn[aria-pressed='true'] {
+  background: var(--accent-soft);
+  color: var(--accent-dark);
+}
+
+.md-format-btn:hover:not(:disabled) {
+  background: var(--hover);
+}
+
+.md-format-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.md-format-btn mark {
+  padding-inline: 2px;
+  border-radius: 2px;
+  background: var(--accent-soft);
+  color: inherit;
+  font-size: 12px;
+}
+
+.md-format-link {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 2px 2px;
+  margin-block-start: 4px;
+  border-block-start: 1px solid var(--border);
+}
+
+.md-format-link input,
+.md-format-link button {
+  min-height: 29px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+}
+
+.md-format-link input {
+  flex: 1;
+  min-width: 0;
+  padding-inline: 6px;
+}
+
+.md-format-link button {
+  padding-inline: 8px;
+  cursor: pointer;
+}
+
+.md-format-link button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.md-format-link button:hover:not(:disabled) {
+  background: var(--hover);
 }
 
 /* ---- floating table menu ---- */
@@ -3484,19 +3788,25 @@ div.tiptap-mathematics-render {
 
 .md-theme-wrap {
   position: relative;
+  anchor-name: --md-theme-anchor;
+  anchor-scope: --md-theme-anchor;
 }
 
+/* fixed + anchored like .rb-link-pop: the ribbon body clips both axes, so an
+   absolute menu below the band was cut off at the band's bottom edge */
 .md-theme-menu {
-  position: absolute;
-  top: calc(100% + 6px);
-  left: 0;
+  position: fixed;
+  position-anchor: --md-theme-anchor;
+  top: calc(anchor(bottom) + 6px);
+  left: anchor(left);
+  position-try-fallbacks: flip-inline;
   z-index: 30;
   min-width: 190px;
   padding: 5px;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 10px;
-  box-shadow: var(--md-page-shadow);
+  box-shadow: var(--shadow-menu);
 }
 
 .md-theme-item {
@@ -3615,6 +3925,14 @@ div.tiptap-mathematics-render {
   color: var(--text-muted);
 }
 
+/* a tag's notes hang under the tag row: indent + a hairline rail, no bullets */
+.md-tags-notes {
+  list-style: none;
+  margin: 0 0 4px 10px;
+  padding: 0 0 0 8px;
+  border-left: 1px solid var(--border);
+}
+
 /* ---- graph view ---- */
 .graph-overlay {
   position: fixed;
@@ -3642,12 +3960,14 @@ div.tiptap-mathematics-render {
 /* the node cap cut the vault: say so rather than let a 400-of-3000 draw
    read as the whole vault */
 .graph-truncated {
-  font-size: 11px;
-  color: var(--text-tertiary);
+  font-size: 12px;
+  color: var(--text-secondary);
   margin-left: 10px;
 }
 
 .graph-close {
+  /* The graph overlaps the ribbon's native window drag strip. */
+  -webkit-app-region: no-drag;
   border: none;
   background: none;
   font-size: 15px;
@@ -3684,4 +4004,240 @@ div.tiptap-mathematics-render {
   justify-content: center;
   font-size: 13px;
   color: var(--text-muted);
+}
+
+/* ---- print preview: the PDF the export writes, one page at a time ---- */
+
+.md-print-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: var(--color-bg-overlay);
+}
+
+.md-print-dialog {
+  display: flex;
+  flex-direction: column;
+  width: min(980px, 94vw);
+  height: min(760px, 92vh);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-modal-strong);
+}
+
+.md-print-dialog:focus {
+  outline: none;
+}
+
+.md-print-header {
+  flex: none;
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--border);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.md-print-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.md-print-preview {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
+  padding: 16px;
+  background: var(--canvas);
+}
+
+.md-print-canvas {
+  display: block;
+  flex: none;
+  margin: auto;
+  background: var(--md-print-paper);
+  box-shadow: var(--md-page-shadow);
+}
+
+.md-print-canvas[hidden] {
+  display: none;
+}
+
+/* the page layout diagram in place of the page while the layout moves the faces */
+.md-print-schematic {
+  margin: auto;
+}
+
+.md-print-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: color-mix(in srgb, var(--canvas) 82%, transparent);
+  color: var(--text-secondary);
+  font-size: 13px;
+  text-align: center;
+}
+
+.md-print-overlay.error {
+  background: var(--md-error-bg);
+  color: var(--md-error);
+}
+
+.md-print-options {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  flex: none;
+  width: 280px;
+  overflow-y: auto;
+  padding: 16px;
+  border-left: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.md-print-nav {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.md-print-gap {
+  flex: 1;
+}
+
+.md-print-button {
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.md-print-button:hover:not(:disabled) {
+  background: var(--hover);
+}
+
+.md-print-button:focus-visible {
+  outline: 2px solid var(--md-focus-ring-blue);
+  outline-offset: 1px;
+}
+
+.md-print-button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.md-print-button.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.md-print-button.primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--md-on-accent);
+}
+
+.md-print-button.primary:hover:not(:disabled) {
+  border-color: var(--accent-dark);
+  background: var(--accent-dark);
+}
+
+.md-print-fieldset {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  font-size: 13px;
+}
+
+.md-print-fieldset legend {
+  margin-bottom: 2px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.md-print-fieldset label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.md-print-range {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+}
+
+.md-print-range.invalid {
+  border-color: var(--md-error-border);
+}
+
+.md-print-hint {
+  color: var(--md-error);
+  font-size: 12px;
+}
+
+.md-print-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.md-print-field select {
+  height: 28px;
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+}
+
+.md-print-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  flex: none;
+  padding: 12px 18px;
+  border-top: 1px solid var(--border);
+}
+
+.md-print-saved {
+  align-self: center;
+  margin-right: auto;
+  color: var(--text-secondary);
+  font-size: 13px;
 }

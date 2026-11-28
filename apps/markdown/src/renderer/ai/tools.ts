@@ -15,7 +15,7 @@ import {
   type MdOp,
 } from '../editor/ops'
 import { t } from '../i18n/locale'
-import { MIND_MAP_LIMITS, MIND_MAP_TOOL, parseMindMapTree } from './mind-map'
+import { MIND_MAP_LIMITS, MIND_MAP_TOOL, parseMindMapTree } from '@genoffice/agent-core/mind-map'
 import {
   DraftLanding,
   type AiDocWriter,
@@ -245,6 +245,11 @@ export const AGENT_TOOLS: AgentToolDef[] = [
         aspectRatio: {
           type: 'string',
           description: 'Optional aspect ratio like "16:9", "1:1", "4:3"',
+        },
+        model: {
+          type: 'string',
+          description:
+            'image model name, only when the user named a model; the app uses it if the current image route offers it, otherwise it answers with the models it can use',
         },
         afterIndex: {
           type: 'integer',
@@ -541,7 +546,8 @@ export function executeTool(
     case 'insert_image': {
       if (editedExternally(editor)) return fail(STALE_DOC_ERROR, t('aiToolInsertImage'))
       const url = String(call.input.url ?? '')
-      if (!/^https?:\/\//.test(url)) return fail('invalid url', t('aiToolInsertImage'))
+      // file:// = a locally cached/generated image in the app's validated store (the main process only resolves its own UUID files)
+      if (!/^(https?|file):\/\//.test(url)) return fail('invalid url', t('aiToolInsertImage'))
       return insertImageFromUrl(editor, url, call.input, signal, {
         fail: t('aiToolInsertImage'),
         done: t('aiToolInsertImageDone'),
@@ -553,8 +559,13 @@ export function executeTool(
       const prompt = String(call.input.prompt ?? '').trim()
       if (!prompt) return fail('prompt must not be empty', t('aiToolGenImage'))
       const aspectRatio = String(call.input.aspectRatio ?? '').trim()
+      const model = String(call.input.model ?? '').trim()
       return window.markdownApi
-        .aiGenerateImage({ prompt, ...(aspectRatio ? { aspectRatio } : {}) })
+        .aiGenerateImage({
+          prompt,
+          ...(aspectRatio ? { aspectRatio } : {}),
+          ...(model ? { model } : {}),
+        })
         .then((generated): ToolExecution | Promise<ToolExecution> => {
           if (signal?.aborted) {
             return fail('stopped by the user; the image was not inserted', t('aiToolGenImage'))
@@ -562,10 +573,14 @@ export function executeTool(
           if (!generated.url) {
             return fail(generated.error ?? 'image generation failed', t('aiToolGenImage'))
           }
+          const note = generated.note
           return insertImageFromUrl(editor, generated.url, call.input, signal, {
             fail: t('aiToolGenImage'),
             done: t('aiToolGenImageDone'),
-          })
+          }).then((inserted) =>
+            // the shared tool's remark (e.g. Codex picked the image model) reaches the model
+            note ? { ...inserted, output: `${inserted.output}\nNote: ${note}` } : inserted,
+          )
         })
     }
 

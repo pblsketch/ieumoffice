@@ -5,7 +5,7 @@
  * opens the window, so this file imports no React and no renderer code.
  */
 import type { AiSubscriptionProviderId } from '@genoffice/ai-provider/browser'
-import type { Lang } from '@genoffice/i18n'
+import { htmlLang, type Lang } from '@genoffice/i18n'
 import { aiSubscriptionProviderName, aiSubscriptionVendorName } from './ai-subscription'
 import { aiSubscriptionText, type AiSubscriptionStringKey } from './strings-ai-subscription'
 
@@ -33,6 +33,9 @@ const STEPS: Record<AiSubscriptionProviderId, readonly AiSubscriptionStringKey[]
     'loginWindowStepInvalid',
   ],
   codex: ['loginWindowStepBrowser', 'loginWindowStepAddress'],
+  // the app signs in to ChatGPT itself: there is no program window to guide
+  chatgpt: [],
+  antigravity: ['loginWindowStepBrowser', 'loginWindowStepAddress'],
 }
 
 /** The visible sign-in window's words for `provider`, in `lang` where a console can show it */
@@ -51,5 +54,36 @@ export function aiSubscriptionLoginWindowText(
     title: text('loginWindowTitle'),
     guide: [text('loginWindowIntro'), '', ...steps].join('\n'),
     closing: text('loginWindowClosing'),
+  }
+}
+
+/** A page the browser shows once the sign-in has come back to this PC */
+export interface AiBrowserReturnPage {
+  lang: string
+  title: string
+  body: string
+}
+
+/**
+ * What the browser shows after the ChatGPT sign-in hands it back to the app,
+ * in `lang`: connected, or not. The main processes pass it to the sign-in.
+ */
+export function aiChatGptSignInPages(lang: Lang): {
+  done: AiBrowserReturnPage
+  failed: AiBrowserReturnPage
+} {
+  const page = htmlLang(lang)
+  return {
+    done: {
+      lang: page,
+      // these strings never name the product: the card's own word says it
+      title: aiSubscriptionText(lang, 'cardReady'),
+      body: aiSubscriptionText(lang, 'browserPageDoneBody'),
+    },
+    failed: {
+      lang: page,
+      title: aiSubscriptionText(lang, 'browserPageFailedTitle'),
+      body: aiSubscriptionText(lang, 'browserPageFailedBody'),
+    },
   }
 }

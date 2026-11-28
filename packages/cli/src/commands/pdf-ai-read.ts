@@ -19,6 +19,7 @@ import {
   documentHash,
   pageFingerprints,
   parsePageList,
+  validatePageList,
   pdfFacts,
   renderPdfPage,
   resultStore,
@@ -52,7 +53,7 @@ export async function pdfAiRead(
       suggestion: 'name the pages to read, for example --pages 1-5,8',
     })
   }
-  parsePageList(spec)
+  validatePageList(spec)
   const password = flagString(args, 'password')
   const bytes = readInput(path)
   const facts = await pdfFacts(bytes, password)

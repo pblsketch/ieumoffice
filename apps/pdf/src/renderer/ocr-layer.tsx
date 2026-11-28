@@ -188,15 +188,9 @@ export async function renderPageForOcr(
   }
 }
 
-/** Recognition costs a bitmap render plus a platform engine call per page, so an
-    unbounded pass over a fully scanned 500-page file ran for minutes in the
-    background with no way out. This is the number of pages one pass recognizes;
-    the rest is reported to the user instead of silently starting up. */
-export const AUTO_OCR_PAGE_CAP = 40
-
-/** `cap`: the page cap cut the pass short. `cancelled`: the user stopped it.
-    `noEngine`: no OCR engine on this platform. `complete`: every scanned page ran. */
-export type AutoOcrStop = 'complete' | 'cap' | 'cancelled' | 'noEngine'
+/** `cancelled`: the user stopped it. `noEngine`: no OCR engine on this platform.
+    `complete`: every scanned page ran. */
+export type AutoOcrStop = 'complete' | 'cancelled' | 'noEngine'
 
 export interface AutoOcrResult {
   stop: AutoOcrStop
@@ -204,99 +198,96 @@ export interface AutoOcrResult {
   done: number
   /** Scanned pages in the document */
   total: number
-  /** Scanned pages this pass never reached (0 unless `cap` or `cancelled`) */
+  /** Scanned pages this pass never reached (0 unless `cancelled` or `noEngine`) */
   remaining: number
-  /** The pages a following pass still has to walk, in the order this pass had
-      queued them, so a capped pass is continued where it stopped instead of
-      being restarted. Set only for `cap`; `null` once there is nothing left. */
-  pending: number[] | null
 }
 
-/** Recognize the document's scanned pages sequentially, in the background.
-    Reads the shared text index (so the document is not extracted a second time),
-    visits pages from the current one and wraps around, and reports what it did.
+/** Pick the next unrecognized scanned page at or after `cursor`, wrapping around. */
+function pickNextScanned(
+  scanned: readonly number[],
+  remaining: ReadonlySet<number>,
+  cursor: number,
+): number | undefined {
+  for (const idx of scanned) {
+    if (idx >= cursor && remaining.has(idx)) return idx
+  }
+  for (const idx of scanned) {
+    if (remaining.has(idx)) return idx
+  }
+  return undefined
+}
+
+/** Recognize every scanned page in the document sequentially, in the background
+    (decision 0171: no fixed page cap because helper execution is non-blocking).
+    Reads the shared text index (so the document is not extracted a second time).
+    Before each page, checks `fromPage()`: if the user jumped to another page,
+    recognizes that page (or the next unrecognized scanned page from there) next,
+    wrapping around and never recognizing a page twice.
     `signal` stops the pass: the renderer wires it to the user's Stop and to the
     teardown of the effect that started it. */
 export async function runAutoOcr(opts: {
   doc: PDFDocumentProxy
   cache: SearchIndexCache
-  /** Original page to start from, read when the index resolves (it takes a while).
-      Ignored when `pending` continues an earlier pass. */
+  /** Current original page index the user is looking at, polled before each page. */
   fromPage: () => number
-  /** The pages an earlier pass left, in its own visit order, as reported by
-      `pending`. Handing them back is what makes a continuation pick up exactly
-      the pages that pass never reached: the order is already settled, so it is
-      followed rather than rebuilt, and a page is not paid for a second time. */
-  pending?: readonly number[]
   signal: AbortSignal
-  limit?: number
   geom: (origIdx: number) => PageGeom
   render: (doc: PDFDocumentProxy, origIdx: number, geom: PageGeom) => Promise<string | null>
   ocrPage: (png: string) => Promise<PdfOcrLine[] | null>
   onPage: (origIdx: number, data: OcrPageData) => void
   onProgress: (done: number, total: number) => void
 }): Promise<AutoOcrResult> {
-  const limit = opts.limit ?? AUTO_OCR_PAGE_CAP
   const index = await opts.cache.get(opts.doc)
   const scanned = index.map((entry, i) => (isScannedEntry(entry) ? i : -1)).filter((i) => i >= 0)
-  // A continuation walks the queue it was handed as it stands. A first pass
-  // builds one from the whole document, rotating so the pages after the reading
-  // position come first; pages that rotation had already walked before the cap
-  // are never re-queued, which is what keeps the wrapped tail from being paid
-  // for twice.
-  let queue: readonly number[] = opts.pending ?? scanned
-  if (!opts.pending) {
-    const from = scanned.findIndex((i) => i >= opts.fromPage())
-    if (from > 0) queue = [...scanned.slice(from), ...scanned.slice(0, from)]
-  }
+  const remaining = new Set<number>(scanned)
   const total = scanned.length
-  // The cap counts attempted pages, not successes: a page that fails to render or
-  // throws in the engine still cost work, and must not let the pass run forever
-  const finish = (
-    stop: AutoOcrStop,
-    done: number,
-    attempted: number,
-    pending: number[] | null,
-  ): AutoOcrResult => ({
+  const finish = (stop: AutoOcrStop, done: number): AutoOcrResult => ({
     stop,
     done,
     total,
-    remaining: queue.length - attempted,
-    pending,
+    remaining: remaining.size,
   })
   let done = 0
-  let attempted = 0
-  for (let at = 0; at < queue.length; at += 1) {
-    if (attempted >= limit) return finish('cap', done, attempted, queue.slice(at))
-    if (opts.signal.aborted) return finish('cancelled', done, attempted, null)
+  let lastAnchor = -1
+  let cursor = 0
+  while (remaining.size > 0) {
+    if (opts.signal.aborted) return finish('cancelled', done)
+    const cur = opts.fromPage()
+    if (cur !== lastAnchor) {
+      lastAnchor = cur
+      cursor = cur
+    }
+    const origIdx = pickNextScanned(scanned, remaining, cursor)
+    if (origIdx === undefined) break
+    cursor = origIdx + 1
     opts.onProgress(done, total)
     // one geometry snapshot for render and box conversion: a rotation between
     // the two awaits must not remap boxes through different axes
-    const geom = opts.geom(queue[at]!)
-    const png = await opts.render(opts.doc, queue[at]!, geom)
+    const geom = opts.geom(origIdx)
+    const png = await opts.render(opts.doc, origIdx, geom)
     // a cancel after the render must not pay for the engine call
-    if (opts.signal.aborted) return finish('cancelled', done, attempted, null)
+    if (opts.signal.aborted) return finish('cancelled', done)
     if (!png) {
-      attempted += 1
+      remaining.delete(origIdx)
       continue // no bitmap; the next page may still render
     }
     let lines: PdfOcrLine[] | null
     try {
       lines = await opts.ocrPage(png)
     } catch {
-      attempted += 1
+      remaining.delete(origIdx)
       continue // this page failed; the rest may still recognize
     }
-    if (lines === null) return finish('noEngine', done, attempted, null)
+    if (lines === null) return finish('noEngine', done)
     // an engine call already in flight is kept: the work is paid for
     const data = buildOcrPageData(lines, geom)
     if (data) {
-      opts.onPage(queue[at]!, data)
+      opts.onPage(origIdx, data)
       done += 1
     }
-    attempted += 1
+    remaining.delete(origIdx)
   }
-  return finish('complete', done, attempted, null)
+  return finish('complete', done)
 }
 
 /** Transparent selectable overlay; spans are re-projected through the live geometry,

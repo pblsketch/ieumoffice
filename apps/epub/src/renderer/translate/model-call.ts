@@ -16,12 +16,14 @@ import {
   createIpcTransport,
   type AgentStreamHandle,
   type AgentStreamRequest,
+  type IpcContextGate,
   type IpcStreamError,
   type IpcStreamErrorKind,
 } from '@genoffice/agent-core'
 import type { AiSettings } from '@genoffice/ai-provider/browser'
+import { localContextLimit } from '@genoffice/ai-provider/browser'
 import type { Lang } from '@genoffice/i18n'
-import { aiRunErrorText } from '@genoffice/ui'
+import { aiContextConfirmText, aiRunErrorText } from '@genoffice/ui'
 import type { EpubAiApi } from '../../shared/ipc'
 import { t } from '../i18n/locale'
 
@@ -60,6 +62,13 @@ export interface ModelCallOptions {
   /** the language run-error texts are worded in */
   lang: () => Lang
   /**
+   * One id for the whole book translation: every call of this factory shares
+   * it, so the context gate asks once per book and a decline stops the rest.
+   * Absent: a fresh id per factory, which keeps that rule for callers that
+   * pass none.
+   */
+  runId?: string
+  /**
    * Asked before each call: the run error kind to fail with when the route
    * the user confirmed no longer holds, else null.
    */
@@ -76,6 +85,17 @@ const abortError = (signal: AbortSignal): unknown =>
 /** a fresh transport per call: calls run side by side and share no CLI session */
 export function createModelCall(o: ModelCallOptions): ModelCall {
   const maxChars = o.maxChars ?? MODEL_CALL_MAX_CHARS
+  // one run id and one confirmation memory per book translation, shared by every call below
+  const runId = o.runId ?? crypto.randomUUID()
+  const confirmedRuns = new Set<string>()
+  /** the person declined this book's prompt: no later call of it may ask again */
+  let declined = false
+  const contextGate: IpcContextGate = {
+    isConfirmed: (id) => confirmedRuns.has(id),
+    markConfirmed: (id) => {
+      confirmedRuns.add(id)
+    },
+  }
   return async (request, signal) => {
     if (signal.aborted) throw abortError(signal)
     const refused = (await o.guard?.()) ?? null
@@ -84,6 +104,10 @@ export function createModelCall(o: ModelCallOptions): ModelCall {
         kind: refused,
       })
     }
+    if (declined)
+      throw new ModelCallError('the request was not confirmed for this book', {
+        kind: 'context-limit',
+      })
     if (signal.aborted) throw abortError(signal)
     return new Promise<string>((resolve, reject) => {
       let cause: IpcStreamError | null = null
@@ -113,12 +137,19 @@ export function createModelCall(o: ModelCallOptions): ModelCall {
         networkErrorText: () => t('aiNetworkError'),
         overloadedErrorText: () => t('aiOverloadedError'),
         errorText: (c) => aiRunErrorText(o.lang(), c),
+        // a local model's window: the transport warns at 80% and asks once per book
+        contextLimit: (settings) => localContextLimit(settings),
+        confirmContext: (warning) => window.confirm(aiContextConfirmText(o.lang(), warning)),
+        // the book's one confirmation memory, shared by its calls
+        contextGate,
         onStreamError: (error) => {
+          // the person said no: the job stops, and no later call asks again
+          if (error.kind === 'context-limit') declined = true
           cause = error
         },
       })
       handle = transport.stream(
-        { system: request.system, messages: request.messages, tools: [] },
+        { system: request.system, messages: request.messages, tools: [], runId },
         {
           onDelta: (text) => {
             if (settled) return

@@ -16,6 +16,7 @@ export const id = {
   cvTargetNone: 'Belum dipilih',
   cvTargetChoose: 'Pilih…',
   cvCover: 'Gunakan halaman pertama sebagai sampul',
+  cvPageBreaks: 'Mulai setiap halaman asli di layar baru',
   cvBookTitle: 'Judul',
   cvBookAuthor: 'Penulis',
   cvBookLanguage: 'Bahasa',
@@ -64,6 +65,9 @@ export const id = {
   cvErrFailed: 'Konversi gagal.',
   cvPageImageAlt: 'Halaman {page}',
   imgExportWholePages: 'Halaman utuh',
+  imgExportCurrentPage: 'Hanya halaman ini',
+  imgExportCurrentPageTip: 'Ekspor halaman yang sedang dilihat sebagai satu file PNG',
+  imgExportCurrentPageJpgTip: 'Ekspor halaman yang sedang dilihat sebagai satu file JPG',
   imgExportEmbedded: 'Hanya gambar di dalam halaman',
   imgExportEmbeddedTip:
     'Simpan gambar yang ada di dalam halaman sebagai file PNG dengan resolusi aslinya',

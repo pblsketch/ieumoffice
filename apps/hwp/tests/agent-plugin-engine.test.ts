@@ -24,22 +24,24 @@ const GUIDE = '이곳을 마우스로 누르고 내용을 입력하세요.'
  * A small document built with the engine itself:
  *   제목 / 첫째 문단입니다. / 둘째 문단입니다. / [2×2 table: 구분 내용 대상 업체] / 끝 문단입니다.
  */
-function openEditor(options: { fields?: boolean; endsWithTable?: boolean } = {}) {
+function openEditor(options: { fields?: boolean; endsWithTable?: boolean; blank?: boolean } = {}) {
   let doc = HwpDocument.createEmpty()
   doc.createBlankDocument()
   // the empty fourth paragraph is where the table goes
-  const lines = ['제목', '첫째 문단입니다.', '둘째 문단입니다.', '']
-  if (!options.endsWithTable) lines.push('끝 문단입니다.')
+  const lines = options.blank ? [] : ['제목', '첫째 문단입니다.', '둘째 문단입니다.', '']
+  if (!options.endsWithTable && !options.blank) lines.push('끝 문단입니다.')
   lines.forEach((line, index) => {
     if (index > 0) doc.splitParagraph(0, index - 1, doc.getParagraphLength(0, index - 1))
     if (line) doc.insertText(0, index, 0, line)
   })
-  doc.pasteHtml(
-    0,
-    3,
-    0,
-    '<table><tr><td>구분</td><td>내용</td></tr><tr><td>대상</td><td>업체</td></tr></table>',
-  )
+  if (!options.blank) {
+    doc.pasteHtml(
+      0,
+      3,
+      0,
+      '<table><tr><td>구분</td><td>내용</td></tr><tr><td>대상</td><td>업체</td></tr></table>',
+    )
+  }
   if (options.fields) {
     // two fields nobody named, each inside a line of a form: both carry the guide text as
     // their name. A third line ends in a field.
@@ -211,6 +213,30 @@ describe('adding paragraphs', () => {
     expect(editor.lines().slice(-3)).toEqual(['끝 문단입니다.', '붙임 1부.', '끝.'])
   })
 
+  it('writes the first one into the empty paragraph of a new document', () => {
+    // a new document is one empty paragraph: "end" used to add after it, which left an
+    // empty first line above everything the assistant wrote
+    const editor = openEditor({ blank: true })
+    const before = editor.plugin.foreignChanges()
+    expect(
+      editor.plugin.insertParagraphs('', null, 'end', ['제목', '본문 하나', '', '본문 둘']),
+    ).toMatchObject({ ok: true, count: 4, place: { sec: 0, para: 0, offset: 0, length: 2 } })
+    const doc = editor.doc()
+    expect(doc.getParagraphCount(0)).toBe(4)
+    expect([0, 1, 2, 3].map((para) => doc.getParagraphLength(0, para))).toEqual([2, 5, 0, 4])
+    expect(editor.lines()).toEqual(['제목', '본문 하나', '본문 둘'])
+    // one step back gives the empty document again
+    expect(editor.plugin.undo(1, before)).toMatchObject({ ok: true, undone: 1 })
+    expect(editor.doc().getParagraphCount(0)).toBe(1)
+    // a document that only ends in an empty paragraph keeps that paragraph as a line
+    const written = openEditor()
+    written.plugin.insertParagraphs('', null, 'end', [''])
+    written.plugin.insertParagraphs('', null, 'end', ['끝.'])
+    const last = written.doc().getParagraphCount(0) - 1
+    expect(written.doc().getParagraphLength(0, last - 1)).toBe(0)
+    expect(written.doc().getParagraphLength(0, last)).toBe(2)
+  })
+
   it('adds them after a table that ends the document, and leaves the table whole', () => {
     // the last paragraph holds nothing but the table: splitting it would move the table
     const editor = openEditor({ endsWithTable: true })
@@ -335,16 +361,25 @@ describe('adding a table', () => {
     expect(editor.reopened()).toContain('신청서 <제출>')
   })
 
-  it('gives the cells the font of the paragraph beside it and lines around them', () => {
-    const editor = openEditor()
-    // the second paragraph in 16pt: the table put after it should not come out in 10pt
-    editor
-      .doc()
-      .applyCharFormat(0, 1, 0, editor.doc().getParagraphLength(0, 1), '{"fontSize":1600}')
-    editor.plugin.insertTable('첫째 문단', null, 'after', [['항목', '기한']])
-    const cell = JSON.parse(editor.doc().getCellCharPropertiesAt(0, 2, 0, 1, 0, 0))
+  it('gives the cells the font of the body text, not of the line beside it, and lines around them', () => {
+    const enlarge = (doc: ReturnType<ReturnType<typeof openEditor>['doc']>, para: number) =>
+      doc.applyCharFormat(0, para, 0, doc.getParagraphLength(0, para), '{"fontSize":1600}')
+    const heading = openEditor()
+    // the line the table goes after is 16pt, as a heading would be; the body is 10pt
+    enlarge(heading.doc(), 1)
+    heading.plugin.insertTable('첫째 문단', null, 'after', [['항목', '기한']])
+    const small = JSON.parse(heading.doc().getCellCharPropertiesAt(0, 2, 0, 1, 0, 0))
+    expect(small.fontSize).toBe(1000)
+    expect(JSON.parse(heading.doc().getCellParaPropertiesAt(0, 2, 0, 1, 0)).alignment).toBe('left')
+
+    const large = openEditor()
+    for (let para = 0; para < large.doc().getParagraphCount(0); para++) {
+      if (large.doc().getParagraphLength(0, para) > 0) enlarge(large.doc(), para)
+    }
+    large.plugin.insertTable('첫째 문단', null, 'after', [['항목', '기한']])
+    const cell = JSON.parse(large.doc().getCellCharPropertiesAt(0, 2, 0, 1, 0, 0))
     expect(cell.fontSize).toBe(1600)
-    const props = JSON.parse(editor.doc().getCellProperties(0, 2, 0, 0))
+    const props = JSON.parse(large.doc().getCellProperties(0, 2, 0, 0))
     expect(JSON.stringify(props)).toMatch(/border/i)
     // a row high enough for one line of that size (16pt × 1.6 + margins), in 1/100 pt
     expect(props.height).toBeGreaterThan(2500)
@@ -575,6 +610,38 @@ describe('form fields in the real engine', () => {
     ])
   })
 
+  it("writes the value black and upright, not in the guide's blue italics", () => {
+    const editor = openEditor({ fields: true })
+    const field = JSON.parse(editor.doc().getFieldList())[0] as {
+      fieldId: number
+      location: { paraIndex: number }
+      startCharIdx: number
+      endCharIdx: number
+    }
+    editor
+      .doc()
+      .applyCharFormat(
+        0,
+        field.location.paraIndex,
+        field.startCharIdx,
+        field.endCharIdx,
+        JSON.stringify({ textColor: '#0000ff', italic: true }),
+      )
+    expect(editor.plugin.fillField(1, '홍길동')).toMatchObject({ ok: true })
+    const after = (
+      JSON.parse(editor.doc().getFieldList()) as {
+        fieldId: number
+        location: { paraIndex: number }
+        startCharIdx: number
+      }[]
+    ).find((candidate) => candidate.fieldId === field.fieldId)
+    if (!after) throw new Error('expected the field')
+    expect(editor.chars(after.location.paraIndex, after.startCharIdx)).toMatchObject({
+      italic: false,
+      textColor: '#000000',
+    })
+  })
+
   it('adds a paragraph after a line that ends in a field without landing inside the field', () => {
     // split at its end, the engine would carry the field into the new paragraph and the
     // new text would become the field's value; the paragraph is added behind it instead
@@ -592,18 +659,105 @@ describe('form fields in the real engine', () => {
     expect(editor.lines().slice(-4, -2)).toEqual([`소속: ${GUIDE} (과)`, '참고'])
   })
 
-  it('rolls the whole change back when it would cost a field its value', () => {
-    // in front of a paragraph is done by splitting at its start; where the paragraph has a
-    // field the plugin does not try
+  it('adds a paragraph in front of a line with a filled field and keeps the field as it was', () => {
     const editor = openEditor({ fields: true })
     editor.plugin.fillField(1, '홍길동')
     const lines = editor.lines()
-    const steps = editor.steps()
     expect(editor.plugin.insertParagraphs('홍길동', null, 'before', ['x'])).toMatchObject({
-      ok: false,
-      reason: 'has_objects',
+      ok: true,
     })
-    expect(editor.lines()).toEqual(lines)
+    const at = lines.indexOf('성명: 홍길동 (인)')
+    expect(editor.lines()).toEqual([...lines.slice(0, at), 'x', ...lines.slice(at)])
+    expect(editor.plugin.listFields().map((field) => field.value)).toEqual(['홍길동', '', ''])
+  })
+})
+
+describe('adding a picture', () => {
+  // a 1×1 PNG, the smallest picture the engine takes
+  const PNG = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+    'base64',
+  )
+
+  const controls = (editor: ReturnType<typeof openEditor>) =>
+    (JSON.parse(editor.doc().getControls()) as { ctrlId: string }[]).length
+
+  it('puts it in a new paragraph after the anchor, as one step, and the text is unchanged', () => {
+    const editor = openEditor()
+    const paragraphs = editor.lines()
+    const before = editor.plugin.foreignChanges()
+    const objects = controls(editor)
+    const result = editor.plugin.insertPicture(
+      '첫째 문단',
+      null,
+      'after',
+      PNG.toString('base64'),
+      240,
+      1,
+      1,
+      'png',
+    )
+    expect(result).toMatchObject({ ok: true, inTable: false })
+    expect(editor.steps()).toBe(1)
+    expect(editor.lines()).toEqual(paragraphs)
+    // the engine really made one more object, and it survives a save and a reopen
+    expect(controls(editor)).toBe(objects + 1)
+    expect(editor.reopened()).toEqual(paragraphs)
+    expect(editor.plugin.undo(1, before)).toMatchObject({ ok: true, undone: 1 })
+  })
+
+  it('can put it inside a table cell, where the engine addresses the cell paragraph', () => {
+    const editor = openEditor()
+    const paragraphs = editor.lines()
+    const objects = controls(editor)
+    const result = editor.plugin.insertPicture(
+      '구분',
+      null,
+      'after',
+      PNG.toString('base64'),
+      60,
+      1,
+      1,
+      'png',
+    )
+    expect(result).toMatchObject({ ok: true, inTable: true })
+    expect(controls(editor)).toBe(objects + 1)
+    expect(editor.lines()).toEqual(paragraphs)
+    expect(editor.reopened()).toEqual(paragraphs)
+  })
+
+  it('refuses bytes that are not the picture the extension names', () => {
+    const editor = openEditor()
+    const steps = editor.steps()
+    expect(() =>
+      editor.plugin.insertPicture(
+        '첫째 문단',
+        null,
+        'after',
+        Buffer.from('not a png').toString('base64'),
+        240,
+        1,
+        1,
+        'png',
+      ),
+    ).toThrow(/not a PNG/)
+    expect(editor.steps()).toBe(steps)
+  })
+
+  it('refuses an occurrence of 0 for its anchor instead of taking the first', () => {
+    const editor = openEditor()
+    const steps = editor.steps()
+    const result = editor.plugin.insertPicture(
+      '첫째 문단',
+      0,
+      'after',
+      PNG.toString('base64'),
+      240,
+      1,
+      1,
+      'png',
+    )
+    expect(result).toMatchObject({ ok: false, reason: 'no_such_occurrence' })
     expect(editor.steps()).toBe(steps)
   })
 })

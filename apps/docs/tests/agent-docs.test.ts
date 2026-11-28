@@ -462,6 +462,11 @@ describe('insert_image freshness baseline', () => {
           // real PNG magic bytes: the tool sniffs the payload before trusting the mime
           release = () => resolve({ mime: 'image/png', base64: 'iVBORw0KGgoAAAAA' })
         }),
+      readAttachmentImage: async () => ({
+        ok: true,
+        mime: 'image/png',
+        base64: 'iVBORw0KGgoAAAAA',
+      }),
     }
     globalThis.Image = FakeImage as unknown as typeof Image
     try {
@@ -520,6 +525,64 @@ describe('insert_image freshness baseline', () => {
       const write = await replaceFirstPara(editor)
       expect(write.isError).toBeUndefined()
     })
+  })
+
+  it('inserts an image file attached to the chat, by the name the panel showed', async () => {
+    const editor = createEditor(fixture())
+    await withImageStubs(async () => {
+      const skill = createDocsSkill(
+        () => editor,
+        () => NUM_IDS,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        () => ({
+          pathOf: (name) => (name === 'probe.png' ? 'C:/tmp/probe.png' : null),
+          names: () => ['probe.png'],
+        }),
+      )
+      expect(skill.systemPrompt).toContain('probe.png')
+      const before = JSON.stringify(editor.getJSON())
+      const exec = await skill.executeTool({
+        id: 't',
+        name: 'insert_image',
+        input: { attachment: 'probe.png' },
+      })
+      expect(exec.isError).toBeUndefined()
+      expect(exec.output).toContain('Inserted the image')
+      expect(JSON.stringify(editor.getJSON())).not.toBe(before)
+    })
+  })
+
+  it('refuses an attachment name the chat does not have', async () => {
+    const editor = createEditor(fixture())
+    const skill = createDocsSkill(
+      () => editor,
+      () => NUM_IDS,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      () => ({ pathOf: () => null, names: () => [] }),
+    )
+    const exec = await skill.executeTool({
+      id: 't',
+      name: 'insert_image',
+      input: { attachment: 'missing.png' },
+    })
+    expect(exec.isError).toBe(true)
+    expect(exec.output).toContain('there is no file named "missing.png"')
   })
 })
 

@@ -46,6 +46,8 @@ export interface RibbonFormatState {
   textboxSelected: boolean
   shapeFill: string | null
   shapeBorderColor: string | null
+  /** outline width of the selected shape in CSS px (a:ln w; null = Word's own default) */
+  shapeBorderWidthPx: number | null
   shapePrst: string | null
   /**
    * What the selected shape's own text agrees on, for the Shape Format Text
@@ -121,6 +123,7 @@ export const EMPTY_FORMAT_STATE: RibbonFormatState = {
   textboxSelected: false,
   shapeFill: null,
   shapeBorderColor: null,
+  shapeBorderWidthPx: null,
   shapePrst: null,
   shapeHasText: false,
   shapeTextBold: false,
@@ -322,6 +325,9 @@ export function computeFormatState(
     shapeBorderColor: Array.isArray(protAttrs.textboxes)
       ? str((protAttrs.textboxes[0] as { borderColor?: string } | undefined)?.borderColor)
       : null,
+    shapeBorderWidthPx: Array.isArray(protAttrs.textboxes)
+      ? num((protAttrs.textboxes[0] as TextboxDisplay | undefined)?.borderWidthPx)
+      : null,
     shapePrst: Array.isArray(protAttrs.textboxes)
       ? str((protAttrs.textboxes[0] as { prst?: string } | undefined)?.prst)
       : null,
@@ -351,8 +357,14 @@ export function computeFormatState(
     headingLevel: editor.isActive('docHeading')
       ? Number(editor.getAttributes('docHeading').level ?? 1)
       : null,
-    listBullet: editor.isActive('docListItem', { kind: 'bullet' }),
-    listOrdered: editor.isActive('docListItem', { kind: 'ordered' }),
+    // a textbox paragraph carries its list on the listMarker attr instead of a
+    // docListItem node, so the buttons reflect the marker's kind while inside
+    listBullet: sub
+      ? paraAttrs.listMarker?.kind === 'bullet'
+      : editor.isActive('docListItem', { kind: 'bullet' }),
+    listOrdered: sub
+      ? paraAttrs.listMarker?.kind === 'ordered'
+      : editor.isActive('docListItem', { kind: 'ordered' }),
     align: str(paraAttrs.align),
     bidi: paraAttrs.bidi === true || paraAttrs.bidiInferred === true,
     selectionBidi: effectiveBidi(paraAttrs) || (!sub && selectionHasBidi(editor)),

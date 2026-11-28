@@ -29,8 +29,8 @@
  * standalone window (`startMindmapStandalone`) uses the same code.
  */
 import { existsSync } from 'node:fs'
-import { readFile } from 'node:fs/promises'
-import { basename, dirname, extname, join } from 'node:path'
+import { readFile, stat } from 'node:fs/promises'
+import { basename, dirname, join } from 'node:path'
 import { BrowserWindow, WebContentsView, app, dialog, ipcMain, shell } from 'electron'
 import type { WebContents } from 'electron'
 import {
@@ -57,11 +57,23 @@ import type {
 import { getUiLang, normalizeLang, setUiLang } from '@genoffice/i18n'
 import { openXmind } from '@genoffice/xmind-engine'
 import { registerMindmapAiIpc } from './ai-attachments'
+import { registerMindmapImageIpc } from './ai-image'
+import { registerLinkPreviewIpc } from './link-preview'
 import { atomicWriteFile } from './atomic-write'
-import { registerMindmapExportIpc } from './export-main'
+import {
+  grantSaveAsExport,
+  registerMindmapExportIpc,
+  setMindmapHeadlessPdfTarget,
+} from './export-main'
 import { registerMindmapHandoffIpc } from './handoff-main'
 import { queueMindmapSeedFor, registerMindmapSeedIpc } from './seed-main'
 import { tm } from './i18n-main'
+import {
+  saveAsDefaultPath,
+  saveAsFilters,
+  saveAsTarget,
+  type MapSaveAsKind,
+} from './save-as-formats'
 import {
   resolveViewOpen,
   setViewOpenDecision,
@@ -84,6 +96,7 @@ import type {
   OpenFileResult,
   RecoveryCopyResult,
   SaveMindmapResult,
+  SaveIntoProjectResult,
   SaveMode,
 } from '../shared/ipc'
 
@@ -93,12 +106,33 @@ export { DONT_SAVE_HOLD_MS as MINDMAP_DONT_SAVE_HOLD_MS } from './recovery-main'
 
 /** The one extension a map is saved with. */
 const MAP_EXTENSION = '.xmind'
+/** FreeMind and Freeplane maps: imported into a new map, never written. */
+const FREEMIND_RE = /\.mm$/i
+/** The files this editor opens: its own maps and the ones it imports. */
+const MAP_FILE_RE = /\.(xmind|mm)$/i
+/** The largest `.mm` read for an import; a FreeMind map is plain XML. */
+const MAX_FREEMIND_BYTES = 32 * 1024 * 1024
 
 interface RuntimePaths {
   preloadPath: string
   /** the renderer's dev server, when one runs */
   rendererUrl?: string
   rendererFile?: string
+  /**
+   * Project folders (spec 6): the folder an untitled document's save dialog
+   * opens in for this view, or null for the default save folder.
+   */
+  newDocumentDir?: (webContentsId: number) => Promise<string | null>
+  /**
+   * Project folders (spec 6): write a new map the AI made for this view into
+   * the project its panel chose (the shell picks the folder and a free name,
+   * never over a file); resolves to the path written, or null without a project.
+   */
+  writeNewDocument?: (
+    webContentsId: number,
+    fileName: string,
+    bytes: Uint8Array,
+  ) => Promise<string | null>
 }
 
 let runtime: RuntimePaths = { preloadPath: '' }
@@ -120,6 +154,8 @@ const savePathByWc = new Map<number, string>()
  * written for a view in here, to any path. A view for a new map is never in.
  */
 const unopenedByWc = new Map<number, 'pending' | 'failed'>()
+/** Views whose map was imported from a `.mm`: that file, never written, and its name */
+const importByWc = new Map<number, { path: string; title: string }>()
 
 /** Whether anything may be written for this view. */
 function mayWrite(wcId: number): boolean {
@@ -143,8 +179,8 @@ const COPY_NOW_TIMEOUT_MS = 5000
 // overwriting it; an automatic save defers silently to the next manual one.
 const docDiskStates = new Map<number, Map<string, SaveDiskState>>()
 
-async function rememberDiskState(wcId: number, path: string): Promise<void> {
-  const state = await recordDiskState(path)
+async function rememberDiskState(wcId: number, path: string, read?: Uint8Array): Promise<void> {
+  const state = await recordDiskState(path, read)
   if (!state) return
   const states = docDiskStates.get(wcId) ?? new Map<string, SaveDiskState>()
   states.set(path, state)
@@ -458,35 +494,48 @@ function fileNameBase(name: string | undefined): string {
     .trim()
 }
 
-function withMapExtension(path: string): string {
-  return extname(path).toLowerCase() === MAP_EXTENSION ? path : `${path}${MAP_EXTENSION}`
+/** An imported map's first save: an `.xmind` of the same name beside its `.mm`. */
+function importSaveAsDefault(wcId: number): string | undefined {
+  const imported = importByWc.get(wcId)
+  if (!imported) return undefined
+  const name = fileNameBase(imported.title) || tm('untitledFile')
+  return join(dirname(imported.path), `${name}${MAP_EXTENSION}`)
 }
 
+/**
+ * Where a save goes, and as what. Save As lists the export types after .xmind
+ * (`save-as-formats.ts`); picking one of them is no save of the map.
+ */
 async function resolveSaveTarget(
   e: Electron.IpcMainInvokeEvent,
   mode: SaveMode,
   defaultName?: string,
-): Promise<string | 'canceled'> {
+): Promise<{ path: string; kind: MapSaveAsKind } | 'canceled'> {
   const current = savePathByWc.get(e.sender.id)
-  if (mode === 'save' && current) return current
+  if (mode === 'save' && current) return { path: current, kind: 'xmind' }
+  const offerExports = mode === 'saveAs'
   const win =
     BrowserWindow.fromWebContents(e.sender) ?? BrowserWindow.getFocusedWindow() ?? undefined
-  // a restored map whose file is gone is offered that file's old place
-  const restoredPath = current ? undefined : viewSaveAsDefault(e.sender.id)
+  // a restored map whose file is gone is offered that file's old place, an
+  // imported map the place of the .mm it came from
+  const restoredPath = current
+    ? undefined
+    : (viewSaveAsDefault(e.sender.id) ?? importSaveAsDefault(e.sender.id))
   const defaultPath = current
     ? join(dirname(current), basename(current))
     : (restoredPath ??
       join(
-        configuredDefaultSaveDir(app),
+        // an untitled map whose panel has a project starts in that folder (spec 6)
+        (await runtime.newDocumentDir?.(e.sender.id)) ?? configuredDefaultSaveDir(app),
         `${fileNameBase(defaultName) || tm('untitledFile')}${MAP_EXTENSION}`,
       ))
   const picked = await showSaveDialogWithMemory(dialog, win, {
     title: tm('dlgSaveTitle'),
-    defaultPath,
-    filters: [{ name: tm('filterMindmap'), extensions: [MAP_EXTENSION.slice(1)] }],
+    defaultPath: saveAsDefaultPath(defaultPath, offerExports),
+    filters: saveAsFilters(offerExports, tm),
   })
   if (picked.canceled || !picked.filePath) return 'canceled'
-  return withMapExtension(picked.filePath)
+  return saveAsTarget(picked.filePath, offerExports)
 }
 
 /** The window a question about this view sits over. */
@@ -512,6 +561,33 @@ function bytesOf(value: unknown): Uint8Array | null {
   return null
 }
 
+/**
+ * The view's map now lives at `target` (just written): later saves go there,
+ * a reload loads it, its recovery copies are done, and the shell hears of a
+ * new path.
+ */
+async function adoptWrittenPath(
+  contents: WebContents,
+  target: string,
+  previousPath: string | undefined,
+): Promise<void> {
+  const wcId = contents.id
+  savePathByWc.set(wcId, target)
+  // keep the reload path in sync: a stale openPathByWc would make a
+  // reloaded renderer load the OLD file and then save it over the new one
+  openPathByWc.set(wcId, target)
+  const allowed = allowedByWc.get(wcId) ?? new Set<string>()
+  allowed.add(target)
+  allowedByWc.set(wcId, allowed)
+  dirtyByWc.delete(wcId)
+  // the map is on disk: its recovery copies have done their part
+  viewSaved(wcId)
+  // Refresh the record for the written bytes; the view no longer edits a moved-away path
+  await rememberDiskState(wcId, target)
+  if (previousPath && previousPath !== target) forgetDiskState(wcId, previousPath)
+  if (previousPath !== target) fileSavedHook?.(contents, target)
+}
+
 let ipcRegistered = false
 
 function registerMindmapIpc(): void {
@@ -525,8 +601,19 @@ function registerMindmapIpc(): void {
     if (typeof path !== 'string' || !allowedByWc.get(wcId)?.has(path)) {
       throw new Error('mindmap: path not granted to this view')
     }
+    const notifyHeadless = (result: OpenFileResult): OpenFileResult => {
+      const cb = headlessOpenCallbacks.get(wcId)
+      if (cb) {
+        if (result.status === 'ok' || result.status === 'import') cb(true)
+        else cb(false, `mindmap did not open (${result.status})`)
+      }
+      return result
+    }
+    if (FREEMIND_RE.test(path)) return notifyHeadless(await importFreeMind(wcId, path))
     // A recovery copy left for this file is settled before any of the map is loaded.
-    const restored = await resolveViewOpen(wcId, path, parentWindowOf(e.sender))
+    const restored = headlessOpenCallbacks.has(wcId)
+      ? null
+      : await resolveViewOpen(wcId, path, parentWindowOf(e.sender))
     let bytes: Uint8Array | null
     try {
       bytes = new Uint8Array(await readFile(path))
@@ -541,42 +628,43 @@ function registerMindmapIpc(): void {
         if (bytes && (await openXmind(bytes)).status === 'ok') {
           // the file still opens: it stays the save target
           savePathByWc.set(wcId, path)
-          await rememberDiskState(wcId, path)
-          return { status: 'ok', bytes: restored, restored: 'file' }
+          await rememberDiskState(wcId, path, bytes)
+          return notifyHeadless({ status: 'ok', bytes: restored, restored: 'file' })
         }
         // The file is gone or no longer opens, so it is not written over: the
         // map is untitled, its first save offers the old place, and its copies
         // keep replacing the restored one.
         savePathByWc.delete(wcId)
         viewRestoredUntitled(wcId, path)
-        return { status: 'ok', bytes: restored, restored: 'untitled' }
+        return notifyHeadless({ status: 'ok', bytes: restored, restored: 'untitled' })
       }
       console.warn(`[mindmap] the recovery copy does not open (${copy.status}); the file opens`)
     }
     if (!bytes) {
       refuseWrites(wcId)
-      return { status: 'unreadable' }
+      return notifyHeadless({ status: 'unreadable' })
     }
     const opened = await openXmind(bytes)
     if (opened.status !== 'ok') {
       console.warn(`[mindmap] the file did not open (${opened.status}): ${opened.detail}`)
       refuseWrites(wcId)
-      return { status: opened.status }
+      return notifyHeadless({ status: opened.status })
     }
     // Seen open, here: only now is the path a save target. This also covers a
     // reload of a view whose file opens again after it was replaced on disk.
     unopenedByWc.delete(wcId)
     savePathByWc.set(wcId, path)
-    await rememberDiskState(wcId, path)
-    return { status: 'ok', bytes }
+    await rememberDiskState(wcId, path, bytes)
+    return notifyHeadless({ status: 'ok', bytes })
   })
 
   ipcMain.handle(MINDMAP_CHANNELS.save, async (e, request: unknown): Promise<SaveMindmapResult> => {
     const wcId = e.sender.id
     const waiter = saveWaiters.get(wcId)
     saveWaiters.delete(wcId)
+    // only a written map is a save: a cancel or a Save As copy is not
     const done = (result: SaveMindmapResult): SaveMindmapResult => {
-      waiter?.(result.ok && !('canceled' in result))
+      waiter?.(result.ok && 'path' in result)
       return result
     }
     if (!mayWrite(wcId)) {
@@ -618,28 +706,61 @@ function registerMindmapIpc(): void {
         typeof defaultName === 'string' ? defaultName : undefined,
       )
       if (target === 'canceled') return done({ ok: true, canceled: true })
+      if (target.kind !== 'xmind') {
+        // Save As › an export type: a copy, written by the export channel to
+        // exactly this path. The map keeps its file, state and recovery copy.
+        grantSaveAsExport(wcId, { kind: target.kind, path: target.path })
+        return done({ ok: true, export: { format: target.kind, path: target.path } })
+      }
       const previousPath = savePathByWc.get(wcId)
-      const isNewPath = previousPath !== target
-      await atomicWriteFile(target, Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength))
-      savePathByWc.set(wcId, target)
-      // keep the reload path in sync: a stale openPathByWc would make a
-      // reloaded renderer load the OLD file and then save it over the new one
-      openPathByWc.set(wcId, target)
-      const allowed = allowedByWc.get(wcId) ?? new Set<string>()
-      allowed.add(target)
-      allowedByWc.set(wcId, allowed)
-      dirtyByWc.delete(wcId)
-      // the map is on disk: its recovery copies have done their part
-      viewSaved(wcId)
-      // Refresh the record for the written bytes; the view no longer edits a moved-away path
-      await rememberDiskState(wcId, target)
-      if (previousPath && previousPath !== target) forgetDiskState(wcId, previousPath)
-      if (isNewPath) fileSavedHook?.(e.sender, target)
-      return done({ ok: true, path: target })
+      await atomicWriteFile(
+        target.path,
+        Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength),
+      )
+      await adoptWrittenPath(e.sender, target.path, previousPath)
+      return done({ ok: true, path: target.path })
     } catch (err) {
       return done({ ok: false, error: err instanceof Error ? err.message : String(err) })
     }
   })
+
+  // Project folders (spec 6): the run a create flow handed to this untitled map
+  // ended well. The bytes go to the shell's project writer, which picks the
+  // folder from the panel's project and a free name (never over a file); the
+  // renderer offers only the map's name. The map then becomes that file like a
+  // first save. Without a project (or a shell) nothing is written: `skipped`.
+  ipcMain.handle(
+    MINDMAP_CHANNELS.saveIntoProject,
+    async (e, request: unknown): Promise<SaveIntoProjectResult> => {
+      const wcId = e.sender.id
+      const write = runtime.writeNewDocument
+      if (!write || !mayWrite(wcId) || savePathByWc.has(wcId)) return { ok: false, skipped: true }
+      const { bytes: rawBytes, defaultName } = (request ?? {}) as {
+        bytes?: unknown
+        defaultName?: unknown
+      }
+      const bytes = bytesOf(rawBytes)
+      if (!bytes) return { ok: false, error: 'mindmap: bad save request' }
+      // the bytes come from a renderer: only a map that opens is written
+      const check = await openXmind(bytes)
+      if (check.status !== 'ok') {
+        return {
+          ok: false,
+          error: `mindmap: refusing to write a map that would not open (${check.status})`,
+        }
+      }
+      const base = fileNameBase(typeof defaultName === 'string' ? defaultName : undefined)
+      try {
+        const written = await write(wcId, `${base || tm('untitledFile')}${MAP_EXTENSION}`, bytes)
+        // no project chosen, or a save that asked where landed meanwhile
+        if (!written || savePathByWc.has(wcId)) return { ok: false, skipped: true }
+        await adoptWrittenPath(e.sender, written, undefined)
+        return { ok: true, path: written }
+      } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : String(err) }
+      }
+    },
+  )
 
   ipcMain.handle(MINDMAP_CHANNELS.openLink, async (_e, url: unknown): Promise<boolean> => {
     const target = openableLink(url)
@@ -695,7 +816,17 @@ function registerMindmapIpc(): void {
   ipcMain.on(MINDMAP_CHANNELS.recoveryCopyNowDone, (e) => copyNowWaiters.get(e.sender.id)?.())
 
   // the AI panel's attachments and the provisional name of an untitled map (T12)
-  registerMindmapAiIpc({ hasFile: (wcId) => savePathByWc.has(wcId) })
+  registerMindmapAiIpc({
+    hasFile: (wcId) => savePathByWc.has(wcId),
+    filePathOf: (wcId) => savePathByWc.get(wcId) ?? openPathByWc.get(wcId),
+  })
+  // the AI panel's pictures: search result or generated file → bytes for the renderer
+  registerMindmapImageIpc({
+    filePathOf: (wcId) => savePathByWc.get(wcId) ?? null,
+    pastedImageDir: join(app.getPath('temp'), 'genoffice-pasted'),
+  })
+  // a link's picture and title, read only when the person asks for them in the link dialog
+  registerLinkPreviewIpc()
   registerMindmapExportIpc({ filePathOf: (wcId) => savePathByWc.get(wcId) })
   registerMindmapHandoffIpc({ opensFile: (wcId) => openPathByWc.has(wcId) })
   registerMindmapSeedIpc({ opensFile: (wcId) => openPathByWc.has(wcId) })
@@ -703,6 +834,27 @@ function registerMindmapIpc(): void {
   // Language channel shared with other modules; removeHandler tolerates duplicate registration
   ipcMain.removeHandler(APP_CHANNELS.getLanguage)
   ipcMain.handle(APP_CHANNELS.getLanguage, () => getUiLang())
+}
+
+/**
+ * A `.mm` for the renderer to import: its bytes, read and never written. The
+ * map it becomes is untitled, so it may be saved, and only where the person
+ * picks; a file too large or not there opens nothing.
+ */
+async function importFreeMind(wcId: number, path: string): Promise<OpenFileResult> {
+  let bytes: Uint8Array
+  try {
+    if ((await stat(path)).size > MAX_FREEMIND_BYTES) throw new Error('too large')
+    bytes = new Uint8Array(await readFile(path))
+  } catch {
+    refuseWrites(wcId)
+    return { status: 'unreadable' }
+  }
+  unopenedByWc.delete(wcId)
+  savePathByWc.delete(wcId)
+  const title = basename(path).replace(FREEMIND_RE, '')
+  importByWc.set(wcId, { path, title })
+  return { status: 'import', importer: 'freemind', bytes, title }
 }
 
 /** The view's file did not open: it has no save target and gets none. */
@@ -737,8 +889,10 @@ function grantAndTrack(wc: WebContents, openPath?: string | null): void {
     allowedByWc.delete(wcId)
     savePathByWc.delete(wcId)
     unopenedByWc.delete(wcId)
+    importByWc.delete(wcId)
     dirtyByWc.delete(wcId)
     docDiskStates.delete(wcId)
+    grantSaveAsExport(wcId, null)
     closeSaveWaiters.get(wcId)?.(false)
     closeSaveWaiters.delete(wcId)
     saveWaiters.get(wcId)?.(false)
@@ -757,6 +911,9 @@ const VIEW_PREFERENCES = {
   sandbox: true,
 } as const
 
+/** Headless PDF export notifications keyed by webContentsId: triggered once openFile succeeds. */
+const headlessOpenCallbacks = new Map<number, (ok: boolean, reason?: string) => void>()
+
 /** A map tab for the shell. `openPath` null or left out: a new, untitled map. */
 export function createMindmapView(openPath?: string | null): WebContentsView {
   registerMindmapIpc()
@@ -766,6 +923,75 @@ export function createMindmapView(openPath?: string | null): WebContentsView {
   grantAndTrack(view.webContents, openPath)
   void view.webContents.loadURL(mindmapRendererUrl())
   return view
+}
+
+/**
+ * Dialog-free PDF export for `.xmind` and `.mm` files via a hidden renderer
+ * window, reusing the File menu's own snapshot -> HTML -> printToPDF pipeline.
+ */
+export async function exportMindmapPdfHeadless(
+  input: string,
+  outPath: string,
+  timeoutMs = 180_000,
+): Promise<void> {
+  registerMindmapIpc()
+  const win = new BrowserWindow({
+    show: false,
+    width: 1200,
+    height: 850,
+    webPreferences: {
+      preload: runtime.preloadPath,
+      ...VIEW_PREFERENCES,
+      backgroundThrottling: false,
+    },
+  })
+  const wc = win.webContents
+  const wcId = wc.id
+  grantAndTrack(wc, input)
+  let timer: ReturnType<typeof setTimeout> | undefined
+  let poll: ReturnType<typeof setInterval> | undefined
+  try {
+    const report = await new Promise<{ ok: boolean; error?: string }>((resolve) => {
+      let settled = false
+      const finish = (result: { ok: boolean; error?: string }): void => {
+        if (settled) return
+        settled = true
+        if (poll) clearInterval(poll)
+        resolve(result)
+      }
+      setMindmapHeadlessPdfTarget(wcId, { outPath, done: finish })
+      headlessOpenCallbacks.set(wcId, (ok, reason) => {
+        headlessOpenCallbacks.delete(wcId)
+        if (!ok) {
+          finish({ ok: false, error: reason ?? 'mindmap file could not be opened' })
+          return
+        }
+        // Trigger export once the renderer mounts the loaded map; retry periodically
+        // until the renderer answers exportPdf (large maps take a few frames to lay out).
+        setTimeout(() => {
+          if (!settled && !wc.isDestroyed()) sendMindmapExportRequest(wc, 'pdf')
+        }, 300)
+        poll = setInterval(() => {
+          if (!settled && !wc.isDestroyed()) sendMindmapExportRequest(wc, 'pdf')
+        }, 700)
+      })
+      wc.on('render-process-gone', (_event, details) =>
+        finish({ ok: false, error: `mindmap renderer stopped (${details.reason})` }),
+      )
+      timer = setTimeout(
+        () => finish({ ok: false, error: `mindmap export timed out after ${timeoutMs}ms` }),
+        timeoutMs,
+      )
+      void wc.loadURL(mindmapRendererUrl())
+    })
+    if (!report.ok) throw new Error(report.error ?? 'mindmap export failed')
+  } finally {
+    if (timer) clearTimeout(timer)
+    if (poll) clearInterval(poll)
+    headlessOpenCallbacks.delete(wcId)
+    setMindmapHeadlessPdfTarget(wcId, null)
+    if (!win.isDestroyed()) win.destroy()
+  }
 }
 
 /** Standalone window mode: `npm run dev -w @genoffice/mindmap`, a map path passed via argv */
@@ -790,7 +1016,7 @@ export function startMindmapStandalone(): void {
       height: 850,
       webPreferences: { preload: runtime.preloadPath, ...VIEW_PREFERENCES },
     })
-    const argPath = process.argv.slice(1).find((a) => /\.xmind$/i.test(a) && existsSync(a))
+    const argPath = process.argv.slice(1).find((a) => MAP_FILE_RE.test(a) && existsSync(a))
     grantAndTrack(win.webContents, argPath)
     void win.loadURL(mindmapRendererUrl())
   })

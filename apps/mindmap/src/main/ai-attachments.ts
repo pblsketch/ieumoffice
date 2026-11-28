@@ -19,16 +19,24 @@
  * subscription channels belong to the docs main and are never registered here.
  */
 import { mkdirSync, readFileSync, readdirSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
-import { basename, join } from 'node:path'
+import { basename, join, extname } from 'node:path'
 import { BrowserWindow, app, dialog, ipcMain } from 'electron'
 import type { WebContents } from 'electron'
-import { assertFileSaved, showOpenDialogWithMemory } from '@genoffice/electron-utils'
+import {
+  assertFileSaved,
+  isBesideDocument,
+  sharedPathGrants,
+  showOpenDialogWithMemory,
+} from '@genoffice/electron-utils'
 import {
   parseFileToText,
   ATTACHABLE_EXTS,
   ATTACHABLE_IMAGE_EXTS,
   ATTACHABLE_MAX_BYTES,
+  attachableMaxBytes,
   ATTACHABLE_IMAGE_MAX_BYTES,
+  diagramPictureExtOf,
+  diagramPictureExtOfName,
 } from '@genoffice/file-parse'
 import { createI18n, getUiLang } from '@genoffice/i18n'
 import { MINDMAP_CHANNELS } from '../shared/ipc'
@@ -82,6 +90,20 @@ const ATTACH_STRINGS = {
     errImageNoText:
       'Tệp đính kèm hình ảnh không có văn bản; hình ảnh được gửi cùng với tin nhắn của người dùng',
     errNotImage: 'loại hình ảnh không được hỗ trợ',
+  },
+  tr: {
+    dlgAddAttachment: 'Ek Dosya Ekle',
+    filterSupported: 'Desteklenen Dosyalar',
+    filterAll: 'Tüm Dosyalar',
+    errUnsupportedExt: '.{ext} dosyaları desteklenmiyor',
+    errNotFile: 'dosya değil',
+    errTooLarge: '{mb} MB sınırını aşıyor',
+    errImageTooLarge: 'görsel 5 MB sınırını aşıyor',
+    errUnreadable: 'okunamıyor',
+    errFileTooLarge: 'Dosya boyut sınırını aşıyor',
+    errParseFailed: 'Dosya ayrıştırılamadı',
+    errImageNoText: 'Görsel eklerinde metin yok; görsel kullanıcı mesajıyla birlikte gönderilir',
+    errNotImage: 'desteklenen bir görsel türü değil',
   },
   ja: {
     dlgAddAttachment: '添付ファイルの追加',
@@ -383,12 +405,13 @@ function extOf(name: string): string {
 
 function statAttachment(filePath: string): { meta?: AttachmentMeta; error?: string } {
   const name = basename(filePath)
-  const ext = extOf(name)
+  // a draw.io picture that holds its diagram is read as diagram text
+  const ext = diagramPictureExtOf(filePath) ?? extOf(name)
   if (!ATTACHABLE_EXTS.has(ext)) return { error: `${name}: ${tm('errUnsupportedExt', { ext })}` }
   try {
     const stat = statSync(filePath)
     if (!stat.isFile()) return { error: `${name}: ${tm('errNotFile')}` }
-    if (stat.size > ATTACHABLE_MAX_BYTES) {
+    if (!ATTACHABLE_IMAGE_EXTS.has(ext) && stat.size > attachableMaxBytes(ext)) {
       return {
         error: `${name}: ${tm('errTooLarge', { mb: Math.round(ATTACHABLE_MAX_BYTES / 1024 / 1024) })}`,
       }
@@ -470,7 +493,8 @@ async function attachmentText(filePath: string): Promise<string> {
   const stamp = `${stat.mtimeMs}:${stat.size}`
   const cached = textCache.get(filePath)
   if (cached && cached.stamp === stamp) return cached.text
-  if (stat.size > ATTACHABLE_MAX_BYTES) throw new Error(tm('errFileTooLarge'))
+  const capExt = diagramPictureExtOfName(filePath) ?? extname(filePath)
+  if (stat.size > attachableMaxBytes(capExt)) throw new Error(tm('errFileTooLarge'))
   const parsed = await parseFileToText(filePath)
   if (!parsed.ok || parsed.kind !== 'text' || parsed.text == null) {
     throw new Error(parsed.error ?? tm('errParseFailed'))
@@ -493,7 +517,7 @@ export async function readAttachmentPage(
     return { ok: false, error: tm('errUnreadable') }
   }
   const name = basename(filePath)
-  const ext = extOf(name)
+  const ext = diagramPictureExtOf(filePath) ?? extOf(name)
   if (!ATTACHABLE_EXTS.has(ext)) return { ok: false, error: tm('errUnsupportedExt', { ext }) }
   if (ATTACHABLE_IMAGE_EXTS.has(ext)) return { ok: false, error: tm('errImageNoText') }
   try {
@@ -541,10 +565,17 @@ export function setMindmapProvisionalTitleHook(
 export interface MindmapAiIpcOptions {
   /** whether the view already has a file of its own (then its tab keeps the file's name) */
   hasFile(webContentsId: number): boolean
+  /** current document path of a view, for neighbor attachment reads */
+  filePathOf?: (webContentsId: number) => string | undefined
 }
 
 /** Registers the attachment channels and the provisional name. Called once, with the editor's other channels. */
 export function registerMindmapAiIpc(options: MindmapAiIpcOptions): void {
+  const canReadAttachment = (wcId: number, filePath: unknown): boolean =>
+    typeof filePath === 'string' &&
+    (sharedPathGrants().has(wcId, filePath) ||
+      isBesideDocument(options.filePathOf?.(wcId), filePath))
+
   ipcMain.handle(MINDMAP_CHANNELS.filesPick, async (e): Promise<AttachmentAddResult | null> => {
     const win =
       BrowserWindow.fromWebContents(e.sender) ?? BrowserWindow.getFocusedWindow() ?? undefined
@@ -557,6 +588,7 @@ export function registerMindmapAiIpc(options: MindmapAiIpcOptions): void {
       properties: ['openFile', 'multiSelections'],
     })
     if (picked.canceled || picked.filePaths.length === 0) return null
+    sharedPathGrants().grant(e.sender.id, picked.filePaths)
     return collectAttachments(picked.filePaths)
   })
 
@@ -566,22 +598,30 @@ export function registerMindmapAiIpc(options: MindmapAiIpcOptions): void {
 
   ipcMain.handle(
     MINDMAP_CHANNELS.filesAddPastedImage,
-    (_e, data: unknown, ext: unknown): AttachmentAddResult => {
+    (e, data: unknown, ext: unknown): AttachmentAddResult => {
       const saved = savePastedImage(data, ext)
       if (saved === 'too-large') return { accepted: [], rejected: [tm('errImageTooLarge')] }
+      if (saved) sharedPathGrants().grant(e.sender.id, [saved])
       return saved ? collectAttachments([saved]) : { accepted: [], rejected: [tm('errNotImage')] }
     },
   )
 
   ipcMain.handle(
     MINDMAP_CHANNELS.filesRead,
-    (_e, filePath: unknown, offset: unknown, maxChars: unknown) =>
-      readAttachmentPage(filePath, offset, maxChars),
+    (e, filePath: unknown, offset: unknown, maxChars: unknown) => {
+      if (!canReadAttachment(e.sender.id, filePath)) {
+        return { ok: false, error: 'mindmap: path not granted to this view' }
+      }
+      return readAttachmentPage(filePath, offset, maxChars)
+    },
   )
 
-  ipcMain.handle(MINDMAP_CHANNELS.filesReadImage, (_e, filePath: unknown) =>
-    readAttachmentImage(filePath),
-  )
+  ipcMain.handle(MINDMAP_CHANNELS.filesReadImage, (e, filePath: unknown) => {
+    if (!canReadAttachment(e.sender.id, filePath)) {
+      return { ok: false, error: 'mindmap: path not granted to this view' }
+    }
+    return readAttachmentImage(filePath)
+  })
 
   ipcMain.on(MINDMAP_CHANNELS.provisionalTitle, (e, title: unknown) => {
     if (typeof title !== 'string' || options.hasFile(e.sender.id)) return

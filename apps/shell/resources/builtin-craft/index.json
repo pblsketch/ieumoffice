@@ -1,0 +1,10 @@
+{
+  "fragments": [
+    { "slug": "typography", "file": "typography.md" },
+    { "slug": "color", "file": "color.md" },
+    { "slug": "anti-ai-slop", "file": "anti-ai-slop.md" },
+    { "slug": "layout-hierarchy", "file": "layout-hierarchy.md" },
+    { "slug": "korean-office", "file": "korean-office.md" },
+    { "slug": "cjk-typography", "file": "cjk-typography.md" }
+  ]
+}

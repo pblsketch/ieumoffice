@@ -101,8 +101,10 @@ export const en = {
   appChartNoRepoint: 'This chart does not support repointing its data ranges.',
   appKeepOneSeries: 'Keep at least one series.',
   appNoCategoriesToSwitch: 'No categories to switch.',
-  appComboNoSelectData: 'Changing the data source of a combo chart is not supported yet.',
+  appSelectDataUnsupported: 'Changing the data source of this chart type is not supported.',
   appSeriesName: 'Series Name',
+  appSeriesType: 'Series Type',
+  appSecondaryAxis: 'Secondary Axis',
   appValuesRange: 'Values Range',
   appCategoriesRange: 'Categories Range',
   appKeepUnchanged: 'Keep unchanged',
@@ -181,6 +183,10 @@ export const en = {
   appInvalidGroupField: 'Invalid grouping field.',
   appInvalidPageField: 'Invalid report filter field.',
   appPivotPageItemMissing: 'Report filter item "{item}" is not a member of field "{label}".',
+  appInvalidPivotBaseField: 'A "show values as" base field must sit on Rows or Columns.',
+  appPivotBaseFieldMissing: 'The "show values as" mode of a value field needs a base field.',
+  appPivotBaseFieldNotAxis: 'Base field "{label}" must sit on the pivot rows or columns.',
+  appPivotBaseItemMissing: 'Base item "{item}" is not a member of field "{label}".',
   appInvalidLabelFilterField: 'The label filter field is invalid.',
   appInvalidValueFieldIndex: 'Value field index {index} is invalid.',
   appInvalidValueField: 'Invalid value field.',
@@ -312,8 +318,7 @@ export const en = {
   appPivotSheetNoMove: 'This sheet contains a PivotTable — moving ranges is not supported yet.',
   appMergeOverTable:
     'The selection overlaps an Excel table — merging cells inside a table is not supported yet.',
-  appTableFilterNoEdit:
-    "This sheet's filter belongs to an Excel table — editing it cannot be saved yet.",
+  appFilterToggleFailed: 'The filter was not applied — select the range with your data first.',
   appAutofillStreaming: 'Autofill into an area that is still streaming in is not allowed yet.',
   appDvNeedsIndexed:
     'Editing data validation needs this sheet fully indexed first — try again in a moment.',
@@ -361,6 +366,9 @@ export const en = {
   appTableNameUsed: 'Table name "{name}" was already used this session.',
   appTableNameInFile: 'Table name "{name}" is already used by a table in the file.',
   appTableOverlapsSession: 'The range overlaps table "{name}" created this session.',
+  appTableOverlapsFile: 'The range overlaps table "{name}" in the file.',
+  appTableAlreadyInTable:
+    'The selection is already in table "{name}". Pick a style from Table Design to change it.',
   appTablesNeedFile: 'Open an XLSX file first — tables are written into the file.',
   appTableSelectRange: 'Select the data range first — headers in its first row.',
   appTableCreated: 'Table created — save with ⌘S.',
@@ -438,6 +446,7 @@ export const en = {
   appGridlinesHidden: 'Gridlines hidden.',
   appGridlinesShown: 'Gridlines shown.',
   appShowingFormulas: 'Showing formulas — toggle again for values.',
+  appShowingFormulasActive: 'Showing formulas',
   appShowingValues: 'Showing calculated values.',
   appTraceNoFormula: 'Trace Precedents: the active cell has no formula.',
   appTraceNoRefs: 'Trace Precedents: this formula has no cell references.',
@@ -528,6 +537,9 @@ export const en = {
     'CSV export needs the fully loaded workbook — wait for loading to finish.',
   appCsvExportTooLarge: 'The sheet is too large to export as CSV.',
   appCsvExportCanceled: 'CSV export canceled.',
+  appOdsExported: 'Exported {path}.',
+  appOdsExportCanceled: 'ODS export canceled.',
+  appOdsExportFailed: 'ODS export failed.',
   appCsvExported: 'Exported {path}.',
   appCsvExportedActiveOnly:
     'CSV holds a single sheet — exported the active sheet "{name}" to {path}.',
@@ -544,8 +556,6 @@ export const en = {
   appSaveFailed: 'Unable to save the workbook.',
   appCfRuleUnsaveable:
     'This conditional formatting rule cannot be saved to xlsx — switch to another rule type.',
-  appSaveErrX14Dv:
-    'This sheet has extended (x14) data validation; editing its validation rules is not supported yet.',
   appSaveErrMultiSelectList:
     'Multi-select list validation cannot be saved to xlsx — delete the rule before saving.',
   appSaveErrX14Cf:
@@ -566,6 +576,10 @@ export const en = {
     "This workbook's stylesheet is missing basic structure, so style changes cannot be saved.",
   appSaveErrPackageGuard:
     "Saving would change the workbook's package structure — aborted to protect the file.",
+  appSaveErrSheetNotFound:
+    'A sheet this save refers to was not found in the workbook. The save was stopped and the file was left as it was.',
+  appSaveErrSheetNameReused:
+    'A new sheet uses the old name of a sheet you renamed, so this cannot be saved. Give the new sheet another name for now, save, then rename it. The file was left as it was.',
   appSaveErrChartUnsupported:
     'This chart type does not support that edit; save aborted — undo the chart change.',
   appSaveErrMoveOverlap:
@@ -671,6 +685,13 @@ export const en = {
   appSaveAs: 'Save As',
   appUndo: 'Undo',
   appRedo: 'Redo',
+  appQuickAccessCustomize: 'Customize Quick Access Toolbar',
+  appQuickAccessHint:
+    'Press Alt and a number to run the button in that position, counting from the left.',
+  appQuickAccessMoveEarlier: 'Move earlier',
+  appQuickAccessMoveLater: 'Move later',
+  appQuickAccessReset: 'Reset to default',
+  appQuickAccessFull: 'The toolbar holds up to 10 buttons.',
   appUnsavedEditOne: '● {count} unsaved edit',
   appUnsavedEditMany: '● {count} unsaved edits',
   appSavedState: 'Saved',
@@ -700,7 +721,6 @@ export const en = {
   appLinkPlaceholder: 'https://example.com or Sheet1!A1',
   appRemoveLink: 'Remove Link',
   appNotAvailableYet: 'Not available yet',
-  appComingSoon: 'Coming soon',
   appGroupChartLayouts: 'Chart layouts',
   appAddChartElement: 'Add Chart Element',
   appAddChartElementTitle: 'Titles, data labels, legend',
@@ -1133,6 +1153,8 @@ export const en = {
   appRefreshAll: 'Refresh All',
   appWorkbookNoPivot: 'No pivot tables in this workbook.',
   appRefreshAllTitle: 'Refresh every pivot table',
+  appQueriesConnections: 'Queries & Connections',
+  appQueriesConnectionsTitle: "List the workbook's queries and data connections",
   appErrorCheckingDetail: 'Scan the sheet for error values',
   appErrorsFound: '{count} errors — at {cell}: {value}',
   appCheckingErrors: 'Scanning the whole sheet for errors…',
@@ -1167,6 +1189,7 @@ export const en = {
   appGroupForecast: 'Forecast',
   appWhatIfAnalysis: 'What-If Analysis',
   appGoalSeek: 'Goal Seek',
+  appDataTable: 'Data Table',
   appWhatIfTitle: 'Solve an input for a target value',
   appGoalSeekNeedsFormula: 'Set cell must contain a formula.',
   appGoalSeekByCellNotNumber: 'By changing cell must hold a plain number or be empty.',
@@ -1427,6 +1450,15 @@ export const en = {
   appTableFileUnnamed: 'This table has no name in the file and cannot be changed here.',
   appTableRowsNotLoaded: 'The table rows are still loading — try again in a moment.',
   appTableTotalLabel: 'Total',
+  appNotePicturesPaneTitle: 'Note pictures',
+  appNotePicturesClose: 'Close',
+  appNotePicturesNone: 'No note on this workbook is showing a picture.',
+  appNotePictureUnavailable: 'This picture cannot be shown.',
+  appNotePicturesToggle: 'Note pictures',
+  appNoteInsertPicture: 'Insert picture',
+  appNotePictureInserted: 'Picture added to the note in {cell}. Save to write it into the file.',
+  appNotePictureRemoved: 'Picture removed from the note in {cell}.',
+  appNotePictureRemove: 'Remove picture',
   appCommentsPaneTitle: 'Comments',
   appThreadReply: 'Reply',
   appThreadReplyPlaceholder: 'Reply…',
@@ -1493,4 +1525,33 @@ export const en = {
   appVisualFlipV: 'Flip Vertical',
   appVisualFlipH: 'Flip Horizontal',
   appCtxPasteVisual: 'Paste Picture or Shape',
+
+  // ── Spelling check (F7 / Review ▸ Proofing) ──
+  appSpellTitle: 'Spelling',
+  appSpellBtnDetail: 'Check sheet text (F7)',
+  appSpellToggle: 'Check Spelling',
+  appSpellToggleTip:
+    'Enable the spelling check (F7 and the Review button); when off, comment boxes stop showing spelling squiggles',
+  appSpellOn: 'Spelling check turned on.',
+  appSpellOff: 'Spelling check is off. Turn it on in Review ▸ Proofing.',
+  appSpellRecheck: 'Recheck',
+  appSpellNone: 'No suspected misspellings found.',
+  appSpellFindings: '{count} suspected misspellings. Click a row to locate it.',
+  appSpellTruncated: 'Too many text cells; only the earlier ones were checked.',
+  appSpellColWord: 'Suspect',
+  appSpellIgnore: 'Ignore',
+  appSpellIgnoreAll: 'Ignore All',
+  appSpellLearn: 'Add to Dictionary',
+  appSpellNoSuggestions: 'No suggestions',
+  appSpellIgnoredAll: '"{word}" will not be flagged again this session.',
+  appSpellLearned: '"{word}" was added to the dictionary.',
+  appSpellChanged: 'Corrected {address}.',
+  appSpellChangeFailed: 'Could not correct {address}.',
+  appSpellUnavailable: 'Spell checking is unavailable in this window.',
+  appSpellReplaceAll: 'Replace All with "{suggestion}"',
+  appSpellChangedAll: 'Corrected {count} cells of "{word}".',
+
+  // ── ODS import ──
+  appOdsImportNotice: 'Opened the ODS as an xlsx copy. Saving writes an xlsx file.',
+  appOdsFormulasDropped: '{count} formulas were kept as values only.',
 } satisfies Record<keyof typeof zh, string>

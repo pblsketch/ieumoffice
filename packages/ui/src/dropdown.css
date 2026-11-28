@@ -21,7 +21,7 @@
    * the format-pane caret alignment line */
   padding: 0 5px 0 6px;
   border: 1px solid var(--border-strong);
-  border-radius: 3px;
+  border-radius: 4px;
   background: var(--surface);
   color: var(--text);
   font-family: inherit;
@@ -92,7 +92,7 @@
   border: none;
   background: none;
   color: var(--text);
-  border-radius: 3px;
+  border-radius: 4px;
   padding: 5px 6px;
   font-family: inherit;
   font-size: 12px;

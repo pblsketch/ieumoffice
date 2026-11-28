@@ -12,6 +12,7 @@ import {
 } from '@genoffice/agent-core'
 import {
   getProviderAdapter,
+  localModelCapabilities,
   modelLacksVision,
   selectAiProvider,
   type AiSettings,
@@ -146,6 +147,8 @@ export interface QcPageResult {
 export interface QcPageOptions {
   access: DeckAccess
   transport: AgentTransport
+  /** the panel's live settings: a local model that reported no tool support gets none */
+  settings: () => AiSettings
   pageIndex: number
   /** pixelRatio-1 PNG of the page's current rendering; null runs a geometry-only pass */
   screenshot: AgentImage | null
@@ -243,6 +246,8 @@ export function qcSlidePage(opts: QcPageOptions): Promise<QcPageResult> {
     const loop = new AgentLoop({
       transport,
       skill: createSlideFixSkill(access, screenshot !== null),
+      // a local model that reported no tool support answers in text only
+      toolsAllowed: () => localModelCapabilities(opts.settings()).tools !== false,
       // audit feedback inside execute_slide_script output drives at most a couple of fix rounds
       maxTurns: 6,
       ...(systemSuffix ? { systemSuffix } : {}),

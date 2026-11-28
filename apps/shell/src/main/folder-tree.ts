@@ -1,18 +1,23 @@
 import {
   accessSync,
+  chmodSync,
   constants,
   cpSync,
   existsSync,
+  lstatSync,
   mkdirSync,
   readdirSync,
   realpathSync,
   renameSync,
+  rmdirSync,
   rmSync,
   statSync,
+  unlinkSync,
   watch,
   type FSWatcher,
 } from 'node:fs'
 import { basename, dirname, extname, join, resolve, sep } from 'node:path'
+import { copyFileExclusiveSync } from '@genoffice/electron-utils/copy-file'
 import type {
   FolderEntry,
   FolderListing,
@@ -22,7 +27,9 @@ import type {
   RecentEntry,
   RenameResult,
 } from '../shared/home-api'
+import { documentExtension } from './app-routing'
 import { isValidRenameName } from './rename-validation'
+import { PerFolderWatch } from './per-folder-watch'
 import { statPathEntries } from './recent-files'
 
 /** files the home tree shows; mirrors the shell's open-dialog filter */
@@ -35,6 +42,7 @@ export const TREE_FILE_EXTENSIONS: ReadonlySet<string> = new Set([
   'xls',
   'csv',
   'tsv',
+  'ods',
   'pptx',
   'ppt',
   'pdf',
@@ -45,9 +53,16 @@ export const TREE_FILE_EXTENSIONS: ReadonlySet<string> = new Set([
   'html',
   'htm',
   'xmind',
+  'mm',
   'hwp',
   'hwpx',
   'epub',
+  'drawio',
+  'dio',
+  'vsdx',
+  // draw.io pictures, by their double extension (documentExtension)
+  'drawio.svg',
+  'drawio.png',
 ])
 
 const HIDDEN_DIR_NAMES = new Set(['node_modules', '__macosx'])
@@ -56,7 +71,7 @@ const HIDDEN_FILE_NAMES = new Set(['thumbs.db', 'desktop.ini'])
 const MD_ASSET_MANIFEST = '.genoffice-assets.json'
 
 export function isSupportedTreeFile(name: string): boolean {
-  return TREE_FILE_EXTENSIONS.has(extname(name).slice(1).toLowerCase())
+  return TREE_FILE_EXTENSIONS.has(documentExtension(name))
 }
 
 /** dotfiles, Office lock files, OS junk and the Markdown `assets/` folder stay out of the tree */
@@ -197,7 +212,9 @@ export function createFolder(parent: string, name: string, errors: FolderErrors)
  */
 export function uniqueNameIn(dir: string, name: string, isDir = false): string {
   if (!existsSync(join(dir, name))) return name
-  const ext = isDir ? '' : extname(name)
+  const docExt = isDir ? '' : documentExtension(name)
+  // a draw.io picture keeps its double extension (`flow (2).drawio.svg`)
+  const ext = isDir ? '' : docExt.includes('.') ? `.${name.slice(-docExt.length)}` : extname(name)
   const base = name.slice(0, name.length - ext.length)
   for (let i = 2; ; i++) {
     const candidate = `${base} (${i})${ext}`
@@ -205,14 +222,79 @@ export function uniqueNameIn(dir: string, name: string, isDir = false): string {
   }
 }
 
-/** rename, falling back to copy + delete when the target is on another volume */
+/**
+ * rename, falling back to copy + delete when the target is on another volume.
+ *
+ * Windows keeps cpSync for that copy: the mounts copyTreeExclusiveSync is for
+ * (GNOME gvfs SMB, WebDAV) are POSIX ones.
+ */
 export function moveOnDisk(from: string, to: string): void {
   try {
     renameSync(from, to)
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code !== 'EXDEV') throw err
-    cpSync(from, to, { recursive: true, errorOnExist: true, force: false })
+    if (process.platform === 'win32')
+      cpSync(from, to, { recursive: true, errorOnExist: true, force: false })
+    else copyTreeExclusiveSync(from, to)
     rmSync(from, { recursive: true, force: true })
+  }
+}
+
+/**
+ * Copy `from` (a file or a whole folder) to `to`, which must not exist yet.
+ * Files go through copyFileExclusiveSync, which still works on a mount that
+ * refuses the platform copy and the chmod that cpSync gives each folder.
+ */
+function copyTreeExclusiveSync(from: string, to: string): void {
+  // `real` is where an entry was created, with links resolved. In a shared
+  // folder someone else can swap a folder this move made for a link, and what
+  // lies behind that link must be neither removed nor given a mode.
+  const created: { path: string; real: string; isDir: boolean }[] = []
+  const folderModes: { path: string; real: string; mode: number }[] = []
+  const copy = (source: string, target: string, real: string): void => {
+    const stats = lstatSync(source)
+    if (stats.isDirectory()) {
+      // The owner's alone until the end: nobody else can put a link inside
+      // while the copy runs, and a read-only folder could neither be filled
+      // nor emptied again by a roll-back.
+      mkdirSync(target, { mode: 0o700 })
+      created.push({ path: target, real, isDir: true })
+      folderModes.push({ path: target, real, mode: stats.mode & 0o7777 })
+      for (const name of readdirSync(source))
+        copy(join(source, name), join(target, name), join(real, name))
+    } else if (stats.isFile()) {
+      copyFileExclusiveSync(source, target)
+      created.push({ path: target, real, isDir: false })
+    } else {
+      cpSync(source, target, { errorOnExist: true, force: false })
+      created.push({ path: target, real, isDir: false })
+    }
+  }
+  try {
+    copy(from, to, join(realpathSync(dirname(to)), basename(to)))
+  } catch (err) {
+    // Only the entries recorded above, and a folder only once it is empty:
+    // anything else at the destination was not this move's.
+    for (const { path, real, isDir } of created.reverse()) {
+      try {
+        if (realpathSync(dirname(path)) !== dirname(real)) continue
+        if (isDir) rmdirSync(path)
+        else unlinkSync(path)
+      } catch {
+        // the copy already failed; keep undoing the rest
+      }
+    }
+    throw err
+  }
+  // Deepest folder first: once a folder's mode takes the owner's search bit
+  // away, nothing below it can be reached. The copy is complete by now, so a
+  // mount that refuses chmod costs only the mode.
+  for (const { path, real, mode } of folderModes.reverse()) {
+    try {
+      if (realpathSync(path) === real) chmodSync(path, mode)
+    } catch {
+      // the folder keeps the mode it was created with
+    }
   }
 }
 
@@ -340,13 +422,17 @@ export function rebasePath(path: string, oldDir: string, newDir: string): string
 
 const WATCH_DEBOUNCE_MS = 250
 
+/** macOS and Windows watch a whole tree through one handle; elsewhere Node walks the tree inside `fs.watch` */
+const hasRecursiveWatch = (): boolean =>
+  process.platform === 'darwin' || process.platform === 'win32'
+
 /**
  * Watches the root recursively and reports the folders whose direct
  * contents changed, debounced. Changes from Finder / Explorer / other apps
  * show up in the tree the same way as our own edits.
  */
 export class FolderWatcher {
-  private watcher: FSWatcher | null = null
+  private watcher: FSWatcher | PerFolderWatch | null = null
   private pending = new Set<string>()
   private timer: NodeJS.Timeout | null = null
 
@@ -360,9 +446,11 @@ export class FolderWatcher {
     private readonly onChange: (dirs: string[]) => void,
   ) {
     try {
-      this.watcher = watch(root, { recursive: true, persistent: false }, (_event, filename) => {
-        this.note(filename)
-      })
+      this.watcher = hasRecursiveWatch()
+        ? watch(root, { recursive: true, persistent: false }, (_event, filename) => {
+            this.note(filename)
+          })
+        : new PerFolderWatch(root, (filename) => this.note(filename))
       this.watcher.on('error', () => this.close())
     } catch {
       this.watcher = null

@@ -7,10 +7,12 @@ import {
 } from '@genoffice/ai-provider'
 import type { AiSettings, AiSubscriptionStatus } from '@genoffice/ai-provider'
 import {
+  advancedPaneUseChoice,
   advancedProviderIds,
   aiSelectionChoices,
   aiSelectionValue,
   changeAiSettings,
+  chatGptImageConnectShown,
   initialAdvancedProvider,
   mediaKeyProviders,
   mediaSelection,
@@ -163,6 +165,46 @@ describe('picking a choice', () => {
   })
 })
 
+describe('"use this AI" in the Advanced key pane', () => {
+  it('is offered for a filled-in key provider that is not in use, and picking it selects only that', () => {
+    const settings = withOpenAiKey(settingsWith({ provider: 'auto' }))
+    const choice = advancedPaneUseChoice(settings, 'openai')
+    expect(choice).toMatchObject({ value: 'openai', kind: 'key' })
+    const next = withAiSelection(settings, choice!)
+    expect(next.provider).toBe('openai')
+    expect(next.providers).toEqual(settings.providers)
+  })
+
+  it('is not offered before the key and model are both there, or once the provider is in use', () => {
+    expect(advancedPaneUseChoice(settingsWith(), 'openai')).toBeUndefined()
+    const noModel = settingsWith({
+      providers: { ...defaultAiSettings().providers, openai: { apiKey: 'sk-test', model: '' } },
+    })
+    expect(advancedPaneUseChoice(noModel, 'openai')).toBeUndefined()
+    const inUse = withOpenAiKey(settingsWith({ provider: 'openai' }))
+    expect(advancedPaneUseChoice(inUse, 'openai')).toBeUndefined()
+  })
+
+  it('never offers a subscription', () => {
+    expect(advancedPaneUseChoice(settingsWith(), 'codex')).toBeUndefined()
+  })
+
+  it('matches a self-hosted endpoint by its id', () => {
+    const settings = settingsWith({
+      provider: 'custom',
+      customEndpoints: [
+        { id: 'ep-a', name: 'Local', baseUrl: 'http://127.0.0.1:1/v1', apiKey: '', model: 'a' },
+        { id: 'ep-b', name: 'Lab', baseUrl: 'http://127.0.0.1:2/v1', apiKey: '', model: 'b' },
+      ],
+      customEndpoint: 'ep-a',
+    })
+    expect(advancedPaneUseChoice(settings, 'custom', 'ep-a')).toBeUndefined()
+    const other = advancedPaneUseChoice(settings, 'custom', 'ep-b')
+    expect(other).toMatchObject({ value: 'custom::ep-b' })
+    expect(withAiSelection(settings, other!).customEndpoint).toBe('ep-b')
+  })
+})
+
 describe('a key pane save', () => {
   it('takes the fields the visible part writes from the file as it is now', () => {
     const draft = settingsWith({ provider: 'auto', headlessSubscriptionEnabled: false })
@@ -241,6 +283,8 @@ describe('the GitHub read token', () => {
         openai: { apiKey: 'sk-test', model: 'gpt-test' },
       },
     })
+    // the providers as the settings file holds them: JSON keeps no undefined field
+    const storedProviders = JSON.parse(JSON.stringify(initial.providers)) as AiSettings['providers']
     const file = { stored: initial, writes: 0 }
     vi.stubGlobal('window', {
       aiOffice: {
@@ -259,7 +303,7 @@ describe('the GitHub read token', () => {
     expect(file.stored).toMatchObject({
       provider: 'codex',
       maxOutputTokens: 9216,
-      providers: initial.providers,
+      providers: storedProviders,
     })
 
     expect(await changeAiSettings((current) => withReadUrlGithubToken(current, ''))).not.toBeNull()
@@ -267,7 +311,7 @@ describe('the GitHub read token', () => {
     expect(file.stored).toMatchObject({
       provider: 'codex',
       maxOutputTokens: 9216,
-      providers: initial.providers,
+      providers: storedProviders,
     })
     expect(file.writes).toBe(2)
   })
@@ -325,10 +369,10 @@ describe('a change saved at once', () => {
 })
 
 describe('the Advanced key pane', () => {
-  it('lists no id outside the catalog and not Claude, and keeps Codex for its path', () => {
+  it('lists no id outside the catalog, and keeps both CLIs for the path of a custom install', () => {
     const listed = advancedProviderIds([...AI_PROVIDERS, { id: 'retired-provider' }])
     expect(listed).not.toContain('retired-provider')
-    expect(listed).not.toContain('claude-code')
+    expect(listed).toContain('claude-code')
     expect(listed).toContain('codex')
     expect(listed).toContain('custom')
     expect(listed).toContain('openai')
@@ -338,12 +382,65 @@ describe('the Advanced key pane', () => {
     expect(initialAdvancedProvider({ provider: 'openai' }, AI_PROVIDERS)).toBe('openai')
     expect(initialAdvancedProvider({ provider: 'codex' }, AI_PROVIDERS)).toBe('codex')
     const first = initialAdvancedProvider({ provider: 'auto' }, AI_PROVIDERS)
-    expect(first).toBe(AI_PROVIDERS.find((m) => !['claude-code', 'codex'].includes(m.id))!.id)
-    // a subscription or an unknown id selected: the pane still opens on a key provider
-    expect(initialAdvancedProvider({ provider: 'claude-code' }, AI_PROVIDERS)).toBe(first)
+    expect(first).toBe(AI_PROVIDERS.find((m) => !m.needsCliPath)!.id)
+    // a CLI selected: its own pane opens, where its path is
+    expect(initialAdvancedProvider({ provider: 'claude-code' }, AI_PROVIDERS)).toBe('claude-code')
+    // an unknown id: the pane still opens on a key provider
+    expect(initialAdvancedProvider({ provider: 'retired' as never }, AI_PROVIDERS)).toBe(first)
     expect(initialAdvancedProvider({ provider: 'retired-provider' as never }, AI_PROVIDERS)).toBe(
       first,
     )
+  })
+
+  it('opens on a filled-in key provider while none is selected, so its saved key is in view', () => {
+    const withKey = withOpenAiKey(settingsWith({ provider: 'auto' }))
+    expect(initialAdvancedProvider(withKey, AI_PROVIDERS)).toBe('openai')
+    expect(initialAdvancedProvider({ ...withKey, provider: 'claude-code' }, AI_PROVIDERS)).toBe(
+      'claude-code',
+    )
+    // the stored selection still comes first
+    expect(initialAdvancedProvider({ ...withKey, provider: 'codex' }, AI_PROVIDERS)).toBe('codex')
+  })
+})
+
+describe('the ChatGPT plan line under image generation', () => {
+  const states: AiSubscriptionStatus['state'][] = [
+    'checking',
+    'not-installed',
+    'signed-out',
+    'ready',
+    'metered',
+    'error',
+    'off',
+  ]
+  // the capability report: unavailable, available, or not read (yet, or no bridge)
+  const reports = [false, true, null] as const
+
+  it('shows only for ChatGPT ready, Codex not ready and image generation unavailable', () => {
+    for (const chatgpt of states) {
+      for (const codex of states) {
+        for (const report of reports) {
+          const statuses = {
+            'claude-code': status('claude-code', 'ready'),
+            chatgpt: status('chatgpt', chatgpt),
+            codex: status('codex', codex),
+          }
+          expect(
+            chatGptImageConnectShown(statuses, report),
+            `chatgpt=${chatgpt} codex=${codex} report=${report}`,
+          ).toBe(chatgpt === 'ready' && codex !== 'ready' && report === false)
+        }
+      }
+    }
+  })
+
+  it('a Codex metered login is not a subscription one, and a missing status is not ready', () => {
+    const chatgpt = status('chatgpt', 'ready')
+    expect(
+      chatGptImageConnectShown({ chatgpt, codex: status('codex', 'metered', true) }, false),
+    ).toBe(true)
+    expect(chatGptImageConnectShown({ chatgpt }, false)).toBe(true)
+    expect(chatGptImageConnectShown({ codex: status('codex', 'signed-out') }, false)).toBe(false)
   })
 })
 

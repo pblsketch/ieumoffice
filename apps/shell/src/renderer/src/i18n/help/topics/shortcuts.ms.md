@@ -12,10 +12,12 @@ Setiap editor mempunyai pengikatan kekunci sendiri, dan hanya sebahagian kecil d
 | Ciutkan / Kembangkan reben — setiap editor                           | ⌥⌘R   | Ctrl+F1         |
 | Reben kompak — Docs sahaja                                           | ⌥⌘K   | Ctrl+Alt+K      |
 | Buka helaian Pintasan Papan Kekunci — Word sahaja                    | ⌘/    | Ctrl+/          |
+| Buka Tetapan — semua tab kecuali Word                                | ⌘,    | Ctrl+,          |
 
 - **F1 membuka manual ini**, bukan helaian pintasan. Kekunci itu milik menu aplikasi, jadi ia berfungsi dari Word, Sheets, Slides, PDF mahupun tab Laman Utama.
 - **Kekunci suis reben ialah `Ctrl+F1`, atau `⌥⌘R` pada macOS.** Menekan `F1` kosong tidak melakukan apa-apa — F1 ialah manualnya, dan kekunci reben sengaja tidak berkongsi denyut itu. `Ctrl+F1` juga diterima pada macOS, walaupun `⌥⌘R` ialah kekunci yang digunakan oleh Office for Mac.
 - **Helaian Pintasan Papan Kekunci milik Word sahaja** (`⌘/`). Ia menyenaraikan tepat jadual Word di bawah ini. Tiada editor lain mempunyai helaian seperti itu.
+- **`⌘,` membuka Tetapan** (`Ctrl+,` pada Windows dan Linux), seperti kebanyakan apl Mac. Dalam tab Word kombinasi ini kekal sebagai subskrip, jadi buka Tetapan daripada menu aplikasi pada Mac, atau daripada Menu (☰) ▸ Tetapan… pada Windows dan Linux.
 
 ![Helaian Pintasan Papan Kekunci milik Word sahaja: tindakan di sebelah kiri, pintasan kekunci di sebelah kanan, dikumpulkan mengikut kumpulan Fail, Edit, Pemformatan Teks, Pemformatan Perenggan, Sisip, Semakan & Alat, dan Paparan](img/word-shortcuts.png)
 
@@ -24,7 +26,7 @@ Setiap editor mempunyai pengikatan kekunci sendiri, dan hanya sebahagian kecil d
 
 ## Mod persembahan
 
-- **Mula**: F5 dalam Word, PDF, Mindmap, HTML dan Markdown. Dalam hamparan, Ctrl+F5 (dari A1) atau Shift+F5 (dari sel aktif).
+- **Mula**: F5 dalam Word, PDF, Mindmap, HTML dan Markdown. Dalam hamparan, Ctrl+F5 (dari A1) atau Shift+F5 (dari sel aktif). Dalam dokumen HWP, Ctrl+F5 (di situ F5 memilih sel jadual).
 - **Pintu lain**: dalam Word, Ctrl+F5 dan Shift+F5 membuka paparan bacaan tanpa skrin penuh; dalam PDF bermula dari halaman aktif; dalam HTML membentang di dalam tab.
 - **Tamat**: Esc atau F5. F11 ialah skrin penuh tetingkap dan tidak mengubah paparan dokumen.
 
@@ -278,18 +280,19 @@ Pintasan penapis Excel, Ctrl+Shift+L, tidak melakukan apa-apa pada Windows atau 
 
 ### Tetingkap
 
-| Tindakan                                                              | macOS            | Windows / Linux     |
-| --------------------------------------------------------------------- | ---------------- | ------------------- |
-| Simpan buku kerja                                                     | ⌘S               | Ctrl+S              |
-| Simpan Sebagai                                                        | ⇧⌘S              | Ctrl+Shift+S        |
-| Buka buku kerja                                                       | ⌘O               | Ctrl+O              |
-| Cetak                                                                 | ⌘P               | Ctrl+P              |
-| Tutup buku kerja (macOS) / Keluar daripada aplikasi (Windows & Linux) | ⌘W               | Ctrl+Q              |
-| Buka Panduan Pengguna                                                 | F1               | F1                  |
-| Zum masuk                                                             | ⌘=               | Ctrl+=              |
-| Zum dengan roda tetikus                                               | ⌘ + roda tetikus | Ctrl + roda tetikus |
-| Tunjuk atau sorok formula dalam sel                                   | ⌘`               | Ctrl+`              |
-| Kembangkan atau ciutkan bar formula                                   | ⌘⇧U              | Ctrl+Shift+U        |
+| Tindakan                                                                              | macOS            | Windows / Linux     |
+| ------------------------------------------------------------------------------------- | ---------------- | ------------------- |
+| Simpan buku kerja                                                                     | ⌘S               | Ctrl+S              |
+| Simpan Sebagai                                                                        | ⇧⌘S              | Ctrl+Shift+S        |
+| Buka buku kerja                                                                       | ⌘O               | Ctrl+O              |
+| Cetak                                                                                 | ⌘P               | Ctrl+P              |
+| Tutup buku kerja (macOS) / Keluar daripada aplikasi (Windows & Linux)                 | ⌘W               | Ctrl+Q              |
+| Buka Panduan Pengguna                                                                 | F1               | F1                  |
+| Zum masuk                                                                             | ⌘=               | Ctrl+=              |
+| Zum dengan roda tetikus                                                               | ⌘ + roda tetikus | Ctrl + roda tetikus |
+| Tunjuk atau sorok formula dalam sel                                                   | ⌘`               | Ctrl+`              |
+| Kembangkan atau ciutkan bar formula                                                   | ⌘⇧U              | Ctrl+Shift+U        |
+| Jalankan butang Bar Alat Capaian Pantas mengikut kedudukan (pertama hingga kesepuluh) |                  | Alt+1 … Alt+0       |
 
 ## Slides
 
@@ -312,20 +315,24 @@ Menutup tab ialah satu-satunya tempat kedua platform berasingan sepenuhnya: ⌘W
 
 ### Penyuntingan
 
-| Tindakan                                          | macOS  | Windows / Linux |
-| ------------------------------------------------- | ------ | --------------- |
-| Slaid baharu                                      | ⇧⌘N    | Ctrl+M          |
-| Cari (bukan semasa menyunting teks dalam bentuk)  | ⌘F     | Ctrl+F          |
-| Anotasi pilihan dengan AI (dengan bentuk dipilih) | ⌘K     | Ctrl+K          |
-| Zum masuk                                         | ⌘=     | Ctrl+=          |
-| Zum keluar                                        | ⌘-     | Ctrl+-          |
-| Saiz sebenar (100%)                               | ⌘0     | Ctrl+0          |
-| Pilih semua                                       | ⌘A     | Ctrl+A          |
-| Berganti pilihan bentuk ke hadapan / ke belakang  | ⇥ / ⇧⇥ | Tab / Shift+Tab |
+| Tindakan                                                              | macOS  | Windows / Linux |
+| --------------------------------------------------------------------- | ------ | --------------- |
+| Slaid baharu                                                          | ⇧⌘N    | Ctrl+M          |
+| Cari (bukan semasa menyunting teks dalam bentuk)                      | ⌘F     | Ctrl+F          |
+| Anotasi pilihan dengan AI (dengan bentuk dipilih)                     | ⌘K     | Ctrl+K          |
+| Zum masuk                                                             | ⌘=     | Ctrl+=          |
+| Zum keluar                                                            | ⌘-     | Ctrl+-          |
+| Saiz sebenar (100%)                                                   | ⌘0     | Ctrl+0          |
+| Pilih semua                                                           | ⌘A     | Ctrl+A          |
+| Berganti pilihan bentuk ke hadapan / ke belakang                      | ⇥ / ⇧⇥ | Tab / Shift+Tab |
+| Ulang tindakan terakhir (format, isian, garisan, penjajaran, pendua…) | F4     | F4              |
+| Tunjukkan/sembunyikan Anak Tetingkap Pemilihan                        | ⌥F10   | Alt+F10         |
 
 Slaid baharu ialah pembahagian platform yang satu lagi. Setiap platform mempunyai kekunci sendiri dan yang satu lagi tidak melakukan apa-apa: ⇧⌘N pada macOS, Ctrl+M pada Windows dan Linux. `⌘M` tidak boleh undertake kerja itu pada macOS kerana itulah kekunci Perkecil sistem.
 
 Pilih semua mengikut fokus: dengan baris lakaran kenit, kerangka atau penyusun slaid yang difokuskan, ia memilih setiap slaid, dan di tempat lain ia memilih setiap elemen pada slaid semasa. Tab berputar melalui bentuk-bentuk pada slaid itu, dan hanya apabila kanvas slaid itu sendiri difokuskan.
+
+F4 juga berfungsi di dalam kotak teks, menggunakan format terakhir pada teks yang dipilih.
 
 ### Pemformatan teks
 
@@ -450,7 +457,7 @@ Buat Asal dan Buat Semula melangkah melalui sejarah dokumen; apabila kursor bera
 | Zum Masuk        | ⌘=               | Ctrl+=              |
 | Zum Keluar       | ⌘-               | Ctrl+-              |
 | Muat ke lebar    | ⌘0               | Ctrl+0              |
-| Zum (berterusan) | ⌘ + roda tetikus | Ctrl + roda tetikus |
+| Zum (langkah 5%) | ⌘ + roda tetikus | Ctrl + roda tetikus |
 
 Zum Masuk juga menerima ⌘+ dan Ctrl++.
 
@@ -627,6 +634,8 @@ Kekunci ini berfungsi apabila tab HWP/HWPX berada di hadapan dan dokumen mempuny
 | Cari seterusnya    | ⌃L          | Ctrl+L                       |
 | Cari ke belakang   | ⌃Q, L       | Ctrl+Q, L                    |
 | Pergi ke           | ⌥G          | Alt+G                        |
+| Ke awal dokumen    | ⌃⇞          | Ctrl+PageUp                  |
+| Ke akhir dokumen   | ⌃⇟          | Ctrl+PageDown                |
 | Bandingkan dokumen | ⌥⇧V         | Alt+Shift+V                  |
 
 ### Aksara
@@ -690,21 +699,29 @@ Kekunci ini berfungsi apabila tab HWP/HWPX berada di hadapan dan dokumen mempuny
 | Teks tarikh/masa                     | ⌃K, D       | Ctrl+K, D          |
 | Sunting objek, medan atau jadual/sel | ⌃N, K       | Ctrl+N, K          |
 | Simbol                               | ⌃F10 / ⌥F10 | Ctrl+F10 / Alt+F10 |
+| Tukar kepada Hanja                   | F9          | Kekunci Hanja / F9 |
 
 ### Jadual
 
-| Tindakan           | macOS        | Windows / Linux        |
-| ------------------ | ------------ | ---------------------- |
-| Tambah baris/lajur | ⌥⏎ / ⌥Insert | Alt+Enter / Alt+Insert |
-| Padam baris/lajur  | ⌥⌫           | Alt+Delete             |
-| Pisahkan sel       | F5 → S       | F5 → S                 |
-| Gabungkan sel      | F5 → M       | F5 → M                 |
-| Jumlah blok        | F5 → ⇧⌘S     | F5 → Ctrl+Shift+S      |
-| Purata blok        | F5 → ⌃⇧A     | F5 → Ctrl+Shift+A      |
-| Hasil darab blok   | F5 → ⌃⇧P     | F5 → Ctrl+Shift+P      |
-| Pisahkan jadual    | ⌃N, A        | Ctrl+N, A              |
-| Gabungkan jadual   | ⌃N, Z        | Ctrl+N, Z              |
-| Formula pengiraan  | ⌃N, F        | Ctrl+N, F              |
+| Tindakan                             | macOS        | Windows / Linux        |
+| ------------------------------------ | ------------ | ---------------------- |
+| Tambah baris/lajur                   | ⌥⏎ / ⌥Insert | Alt+Enter / Alt+Insert |
+| Padam baris/lajur                    | ⌥⌫           | Alt+Delete             |
+| Pisahkan sel                         | F5 → S       | F5 → S                 |
+| Gabungkan sel                        | F5 → M       | F5 → M                 |
+| Sifat jadual/sel                     | F5 → P       | F5 → P                 |
+| Sempadan / lorekan, setiap sel       | F5 → L / C   | F5 → L / C             |
+| Sempadan / lorekan, sel sebagai satu | F5 → B / F   | F5 → B / F             |
+| Samakan tinggi baris / lebar lajur   | F5 → H / W   | F5 → H / W             |
+| Isi automatik jadual                 | F5 → A       | F5 → A                 |
+| Kembali menyunting sel               | F5 → ⏎       | F5 → Enter             |
+| Inden tergantung pantas (dalam sel)  | ⌃⇧⇥          | Ctrl+Shift+Tab         |
+| Jumlah blok                          | F5 → ⇧⌘S     | F5 → Ctrl+Shift+S      |
+| Purata blok                          | F5 → ⌃⇧A     | F5 → Ctrl+Shift+A      |
+| Hasil darab blok                     | F5 → ⌃⇧P     | F5 → Ctrl+Shift+P      |
+| Pisahkan jadual                      | ⌃N, A        | Ctrl+N, A              |
+| Gabungkan jadual                     | ⌃N, Z        | Ctrl+N, Z              |
+| Formula pengiraan                    | ⌃N, F        | Ctrl+N, F              |
 
 ### Pengiraan jadual
 
@@ -745,3 +762,5 @@ Hanya berfungsi apabila kursor berada dalam sel jadual yang kosong. Ada kekunci 
 | Pergi ke tab Utama (di luar jadual)        | ⇧⌘H   | Ctrl+Shift+H    |
 
 Kekunci yang ditulis `Ctrl+N,T` bermaksud tekan Ctrl+N, lepaskan, kemudian tekan T. `F5 → S` bermaksud pilih blok sel dengan F5 kemudian tekan S. `Ctrl+1 … Ctrl+0` ialah gaya pertama hingga kesepuluh dokumen; `Ctrl+Alt+1 … Ctrl+Alt+0` menggunakan gaya yang sama. Apabila blok sel dipilih, `Ctrl+Shift+S` (pada macOS `⇧⌘S`) ialah jumlah blok; di luar itu kekunci ini menyimpan sebagai.
+
+Dengan tetikus, seperti dalam Hangul, klik dua kali memilih satu perkataan, klik tiga kali seluruh perenggan, dan klik dua kali lalu tahan dan seret meluaskan pilihan perkataan demi perkataan. Ini juga berlaku semasa menyunting pengepala, pengaki atau nota kaki. Menyalin blok sel (`Ctrl+C`) menyalin teks sel dan jadual itu sendiri, jadi apabila ditampal dalam badan teks, jadual yang sama dibina semula. Menampal dengan kursor sahaja dalam sel jadual lain membuka dialog Paste Cells: tulis ganti bermula dari sel itu (sel yang terkeluar dari jadual dibuang) atau sisipkan sel di atas, di bawah, di kiri atau di kanan. Menyeret pemegang penjuru gambar mengekalkan perkadarannya; bentuk atau kotak teks mengekalkannya apabila anda menahan `Shift` semasa menyeret penjuru. Tekan `Shift` semasa mengalihkan objek supaya ia hanya bergerak secara mendatar atau menegak, dan tekan `Esc` semasa mengalihkan atau mengubah saiz untuk mengembalikan objek ke tempat asalnya. Apabila objek dipilih, kekunci anak panah mengalihkannya 0.2 mm dan `Shift`+anak panah mengubah saiznya 1 mm. `Tab` dan `Shift+Tab` memilih objek seterusnya dan sebelumnya pada halaman, `Shift+PageUp` dan `Shift+PageDown` membawa objek ke paling hadapan atau paling belakang, dan `Shift+Home` serta `Shift+End` meletakkan objek di hadapan atau di belakang teks. `G` dan `U` mengumpulkan dan meleraikan kumpulan, `L` dan `C` membuka tab Garisan dan Isian dalam sifat objek, dan `Ctrl+E` memadam objek. Untuk memilih objek yang terletak di bawah objek lain, tahan `Alt` dan klik; setiap klik berikutnya memilih objek seterusnya di bawahnya. Menyeret penjuru gambar sambil menahan `Shift` memangkas gambar mengikut skalanya, dan menyeret objek sambil menahan `Ctrl` meninggalkan objek di tempatnya dan meletakkan salinan di tempat anda melepaskannya.
